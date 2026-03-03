@@ -127,12 +127,24 @@ jobs:
       - uses: extractions/setup-just@v3
       - run: just lang-taytsh
 
+  fixed-point:
+    runs-on: ubuntu-latest
+    needs: style
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: extractions/setup-just@v3
+      - run: just fixed-point
+
   check:
     if: always()
-    needs: [style, test-frontend, test-middleend, test-taytsh, test-backend, test-lib, lang-python, lang-ruby, lang-perl, lang-taytsh]
+    needs: [style, test-frontend, test-middleend, test-taytsh, test-backend, test-lib, lang-python, lang-ruby, lang-perl, lang-taytsh, fixed-point]
     runs-on: ubuntu-latest
     steps:
       - run: |
-          if [[ "${{ needs.style.result }}" != "success" || "${{ needs.test-frontend.result }}" != "success" || "${{ needs.test-middleend.result }}" != "success" || "${{ needs.test-taytsh.result }}" != "success" || "${{ needs.test-backend.result }}" != "success" || "${{ needs.test-lib.result }}" != "success" || "${{ needs.lang-python.result }}" != "success" || "${{ needs.lang-ruby.result }}" != "success" || "${{ needs.lang-perl.result }}" != "success" || "${{ needs.lang-taytsh.result }}" != "success" ]]; then
+          if [[ "${{ needs.style.result }}" != "success" || "${{ needs.test-frontend.result }}" != "success" || "${{ needs.test-middleend.result }}" != "success" || "${{ needs.test-taytsh.result }}" != "success" || "${{ needs.test-backend.result }}" != "success" || "${{ needs.test-lib.result }}" != "success" || "${{ needs.lang-python.result }}" != "success" || "${{ needs.lang-ruby.result }}" != "success" || "${{ needs.lang-perl.result }}" != "success" || "${{ needs.lang-taytsh.result }}" != "success" || "${{ needs.fixed-point.result }}" != "success" ]]; then
             exit 1
           fi

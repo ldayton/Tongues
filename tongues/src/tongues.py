@@ -146,7 +146,7 @@ def write_output(output: str, output_file: str | None) -> int:
             print("error: cannot write '" + output_file + "'", file=sys.stderr)
             return 1
         return 0
-    print(output)
+    print(output, end="")
     return 0
 
 
