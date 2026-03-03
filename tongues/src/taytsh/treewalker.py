@@ -17,8 +17,8 @@ def _isinf(x: float) -> bool:
     return x == float("inf") or x == float("-inf")
 
 
-_INT64_MIN = -(2**63)
-_INT64_MAX = 2**63 - 1
+_INT64_MAX = (1 << 62) - 1 + (1 << 62)
+_INT64_MIN = -_INT64_MAX - 1
 
 
 def _copysign_inf(x: float) -> float:
