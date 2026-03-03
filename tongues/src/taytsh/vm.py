@@ -1321,16 +1321,17 @@ class _BuiltinDispatch:
     def _sorted(self, args: list[Val]) -> Val:
         if isinstance(args[0], VList):
             items = list(args[0].items)
-            for item in items:
-                if isinstance(item, VFloat) and _isnan(item.value):
-                    raise _VMThrow(
-                        _make_error_struct(
-                            "ValueError", "cannot sort list containing NaN"
-                        )
-                    )
-            _sort_vals(items)
-            return VList(items)
-        return VList([])
+        elif isinstance(args[0], VSet):
+            items = list(args[0].items)
+        else:
+            return VList([])
+        for item in items:
+            if isinstance(item, VFloat) and _isnan(item.value):
+                raise _VMThrow(
+                    _make_error_struct("ValueError", "cannot sort list containing NaN")
+                )
+        _sort_vals(items)
+        return VList(items)
 
     # ── Map operations ────────────────────────────────────────
 

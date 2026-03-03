@@ -890,25 +890,17 @@ class Compiler:
             fc.emit(OP_STORE_LOCAL, local.slot, stmt.pos.line)
             return
         if isinstance(stmt.target, TIndex):
-            # obj[index] op= value
+            # obj[index] op= value → obj[index] = obj[index] op value
+            # Push obj and index for the store (evaluated first)
             self._compile_expr(stmt.target.obj, fc)
             self._compile_expr(stmt.target.index, fc)
-            fc.emit(OP_DUP, 0, stmt.pos.line)
-            fc.emit(OP_ROT_TWO, 0, stmt.pos.line)
-            # Stack: obj, index, index, obj (wrong) — need to rethink
-            # Actually for index assign, just load current, apply op, store
-            # Simpler: compile as target = target op value
+            # Load current value (re-evaluate obj[index])
             self._compile_expr(stmt.target, fc)
+            # Compute new value
             self._compile_expr(stmt.value, fc)
             typ = self._resolve_expr_type(stmt.target, fc)
             self._emit_binop_for_type(stmt.op, typ, fc, stmt.pos.line)
-            self._compile_expr(stmt.target.obj, fc)
-            self._compile_expr(stmt.target.index, fc)
-            fc.emit(OP_ROT_TWO, 0, stmt.pos.line)
-            # Stack: result, obj, index — need: obj, index, result
-            # This is getting messy. Let's just use the simple approach.
-            # Rewrite: load target, compile value, binop, store target
-            # But store target is complex. For now, punt to simple cases.
+            # Stack: obj, index, result → OP_STORE_INDEX
             fc.emit(OP_STORE_INDEX, 0, stmt.pos.line)
             return
         if isinstance(stmt.target, TFieldAccess):

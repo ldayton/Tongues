@@ -1032,11 +1032,13 @@ def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
         uid_jv = node.get("_uid") if isinstance(node, dict) else None
         if not isinstance(uid_jv, JInt):
             _record_fallback("no_uid")
-            return _infer_expr_type_fallback(node, env, ctx)
+            fb = _infer_expr_type_fallback(node, env, ctx)
+            return fb
         pt = ctx.pycheck_result.expr_types.get(uid_jv.value)
         if pt is None:
             _record_fallback("no_entry")
-            return _infer_expr_type_fallback(node, env, ctx)
+            fb = _infer_expr_type_fallback(node, env, ctx)
+            return fb
         if _is_any_type(pt):
             _record_fallback("is_any", node)
             return _infer_expr_type_fallback(node, env, ctx)
@@ -1045,7 +1047,8 @@ def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
             _record_fallback("contains_any", node)
             return _infer_expr_type_fallback(node, env, ctx)
         _record_fallback("success")
-        return _adjust_pycheck_type(node, pt, env)
+        result = _adjust_pycheck_type(node, pt, env)
+        return result
     return _infer_expr_type_fallback(node, env, ctx)
 
 
