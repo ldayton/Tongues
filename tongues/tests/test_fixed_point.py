@@ -3,12 +3,16 @@
 import importlib.util
 import io
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 TONGUES_DIR = Path(__file__).parent.parent
 SRC_DIR = TONGUES_DIR / "src"
+OUT_DIR = TONGUES_DIR / ".out"
 
 
 def _gather_project_files(project_root: Path) -> list[tuple[str, str]]:
@@ -43,8 +47,38 @@ def _build_project_stdin(files: list[tuple[str, str]]) -> bytes:
     return "\0".join(parts).encode()
 
 
-def _run_module_inprocess(mod, argv: list[str], stdin_data: bytes = b"") -> str:
-    """Run a transpiled module's main() in-process, return stdout."""
+def _transpile_source(target: str) -> str:
+    """Use the original transpiler to transpile its own source to the given target."""
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(TONGUES_DIR / "bin" / "tongues"),
+            "--target",
+            target,
+            "src",
+        ],
+        capture_output=True,
+        cwd=TONGUES_DIR,
+        timeout=120,
+    )
+    assert result.returncode == 0, result.stderr.decode(errors="replace")
+    return result.stdout.decode()
+
+
+def _load_python_binary(source: str, name: str):
+    """Write transpiled Python to .out/ and load as a module."""
+    path = OUT_DIR / f"{name}.py"
+    path.parent.mkdir(exist_ok=True)
+    path.write_text(source)
+    spec = importlib.util.spec_from_file_location(f"tongues_{name}", path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _run_python_binary(mod, args: list[str], stdin_data: bytes = b"") -> str:
+    """Run a transpiled Python module's main() in-process, return stdout."""
     old_argv, old_stdout, old_stderr, old_stdin = (
         sys.argv,
         sys.stdout,
@@ -55,7 +89,7 @@ def _run_module_inprocess(mod, argv: list[str], stdin_data: bytes = b"") -> str:
     stderr_buf = io.StringIO()
     stdin_wrapper = io.TextIOWrapper(io.BytesIO(stdin_data))
     try:
-        sys.argv = argv
+        sys.argv = args
         sys.stdout = stdout_buf
         sys.stderr = stderr_buf
         sys.stdin = stdin_wrapper
@@ -73,39 +107,56 @@ def _run_module_inprocess(mod, argv: list[str], stdin_data: bytes = b"") -> str:
     return stdout_buf.getvalue()
 
 
-def test_fixed_point():
-    """Stage 1 produces stage 2; stage 2 self-transpiles to identical stage 3."""
-    # Stage 1: original transpiler transpiles itself
+def _run_ruby_binary(rb_path: str, args: list[str], stdin_data: bytes = b"") -> str:
+    """Run a transpiled Ruby binary via subprocess, return stdout."""
     result = subprocess.run(
-        [
-            sys.executable,
-            str(TONGUES_DIR / "bin" / "tongues"),
-            "--target",
-            "python",
-            "src",
-        ],
+        ["ruby", "-W0", "-e", f"load '{rb_path}'; main", "--", *args],
+        input=stdin_data,
         capture_output=True,
-        cwd=TONGUES_DIR,
-        timeout=120,
+        timeout=600,
     )
     assert result.returncode == 0, result.stderr.decode(errors="replace")
-    stage2 = result.stdout.decode()
+    return result.stdout.decode()
 
-    # Stage 2: load the transpiled binary and have it transpile the same source
-    # Write to a temp file so importlib can resolve the module properly
-    # (dataclasses needs sys.modules[cls.__module__] to exist)
-    stage2_path = TONGUES_DIR / ".out" / "stage2.py"
-    stage2_path.parent.mkdir(exist_ok=True)
-    stage2_path.write_text(stage2)
-    spec = importlib.util.spec_from_file_location("tongues_stage2", stage2_path)
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = mod
-    spec.loader.exec_module(mod)
+
+def test_fixed_point():
+    """Stage 1 produces stage 2; stage 2 self-transpiles to identical stage 3."""
+    stage2 = _transpile_source("python")
+    mod = _load_python_binary(stage2, "fp_stage2")
 
     files = _gather_project_files(SRC_DIR)
     stdin_data = _build_project_stdin(files)
-    stage3 = _run_module_inprocess(
+    stage3 = _run_python_binary(
         mod, ["stage2.py", "--project", "--target", "python"], stdin_data
     )
 
     assert stage2 == stage3, "stage2 != stage3: transpiler did not reach a fixed point"
+
+
+@pytest.mark.xfail(reason="Ruby binary hits bytes iteration bug on full self-compile")
+def test_cross_language_equivalence():
+    """Python and Ruby transpiled binaries produce identical output."""
+    if shutil.which("ruby") is None:
+        pytest.skip("ruby not available")
+
+    # Transpile the source to both Python and Ruby binaries
+    py_source = _transpile_source("python")
+    rb_source = _transpile_source("ruby")
+    py_mod = _load_python_binary(py_source, "xl_python")
+    rb_path = OUT_DIR / "xl_ruby.rb"
+    rb_path.parent.mkdir(exist_ok=True)
+    rb_path.write_text(rb_source)
+
+    # Have each binary compile tongues source to Python
+    files = _gather_project_files(SRC_DIR)
+    stdin_data = _build_project_stdin(files)
+    from_python = _run_python_binary(
+        py_mod, ["xl_python.py", "--project", "--target", "python"], stdin_data
+    )
+    from_ruby = _run_ruby_binary(
+        str(rb_path), ["--project", "--target", "python"], stdin_data
+    )
+
+    assert from_python == from_ruby, (
+        "Python and Ruby transpiled binaries produced different output"
+    )
