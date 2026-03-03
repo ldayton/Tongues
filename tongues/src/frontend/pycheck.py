@@ -1843,6 +1843,10 @@ def _cfg_merge_env(
             env.types[k] = env_a.types[k]
         elif in_b and not both_only:
             env.types[k] = env_b.types[k]
+    gkeys_a = list(env_a.guarded_attrs)
+    for gk in gkeys_a:
+        if gk in env_b.guarded_attrs:
+            env.guarded_attrs.add(gk)
 
 
 # ---------------------------------------------------------------------------
@@ -2069,6 +2073,10 @@ def _validate_assign(
             _validate_subscript_assign(target, val_type, env, ctx, lineno)
         elif _is_type(target, ["Attribute"]):
             _synth_expr(target, env, ctx)
+            if not isinstance(val_type, OptionalType):
+                path = _attr_path(target)
+                if path:
+                    env.guard_attr(path)
 
 
 def _is_empty_collection(node: ASTNode) -> bool:
