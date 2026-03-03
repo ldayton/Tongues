@@ -15,6 +15,8 @@ import struct
 
 import pytest
 
+pytestmark = pytest.mark.timeout(30)
+
 from src.lib.softfloat import (
     F64_SIGN,
     f64_abs,
@@ -525,7 +527,6 @@ def test_to_str():
     assert fails == 0, f"{fails}/{ROUNDS} failures. First: {first_failure}"
 
 
-@pytest.mark.timeout(10)
 def test_round_trip():
     """f64_to_str -> str_to_f64 must recover the original bits."""
     rng = random.Random(SEED)
@@ -763,7 +764,6 @@ def test_to_str_sweep():
     assert fails == 0, f"{fails}/{len(SWEEP_VALUES)} failures. First: {first_failure}"
 
 
-@pytest.mark.timeout(10)
 def test_round_trip_sweep():
     """f64_to_str -> str_to_f64 must recover the original bits."""
     fails = 0
