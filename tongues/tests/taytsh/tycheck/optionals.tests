@@ -11,11 +11,13 @@ ok
 fn Main() -> void {
     let x: int? = nil
     if x != nil {
+        reveal_type(x)
         let y: int = x + 1
     }
 }
 ---
 ok
+reveal:4=int
 ---
 
 === valid: unwrap
@@ -85,12 +87,14 @@ fn Main() -> void {
     if x == nil {
         WritelnOut("nil")
     } else {
+        reveal_type(x)
         let y: int = x + 1
         WritelnOut(ToString(y))
     }
 }
 ---
 ok
+reveal:6=int
 ---
 
 === error: assign non-matching type to optional

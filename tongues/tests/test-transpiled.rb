@@ -49,7 +49,7 @@ TESTS = {
   },
   "taytsh" => {
     "typarse" => { dir: "taytsh/typarse",  run: :phase, taytsh: true, args: ["--stop-at", "parse"], json: true  },
-    "tycheck" => { dir: "taytsh/tycheck",  run: :phase, taytsh: true, args: ["--stop-at", "check"], json: false },
+    "tycheck" => { dir: "taytsh/tycheck",  run: :phase, taytsh: true, args: ["--stop-at", "check"], json: true  },
     "ty_app"  => { dir: "taytsh/app",      run: :ty_app },
   },
 }
@@ -195,7 +195,7 @@ def run_phase_tests(test_dir, phase_name, cfg)
         expect_json: cfg[:json]
       )
       reveals = phase_result[:reveals]
-      if phase_name == "pycheck" && phase_result[:errors].empty? && phase_result[:data]
+      if %w[pycheck tycheck].include?(phase_name) && phase_result[:errors].empty? && phase_result[:data]
         if phase_result[:data].is_a?(JsonObject)
           begin
             reveals_arr = get_items(get_field(phase_result[:data], "reveals"))

@@ -34,6 +34,7 @@ struct BinOp : Node {
 }
 fn Foo(n: Node) -> int {
     if IsType(n, "Lit") {
+        reveal_type(n)
         return n.value
     }
     return 0
@@ -42,6 +43,7 @@ fn Main() -> void {
 }
 ---
 ok
+reveal:10=Lit
 ---
 
 === IsType no narrowing without check
@@ -94,12 +96,14 @@ fn Foo(n: Node) -> int {
     if !IsType(n, "Lit") {
         return 0
     }
+    reveal_type(n)
     return n.value
 }
 fn Main() -> void {
 }
 ---
 ok
+reveal:12=Lit
 ---
 
 === IsType negative guard narrows after throw

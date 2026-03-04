@@ -118,11 +118,13 @@ ok
 === valid: map Get
 fn Main() -> void {
     let m: map[string, int] = {"a": 1}
-    let v: int? = Get(m, "a")
-    let w: int = Get(m, "a", 0)
+    reveal_type(Get(m, "a"))
+    reveal_type(Get(m, "a", 0))
 }
 ---
 ok
+reveal:3=int | nil
+reveal:4=int
 ---
 
 === error: index non-indexable
@@ -194,10 +196,11 @@ ok
 === valid: Items
 fn Main() -> void {
     let m: map[string, int] = {"a": 1}
-    let pairs: list[(string, int)] = Items(m)
+    reveal_type(Items(m))
 }
 ---
 ok
+reveal:3=list[(string, int)]
 ---
 
 === valid: list Repeat

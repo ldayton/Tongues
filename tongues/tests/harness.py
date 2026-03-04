@@ -225,7 +225,7 @@ from src.middleend.ownership import analyze_ownership
 from src.middleend.returns import analyze_returns
 from src.middleend.scope import analyze_scope
 from src.middleend.strings import analyze_strings
-from src.taytsh import check as taytsh_check_fn, parse as taytsh_parse
+from src.taytsh import parse as taytsh_parse
 from src.taytsh.treewalker import run as taytsh_run, prepare as _taytsh_prepare
 from src.taytsh.ast import (
     serialize_annotations,
@@ -1028,15 +1028,22 @@ def run_typarse(source: str) -> PhaseResult:
 
 def run_tycheck(source: str) -> PhaseResult:
     if TRANSPILED_BINARY is not None:
-        return _run_transpiled(
-            source, ["--stop-at", "check"], is_taytsh=True, expect_json=False
-        )
+        result = _run_transpiled(source, ["--stop-at", "check"], is_taytsh=True)
+        if result.errors:
+            return result
+        if result.data and "reveals" in result.data:
+            reveals = []
+            for rev in result.data["reveals"]:
+                reveals.append((rev["line"], rev["type"]))
+            return PhaseResult(reveals=reveals)
+        return result
     try:
         signal.alarm(PARSE_TIMEOUT)
-        errors = taytsh_check_fn(source)
+        module = taytsh_parse(source)
+        errors, checker = check_with_info(module)
         if errors:
             return PhaseResult(errors=[str(e) for e in errors])
-        return PhaseResult()
+        return PhaseResult(reveals=checker.reveals)
     except Exception as e:
         return PhaseResult(errors=[str(e)])
     finally:

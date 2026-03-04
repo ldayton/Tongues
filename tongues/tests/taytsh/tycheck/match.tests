@@ -262,10 +262,12 @@ fn Main() -> void {
     let v: int | string = 42
     match v {
         case n: int {
+            reveal_type(n)
             let doubled: int = n * 2
             WritelnOut(ToString(doubled))
         }
         case s: string {
+            reveal_type(s)
             let upper: string = Upper(s)
             WritelnOut(upper)
         }
@@ -273,6 +275,8 @@ fn Main() -> void {
 }
 ---
 ok
+reveal:5=int
+reveal:10=string
 ---
 
 === valid: match on only default
@@ -500,12 +504,14 @@ fn Main() -> void {
             WritelnOut(ToString(n))
         }
         default o {
+            reveal_type(o)
             WritelnOut(ToString(o))
         }
     }
 }
 ---
 ok
+reveal:8=bool | string
 ---
 
 === error: duplicate nil case

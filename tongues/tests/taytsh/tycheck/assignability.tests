@@ -112,13 +112,14 @@ fn Foo(x: int?) -> int {
     if x == nil {
         return 0
     }
-    let y: int = x
-    return y
+    reveal_type(x)
+    return x
 }
 fn Main() -> void {
 }
 ---
 ok
+reveal:5=int
 ---
 
 === without narrowing optional not assignable to non-optional
@@ -180,13 +181,14 @@ ok
 === nil narrowing multi-member union
 fn Foo(v: int | string | nil) -> void {
     if v != nil {
-        let x: int | string = v
+        reveal_type(v)
     }
 }
 fn Main() -> void {
 }
 ---
 ok
+reveal:3=int | string
 ---
 
 === list not covariant
