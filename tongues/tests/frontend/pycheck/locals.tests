@@ -188,3 +188,101 @@ def f() -> int:
 ---
 ok
 ---
+
+=== variable reuse across early-return if blocks
+class A:
+    pass
+class B:
+    pass
+def f(flag: int) -> None:
+    if flag == 1:
+        x = A()
+        return
+    if flag == 2:
+        x = B()
+        return
+---
+ok
+---
+
+=== variable reuse across early-return if blocks with field access
+class TCall:
+    name: str
+class TBinaryOp:
+    op: str
+def make_call() -> TCall:
+    return TCall()
+def f(method: str) -> str:
+    if method == "removeprefix":
+        cond = make_call()
+        return cond.name
+    if method == "partition":
+        cond = TBinaryOp()
+        return cond.op
+    return ""
+---
+ok
+---
+
+=== variable reuse across early-return if blocks with method calls
+class TCall:
+    def get_name(self) -> str:
+        return ""
+class TBinaryOp:
+    def get_op(self) -> str:
+        return ""
+def make_call() -> TCall:
+    return TCall()
+def f(method: str) -> str:
+    if method == "a":
+        cond = make_call()
+        return cond.get_name()
+    if method == "b":
+        cond = TBinaryOp()
+        return cond.get_op()
+    return ""
+---
+ok
+---
+
+=== variable reuse across three early-return if blocks
+class A:
+    pass
+class B:
+    pass
+class C:
+    pass
+def f(flag: int) -> None:
+    if flag == 1:
+        x = A()
+        return
+    if flag == 2:
+        x = B()
+        return
+    if flag == 3:
+        x = C()
+        return
+---
+ok
+---
+
+=== variable reuse with nested if-return
+class TCall:
+    name: str
+class TBinaryOp:
+    op: str
+def make_call() -> TCall:
+    return TCall()
+def f(method: str, items: list[str]) -> str:
+    if method == "a":
+        if items:
+            cond = make_call()
+            return cond.name
+    if method == "b":
+        if items:
+            cond = TBinaryOp()
+            return cond.op
+    return ""
+---
+ok
+---
