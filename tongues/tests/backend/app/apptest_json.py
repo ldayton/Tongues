@@ -103,8 +103,10 @@ def test_round_trip() -> None:
 
 
 def test_accessors() -> None:
-    doc: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = json_parse(
-        '{"name":"alice","age":30,"active":true,"scores":[95,87],"extra":null}'
+    doc: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = (
+        json_parse(
+            '{"name":"alice","age":30,"active":true,"scores":[95,87],"extra":null}'
+        )
     )
     assert json_get_string(json_get_field(doc, "name")) == "alice"
     assert json_get_number(json_get_field(doc, "age")) == 30.0
@@ -119,14 +121,14 @@ def test_accessors() -> None:
 
 
 def test_accessor_errors() -> None:
-    num: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = json_parse(
-        "42"
+    num: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = (
+        json_parse("42")
     )
     str_val: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = (
         json_parse('"hi"')
     )
-    arr: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = json_parse(
-        "[1]"
+    arr: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = (
+        json_parse("[1]")
     )
     null_val: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = (
         json_parse("null")
@@ -162,8 +164,8 @@ def test_accessor_errors() -> None:
     except JsonError:
         pass
     # get_field with missing key
-    obj: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = json_parse(
-        '{"a":1}'
+    obj: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = (
+        json_parse('{"a":1}')
     )
     try:
         json_get_field(obj, "z")

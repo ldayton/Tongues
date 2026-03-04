@@ -309,7 +309,7 @@ def _parse_value(s: str, pos: int) -> ParseResult:
 def json_parse(
     s: str,
 ) -> JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject:
-    """Parse a JSON string into a JsonValue."""
+    """Parse a JSON string into a JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject."""
     result: ParseResult = _parse_value(s, 0)
     pos: int = _skip_ws(s, result.pos)
     if pos < len(s):
@@ -323,7 +323,7 @@ def json_parse(
 def json_stringify(
     value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
 ) -> str:
-    """Serialize a JsonValue to a JSON string."""
+    """Serialize a JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject to a JSON string."""
     if isinstance(value, JsonNull):
         return "null"
     elif isinstance(value, JsonBool):
@@ -351,7 +351,7 @@ def json_stringify(
         for key, val in value.entries:
             parts.append(_escape_string(key) + ":" + json_stringify(val))
         return "{" + ",".join(parts) + "}"
-    raise JsonError("invalid JsonValue")
+    raise JsonError("invalid json value")
 
 
 def _escape_string(s: str) -> str:
