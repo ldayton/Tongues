@@ -824,7 +824,14 @@ class _PythonEmitter(Emitter):
                         + self._expr(args[1].value)
                         + "]"
                     )
-                    return
+                else:
+                    self._line(
+                        self._expr(args[0].value)
+                        + ".pop("
+                        + self._expr(args[1].value)
+                        + ")"
+                    )
+                return
         self._line(self._expr(expr))
 
     def _emit_if(self, stmt: TIfStmt) -> None:

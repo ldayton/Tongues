@@ -271,6 +271,8 @@ These are stamped on one IR node and require no context beyond that node.
 
 **enumerate** — `for i, v in xs` where the index was from `enumerate()`. Targets with native enumerate (Python, Rust `.iter().enumerate()`, Swift `.enumerated()`) reconstruct the idiomatic form. Others use a manual counter.
 
+**del_subscript** — `Delete(d, k)` or `RemoveAt(xs, i)` with provenance. Python emits `del d[k]` / `del xs[i]` instead of `.pop()`. Other backends already emit their native deletion idioms regardless of provenance.
+
 ### Multi-statement provenance
 
 These are stamped on the `for` node but the idiomatic form collapses multiple statements (the preceding accumulator `let` + the loop) into one expression.
@@ -338,6 +340,7 @@ Which backends act on each provenance form:
 | negative_index     | Python, Ruby, Perl                   |
 | open_start         | Python, Go, Rust                     |
 | open_end           | Python, Go, Rust                     |
+| del_subscript      | Python                               |
 
 Most provenance forms benefit 1-3 backends. Python benefits from all of them (unsurprising — the source language is Python). Several provenance forms (in_operator for non-Python, string_multiply, list_multiply) are consumed by backends whose `Contains`/`Repeat` emission is already idiomatic, making the provenance tag redundant for them in practice.
 
