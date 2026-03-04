@@ -767,7 +767,7 @@ def _resolve_attr(
             return FuncType([], SliceType(STR_TYPE))
         if attr == "join":
             return FuncType([SliceType(STR_TYPE)], STR_TYPE)
-        if attr == "replace" or attr == "format":
+        if attr == "replace":
             return FuncType([STR_TYPE], STR_TYPE)
         if attr == "removeprefix" or attr == "removesuffix":
             return FuncType([STR_TYPE], STR_TYPE)
@@ -786,9 +786,7 @@ def _resolve_attr(
             return FuncType([], BOOL_TYPE)
         if attr == "encode":
             return FuncType([], BYTES_TYPE)
-        if attr == "title" or attr == "capitalize" or attr == "swapcase":
-            return FuncType([], STR_TYPE)
-        if attr == "ljust" or attr == "rjust" or attr == "center" or attr == "zfill":
+        if attr == "zfill":
             return FuncType([INT_TYPE], STR_TYPE)
         if attr == "partition" or attr == "rpartition":
             return FuncType(
@@ -803,7 +801,7 @@ def _resolve_attr(
     ):
         if attr == "decode":
             return FuncType([], STR_TYPE)
-        if attr == "find" or attr == "rfind" or attr == "index" or attr == "count":
+        if attr == "find" or attr == "rfind" or attr == "count":
             return FuncType([BYTES_TYPE], INT_TYPE)
         if attr == "startswith" or attr == "endswith":
             return FuncType([BYTES_TYPE], BOOL_TYPE)
@@ -873,8 +871,6 @@ def _resolve_attr(
             return FuncType([obj_type], VOID_TYPE)
         if attr == "copy":
             return FuncType([], obj_type)
-        if attr == "clear":
-            return FuncType([], VOID_TYPE)
         if attr == "setdefault":
             return FuncType([key_t, val_t], val_t)
         if attr == "popitem":
@@ -901,8 +897,6 @@ def _resolve_attr(
             return FuncType([], obj_type)
         if attr == "update":
             return FuncType([obj_type], VOID_TYPE)
-        if attr == "clear":
-            return FuncType([], VOID_TYPE)
         lineno = get_int(value_node, "lineno") if isinstance(value_node, dict) else 0
         ctx.result.add_error(lineno, 0, "unsupported method '" + attr + "' on set")
         return ANY_TYPE

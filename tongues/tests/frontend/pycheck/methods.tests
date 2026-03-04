@@ -19,7 +19,7 @@ def f(b: bytes) -> bytes:
 error: method
 ---
 
-=== plausible but unsupported bytes method hex rejected
+=== bytes method hex accepted
 def f(b: bytes) -> str:
     return b.hex()
 ---
@@ -61,53 +61,53 @@ def f(t: tuple[int, str]) -> None:
 error: method
 ---
 
-=== plausible but unsupported tuple method count rejected
+=== tuple method count accepted
 def f(t: tuple[int, str]) -> int:
     return t.count(1)
 ---
 ok
 ---
 
-=== plausible but unsupported tuple method index rejected
+=== tuple method index accepted
 def f(t: tuple[int, str]) -> int:
     return t.index(1)
 ---
 ok
 ---
 
-=== plausible but unsupported str method rejected
+=== unsupported str method capitalize rejected
 def f(s: str) -> str:
     return s.capitalize()
 ---
-ok
+error: method
 ---
 
-=== plausible but unsupported str method title rejected
+=== unsupported str method title rejected
 def f(s: str) -> str:
     return s.title()
 ---
-ok
+error: method
 ---
 
-=== plausible but unsupported str method center rejected
+=== unsupported str method center rejected
 def f(s: str) -> str:
     return s.center(10)
 ---
-ok
+error: method
 ---
 
-=== plausible but unsupported str method zfill rejected
+=== str method zfill accepted
 def f(s: str) -> str:
     return s.zfill(5)
 ---
 ok
 ---
 
-=== plausible but unsupported str method swapcase rejected
+=== unsupported str method swapcase rejected
 def f(s: str) -> str:
     return s.swapcase()
 ---
-ok
+error: method
 ---
 
 === plausible but unsupported str method expandtabs rejected
@@ -117,98 +117,98 @@ def f(s: str) -> str:
 error: method
 ---
 
-=== plausible but unsupported list method sort rejected
+=== list method sort accepted
 def f(xs: list[int]) -> None:
     xs.sort()
 ---
 ok
 ---
 
-=== plausible but unsupported list method reverse rejected
+=== list method reverse accepted
 def f(xs: list[int]) -> None:
     xs.reverse()
 ---
 ok
 ---
 
-=== plausible but unsupported list method copy rejected
+=== list method copy accepted
 def f(xs: list[int]) -> list[int]:
     return xs.copy()
 ---
 ok
 ---
 
-=== plausible but unsupported dict method update rejected
+=== dict method update accepted
 def f(d: dict[str, int]) -> None:
     d.update({"a": 1})
 ---
 ok
 ---
 
-=== plausible but unsupported dict method setdefault rejected
+=== dict method setdefault accepted
 def f(d: dict[str, int]) -> int:
     return d.setdefault("a", 0)
 ---
 ok
 ---
 
-=== plausible but unsupported dict method popitem rejected
+=== dict method popitem accepted
 def f(d: dict[str, int]) -> tuple[str, int]:
     return d.popitem()
 ---
 ok
 ---
 
-=== plausible but unsupported dict method copy rejected
+=== dict method copy accepted
 def f(d: dict[str, int]) -> dict[str, int]:
     return d.copy()
 ---
 ok
 ---
 
-=== plausible but unsupported set method union rejected
+=== set method union accepted
 def f(s: set[int]) -> set[int]:
     return s.union({1, 2})
 ---
 ok
 ---
 
-=== plausible but unsupported set method intersection rejected
+=== set method intersection accepted
 def f(s: set[int]) -> set[int]:
     return s.intersection({1, 2})
 ---
 ok
 ---
 
-=== plausible but unsupported set method difference rejected
+=== set method difference accepted
 def f(s: set[int]) -> set[int]:
     return s.difference({1, 2})
 ---
 ok
 ---
 
-=== plausible but unsupported set method symmetric_difference rejected
+=== set method symmetric_difference accepted
 def f(s: set[int]) -> set[int]:
     return s.symmetric_difference({1, 2})
 ---
 ok
 ---
 
-=== plausible but unsupported set method remove rejected
+=== set method remove accepted
 def f(s: set[int]) -> None:
     s.remove(1)
 ---
 ok
 ---
 
-=== plausible but unsupported set method pop rejected
+=== set method pop accepted
 def f(s: set[int]) -> int:
     return s.pop()
 ---
 ok
 ---
 
-=== plausible but unsupported set method copy rejected
+=== set method copy accepted
 def f(s: set[int]) -> set[int]:
     return s.copy()
 ---

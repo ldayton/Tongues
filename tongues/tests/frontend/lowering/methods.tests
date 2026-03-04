@@ -47,18 +47,18 @@ def f(t: tuple[int, str]) -> None:
 error: method
 ---
 
-=== plausible but unsupported str method capitalize rejected
+=== str method zfill passthrough
 def f(s: str) -> str:
-    return s.capitalize()
+    return s.zfill(5)
 ---
-error: method
+s.zfill(5)
 ---
 
-=== plausible but unsupported str method title rejected
-def f(s: str) -> str:
-    return s.title()
+=== bytes method hex passthrough
+def f(b: bytes) -> str:
+    return b.hex()
 ---
-error: method
+b.hex()
 ---
 
 === unrecognized method in expression rejected
