@@ -5938,6 +5938,15 @@ def _lower_expr_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     return [TExprStmt(pos, expr, {})]
 
 
+def _collect_exc_type(pos: Pos, node: ASTNode, out: list[TType]) -> None:
+    """Append a single exception type from a Name node, skipping generic bases."""
+    tname = get_str(node, "id")
+    if tname == "AssertionError":
+        tname = "AssertError"
+    if tname != "Exception" and tname != "BaseException":
+        out.append(TIdentType(pos, tname))
+
+
 def _lower_try(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     """Lower a try/except statement."""
     pos = _node_pos(node)
@@ -5955,11 +5964,10 @@ def _lower_try(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         if isinstance(exc_type_jv, JDict):
             exc_type_node = exc_type_jv.entries
             if _is_ast(exc_type_node, "Name"):
-                tname = get_str(exc_type_node, "id")
-                if tname == "AssertionError":
-                    tname = "AssertError"
-                if tname != "Exception" and tname != "BaseException":
-                    exc_types.append(TIdentType(pos, tname))
+                _collect_exc_type(pos, exc_type_node, exc_types)
+            elif _is_ast(exc_type_node, "Tuple"):
+                for elt in get_nodes(exc_type_node, "elts"):
+                    _collect_exc_type(pos, elt, exc_types)
         catch_body = _lower_stmts(get_nodes(h, "body"), env, ctx)
         sc = _safe_name(catch_name)
         catches.append(
