@@ -4955,9 +4955,7 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         env.pre_stmts = []
         for stmt in cond_pre:
             pre_stmts.append(stmt)
-    # Narrow attribute paths from isinstance in the then-branch
-    body_env = _narrow_isinstance_from_test(test, env)
-    then_body = _lower_stmts(body, body_env, ctx)
+    then_body = _lower_stmts(body, env, ctx)
     else_body: list[TStmt] | None = None
     if orelse:
         else_body = _lower_stmts(orelse, env, ctx)
@@ -5081,97 +5079,6 @@ def _isinstance_var(node: ASTNode) -> str:
     return ""
 
 
-def _attribute_path_key(node: ASTNode) -> str:
-    """Build a dotted path key for an Attribute node, e.g. 'expr.func'."""
-    if _is_ast(node, "Name"):
-        return get_str(node, "id")
-    if _is_ast(node, "Attribute"):
-        obj_key = _attribute_path_key(get_node(node, "value"))
-        if obj_key:
-            return obj_key + "." + get_str(node, "attr")
-    return ""
-
-
-def _narrow_isinstance_attrs(conds: list[ASTNode], env: _Env) -> None:
-    """Inject attribute-path narrowings from isinstance extra_conds into env."""
-    for cond in conds:
-        if _is_isinstance_call(cond):
-            args = get_nodes(cond, "args")
-            if len(args) >= 2 and isinstance(args[0], dict):
-                path_key = _attribute_path_key(args[0])
-                if path_key and "." in path_key:
-                    type_name = _isinstance_type(cond)
-                    if type_name:
-                        env.var_types[path_key] = PointerType(StructRef(type_name))
-
-
-def _is_not_none_var(node: ASTNode) -> str:
-    """If node is 'x is not None' or 'x != None', return variable name, else ''."""
-    if not _is_ast(node, "Compare"):
-        return ""
-    ops = get_nodes(node, "ops")
-    comps = get_nodes(node, "comparators")
-    if len(ops) != 1 or len(comps) != 1:
-        return ""
-    op = ops[0]
-    comp = comps[0]
-    if not isinstance(op, dict):
-        return ""
-    op_type = get_str(op, "_type")
-    if op_type != "IsNot" and op_type != "NotEq":
-        return ""
-    if not (_is_ast(comp, "Constant") and isinstance(comp.get("value"), JNull)):
-        return ""
-    left = get_node(node, "left")
-    if not _is_ast(left, "Name"):
-        return ""
-    return get_str(left, "id")
-
-
-def _narrow_isinstance_from_test(test: ASTNode, env: _Env) -> _Env:
-    """Narrow types from isinstance and is-not-None in a test expression."""
-    isinstance_nodes: list[ASTNode] = []
-    not_none_vars: list[str] = []
-    if _is_isinstance_call(test):
-        isinstance_nodes.append(test)
-    nn = _is_not_none_var(test)
-    if nn:
-        not_none_vars.append(nn)
-    if _is_ast(test, "BoolOp"):
-        op = get_node(test, "op")
-        if get_str(op, "_type") == "And":
-            values = get_nodes(test, "values")
-            for v in values:
-                if isinstance(v, dict):
-                    if _is_isinstance_call(v):
-                        isinstance_nodes.append(v)
-                    else:
-                        vnn = _is_not_none_var(v)
-                        if vnn:
-                            not_none_vars.append(vnn)
-    if not isinstance_nodes and not not_none_vars:
-        return env
-    narrowed_env = env.copy()
-    changed = False
-    for node in isinstance_nodes:
-        args = get_nodes(node, "args")
-        if len(args) >= 2 and isinstance(args[0], dict):
-            path_key = _attribute_path_key(args[0])
-            if path_key and "." in path_key:
-                type_name = _isinstance_type(node)
-                if type_name:
-                    narrowed_env.var_types[path_key] = PointerType(StructRef(type_name))
-                    changed = True
-    for var_name in not_none_vars:
-        vt = narrowed_env.var_types.get(var_name)
-        if vt is not None and isinstance(vt, OptionalType):
-            narrowed_env.var_types[var_name] = vt.inner
-            changed = True
-    if changed:
-        return narrowed_env
-    return env
-
-
 def _isinstance_type(node: ASTNode) -> str:
     """Get type name from isinstance(x, T)."""
     args = get_nodes(node, "args")
@@ -5245,13 +5152,9 @@ def _lower_isinstance_chain(
                 suffix += 1
             binding_name = binding_name + str(suffix)
         env.declared.add(binding_name)
-        # Create narrowed env for the case body
         case_env = env.copy()
-        case_env.var_types[var_name] = PointerType(StructRef(type_name))
         if extra_conds is not None:
-            # Narrow attribute paths from isinstance extra_conds
-            _narrow_isinstance_attrs(extra_conds, case_env)
-            # Lower extra conditions as && chain in narrowed env
+            # Lower extra conditions as && chain
             cond: TExpr = _lower_as_bool(extra_conds[0], case_env, ctx)
             ci = 1
             while ci < len(extra_conds):
@@ -5331,8 +5234,6 @@ def _lower_match(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             binding_name = _match_binding_name(type_name, env)
             env.declared.add(binding_name)
             case_env = env.copy()
-            if subj_name:
-                case_env.var_types[subj_name] = PointerType(StructRef(type_name))
             case_body = _lower_stmts(case_body_nodes, case_env, ctx)
             tp = TPatternType(pos, binding_name, TIdentType(pos, type_name), {})
             type_cases.append(TMatchCase(pos, tp, case_body, {}))
@@ -5344,19 +5245,7 @@ def _lower_match(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                 nil_cases.append(TMatchCase(pos, TPatternNil(pos), case_body, {}))
         elif pt == "MatchOr":
             subs = get_nodes(pattern, "patterns")
-            # Build union type for narrowing from all MatchClass alternatives
-            variant_types: list[TypeNode] = []
-            for sub in subs:
-                if get_str(sub, "_type") == "MatchClass":
-                    sub_cls = get_node(sub, "cls")
-                    vname = get_str(sub_cls, "id")
-                    variant_types.append(PointerType(StructRef(vname)))
             case_env = env.copy()
-            if subj_name and variant_types:
-                if len(variant_types) == 1:
-                    case_env.var_types[subj_name] = variant_types[0]
-                else:
-                    case_env.var_types[subj_name] = UnionType(variant_types)
             case_body = _lower_stmts(case_body_nodes, case_env, ctx)
             # Emit one case arm per MatchClass alternative
             for sub in subs:
