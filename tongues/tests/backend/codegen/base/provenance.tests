@@ -232,3 +232,37 @@ fn f(s: string, p: string) -> string {
 fn Main() -> void {
     WritelnOut(f("hello", "lo"))
 }
+
+=== reversed slice on list (raised)
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4, 5]
+    let r: list[int] = @["provenance" = "reversed_slice"] Reversed(xs)
+    WritelnOut(ToString(Len(r)))
+}
+
+=== step slice on list (raised)
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4, 5]
+    let evens: list[int]
+    @["provenance" = "step_slice"] for __i in range(0, Len(xs), 2) {
+        Append(evens, xs[__i])
+    }
+    WritelnOut(ToString(Len(evens)))
+}
+
+=== step slice with start on list (raised)
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4, 5]
+    let odds: list[int]
+    @["provenance" = "step_slice"] for __i in range(1, Len(xs), 2) {
+        Append(odds, xs[__i])
+    }
+    WritelnOut(ToString(Len(odds)))
+}
+
+=== reversed slice on string (raised)
+fn Main() -> void {
+    let s: string = "hello"
+    let r: string = @["provenance" = "reversed_slice"] Reverse(s)
+    WritelnOut(r)
+}

@@ -797,6 +797,12 @@ class _RubyEmitter(Emitter):
                             self._line(comp)
                             i += 2
                             continue
+                    if prov == "step_slice":
+                        comp = self._try_step_slice(stmt, next_stmt)
+                        if comp is not None:
+                            self._line(comp)
+                            i += 2
+                            continue
             self._emit_stmt(stmt)
             i += 1
 
@@ -901,6 +907,41 @@ class _RubyEmitter(Emitter):
                         + " })"
                     )
         return None
+
+    def _try_step_slice(self, let_stmt: TLetStmt, for_stmt: TForStmt) -> str | None:
+        """Reconstruct xs.each_slice(step).map(&:first) from a step_slice for-loop."""
+        if not isinstance(for_stmt.iterable, TRange):
+            return None
+        range_args = for_stmt.iterable.args
+        if len(range_args) != 3:
+            return None
+        body = for_stmt.body
+        if len(body) != 1 or not isinstance(body[0], TExprStmt):
+            return None
+        call = body[0].expr
+        if not isinstance(call, TCall) or not self._is_append_to(call, let_stmt.name):
+            return None
+        elem = call.args[1].value
+        if not isinstance(elem, TIndex):
+            return None
+        src = self._expr(elem.obj)
+        acc = self._decl_name(let_stmt.name, let_stmt.annotations)
+        start_expr = range_args[0]
+        step_expr = range_args[2]
+        step_s = self._expr(step_expr)
+        if isinstance(start_expr, TIntLit) and start_expr.value == 0:
+            return acc + " = " + src + ".each_slice(" + step_s + ").map(&:first)"
+        start_s = self._expr(start_expr)
+        return (
+            acc
+            + " = "
+            + src
+            + "["
+            + start_s
+            + "..].each_slice("
+            + step_s
+            + ").map(&:first)"
+        )
 
     def _emit_stmt(self, stmt: TStmt) -> None:
         if isinstance(stmt, TLetStmt):

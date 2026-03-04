@@ -582,6 +582,7 @@ _RESERVED_BINDINGS: set[str] = {
     "Pop",
     "RemoveAt",
     "IndexOf",
+    "Reverse",
     "Reversed",
     "Sorted",
     "ListFrom",
@@ -3769,6 +3770,14 @@ def _bi_index_of(rt: Runtime, args: list[Value]) -> Value:
     return VInt(-1)
 
 
+def _bi_reverse(rt: Runtime, args: list[Value]) -> Value:
+    """Reverse a string."""
+    s = args[0]
+    if not isinstance(s, VString):
+        raise TaytshRuntimeFault("Reverse expects string", None)
+    return VString(s.value[::-1])
+
+
 def _bi_reversed(rt: Runtime, args: list[Value]) -> Value:
     xs = args[0]
     if not isinstance(xs, VList):
@@ -4438,6 +4447,8 @@ def _dispatch_builtin(rt: Runtime, name: str, args: list[Value]) -> Value:
         return _bi_remove_at(rt, args)
     if name == "IndexOf":
         return _bi_index_of(rt, args)
+    if name == "Reverse":
+        return _bi_reverse(rt, args)
     if name == "Reversed":
         return _bi_reversed(rt, args)
     if name == "Sorted":
@@ -4589,6 +4600,7 @@ _BUILTIN_NAMES_RT: set[str] = {
     "Pop",
     "RemoveAt",
     "IndexOf",
+    "Reverse",
     "Reversed",
     "Sorted",
     "Delete",

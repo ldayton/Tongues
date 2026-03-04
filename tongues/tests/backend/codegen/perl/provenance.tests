@@ -105,3 +105,15 @@ return ((($s =~ /^\Q${\ $p}\E/) ? 1 : 0) ? substr($s, length($p), (length($s)) -
 
 === string removesuffix (raised)
 return ((($s =~ /\Q${\ $p}\E$/) ? 1 : 0) ? substr($s, 0, (length($s) - length($p)) - (0)) : $s);
+
+=== reversed slice on list (raised)
+my $r = [reverse @{$xs}];
+
+=== step slice on list (raised)
+my $evens = [@{$xs}[grep { $_ % 2 == 0 } 0 .. $#{$xs}]];
+
+=== step slice with start on list (raised)
+my $odds = [@{$xs}[grep { $_ % 2 == 1 } 0 .. $#{$xs}]];
+
+=== reversed slice on string (raised)
+my $r = scalar(reverse($s));

@@ -594,6 +594,12 @@ class _PythonEmitter(Emitter):
                             self._line(comp)
                             i += 2
                             continue
+                    if prov == "step_slice":
+                        comp = self._try_step_slice(stmt, next_stmt)
+                        if comp is not None:
+                            self._line(comp)
+                            i += 2
+                            continue
             self._emit_stmt(stmt)
             i += 1
 
@@ -678,6 +684,52 @@ class _PythonEmitter(Emitter):
                         acc + " = {" + val + " for " + binders + " in " + iterable + "}"
                     )
         return None
+
+    def _try_step_slice(self, let_stmt: TLetStmt, for_stmt: TForStmt) -> str | None:
+        """Try to reconstruct xs[start:end:step] from a step_slice for-loop."""
+        if not isinstance(for_stmt.iterable, TRange):
+            return None
+        range_args = for_stmt.iterable.args
+        if len(range_args) != 3:
+            return None
+        body = for_stmt.body
+        if len(body) != 1 or not isinstance(body[0], TExprStmt):
+            return None
+        call = body[0].expr
+        if not isinstance(call, TCall) or not self._is_append_to(call, let_stmt.name):
+            return None
+        # Extract source object from Append(acc, obj[__i])
+        elem = call.args[1].value
+        if not isinstance(elem, TIndex):
+            return None
+        src = self._expr(elem.obj)
+        acc = _restore_name(let_stmt.name, let_stmt.annotations)
+        start_expr = range_args[0]
+        end_expr = range_args[1]
+        step_expr = range_args[2]
+        # Omit start if 0
+        start_s = ""
+        if isinstance(start_expr, TIntLit) and start_expr.value == 0:
+            start_s = ""
+        else:
+            start_s = self._expr(start_expr)
+        # Omit end if Len(obj)
+        end_s = ""
+        if self._is_len_of(end_expr, elem.obj):
+            end_s = ""
+        else:
+            end_s = self._expr(end_expr)
+        step_s = self._expr(step_expr)
+        return acc + " = " + src + "[" + start_s + ":" + end_s + ":" + step_s + "]"
+
+    def _is_len_of(self, expr: TExpr, obj: TExpr) -> bool:
+        """Check if expr is Len(obj) where obj matches."""
+        if not isinstance(expr, TCall) or not isinstance(expr.func, TVar):
+            return False
+        if expr.func.name != "Len" or len(expr.args) != 1:
+            return False
+        arg = expr.args[0].value
+        return isinstance(arg, TVar) and isinstance(obj, TVar) and arg.name == obj.name
 
     def _emit_stmt(self, stmt: TStmt) -> None:
         if isinstance(stmt, TLetStmt):
@@ -1369,6 +1421,13 @@ class _PythonEmitter(Emitter):
             and expr.annotations.get("provenance") == "star_unpack"
         ):
             return self._star_unpack(expr)
+        # Reversed/Reverse with reversed_slice provenance → [::-1]
+        if (
+            isinstance(func, TVar)
+            and func.name in ("Reversed", "Reverse")
+            and expr.annotations.get("provenance") == "reversed_slice"
+        ):
+            return self._a(args, 0) + "[::-1]"
         # Builtin call
         if isinstance(func, TVar) and func.name in BUILTIN_NAMES:
             return self._builtin_call(func.name, args)

@@ -81,3 +81,15 @@ return s.removeprefix(p)
 
 === string removesuffix (raised)
 return s.removesuffix(p)
+
+=== reversed slice on list (raised)
+r: list[int] = xs[::-1]
+
+=== step slice on list (raised)
+evens = xs[::2]
+
+=== step slice with start on list (raised)
+odds = xs[1::2]
+
+=== reversed slice on string (raised)
+r: str = s[::-1]

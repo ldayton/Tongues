@@ -3519,9 +3519,15 @@ def _lower_slice(
     env: _Env,
     ctx: _LowerCtx,
 ) -> TExpr:
-    """Lower a slice access xs[a:b] into TSlice."""
+    """Lower a slice access xs[a:b] or xs[a:b:c] into TSlice or hoisted loop."""
     lower_jv = slice_node.get("lower")
     upper_jv = slice_node.get("upper")
+    step_jv = slice_node.get("step")
+    has_step = step_jv is not None and not isinstance(step_jv, JNull)
+    if has_step and not isinstance(obj_type, TupleType):
+        return _lower_step_slice(
+            pos, obj, obj_type, lower_jv, upper_jv, step_jv, env, ctx
+        )
     low = _lower_slice_bound(
         pos, lower_jv, TIntLit(pos, 0, "0", {}), env, ctx, obj, obj_type
     )
@@ -3534,6 +3540,107 @@ def _lower_slice(
         if ci is None:
             low = _make_call(pos, "Max", [TIntLit(pos, 0, "0", {}), low])
     return TSlice(pos, obj, low, high, {})
+
+
+def _lower_step_slice(
+    pos: Pos,
+    obj: TExpr,
+    obj_type: TypeNode,
+    lower_jv: JsonValue | None,
+    upper_jv: JsonValue | None,
+    step_jv: JsonValue,
+    env: _Env,
+    ctx: _LowerCtx,
+) -> TExpr:
+    """Lower a step-slice xs[a:b:c] into Reversed/Reverse or a hoisted for-loop."""
+    is_string = _is_type_dict(obj_type, ["string"])
+    no_lower = lower_jv is None or isinstance(lower_jv, JNull)
+    no_upper = upper_jv is None or isinstance(upper_jv, JNull)
+    # xs[::-1] / s[::-1] → Reversed(xs) / Reverse(s)
+    step_entries = step_jv.entries if isinstance(step_jv, JDict) else None
+    if no_lower and no_upper and step_entries is not None:
+        neg = _is_neg_const(step_entries)
+        if neg == 1:
+            ann: Ann = {"provenance": "reversed_slice"}
+            if is_string:
+                return _make_call_ann(pos, "Reverse", [obj], ann)
+            return _make_call_ann(pos, "Reversed", [obj], ann)
+    # Arbitrary step: hoist a for-loop that accumulates elements
+    step_expr = (
+        _lower_expr(step_entries, env, ctx)
+        if step_entries is not None
+        else TIntLit(pos, 1, "1", {})
+    )
+    # Determine if step is negative
+    step_neg = step_entries is not None and _is_neg_const(step_entries) is not None
+    if no_lower:
+        if step_neg:
+            start = TBinaryOp(
+                pos, "-", _len_expr(pos, obj, obj_type), TIntLit(pos, 1, "1", {}), {}
+            )
+        else:
+            start = TIntLit(pos, 0, "0", {})
+    else:
+        start = _lower_slice_bound(
+            pos, lower_jv, TIntLit(pos, 0, "0", {}), env, ctx, obj, obj_type
+        )
+    if no_upper:
+        if step_neg:
+            end = TIntLit(pos, -1, "-1", {})
+        else:
+            end = _len_expr(pos, obj, obj_type)
+    else:
+        end = _lower_slice_bound(
+            pos, upper_jv, _len_expr(pos, obj, obj_type), env, ctx, obj, obj_type
+        )
+    # Allocate accumulator variable
+    cid = ctx.comp_counter
+    ctx.comp_counter = cid + 1
+    rname = "__comp_" + str(cid) + "__"
+    result_var = TVar(pos, rname, {})
+    idx_name = "__i"
+    idx_var = TVar(pos, idx_name, {})
+    # Element access: obj[__i] (for strings, wrap in ToString)
+    elem = TIndex(pos, obj, idx_var, {})
+    if is_string:
+        elem = _make_call(pos, "ToString", [elem])
+    # Build: let acc: list[T]/string = []/""
+    if is_string:
+        let_type: TType = TPrimitive(pos, "string")
+        let_init: TExpr = TStringLit(pos, "", {})
+        # Accumulate with Concat
+        append_expr: TExpr = TAssignStmt(
+            pos, result_var, _make_call(pos, "Concat", [result_var, elem]), {}
+        )
+        body: list[TStmt] = [append_expr]
+    else:
+        elt_ttype = _elem_type_from_obj(pos, obj_type)
+        let_type = TListType(pos, elt_ttype)
+        let_init = TListLit(pos, [], {})
+        append_call = _make_call(pos, "Append", [result_var, elem])
+        body = [TExprStmt(pos, append_call, {})]
+    let_stmt = TLetStmt(pos, rname, let_type, let_init, {})
+    range_expr = TRange(pos, [start, end, step_expr], {})
+    for_ann: Ann = {"provenance": "step_slice"}
+    for_stmt = TForStmt(pos, [idx_name], range_expr, body, for_ann)
+    env.pre_stmts.append(let_stmt)
+    env.pre_stmts.append(for_stmt)
+    return result_var
+
+
+def _make_call_ann(pos: Pos, name: str, args: list[TExpr], ann: Ann) -> TCall:
+    """Create a function call with annotations."""
+    targs: list[TArg] = []
+    for arg in args:
+        targs.append(TArg(pos, None, arg))
+    return TCall(pos, TVar(pos, name, {}), targs, ann)
+
+
+def _elem_type_from_obj(pos: Pos, obj_type: TypeNode) -> TType:
+    """Extract element TType from a list/slice type node."""
+    if isinstance(obj_type, SliceType):
+        return _typenode_to_ttype(pos, obj_type.element)
+    return TPrimitive(pos, "int")
 
 
 def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
