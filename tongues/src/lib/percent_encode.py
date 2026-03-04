@@ -71,25 +71,15 @@ def _decode_cp(data: bytes, pos: int) -> tuple[int, int]:
 def percent_encode(s: str) -> str:
     """Percent-encode a string using RFC 3986 unreserved set."""
     out: list[str] = []
-    i: int = 0
-    cp: int = 0
-    utf8: list[int] = []
-    j: int = 0
-    b: int = 0
-    while i < len(s):
-        cp = ord(s[i])
-        utf8 = _encode_cp(cp)
-        j = 0
-        while j < len(utf8):
-            b = utf8[j]
+    for ch in s:
+        utf8: list[int] = _encode_cp(ord(ch))
+        for b in utf8:
             if _is_unreserved(b):
                 out.append(chr(b))
             else:
                 out.append("%")
                 out.append(_HEX[b >> 4])
                 out.append(_HEX[b & 15])
-            j += 1
-        i += 1
     return "".join(out)
 
 

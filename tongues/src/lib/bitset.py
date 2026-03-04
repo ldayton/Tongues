@@ -17,10 +17,8 @@ def bitset_new(size: int) -> list[int]:
     """Create a zeroed bitset for 'size' bits. Element 0 is the size."""
     words: int = (size + _BITS - 1) // _BITS
     bs: list[int] = [size]
-    i: int = 0
-    while i < words:
+    for i in range(words):
         bs.append(0)
-        i += 1
     return bs
 
 
@@ -47,10 +45,8 @@ def bitset_toggle(bs: list[int], i: int) -> None:
 def bitset_popcount(bs: list[int]) -> int:
     """Count the number of set bits."""
     count: int = 0
-    i: int = 1
-    while i < len(bs):
+    for i in range(1, len(bs)):
         count += _popcount_word(bs[i])
-        i += 1
     return count
 
 
@@ -62,18 +58,14 @@ def bitset_union(a: list[int], b: list[int]) -> list[int]:
     if sb > sa:
         size = sb
     result: list[int] = bitset_new(size)
-    i: int = 1
-    wa: int = 0
-    wb: int = 0
-    while i < len(result):
-        wa = 0
-        wb = 0
+    for i in range(1, len(result)):
+        wa: int = 0
+        wb: int = 0
         if i < len(a):
             wa = a[i]
         if i < len(b):
             wb = b[i]
         result[i] = (wa | wb) & _WORD_MASK
-        i += 1
     return result
 
 
@@ -85,41 +77,32 @@ def bitset_intersection(a: list[int], b: list[int]) -> list[int]:
     if sb < sa:
         size = sb
     result: list[int] = bitset_new(size)
-    i: int = 1
-    wa: int = 0
-    wb: int = 0
-    while i < len(result):
-        wa = 0
-        wb = 0
+    for i in range(1, len(result)):
+        wa: int = 0
+        wb: int = 0
         if i < len(a):
             wa = a[i]
         if i < len(b):
             wb = b[i]
         result[i] = wa & wb
-        i += 1
     return result
 
 
 def bitset_difference(a: list[int], b: list[int]) -> list[int]:
     """Return a new bitset with bits in a but not in b (AND-NOT)."""
     result: list[int] = bitset_new(a[0])
-    i: int = 1
-    wb: int = 0
-    while i < len(result):
-        wb = 0
+    for i in range(1, len(result)):
+        wb: int = 0
         if i < len(b):
             wb = b[i]
         result[i] = a[i] & (wb ^ _WORD_MASK)
-        i += 1
     return result
 
 
 def bitset_to_list(bs: list[int]) -> list[int]:
     """Return sorted list of set bit indices."""
     out: list[int] = []
-    i: int = 0
-    while i < bs[0]:
+    for i in range(bs[0]):
         if bitset_test(bs, i):
             out.append(i)
-        i += 1
     return out

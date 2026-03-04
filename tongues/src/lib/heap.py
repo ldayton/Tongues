@@ -78,10 +78,8 @@ def heap_size(h: list[int]) -> int:
 def heapify(data: list[int]) -> None:
     """Rearrange data in-place into a valid min-heap. O(n)."""
     n: int = len(data)
-    i: int = _parent(n - 1)
-    while i >= 0:
+    for i in range(_parent(n - 1), -1, -1):
         _sift_down(data, i, n)
-        i -= 1
 
 
 def heap_sort(data: list[int]) -> list[int]:
