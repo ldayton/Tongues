@@ -216,11 +216,13 @@ ALLOWED_FROM_MODULES: set[str] = {
 
 # Restricted builtin keyword arguments: {func_name: {banned_kwarg_names}}
 RESTRICTED_KWARGS: dict[str, set[str]] = {
-    "min": {"key", "default"},
-    "max": {"key", "default"},
-    "sorted": {"key"},
+    "min": {"default"},
+    "max": {"default"},
     "print": {"sep"},
 }
+
+# Builtins that accept key= with a lambda or named function
+KEY_KWARG_BUILTINS: set[str] = {"min", "max", "sorted"}
 
 # Bare collection types that need type parameters
 BARE_COLLECTION_TYPES: set[str] = {"list", "dict", "set", "tuple", "frozenset"}
@@ -339,6 +341,7 @@ class Verifier:
         self.in_for_body: bool = False  # For structural recursion (yield allowed)
         self.in_file_open: bool = False  # Inside validated with-open block
         self.in_type_compare: bool = False  # type(x) is/== T comparison
+        self.in_key_kwarg: bool = False  # Inside key= argument of min/max/sorted
         # Variables guarded by `if var:` condition (for tuple unpacking)
         self.guarded_vars: set[str] = set()
 
@@ -543,6 +546,11 @@ class Verifier:
             category = "control"
             message = "with statement: use try/finally instead"
         elif node_type == "Lambda":
+            if self.in_key_kwarg:
+                body = get_node(node, "body")
+                if body:
+                    self.visit(body)
+                return
             category = "function"
             message = "lambda: use named function instead"
         elif node_type in ("Global", "Nonlocal"):
@@ -829,7 +837,18 @@ class Verifier:
         self.in_eager_consumer = old_in_eager
         for kw in keywords:
             if _has_present(kw, "value"):
-                self.visit(get_node(kw, "value"))
+                kw_arg = get_str(kw, "arg")
+                if (
+                    kw_arg == "key"
+                    and func_name is not None
+                    and func_name in KEY_KWARG_BUILTINS
+                ):
+                    old_in_key = self.in_key_kwarg
+                    self.in_key_kwarg = True
+                    self.visit(get_node(kw, "value"))
+                    self.in_key_kwarg = old_in_key
+                else:
+                    self.visit(get_node(kw, "value"))
 
     def visit_Compare(self, node: ASTNode) -> None:
         """Check comparison constraints."""
@@ -2257,6 +2276,10 @@ class NameResolver:
                 self.resolve_comprehension_refs(node, class_name, func_name, set())
                 j += 1
                 continue
+            if node_type == "Lambda":
+                self._resolve_lambda_refs(node, class_name, func_name)
+                j += 1
+                continue
             if node_type == "Name":
                 ctx = get_node(node, "ctx")
                 ctx_type = get_str(ctx, "_type")
@@ -2272,6 +2295,42 @@ class NameResolver:
             for child in children:
                 if get_str(child, "_type") != "FunctionDef":
                     nodes_to_visit.append(child)
+            j += 1
+
+    def _resolve_lambda_refs(
+        self, node: ASTNode, class_name: str, func_name: str
+    ) -> None:
+        """Resolve references inside a lambda, treating params as defined."""
+        lambda_params: set[str] = set()
+        args_node = get_node(node, "args")
+        if args_node:
+            for arg in get_nodes(args_node, "args"):
+                if isinstance(arg, dict):
+                    pname = get_str(arg, "arg")
+                    if pname:
+                        lambda_params.add(pname)
+        body = get_node(node, "body")
+        if not body:
+            return
+        nodes_to_visit: list[ASTNode] = [body]
+        j = 0
+        while j < len(nodes_to_visit):
+            child = nodes_to_visit[j]
+            child_type = get_str(child, "_type")
+            if child_type == "Name":
+                ctx = get_node(child, "ctx")
+                if get_str(ctx, "_type") == "Load":
+                    cname = get_str(child, "id")
+                    if cname not in lambda_params:
+                        if not self.resolve_name(cname, class_name, func_name):
+                            self.error(
+                                child,
+                                "undefined",
+                                "name '" + cname + "' is not defined",
+                            )
+            grandchildren = get_children(child)
+            for gc in grandchildren:
+                nodes_to_visit.append(gc)
             j += 1
 
     def resolve_name(self, name: str, class_name: str, func_name: str) -> bool:

@@ -93,3 +93,12 @@ c: set[int] = a - b
 
 === set comprehension
 unique.add(x)
+
+=== sorted with key lambda
+sorted(xs, key=lambda x: abs(x))
+
+=== min with key lambda
+min(xs, key=lambda s: len(s))
+
+=== max with key lambda
+max(xs, key=lambda s: len(s))

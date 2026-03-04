@@ -116,3 +116,12 @@ my $c = do { my $s = {}; $s->{$_} = 1 for grep { !exists $b->{$_} } keys %{$a}; 
 for my $x (@{$xs}) {
     $unique->{$x} = 1;
 }
+
+=== sorted with key lambda
+[sort { abs($a) <=> abs($b) } @{$xs}]
+
+=== min with key lambda
+(sort { length($a) <=> length($b) } @{$xs})[0]
+
+=== max with key lambda
+(sort { length($b) <=> length($a) } @{$xs})[0]

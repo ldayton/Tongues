@@ -32,6 +32,7 @@ from ..taytsh.ast import (
     TFieldAccess,
     TFieldDecl,
     TFnDecl,
+    TFnLit,
     TFloatLit,
     TFuncType,
     TForStmt,
@@ -850,6 +851,7 @@ class _LowerCtx:
         self.comp_counter: int = 0
         self.pycheck_result: PycheckResult | None = pycheck_result
         self.class_nodes: dict[str, ASTNode] = {}
+        self.func_nodes: dict[str, ASTNode] = {}
 
 
 class _Env:
@@ -2362,7 +2364,12 @@ def _lower_call(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
 
 
 def _lower_arithmetic_call(
-    fname: str, pos: Pos, args: list[ASTNode], env: _Env, ctx: _LowerCtx
+    fname: str,
+    pos: Pos,
+    args: list[ASTNode],
+    keywords: list[ASTNode],
+    env: _Env,
+    ctx: _LowerCtx,
 ) -> TExpr | None:
     """Lower arithmetic builtins: sum, round, min, max, pow, abs, divmod."""
     if fname == "sum":
@@ -2383,6 +2390,12 @@ def _lower_arithmetic_call(
             if _is_type_dict(at, ["bool"]):
                 la = _bool_to_int(pos, la)
             lowered.append(la)
+        key_node = _get_keyword_value(keywords, "key")
+        if key_node is not None and len(lowered) == 1:
+            arg_type = _infer_expr_type(args[0], env, ctx)
+            elem_type = _collection_element_type(arg_type)
+            key_fn = _lower_key_func(pos, key_node, elem_type, env, ctx)
+            return _make_call(pos, builtin, [lowered[0], key_fn])
         if len(lowered) == 1:
             return _make_call(pos, builtin, lowered)
         if len(lowered) >= 3:
@@ -2581,10 +2594,18 @@ def _lower_collection_call(
             arg = _lower_expr(args[0], env, ctx)
             if isinstance(arg_type, MapType):
                 arg = _make_call(pos, "Keys", [arg])
+            key_node = _get_keyword_value(keywords, "key")
+            sorted_args: list[TExpr] = [arg]
+            if key_node is not None:
+                elem_type = _collection_element_type(arg_type)
+                key_fn = _lower_key_func(pos, key_node, elem_type, env, ctx)
+                sorted_args.append(key_fn)
             is_reversed = _has_keyword_true(keywords, "reverse")
             if is_reversed:
-                return _make_call(pos, "Reversed", [_make_call(pos, "Sorted", [arg])])
-            return _make_call(pos, "Sorted", [arg])
+                return _make_call(
+                    pos, "Reversed", [_make_call(pos, "Sorted", sorted_args)]
+                )
+            return _make_call(pos, "Sorted", sorted_args)
     if fname == "list":
         if args and isinstance(args[0], dict):
             if _is_ast(args[0], "Call"):
@@ -2734,7 +2755,7 @@ def _lower_name_call(
                     {},
                 )
             return _make_call(pos, "Len", [_lower_expr(args[0], env, ctx)])
-    arith = _lower_arithmetic_call(fname, pos, args, env, ctx)
+    arith = _lower_arithmetic_call(fname, pos, args, keywords, env, ctx)
     if arith is not None:
         return arith
     conv = _lower_conversion_call(fname, pos, args, env, ctx)
@@ -2825,6 +2846,129 @@ def _get_keyword_value(keywords: list[ASTNode], name: str) -> ASTNode | None:
             val_node = get_node(kw, "value")
             if val_node:
                 return val_node
+    return None
+
+
+def _collection_element_type(t: TypeNode) -> TypeNode:
+    """Get element type from a collection type."""
+    if isinstance(t, SliceType):
+        return t.element
+    if isinstance(t, SetType):
+        return t.element
+    if isinstance(t, MapType):
+        return t.key
+    if isinstance(t, PrimitiveType) and t.kind == "string":
+        return STR_TYPE
+    return INT_TYPE
+
+
+def _lower_key_func(
+    pos: Pos,
+    key_node: ASTNode,
+    elem_type: TypeNode,
+    env: _Env,
+    ctx: _LowerCtx,
+) -> TFnLit:
+    """Lower a key= argument (lambda or named function) to a TFnLit."""
+    if _is_ast(key_node, "Lambda"):
+        args_node = get_node(key_node, "args")
+        param_args = get_nodes(args_node, "args") if args_node else []
+        param_name = "x"
+        if param_args and isinstance(param_args[0], dict):
+            param_name = get_str(param_args[0], "arg")
+        param_ttype = _typenode_to_ttype(pos, elem_type)
+        param = TParam(pos, param_name, param_ttype, {})
+        body_node = get_node(key_node, "body")
+        inner_env = env.copy()
+        inner_env.var_types[param_name] = elem_type
+        inner_env.declared.add(param_name)
+        body_expr = _lower_expr(body_node, inner_env, ctx)
+        ret_type = _infer_expr_type(body_node, inner_env, ctx)
+        lambda_ret = _typenode_to_ttype(pos, ret_type)
+        return TFnLit(
+            pos,
+            [param],
+            lambda_ret,
+            [TExprStmt(pos, body_expr, {})],
+            {"fn_lit.arrow": "true"},
+        )
+    if _is_ast(key_node, "Name"):
+        fname = get_str(key_node, "id")
+        func_info = ctx.tc_result.functions.get(fname)
+        if func_info is not None and func_info.params:
+            p = func_info.params[0]
+            param_ttype = _typenode_to_ttype(pos, p.typ)
+            param_name = p.name
+            param = TParam(pos, param_name, param_ttype, {})
+            func_ret = _typenode_to_ttype(pos, func_info.return_type)
+            inner_env = env.copy()
+            inner_env.var_types[param_name] = p.typ
+            inner_env.declared.add(param_name)
+            body_call = _lower_user_func_body_as_expr(
+                pos, fname, param_name, inner_env, ctx
+            )
+            if body_call is not None:
+                return TFnLit(
+                    pos,
+                    [param],
+                    func_ret,
+                    [TExprStmt(pos, body_call, {})],
+                    {"fn_lit.arrow": "true"},
+                )
+        if fname == "len":
+            param_ttype = _typenode_to_ttype(pos, elem_type)
+            param_name = _key_param_name(elem_type)
+            param = TParam(pos, param_name, param_ttype, {})
+            ret_ttype = TPrimitive(pos, "int")
+            body_expr = _make_call(pos, "Len", [TVar(pos, param_name, {})])
+            return TFnLit(
+                pos,
+                [param],
+                ret_ttype,
+                [TExprStmt(pos, body_expr, {})],
+                {"fn_lit.arrow": "true"},
+            )
+    param_ttype = _typenode_to_ttype(pos, elem_type)
+    param_name = _key_param_name(elem_type)
+    param = TParam(pos, param_name, param_ttype, {})
+    ret_ttype = TPrimitive(pos, "int")
+    inner_env = env.copy()
+    inner_env.var_types[param_name] = elem_type
+    inner_env.declared.add(param_name)
+    body_expr = _lower_expr(key_node, inner_env, ctx)
+    return TFnLit(
+        pos,
+        [param],
+        ret_ttype,
+        [TExprStmt(pos, body_expr, {})],
+        {"fn_lit.arrow": "true"},
+    )
+
+
+def _key_param_name(elem_type: TypeNode) -> str:
+    """Choose a sensible parameter name for a key function based on element type."""
+    if isinstance(elem_type, PrimitiveType):
+        if elem_type.kind == "string":
+            return "s"
+        if elem_type.kind == "int":
+            return "x"
+        if elem_type.kind == "float":
+            return "x"
+    return "x"
+
+
+def _lower_user_func_body_as_expr(
+    pos: Pos, fname: str, param_name: str, env: _Env, ctx: _LowerCtx
+) -> TExpr | None:
+    """Inline a single-expression user function as a TExpr for key= inlining."""
+    node = ctx.func_nodes.get(fname)
+    if node is None:
+        return None
+    body = get_nodes(node, "body")
+    if len(body) == 1 and _is_ast(body[0], "Return"):
+        ret_val = get_node(body[0], "value")
+        if ret_val:
+            return _lower_expr(ret_val, env, ctx)
     return None
 
 
@@ -6512,10 +6656,12 @@ def _build_module(tree: ASTNode, ctx: _LowerCtx) -> TModule:
     body = get_nodes(tree, "body")
     decls: list[TModuleItem] = []
     entry_point_func = _detect_entry_point(body)
-    # Index class AST nodes for ancestor method lookup
+    # Index class and function AST nodes
     for node in body:
         if _is_ast(node, "ClassDef"):
             ctx.class_nodes[get_str(node, "name")] = node
+        elif _is_ast(node, "FunctionDef"):
+            ctx.func_nodes[get_str(node, "name")] = node
     # Build structs/interfaces first (needed for type resolution)
     # Also extract class-level constants
     for node in body:
