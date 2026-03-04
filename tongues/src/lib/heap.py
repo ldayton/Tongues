@@ -41,17 +41,17 @@ def _sift_down(h: list[int], i: int, n: int) -> None:
         i = smallest
 
 
-def push(h: list[int], val: int) -> None:
+def heap_push(h: list[int], val: int) -> None:
     """Add a value to the heap."""
     h.append(val)
     _sift_up(h, len(h) - 1)
 
 
-def pop(h: list[int]) -> int:
+def heap_pop(h: list[int]) -> int:
     """Remove and return the minimum value. Raises IndexError if empty."""
     n: int = len(h)
     if n == 0:
-        raise IndexError("pop from empty heap")
+        raise IndexError("heap_pop from empty heap")
     result: int = h[0]
     n -= 1
     if n == 0:
@@ -63,14 +63,14 @@ def pop(h: list[int]) -> int:
     return result
 
 
-def peek(h: list[int]) -> int:
+def heap_peek(h: list[int]) -> int:
     """Return the minimum value without removing it. Raises IndexError if empty."""
     if len(h) == 0:
-        raise IndexError("peek at empty heap")
+        raise IndexError("heap_peek at empty heap")
     return h[0]
 
 
-def size(h: list[int]) -> int:
+def heap_size(h: list[int]) -> int:
     """Return the number of elements in the heap."""
     return len(h)
 
@@ -94,12 +94,12 @@ def heap_sort(data: list[int]) -> list[int]:
     heapify(h)
     out: list[int] = []
     while len(h) > 0:
-        out.append(pop(h))
+        out.append(heap_pop(h))
     return out
 
 
-def push_pop(h: list[int], val: int) -> int:
-    """Push val, then pop and return the minimum. More efficient than push+pop."""
+def heap_push_pop(h: list[int], val: int) -> int:
+    """Push val, then pop and return the minimum. More efficient than heap_push+heap_pop."""
     if len(h) > 0 and h[0] < val:
         result: int = h[0]
         h[0] = val
@@ -108,10 +108,10 @@ def push_pop(h: list[int], val: int) -> int:
     return val
 
 
-def replace(h: list[int], val: int) -> int:
+def heap_replace(h: list[int], val: int) -> int:
     """Pop the minimum, then push val. Raises IndexError if empty."""
     if len(h) == 0:
-        raise IndexError("replace on empty heap")
+        raise IndexError("heap_replace on empty heap")
     result: int = h[0]
     h[0] = val
     _sift_down(h, 0, len(h))

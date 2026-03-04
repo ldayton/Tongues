@@ -2,14 +2,14 @@
 
 import sys
 
+from lib.heap import heap_peek
+from lib.heap import heap_pop
+from lib.heap import heap_push
+from lib.heap import heap_push_pop
+from lib.heap import heap_replace
+from lib.heap import heap_size
 from lib.heap import heap_sort
 from lib.heap import heapify
-from lib.heap import peek
-from lib.heap import pop
-from lib.heap import push
-from lib.heap import push_pop
-from lib.heap import replace
-from lib.heap import size
 
 
 # -- Helpers --
@@ -35,49 +35,49 @@ def _is_min_heap(h: list[int]) -> bool:
 
 def test_push_single() -> None:
     h: list[int] = []
-    push(h, 42)
-    assert size(h) == 1
-    assert peek(h) == 42
+    heap_push(h, 42)
+    assert heap_size(h) == 1
+    assert heap_peek(h) == 42
 
 
 def test_push_ascending() -> None:
     h: list[int] = []
-    push(h, 1)
-    push(h, 2)
-    push(h, 3)
-    assert peek(h) == 1
+    heap_push(h, 1)
+    heap_push(h, 2)
+    heap_push(h, 3)
+    assert heap_peek(h) == 1
     assert _is_min_heap(h)
 
 
 def test_push_descending() -> None:
     h: list[int] = []
-    push(h, 3)
-    push(h, 2)
-    push(h, 1)
-    assert peek(h) == 1
+    heap_push(h, 3)
+    heap_push(h, 2)
+    heap_push(h, 1)
+    assert heap_peek(h) == 1
     assert _is_min_heap(h)
 
 
 def test_pop_order() -> None:
     """Pop should return elements in ascending order."""
     h: list[int] = []
-    push(h, 5)
-    push(h, 3)
-    push(h, 7)
-    push(h, 1)
-    push(h, 4)
-    assert pop(h) == 1
-    assert pop(h) == 3
-    assert pop(h) == 4
-    assert pop(h) == 5
-    assert pop(h) == 7
-    assert size(h) == 0
+    heap_push(h, 5)
+    heap_push(h, 3)
+    heap_push(h, 7)
+    heap_push(h, 1)
+    heap_push(h, 4)
+    assert heap_pop(h) == 1
+    assert heap_pop(h) == 3
+    assert heap_pop(h) == 4
+    assert heap_pop(h) == 5
+    assert heap_pop(h) == 7
+    assert heap_size(h) == 0
 
 
 def test_pop_empty() -> None:
     h: list[int] = []
     try:
-        pop(h)
+        heap_pop(h)
         assert False, "expected IndexError"
     except IndexError:
         pass
@@ -86,7 +86,7 @@ def test_pop_empty() -> None:
 def test_peek_empty() -> None:
     h: list[int] = []
     try:
-        peek(h)
+        heap_peek(h)
         assert False, "expected IndexError"
     except IndexError:
         pass
@@ -94,9 +94,9 @@ def test_peek_empty() -> None:
 
 def test_push_pop_single() -> None:
     h: list[int] = []
-    push(h, 10)
-    assert pop(h) == 10
-    assert size(h) == 0
+    heap_push(h, 10)
+    assert heap_pop(h) == 10
+    assert heap_size(h) == 0
 
 
 # -- Duplicates --
@@ -104,27 +104,27 @@ def test_push_pop_single() -> None:
 
 def test_duplicates() -> None:
     h: list[int] = []
-    push(h, 5)
-    push(h, 5)
-    push(h, 5)
-    assert pop(h) == 5
-    assert pop(h) == 5
-    assert pop(h) == 5
-    assert size(h) == 0
+    heap_push(h, 5)
+    heap_push(h, 5)
+    heap_push(h, 5)
+    assert heap_pop(h) == 5
+    assert heap_pop(h) == 5
+    assert heap_pop(h) == 5
+    assert heap_size(h) == 0
 
 
 def test_duplicates_mixed() -> None:
     h: list[int] = []
-    push(h, 3)
-    push(h, 1)
-    push(h, 3)
-    push(h, 1)
-    push(h, 2)
-    assert pop(h) == 1
-    assert pop(h) == 1
-    assert pop(h) == 2
-    assert pop(h) == 3
-    assert pop(h) == 3
+    heap_push(h, 3)
+    heap_push(h, 1)
+    heap_push(h, 3)
+    heap_push(h, 1)
+    heap_push(h, 2)
+    assert heap_pop(h) == 1
+    assert heap_pop(h) == 1
+    assert heap_pop(h) == 2
+    assert heap_pop(h) == 3
+    assert heap_pop(h) == 3
 
 
 # -- Negative values --
@@ -132,14 +132,14 @@ def test_duplicates_mixed() -> None:
 
 def test_negative_values() -> None:
     h: list[int] = []
-    push(h, -1)
-    push(h, -5)
-    push(h, -3)
-    push(h, 0)
-    assert pop(h) == -5
-    assert pop(h) == -3
-    assert pop(h) == -1
-    assert pop(h) == 0
+    heap_push(h, -1)
+    heap_push(h, -5)
+    heap_push(h, -3)
+    heap_push(h, 0)
+    assert heap_pop(h) == -5
+    assert heap_pop(h) == -3
+    assert heap_pop(h) == -1
+    assert heap_pop(h) == 0
 
 
 # -- Heapify --
@@ -181,9 +181,9 @@ def test_heapify_random() -> None:
 def test_heapify_then_pop_all() -> None:
     h: list[int] = [10, 4, 15, 20, 0, 8, 3]
     heapify(h)
-    prev: int = pop(h)
+    prev: int = heap_pop(h)
     while len(h) > 0:
-        cur: int = pop(h)
+        cur: int = heap_pop(h)
         assert cur >= prev
         prev = cur
 
@@ -241,31 +241,31 @@ def test_push_pop_smaller() -> None:
     """Push a value smaller than min — returned immediately."""
     h: list[int] = [1, 3, 5]
     heapify(h)
-    assert push_pop(h, 0) == 0
-    assert peek(h) == 1
+    assert heap_push_pop(h, 0) == 0
+    assert heap_peek(h) == 1
 
 
 def test_push_pop_larger() -> None:
     """Push a value larger than min — min is returned, new value enters heap."""
     h: list[int] = [1, 3, 5]
     heapify(h)
-    assert push_pop(h, 2) == 1
-    assert peek(h) == 2
+    assert heap_push_pop(h, 2) == 1
+    assert heap_peek(h) == 2
     assert _is_min_heap(h)
 
 
 def test_push_pop_equal() -> None:
     h: list[int] = [1, 3, 5]
     heapify(h)
-    assert push_pop(h, 1) == 1
-    assert peek(h) == 1
+    assert heap_push_pop(h, 1) == 1
+    assert heap_peek(h) == 1
 
 
 def test_push_pop_empty() -> None:
     """On empty heap, just returns the value."""
     h: list[int] = []
-    assert push_pop(h, 42) == 42
-    assert size(h) == 0
+    assert heap_push_pop(h, 42) == 42
+    assert heap_size(h) == 0
 
 
 # -- replace --
@@ -274,23 +274,23 @@ def test_push_pop_empty() -> None:
 def test_replace_basic() -> None:
     h: list[int] = [1, 3, 5]
     heapify(h)
-    assert replace(h, 4) == 1
-    assert peek(h) == 3
+    assert heap_replace(h, 4) == 1
+    assert heap_peek(h) == 3
     assert _is_min_heap(h)
 
 
 def test_replace_smaller() -> None:
     h: list[int] = [1, 3, 5]
     heapify(h)
-    assert replace(h, 0) == 1
-    assert peek(h) == 0
+    assert heap_replace(h, 0) == 1
+    assert heap_peek(h) == 0
     assert _is_min_heap(h)
 
 
 def test_replace_empty() -> None:
     h: list[int] = []
     try:
-        replace(h, 1)
+        heap_replace(h, 1)
         assert False, "expected IndexError"
     except IndexError:
         pass
@@ -301,15 +301,15 @@ def test_replace_empty() -> None:
 
 def test_size_after_operations() -> None:
     h: list[int] = []
-    assert size(h) == 0
-    push(h, 1)
-    assert size(h) == 1
-    push(h, 2)
-    assert size(h) == 2
-    pop(h)
-    assert size(h) == 1
-    pop(h)
-    assert size(h) == 0
+    assert heap_size(h) == 0
+    heap_push(h, 1)
+    assert heap_size(h) == 1
+    heap_push(h, 2)
+    assert heap_size(h) == 2
+    heap_pop(h)
+    assert heap_size(h) == 1
+    heap_pop(h)
+    assert heap_size(h) == 0
 
 
 # -- Larger dataset --
@@ -319,13 +319,13 @@ def test_100_elements() -> None:
     h: list[int] = []
     i: int = 100
     while i > 0:
-        push(h, i)
+        heap_push(h, i)
         i -= 1
     assert _is_min_heap(h)
-    assert peek(h) == 1
-    prev: int = pop(h)
+    assert heap_peek(h) == 1
+    prev: int = heap_pop(h)
     while len(h) > 0:
-        cur: int = pop(h)
+        cur: int = heap_pop(h)
         assert cur >= prev
         prev = cur
 
@@ -346,21 +346,21 @@ def test_heapify_100() -> None:
 
 def test_two_elements() -> None:
     h: list[int] = []
-    push(h, 2)
-    push(h, 1)
+    heap_push(h, 2)
+    heap_push(h, 1)
     assert _is_min_heap(h)
-    assert pop(h) == 1
+    assert heap_pop(h) == 1
     assert _is_min_heap(h)
-    assert pop(h) == 2
+    assert heap_pop(h) == 2
 
 
 def test_two_elements_already_ordered() -> None:
     h: list[int] = []
-    push(h, 1)
-    push(h, 2)
-    assert pop(h) == 1
+    heap_push(h, 1)
+    heap_push(h, 2)
+    assert heap_pop(h) == 1
     assert _is_min_heap(h)
-    assert pop(h) == 2
+    assert heap_pop(h) == 2
 
 
 # -- Invariant holds after every intermediate pop --
@@ -371,7 +371,7 @@ def test_invariant_after_each_pop() -> None:
     heapify(h)
     while len(h) > 0:
         assert _is_min_heap(h)
-        pop(h)
+        heap_pop(h)
     assert _is_min_heap(h)
 
 
@@ -380,19 +380,19 @@ def test_invariant_after_each_pop() -> None:
 
 def test_interleaved() -> None:
     h: list[int] = []
-    push(h, 5)
-    push(h, 3)
-    assert pop(h) == 3
-    push(h, 7)
-    push(h, 1)
-    assert pop(h) == 1
-    assert pop(h) == 5
-    push(h, 2)
-    push(h, 4)
-    assert pop(h) == 2
-    assert pop(h) == 4
-    assert pop(h) == 7
-    assert size(h) == 0
+    heap_push(h, 5)
+    heap_push(h, 3)
+    assert heap_pop(h) == 3
+    heap_push(h, 7)
+    heap_push(h, 1)
+    assert heap_pop(h) == 1
+    assert heap_pop(h) == 5
+    heap_push(h, 2)
+    heap_push(h, 4)
+    assert heap_pop(h) == 2
+    assert heap_pop(h) == 4
+    assert heap_pop(h) == 7
+    assert heap_size(h) == 0
 
 
 # -- All-same values --
@@ -402,11 +402,11 @@ def test_all_same() -> None:
     h: list[int] = []
     i: int = 0
     while i < 10:
-        push(h, 42)
+        heap_push(h, 42)
         i += 1
     assert _is_min_heap(h)
     while len(h) > 0:
-        assert pop(h) == 42
+        assert heap_pop(h) == 42
 
 
 # -- Extreme values --
@@ -414,12 +414,12 @@ def test_all_same() -> None:
 
 def test_extreme_values() -> None:
     h: list[int] = []
-    push(h, 2147483647)
-    push(h, -2147483648)
-    push(h, 0)
-    assert pop(h) == -2147483648
-    assert pop(h) == 0
-    assert pop(h) == 2147483647
+    heap_push(h, 2147483647)
+    heap_push(h, -2147483648)
+    heap_push(h, 0)
+    assert heap_pop(h) == -2147483648
+    assert heap_pop(h) == 0
+    assert heap_pop(h) == 2147483647
 
 
 # -- push_pop / replace size invariants --
@@ -428,16 +428,16 @@ def test_extreme_values() -> None:
 def test_push_pop_size_unchanged() -> None:
     h: list[int] = [1, 3, 5]
     heapify(h)
-    push_pop(h, 2)
-    assert size(h) == 3
+    heap_push_pop(h, 2)
+    assert heap_size(h) == 3
     assert _is_min_heap(h)
 
 
 def test_replace_size_unchanged() -> None:
     h: list[int] = [1, 3, 5]
     heapify(h)
-    replace(h, 2)
-    assert size(h) == 3
+    heap_replace(h, 2)
+    assert heap_size(h) == 3
     assert _is_min_heap(h)
 
 

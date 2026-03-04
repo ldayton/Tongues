@@ -10,52 +10,39 @@ class Utf8Error(Exception):
     position: int
 
 
-_REPLACEMENT: int = 0xFFFD
-
-
 def encode_codepoint(cp: int) -> bytes:
     """Encode a single Unicode codepoint to UTF-8 bytes."""
-    if cp < 0:
-        return encode_codepoint(_REPLACEMENT)
-    if cp < 0x80:
-        return bytes([cp])
-    if cp < 0x800:
-        return bytes(
-            [
-                0xC0 | (cp >> 6),
-                0x80 | (cp & 0x3F),
-            ]
-        )
-    if cp < 0x10000:
-        if cp >= 0xD800 and cp <= 0xDFFF:
-            return encode_codepoint(_REPLACEMENT)
-        return bytes(
-            [
-                0xE0 | (cp >> 12),
-                0x80 | ((cp >> 6) & 0x3F),
-                0x80 | (cp & 0x3F),
-            ]
-        )
-    if cp <= 0x10FFFF:
-        return bytes(
-            [
-                0xF0 | (cp >> 18),
-                0x80 | ((cp >> 12) & 0x3F),
-                0x80 | ((cp >> 6) & 0x3F),
-                0x80 | (cp & 0x3F),
-            ]
-        )
-    return encode_codepoint(_REPLACEMENT)
+    out: list[int] = []
+    if cp < 0 or cp > 0x10FFFF or (cp >= 0xD800 and cp <= 0xDFFF):
+        out.append(0xEF)
+        out.append(0xBF)
+        out.append(0xBD)
+    elif cp < 0x80:
+        out.append(cp)
+    elif cp < 0x800:
+        out.append(0xC0 | (cp >> 6))
+        out.append(0x80 | (cp & 0x3F))
+    elif cp < 0x10000:
+        out.append(0xE0 | (cp >> 12))
+        out.append(0x80 | ((cp >> 6) & 0x3F))
+        out.append(0x80 | (cp & 0x3F))
+    else:
+        out.append(0xF0 | (cp >> 18))
+        out.append(0x80 | ((cp >> 12) & 0x3F))
+        out.append(0x80 | ((cp >> 6) & 0x3F))
+        out.append(0x80 | (cp & 0x3F))
+    return bytes(out)
 
 
 def encode(codepoints: list[int]) -> bytes:
     """Encode a list of Unicode codepoints to UTF-8 bytes."""
     out: list[int] = []
     i: int = 0
+    chunk: bytes = b""
+    j: int = 0
     while i < len(codepoints):
-        cp: int = codepoints[i]
-        chunk: bytes = encode_codepoint(cp)
-        j: int = 0
+        chunk = encode_codepoint(codepoints[i])
+        j = 0
         while j < len(chunk):
             out.append(chunk[j])
             j += 1
