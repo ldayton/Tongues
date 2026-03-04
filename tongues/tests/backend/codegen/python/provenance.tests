@@ -69,3 +69,15 @@ del d["a"]
 
 === del list index (raised)
 del xs[0]
+
+=== string partition (raised)
+return s.partition(sep)
+
+=== string rpartition (raised)
+return s.rpartition(sep)
+
+=== string removeprefix (raised)
+return s.removeprefix(p)
+
+=== string removesuffix (raised)
+return s.removesuffix(p)

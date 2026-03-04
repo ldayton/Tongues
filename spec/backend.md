@@ -273,6 +273,10 @@ These are stamped on one IR node and require no context beyond that node.
 
 **del_subscript** — `Delete(d, k)` or `RemoveAt(xs, i)` with provenance. Python emits `del d[k]` / `del xs[i]` instead of `.pop()`. Other backends already emit their native deletion idioms regardless of provenance.
 
+**partition / rpartition** — `Find(s, sep) >= 0 ? (before, sep, after) : fallback` with provenance. Targets with native partition (Python `s.partition(sep)`, Ruby `s.partition(sep)`) emit the idiomatic call. Others emit the desugared ternary/slice form. Ruby **must** use the provenance form because the desugared `Find` renders as `s.index(sep) || -1`, whose low-precedence `||` produces incorrect arithmetic in slice expressions.
+
+**removeprefix / removesuffix** — `StartsWith(s, p) ? s[Len(p):] : s` with provenance. Targets with native methods (Python `s.removeprefix(p)`, Ruby `s.delete_prefix(p)`) emit the idiomatic call. Others emit the desugared ternary form.
+
 ### Multi-statement provenance
 
 These are stamped on the `for` node but the idiomatic form collapses multiple statements (the preceding accumulator `let` + the loop) into one expression.
@@ -341,6 +345,10 @@ Which backends act on each provenance form:
 | open_start         | Python, Go, Rust                     |
 | open_end           | Python, Go, Rust                     |
 | del_subscript      | Python                               |
+| partition          | Ruby                                 |
+| rpartition         | Ruby                                 |
+| removeprefix       | Ruby                                 |
+| removesuffix       | Ruby                                 |
 
 Most provenance forms benefit 1-3 backends. Python benefits from all of them (unsurprising — the source language is Python). Several provenance forms (in_operator for non-Python, string_multiply, list_multiply) are consumed by backends whose `Contains`/`Repeat` emission is already idiomatic, making the provenance tag redundant for them in practice.
 

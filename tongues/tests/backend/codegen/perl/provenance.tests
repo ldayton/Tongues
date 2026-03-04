@@ -93,3 +93,15 @@ delete $d->{"a"};
 
 === del list index (raised)
 splice(@{$xs}, 0, 1);
+
+=== string partition (raised)
+return (index($s, $sep) >= 0 ? [substr($s, 0, (index($s, $sep)) - (0)), $sep, substr($s, index($s, $sep) + length($sep), (length($s)) - (index($s, $sep) + length($sep)))] : [$s, "", ""]);
+
+=== string rpartition (raised)
+return (rindex($s, $sep) >= 0 ? [substr($s, 0, (rindex($s, $sep)) - (0)), $sep, substr($s, rindex($s, $sep) + length($sep), (length($s)) - (rindex($s, $sep) + length($sep)))] : ["", "", $s]);
+
+=== string removeprefix (raised)
+return ((($s =~ /^\Q${\ $p}\E/) ? 1 : 0) ? substr($s, length($p), (length($s)) - (length($p))) : $s);
+
+=== string removesuffix (raised)
+return ((($s =~ /\Q${\ $p}\E$/) ? 1 : 0) ? substr($s, 0, (length($s) - length($p)) - (0)) : $s);

@@ -1182,6 +1182,8 @@ def _infer_method_call_type(
             or method_name == "islower"
         ):
             return BOOL_TYPE
+        if method_name == "partition" or method_name == "rpartition":
+            return TupleType([STR_TYPE, STR_TYPE, STR_TYPE], False)
         return STR_TYPE
     return VOID_TYPE
 
@@ -3092,6 +3094,46 @@ def _lower_string_method(
         return _make_call(pos, "Encode", [obj])
     if method == "index":
         return _make_call(pos, "Find", [obj] + lowered)
+    if method == "removeprefix":
+        rp_arg = lowered[0] if lowered else TStringLit(pos, "", {})
+        rp_cond = _make_call(pos, "StartsWith", [obj, rp_arg])
+        rp_then = TSlice(
+            pos,
+            obj,
+            _make_call(pos, "Len", [rp_arg]),
+            _make_call(pos, "Len", [obj]),
+            {},
+        )
+        return TTernary(pos, rp_cond, rp_then, obj, {"provenance": "removeprefix"})
+    if method == "removesuffix":
+        rs_arg = lowered[0] if lowered else TStringLit(pos, "", {})
+        rs_cond = _make_call(pos, "EndsWith", [obj, rs_arg])
+        rs_end = TBinaryOp(
+            pos,
+            "-",
+            _make_call(pos, "Len", [obj]),
+            _make_call(pos, "Len", [rs_arg]),
+            {},
+        )
+        rs_then = TSlice(pos, obj, TIntLit(pos, 0, "0", {}), rs_end, {})
+        return TTernary(pos, rs_cond, rs_then, obj, {"provenance": "removesuffix"})
+    if method == "partition" or method == "rpartition":
+        func = "Find" if method == "partition" else "RFind"
+        sep = lowered[0] if lowered else TStringLit(pos, "", {})
+        find = _make_call(pos, func, [obj, sep])
+        cond = TBinaryOp(pos, ">=", find, TIntLit(pos, 0, "0", {}), {})
+        idx = _make_call(pos, func, [obj, sep])
+        sep_len = _make_call(pos, "Len", [sep])
+        obj_len = _make_call(pos, "Len", [obj])
+        before = TSlice(pos, obj, TIntLit(pos, 0, "0", {}), idx, {})
+        after = TSlice(pos, obj, TBinaryOp(pos, "+", idx, sep_len, {}), obj_len, {})
+        found = TTupleLit(pos, [before, sep, after], {})
+        empty = TStringLit(pos, "", {})
+        if method == "partition":
+            not_found = TTupleLit(pos, [obj, empty, TStringLit(pos, "", {})], {})
+        else:
+            not_found = TTupleLit(pos, [TStringLit(pos, "", {}), empty, obj], {})
+        return TTernary(pos, cond, found, not_found, {"provenance": method})
     return _make_method_call(pos, obj, method, lowered)
 
 

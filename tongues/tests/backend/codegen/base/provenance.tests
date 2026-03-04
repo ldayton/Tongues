@@ -198,3 +198,37 @@ fn Main() -> void {
     @["provenance" = "del_subscript"] RemoveAt(xs, 0)
     WritelnOut(ToString(Len(xs)))
 }
+
+=== string partition (raised)
+fn f(s: string, sep: string) -> (string, string, string) {
+    return @["provenance" = "partition"] (Find(s, sep) >= 0 ? (s[0:Find(s, sep)], sep, s[Find(s, sep) + Len(sep):Len(s)]) : (s, "", ""))
+}
+fn Main() -> void {
+    let r: (string, string, string) = f("a,b", ",")
+    WritelnOut(r.0)
+}
+
+=== string rpartition (raised)
+fn f(s: string, sep: string) -> (string, string, string) {
+    return @["provenance" = "rpartition"] (RFind(s, sep) >= 0 ? (s[0:RFind(s, sep)], sep, s[RFind(s, sep) + Len(sep):Len(s)]) : ("", "", s))
+}
+fn Main() -> void {
+    let r: (string, string, string) = f("a,b", ",")
+    WritelnOut(r.0)
+}
+
+=== string removeprefix (raised)
+fn f(s: string, p: string) -> string {
+    return @["provenance" = "removeprefix"] (StartsWith(s, p) ? s[Len(p):Len(s)] : s)
+}
+fn Main() -> void {
+    WritelnOut(f("hello", "he"))
+}
+
+=== string removesuffix (raised)
+fn f(s: string, p: string) -> string {
+    return @["provenance" = "removesuffix"] (EndsWith(s, p) ? s[0:Len(s) - Len(p)] : s)
+}
+fn Main() -> void {
+    WritelnOut(f("hello", "lo"))
+}

@@ -229,3 +229,31 @@ def f(b: bytes) -> int:
 ---
 ByteToInt(b[0])
 ---
+
+=== string partition
+def f(s: str, sep: str) -> tuple[str, str, str]:
+    return s.partition(sep)
+---
+Find(s, sep) >= 0 ? (s[0:Find(s, sep)], sep, s[Find(s, sep) + Len(sep):Len(s)]) : (s, "", "")
+---
+
+=== string rpartition
+def f(s: str, sep: str) -> tuple[str, str, str]:
+    return s.rpartition(sep)
+---
+RFind(s, sep) >= 0 ? (s[0:RFind(s, sep)], sep, s[RFind(s, sep) + Len(sep):Len(s)]) : ("", "", s)
+---
+
+=== string removeprefix
+def f(s: str, p: str) -> str:
+    return s.removeprefix(p)
+---
+StartsWith(s, p) ? s[Len(p):Len(s)] : s
+---
+
+=== string removesuffix
+def f(s: str, p: str) -> str:
+    return s.removesuffix(p)
+---
+EndsWith(s, p) ? s[0:Len(s) - Len(p)] : s
+---

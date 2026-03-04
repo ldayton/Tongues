@@ -1090,6 +1090,32 @@ class _RubyEmitter(Emitter):
             return self._expr(cond.left)
         return None
 
+    def _partition_args(self, expr: TTernary) -> tuple[str | None, str]:
+        """Extract (s, sep) from a partition/rpartition ternary."""
+        cond = expr.cond
+        if (
+            isinstance(cond, TBinaryOp)
+            and cond.op == ">="
+            and isinstance(cond.left, TCall)
+        ):
+            call = cond.left
+            if isinstance(call.func, TVar) and call.func.name in ("Find", "RFind"):
+                return self._expr(call.args[0].value), self._expr(call.args[1].value)
+        return None, ""
+
+    def _delete_fix_args(
+        self, expr: TTernary, func_name: str
+    ) -> tuple[str | None, str]:
+        """Extract (s, p) from a removeprefix/removesuffix ternary."""
+        cond = expr.cond
+        if (
+            isinstance(cond, TCall)
+            and isinstance(cond.func, TVar)
+            and cond.func.name == func_name
+        ):
+            return self._expr(cond.args[0].value), self._expr(cond.args[1].value)
+        return None, ""
+
     def _negate_inner(self, cond: TExpr) -> str | None:
         if isinstance(cond, TUnaryOp) and cond.op == "!":
             return self._expr(cond.operand)
@@ -1452,6 +1478,19 @@ class _RubyEmitter(Emitter):
                 lhs = self._nil_coalesce_lhs(expr)
                 if lhs is not None:
                     return lhs + " || " + self._expr(expr.else_expr)
+            if prov in ("partition", "rpartition"):
+                s, sep = self._partition_args(expr)
+                if s is not None:
+                    method = "partition" if prov == "partition" else "rpartition"
+                    return s + "." + method + "(" + sep + ")"
+            if prov == "removeprefix":
+                s, p = self._delete_fix_args(expr, "StartsWith")
+                if s is not None:
+                    return s + ".delete_prefix(" + p + ")"
+            if prov == "removesuffix":
+                s, p = self._delete_fix_args(expr, "EndsWith")
+                if s is not None:
+                    return s + ".delete_suffix(" + p + ")"
             else_str = self._expr(expr.else_expr)
             if isinstance(expr.else_expr, TTernary):
                 else_str = "(" + else_str + ")"
