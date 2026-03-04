@@ -129,22 +129,88 @@ _RUBY_RESERVED = frozenset(
         "when",
         "while",
         "yield",
-        "lambda",
-        "proc",
-        "loop",
-        "raise",
-        "fail",
+    }
+)
+
+# Additional Kernel/Object methods that collide with user-defined free function
+# definitions but not local variables.  Checked only in _safe_fn_name.
+_RUBY_FN_BUILTINS = frozenset(
+    {
+        # Kernel methods (callable without receiver)
+        "abort",
+        "at_exit",
+        "autoload",
+        "binding",
+        "block_given?",
+        "callcc",
+        "caller",
+        "caller_locations",
         "catch",
-        "throw",
-        "format",
-        "hex",
-        "last",
-        "puts",
-        "print",
+        "chomp",
+        "chop",
+        "clone",
         "eval",
+        "exec",
+        "exit",
+        "fail",
+        "fork",
+        "format",
+        "freeze",
         "gets",
-        "require",
+        "global_variables",
+        "gsub",
+        "hash",
+        "hex",
+        "lambda",
+        "last",
         "load",
+        "local_variables",
+        "loop",
+        "open",
+        "p",
+        "pp",
+        "print",
+        "printf",
+        "proc",
+        "putc",
+        "puts",
+        "raise",
+        "rand",
+        "readline",
+        "readlines",
+        "require",
+        "require_relative",
+        "select",
+        "set_trace_func",
+        "sleep",
+        "spawn",
+        "sprintf",
+        "srand",
+        "sub",
+        "syscall",
+        "system",
+        "test",
+        "throw",
+        "trace_var",
+        "trap",
+        "untrace_var",
+        "warn",
+        # Object methods
+        "display",
+        "dup",
+        "enum_for",
+        "extend",
+        "inspect",
+        "method",
+        "methods",
+        "object_id",
+        "send",
+        "tap",
+        "to_enum",
+        # Other
+        "__callee__",
+        "__dir__",
+        "__method__",
     }
 )
 
@@ -244,6 +310,14 @@ def _safe_name(name: str) -> str:
     if result in _RUBY_RESERVED:
         return result + "_"
     return result
+
+
+def _safe_fn_name(name: str) -> str:
+    """Like _safe_name but also checks Kernel/Object methods for free functions."""
+    safe = _safe_name(name)
+    if safe in _RUBY_FN_BUILTINS:
+        return safe + "_"
+    return safe
 
 
 def _safe_module_name(name: str) -> str:
@@ -729,7 +803,7 @@ class _RubyEmitter(Emitter):
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
         params = self._params(decl.params, with_self=False)
-        self._line("def " + _safe_name(decl.name) + "(" + params + ")")
+        self._line("def " + _safe_fn_name(decl.name) + "(" + params + ")")
         self.indent += 1
         if not decl.body:
             self._line("nil")
@@ -1836,8 +1910,8 @@ class _RubyEmitter(Emitter):
         if isinstance(func, TVar) and func.name in self.fn_names:
             # method(:name) was returned by _expr — just call it
             if arg_strs:
-                return _safe_name(func.name) + "(" + arg_strs + ")"
-            return _safe_name(func.name) + "()"
+                return _safe_fn_name(func.name) + "(" + arg_strs + ")"
+            return _safe_fn_name(func.name) + "()"
         if arg_strs:
             return fn_expr + ".call(" + arg_strs + ")"
         return fn_expr + ".call"

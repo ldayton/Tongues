@@ -14,7 +14,7 @@ i = b.ord
 n = "42".to_i(10)
 
 === FormatInt
-hex_ = 255.to_s(16)
+hex = 255.to_s(16)
 
 === RuneToInt and RuneFromInt
 n = "A".ord

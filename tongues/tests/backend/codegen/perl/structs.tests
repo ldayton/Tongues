@@ -14,7 +14,7 @@ $p->{y} = 20;
 say(("" . $o->{inner}->{value}));
 
 === struct with interface field
-return eval($b->{left}) + eval($b->{right});
+return eval_($b->{left}) + eval_($b->{right});
 
 === enum comparison
 if ($c == Color::Red) {
