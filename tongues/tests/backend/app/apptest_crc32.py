@@ -64,12 +64,10 @@ def test_update_empty_then_data() -> None:
 
 def test_update_byte_at_a_time() -> None:
     """Feed one byte at a time."""
-    data: bytes = b"abc"
     c: int = 0
-    i: int = 0
-    while i < len(data):
-        c = crc32_update(c, bytes([data[i]]))
-        i += 1
+    c = crc32_update(c, b"a")
+    c = crc32_update(c, b"b")
+    c = crc32_update(c, b"c")
     assert c == 0x352441C2
 
 
