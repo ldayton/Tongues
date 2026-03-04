@@ -243,6 +243,36 @@ def test_header_and_data() -> None:
     assert result[2] == ["Bob", "25", "London"]
 
 
+def test_all_quoted_fields() -> None:
+    assert parse('"a","b","c"\n') == [["a", "b", "c"]]
+
+
+def test_quoted_at_middle() -> None:
+    assert parse('a,"b,c",d\n') == [["a", "b,c", "d"]]
+
+
+def test_mixed_quoted_unquoted() -> None:
+    assert parse('plain,"has,comma",plain2\n') == [["plain", "has,comma", "plain2"]]
+
+
+def test_field_just_quote() -> None:
+    """A field whose value is a single double-quote character."""
+    assert parse('""""\n') == [['"']]
+
+
+def test_single_column() -> None:
+    assert parse("a\nb\nc\n") == [["a"], ["b"], ["c"]]
+
+
+def test_write_cr_in_field() -> None:
+    assert write([["a\rb", "c"]]) == '"a\rb",c\n'
+
+
+def test_parse_cr_in_quoted_normalized() -> None:
+    """Bare CR inside quoted field is normalized to LF."""
+    assert parse('"a\rb"\n') == [["a\nb"]]
+
+
 def test_multiline_quoted_field() -> None:
     text: str = 'id,notes\n1,"line one\nline two\nline three"\n2,simple\n'
     result: list[list[str]] = parse(text)
@@ -300,6 +330,13 @@ def main() -> int:
         ("test_tsv_roundtrip", test_tsv_roundtrip),
         ("test_tsv_comma_not_special", test_tsv_comma_not_special),
         ("test_header_and_data", test_header_and_data),
+        ("test_all_quoted_fields", test_all_quoted_fields),
+        ("test_quoted_at_middle", test_quoted_at_middle),
+        ("test_mixed_quoted_unquoted", test_mixed_quoted_unquoted),
+        ("test_field_just_quote", test_field_just_quote),
+        ("test_single_column", test_single_column),
+        ("test_write_cr_in_field", test_write_cr_in_field),
+        ("test_parse_cr_in_quoted_normalized", test_parse_cr_in_quoted_normalized),
         ("test_multiline_quoted_field", test_multiline_quoted_field),
     ]
     for name, fn in tests:

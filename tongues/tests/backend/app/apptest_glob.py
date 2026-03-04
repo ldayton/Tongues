@@ -256,6 +256,43 @@ def test_class_star_class() -> None:
     assert not glob_match("[abc]*[xyz]", "dMx")
 
 
+def test_adjacent_classes() -> None:
+    assert glob_match("[ab][cd]", "ac")
+    assert glob_match("[ab][cd]", "bd")
+    assert not glob_match("[ab][cd]", "ab")
+    assert not glob_match("[ab][cd]", "cc")
+
+
+def test_backslash_in_class() -> None:
+    assert glob_match("[\\\\]", "\\")
+    assert not glob_match("[\\\\]", "a")
+
+
+def test_escape_in_middle() -> None:
+    assert glob_match("a\\*b", "a*b")
+    assert not glob_match("a\\*b", "aXb")
+
+
+def test_mixed_ranges_in_class() -> None:
+    assert glob_match("[a-z0-9_]", "m")
+    assert glob_match("[a-z0-9_]", "5")
+    assert glob_match("[a-z0-9_]", "_")
+    assert not glob_match("[a-z0-9_]", "A")
+    assert not glob_match("[a-z0-9_]", "-")
+
+
+def test_negated_range_with_star() -> None:
+    assert glob_match("*[!0-9]", "abc")
+    assert not glob_match("*[!0-9]", "abc5")
+    assert glob_match("*[!0-9]", "5x")
+
+
+def test_class_then_literal() -> None:
+    assert glob_match("[a-z]bc", "xbc")
+    assert not glob_match("[a-z]bc", "Xbc")
+    assert not glob_match("[a-z]bc", "xbd")
+
+
 # -- Error cases --
 
 
@@ -376,6 +413,12 @@ def main() -> int:
         ("test_file_extension", test_file_extension),
         ("test_prefix_suffix", test_prefix_suffix),
         ("test_class_star_class", test_class_star_class),
+        ("test_adjacent_classes", test_adjacent_classes),
+        ("test_backslash_in_class", test_backslash_in_class),
+        ("test_escape_in_middle", test_escape_in_middle),
+        ("test_mixed_ranges_in_class", test_mixed_ranges_in_class),
+        ("test_negated_range_with_star", test_negated_range_with_star),
+        ("test_class_then_literal", test_class_then_literal),
         ("test_unclosed_bracket", test_unclosed_bracket),
         ("test_trailing_backslash", test_trailing_backslash),
         ("test_backslash_eof_in_class", test_backslash_eof_in_class),
