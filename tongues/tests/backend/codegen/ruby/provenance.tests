@@ -82,5 +82,23 @@ return s.delete_prefix(p)
 === string removesuffix (raised)
 return s.delete_suffix(p)
 
+=== reversed slice on list (raised)
+r = xs.reverse
+
+=== step slice on list (raised)
+evens = xs.each_slice(2).map(&:first)
+
+=== step slice with start on list (raised)
+odds = xs[1..].each_slice(2).map(&:first)
+
+=== step slice with start >= step on list (raised)
+r = xs[3..].each_slice(2).map(&:first)
+
+=== step slice on string (raised)
+r = s.chars.each_slice(2).map(&:first).join
+
+=== reversed slice on string (raised)
+r = s.reverse
+
 === isinstance with tuple of types (raised)
 return v.is_a?(A) || v.is_a?(B)

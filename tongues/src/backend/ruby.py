@@ -797,6 +797,12 @@ class _RubyEmitter(Emitter):
                             self._line(comp)
                             i += 2
                             continue
+                    if prov == "step_slice":
+                        comp = self._try_step_slice(stmt, next_stmt)
+                        if comp is not None:
+                            self._line(comp)
+                            i += 2
+                            continue
             self._emit_stmt(stmt)
             i += 1
 
@@ -901,6 +907,76 @@ class _RubyEmitter(Emitter):
                         + " })"
                     )
         return None
+
+    def _try_step_slice(self, let_stmt: TLetStmt, for_stmt: TForStmt) -> str | None:
+        """Reconstruct xs.each_slice(step).map(&:first) from a step_slice for-loop."""
+        if not isinstance(for_stmt.iterable, TRange):
+            return None
+        range_args = for_stmt.iterable.args
+        if len(range_args) != 3:
+            return None
+        body = for_stmt.body
+        if len(body) != 1:
+            return None
+        is_string, src_obj = self._step_slice_source(body[0], let_stmt.name)
+        if src_obj is None:
+            return None
+        src = self._expr(src_obj)
+        acc = self._decl_name(let_stmt.name, let_stmt.annotations)
+        start_expr = range_args[0]
+        step_expr = range_args[2]
+        step_s = self._expr(step_expr)
+        if is_string:
+            base = src + ".chars"
+            suffix = ".join"
+        else:
+            base = src
+            suffix = ""
+        if isinstance(start_expr, TIntLit) and start_expr.value == 0:
+            return (
+                acc + " = " + base + ".each_slice(" + step_s + ").map(&:first)" + suffix
+            )
+        start_s = self._expr(start_expr)
+        return (
+            acc
+            + " = "
+            + base
+            + "["
+            + start_s
+            + "..].each_slice("
+            + step_s
+            + ").map(&:first)"
+            + suffix
+        )
+
+    def _step_slice_source(
+        self, stmt: TStmt, acc_name: str
+    ) -> tuple[bool, TExpr | None]:
+        """Extract (is_string, source_obj) from a step_slice loop body."""
+        # List: ExprStmt(Append(acc, obj[__i]))
+        if isinstance(stmt, TExprStmt):
+            call = stmt.expr
+            if isinstance(call, TCall) and self._is_append_to(call, acc_name):
+                elem = call.args[1].value
+                if isinstance(elem, TIndex):
+                    return False, elem.obj
+        # String: acc = Concat(acc, ToString(obj[__i]))
+        if isinstance(stmt, TAssignStmt) and isinstance(stmt.target, TVar):
+            if stmt.target.name == acc_name and isinstance(stmt.value, TCall):
+                if (
+                    isinstance(stmt.value.func, TVar)
+                    and stmt.value.func.name == "Concat"
+                ):
+                    second = stmt.value.args[1].value
+                    if (
+                        isinstance(second, TCall)
+                        and isinstance(second.func, TVar)
+                        and second.func.name == "ToString"
+                    ):
+                        inner = second.args[0].value
+                        if isinstance(inner, TIndex):
+                            return True, inner.obj
+        return False, None
 
     def _emit_stmt(self, stmt: TStmt) -> None:
         if isinstance(stmt, TLetStmt):

@@ -106,5 +106,23 @@ return ((($s =~ /^\Q${\ $p}\E/) ? 1 : 0) ? substr($s, length($p), (length($s)) -
 === string removesuffix (raised)
 return ((($s =~ /\Q${\ $p}\E$/) ? 1 : 0) ? substr($s, 0, (length($s) - length($p)) - (0)) : $s);
 
+=== reversed slice on list (raised)
+my $r = [reverse @{$xs}];
+
+=== step slice on list (raised)
+my $evens = [@{$xs}[grep { $_ % 2 == 0 } 0 .. $#{$xs}]];
+
+=== step slice with start on list (raised)
+my $odds = [@{$xs}[grep { $_ % 2 == 1 } 0 .. $#{$xs}]];
+
+=== step slice with start >= step on list (raised)
+my $r = [@{$xs}[grep { $_ % 2 == 1 } 0 .. $#{$xs}]];
+
+=== step slice on string (raised)
+my $r = join("", @{[split("", $s)]}[grep { $_ % 2 == 0 } 0 .. length($s) - 1]);
+
+=== reversed slice on string (raised)
+my $r = scalar(reverse($s));
+
 === isinstance with tuple of types (raised)
 return eval { $v->isa('A') } || eval { $v->isa('B') };

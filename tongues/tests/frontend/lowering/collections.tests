@@ -84,6 +84,41 @@ def f(xs: list[int]) -> None:
 xs = []
 ---
 
+=== list slice reverse
+def f(xs: list[int]) -> list[int]:
+    return xs[::-1]
+---
+Reversed(xs)
+---
+
+=== list slice step
+def f(xs: list[int]) -> list[int]:
+    return xs[::2]
+---
+range(0, Len(xs), 2)
+---
+
+=== list slice step with start
+def f(xs: list[int]) -> list[int]:
+    return xs[1::2]
+---
+range(1, Len(xs), 2)
+---
+
+=== list slice step with start and stop
+def f(xs: list[int]) -> list[int]:
+    return xs[1:10:3]
+---
+range(1, 10, 3)
+---
+
+=== list slice reverse step
+def f(xs: list[int]) -> list[int]:
+    return xs[::-2]
+---
+range(Len(xs) - 1, -1, -2)
+---
+
 === list reverse in place
 def f(xs: list[int]) -> None:
     xs.reverse()

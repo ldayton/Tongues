@@ -575,6 +575,13 @@ class _PerlEmitter(Emitter):
                             self._line(comp)
                             i += 2
                             continue
+                    if prov == "step_slice":
+                        comp = self._try_step_slice(stmt, next_stmt)
+                        if comp is not None:
+                            self.var_types[stmt.name] = stmt.typ
+                            self._line(comp)
+                            i += 2
+                            continue
             self._emit_stmt(stmt)
             i += 1
 
@@ -671,6 +678,84 @@ class _PerlEmitter(Emitter):
                         + "}; $__s };"
                     )
         return None
+
+    def _try_step_slice(self, let_stmt: TLetStmt, for_stmt: TForStmt) -> str | None:
+        """Reconstruct [@{obj}[grep { $_ % step == offset } 0 .. $#{obj}]]."""
+        if not isinstance(for_stmt.iterable, TRange):
+            return None
+        range_args = for_stmt.iterable.args
+        if len(range_args) != 3:
+            return None
+        body = for_stmt.body
+        if len(body) != 1:
+            return None
+        is_string, src_obj = self._step_slice_source(body[0], let_stmt.name)
+        if src_obj is None:
+            return None
+        src = self._expr(src_obj)
+        acc = "$" + _restore_name(let_stmt.name, let_stmt.annotations)
+        start_expr = range_args[0]
+        step_expr = range_args[2]
+        step_s = self._expr(step_expr)
+        start_val = start_expr.value if isinstance(start_expr, TIntLit) else 0
+        step_val = step_expr.value if isinstance(step_expr, TIntLit) else None
+        offset = start_val % step_val if step_val is not None else start_val
+        if is_string:
+            return (
+                "my "
+                + acc
+                + ' = join("", @{[split("", '
+                + src
+                + ")]}[grep { $_ % "
+                + step_s
+                + " == "
+                + str(offset)
+                + " } 0 .. length("
+                + src
+                + ") - 1]);"
+            )
+        return (
+            "my "
+            + acc
+            + " = [@{"
+            + src
+            + "}[grep { $_ % "
+            + step_s
+            + " == "
+            + str(offset)
+            + " } 0 .. $#{"
+            + src
+            + "}]];"
+        )
+
+    def _step_slice_source(
+        self, stmt: TStmt, acc_name: str
+    ) -> tuple[bool, TExpr | None]:
+        """Extract (is_string, source_obj) from a step_slice loop body."""
+        # List: ExprStmt(Append(acc, obj[__i]))
+        if isinstance(stmt, TExprStmt):
+            call = stmt.expr
+            if isinstance(call, TCall) and self._is_append_to(call, acc_name):
+                elem = call.args[1].value
+                if isinstance(elem, TIndex):
+                    return False, elem.obj
+        # String: acc = Concat(acc, ToString(obj[__i]))
+        if isinstance(stmt, TAssignStmt) and isinstance(stmt.target, TVar):
+            if stmt.target.name == acc_name and isinstance(stmt.value, TCall):
+                if (
+                    isinstance(stmt.value.func, TVar)
+                    and stmt.value.func.name == "Concat"
+                ):
+                    second = stmt.value.args[1].value
+                    if (
+                        isinstance(second, TCall)
+                        and isinstance(second.func, TVar)
+                        and second.func.name == "ToString"
+                    ):
+                        inner = second.args[0].value
+                        if isinstance(inner, TIndex):
+                            return True, inner.obj
+        return False, None
 
     def _emit_stmt(self, stmt: TStmt) -> None:
         if isinstance(stmt, TLetStmt):

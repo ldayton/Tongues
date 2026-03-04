@@ -33,6 +33,20 @@ def f(s: str) -> str:
 s[Len(s) - 2:Len(s)]
 ---
 
+=== string slice reverse
+def f(s: str) -> str:
+    return s[::-1]
+---
+Reverse(s)
+---
+
+=== string slice step
+def f(s: str) -> str:
+    return s[::2]
+---
+range(0, Len(s), 2)
+---
+
 === string concat
 def f(a: str, b: str) -> str:
     return a + b
