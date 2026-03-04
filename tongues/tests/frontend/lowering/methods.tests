@@ -1,0 +1,85 @@
+=== unrecognized str method rejected
+def f(s: str) -> str:
+    return s.gobbledygook()
+---
+error: method
+---
+
+=== unrecognized str method with args rejected
+def f(s: str) -> str:
+    return s.frobnicate("x", 3)
+---
+error: method
+---
+
+=== unrecognized bytes method rejected
+def f(b: bytes) -> bytes:
+    return b.gobbledygook()
+---
+error: method
+---
+
+=== unrecognized list method rejected
+def f(xs: list[int]) -> None:
+    xs.gobbledygook()
+---
+error: method
+---
+
+=== unrecognized dict method rejected
+def f(d: dict[str, int]) -> None:
+    d.gobbledygook()
+---
+error: method
+---
+
+=== unrecognized set method rejected
+def f(s: set[int]) -> None:
+    s.gobbledygook()
+---
+error: method
+---
+
+=== unrecognized tuple method rejected
+def f(t: tuple[int, str]) -> None:
+    t.gobbledygook()
+---
+error: method
+---
+
+=== str method zfill passthrough
+def f(s: str) -> str:
+    return s.zfill(5)
+---
+s.zfill(5)
+---
+
+=== bytes method hex passthrough
+def f(b: bytes) -> str:
+    return b.hex()
+---
+b.hex()
+---
+
+=== unrecognized method in expression rejected
+def f(s: str) -> int:
+    return len(s.gobbledygook())
+---
+error: method
+---
+
+=== unrecognized method in condition rejected
+def f(s: str) -> str:
+    if s.gobbledygook():
+        return "yes"
+    return "no"
+---
+error: method
+---
+
+=== unrecognized method as argument rejected
+def f(xs: list[int]) -> None:
+    print(xs.gobbledygook())
+---
+error: method
+---

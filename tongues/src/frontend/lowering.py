@@ -3010,10 +3010,14 @@ def _lower_method_call(
         return _lower_bytes_method(pos, obj, method_name, args, env, ctx)
     # List methods
     if _is_type_dict(actual_type, ["Slice"]):
-        return _lower_list_method(pos, obj, obj_node, method_name, args, env, ctx)
+        return _lower_list_method(
+            pos, obj, obj_node, method_name, args, env, ctx, type_name="list"
+        )
     # Tuple methods (count/index reuse list lowering)
     if _is_type_dict(actual_type, ["Tuple"]):
-        return _lower_list_method(pos, obj, obj_node, method_name, args, env, ctx)
+        return _lower_list_method(
+            pos, obj, obj_node, method_name, args, env, ctx, type_name="tuple"
+        )
     # Dict methods
     if _is_type_dict(actual_type, ["Map"]):
         return _lower_dict_method(pos, obj, obj_node, method_name, args, env, ctx)
@@ -3135,7 +3139,12 @@ def _lower_string_method(
         else:
             not_found = TTupleLit(pos, [TStringLit(pos, "", {}), empty, obj], {})
         return TTernary(pos, cond, found, not_found, {"provenance": method})
-    return _make_method_call(pos, obj, method, lowered)
+    if method == "zfill":
+        return _make_method_call(pos, obj, method, lowered)
+    ctx.errors.append(
+        LoweringError(pos.line, pos.col, "unsupported method '" + method + "' on str")
+    )
+    return TNilLit(pos, {})
 
 
 def _lower_startswith_endswith(
@@ -3173,6 +3182,7 @@ def _lower_list_method(
     args: list[ASTNode],
     env: _Env,
     ctx: _LowerCtx,
+    type_name: str,
 ) -> TExpr:
     """Lower list method calls."""
     pos = _node_pos(obj_node)
@@ -3226,7 +3236,12 @@ def _lower_list_method(
         return TNilLit(pos, {})
     if method == "sort":
         return TNilLit(pos, {})
-    return _make_method_call(pos, obj, method, lowered)
+    ctx.errors.append(
+        LoweringError(
+            pos.line, pos.col, "unsupported method '" + method + "' on " + type_name
+        )
+    )
+    return TNilLit(pos, {})
 
 
 def _lower_dict_method(
@@ -3261,7 +3276,10 @@ def _lower_dict_method(
         return _make_call(pos, "Merge", [obj] + lowered)
     if method == "popitem":
         return _make_call(pos, "PopItem", [obj])
-    return _make_method_call(pos, obj, method, lowered)
+    ctx.errors.append(
+        LoweringError(pos.line, pos.col, "unsupported method '" + method + "' on dict")
+    )
+    return TNilLit(pos, {})
 
 
 def _method_side_effects(value_node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
@@ -3392,7 +3410,10 @@ def _lower_set_method(
                 TIntLit(pos, 0, "0", {}),
                 {},
             )
-    return _make_method_call(pos, obj, method, lowered)
+    ctx.errors.append(
+        LoweringError(pos.line, pos.col, "unsupported method '" + method + "' on set")
+    )
+    return TNilLit(pos, {})
 
 
 def _lower_bytes_method(
@@ -3443,7 +3464,12 @@ def _lower_bytes_method(
         if len(lowered) == 3:
             return _make_call(pos, "ReplaceCount", [obj] + lowered)
         return _make_call(pos, "Replace", [obj] + lowered)
-    return _make_method_call(pos, obj, method, lowered)
+    if method == "hex":
+        return _make_method_call(pos, obj, method, lowered)
+    ctx.errors.append(
+        LoweringError(pos.line, pos.col, "unsupported method '" + method + "' on bytes")
+    )
+    return TNilLit(pos, {})
 
 
 def _is_sys_argv(node: ASTNode) -> bool:
