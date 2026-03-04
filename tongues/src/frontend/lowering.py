@@ -925,16 +925,25 @@ def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
         return _infer_synthetic_type(node, env)
     uid_jv = node.get("_uid") if isinstance(node, dict) else None
     if not isinstance(uid_jv, JInt):
-        return VOID_TYPE
+        return _env_name_fallback(node, env)
     pt = ctx.pycheck_result.expr_types.get(uid_jv.value)
     if pt is None:
-        return VOID_TYPE
+        return _env_name_fallback(node, env)
     if _is_any_type(pt):
-        return VOID_TYPE
+        return _env_name_fallback(node, env)
     check_t = pt.ret if isinstance(pt, FuncType) else pt
     if contains_any(check_t):
-        return VOID_TYPE
+        return _env_name_fallback(node, env)
     return _adjust_pycheck_type(node, pt, env)
+
+
+def _env_name_fallback(node: ASTNode, env: _Env) -> TypeNode:
+    """For Name nodes without pycheck coverage, check env.var_types."""
+    if isinstance(node, dict) and get_str(node, "_type") == "Name":
+        vt = env.var_types.get(get_str(node, "id"))
+        if vt is not None:
+            return vt
+    return VOID_TYPE
 
 
 # ---------------------------------------------------------------------------
@@ -2382,6 +2391,48 @@ def _collection_element_type(t: TypeNode) -> TypeNode:
     return INT_TYPE
 
 
+def _infer_key_lambda_body_type(
+    body: ASTNode, elem_type: TypeNode, env: _Env, ctx: _LowerCtx
+) -> TypeNode:
+    """Infer return type of a key= lambda body (pycheck doesn't walk lambdas)."""
+    t = get_str(body, "_type")
+    if t == "UnaryOp":
+        operand = get_node(body, "operand")
+        return _infer_key_lambda_body_type(operand, elem_type, env, ctx)
+    if t == "Subscript" and isinstance(elem_type, TupleType):
+        slc = get_node(body, "slice")
+        if _is_ast(slc, "Constant") and isinstance(slc.get("value"), JInt):
+            idx = get_int(slc, "value")
+            if 0 <= idx < len(elem_type.elements):
+                return elem_type.elements[idx]
+    if t == "Call":
+        func = get_node(body, "func")
+        if _is_ast(func, "Name"):
+            fname = get_str(func, "id")
+            if fname == "len" or fname == "ord" or fname == "int":
+                return INT_TYPE
+            if fname == "str":
+                return STR_TYPE
+            return _func_return_type(ctx, fname)
+    if t == "Attribute":
+        obj = get_node(body, "value")
+        obj_type = _infer_key_lambda_body_type(obj, elem_type, env, ctx)
+        attr = get_str(body, "attr")
+        if isinstance(obj_type, PointerType):
+            obj_type = obj_type.target
+        if _is_struct_type(obj_type):
+            cls_info = ctx.tc_result.classes.get(_struct_name(obj_type))
+            if cls_info is not None:
+                fi = cls_info.fields.get(attr)
+                if fi is not None:
+                    return fi.typ
+    if t == "Name":
+        vt = env.var_types.get(get_str(body, "id"))
+        if vt is not None:
+            return vt
+    return elem_type
+
+
 def _lower_key_func(
     pos: Pos,
     key_node: ASTNode,
@@ -2403,7 +2454,7 @@ def _lower_key_func(
         inner_env.var_types[param_name] = elem_type
         inner_env.declared.add(param_name)
         body_expr = _lower_expr(body_node, inner_env, ctx)
-        ret_type = _infer_expr_type(body_node, inner_env, ctx)
+        ret_type = _infer_key_lambda_body_type(body_node, elem_type, inner_env, ctx)
         lambda_ret = _typenode_to_ttype(pos, ret_type)
         return TFnLit(
             pos,
