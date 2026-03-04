@@ -91,5 +91,11 @@ evens = xs.each_slice(2).map(&:first)
 === step slice with start on list (raised)
 odds = xs[1..].each_slice(2).map(&:first)
 
+=== step slice with start >= step on list (raised)
+r = xs[3..].each_slice(2).map(&:first)
+
+=== step slice on string (raised)
+r = s.chars.each_slice(2).map(&:first).join
+
 === reversed slice on string (raised)
 r = s.reverse

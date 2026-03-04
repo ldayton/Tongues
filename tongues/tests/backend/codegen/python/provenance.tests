@@ -91,5 +91,11 @@ evens = xs[::2]
 === step slice with start on list (raised)
 odds = xs[1::2]
 
+=== step slice with start >= step on list (raised)
+r = xs[3::2]
+
+=== step slice on string (raised)
+r = s[::2]
+
 === reversed slice on string (raised)
 r: str = s[::-1]

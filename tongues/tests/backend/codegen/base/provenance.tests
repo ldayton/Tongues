@@ -260,6 +260,26 @@ fn Main() -> void {
     WritelnOut(ToString(Len(odds)))
 }
 
+=== step slice with start >= step on list (raised)
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    let r: list[int]
+    @["provenance" = "step_slice"] for __i in range(3, Len(xs), 2) {
+        Append(r, xs[__i])
+    }
+    WritelnOut(ToString(Len(r)))
+}
+
+=== step slice on string (raised)
+fn Main() -> void {
+    let s: string = "abcdef"
+    let r: string = ""
+    @["provenance" = "step_slice"] for __i in range(0, Len(s), 2) {
+        r = Concat(r, ToString(s[__i]))
+    }
+    WritelnOut(r)
+}
+
 === reversed slice on string (raised)
 fn Main() -> void {
     let s: string = "hello"
