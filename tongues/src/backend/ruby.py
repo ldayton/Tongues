@@ -362,6 +362,14 @@ def _restore_module_name(name: str, annotations: Ann) -> str:
     return _safe_module_name(name)
 
 
+def _restore_fn_name(name: str, annotations: Ann) -> str:
+    """Restore name for free function contexts (checks Kernel/Object builtins)."""
+    key = "name.original." + name
+    if key in annotations:
+        return _safe_fn_name(annotations[key])
+    return _safe_fn_name(name)
+
+
 _TYPE_NAME_MAP: dict[str, str] = {
     "dict": "Hash",
     "Dict": "Hash",
@@ -604,6 +612,8 @@ class _RubyEmitter(Emitter):
         local = self.local_names.get(name)
         if local is not None:
             return local
+        if name in self.fn_names:
+            return _restore_fn_name(name, annotations)
         return _restore_module_name(name, annotations)
 
     # ── Module ────────────────────────────────────────────────
