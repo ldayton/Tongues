@@ -44,9 +44,6 @@ def levenshtein(a: str, b: str) -> int:
                 best = sub_cost
             curr[j + 1] = best
             j += 1
-        j = 0
-        while j <= short_len:
-            prev[j] = curr[j]
-            j += 1
+        prev, curr = curr, prev
         i += 1
     return prev[short_len]
