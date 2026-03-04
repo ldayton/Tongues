@@ -43,7 +43,7 @@ fn Main() -> void {
 }
 ---
 ok
-reveal:11=Lit
+reveal:10=Lit
 ---
 
 === IsType no narrowing without check
@@ -103,7 +103,7 @@ fn Main() -> void {
 }
 ---
 ok
-reveal:13=Lit
+reveal:12=Lit
 ---
 
 === IsType negative guard narrows after throw

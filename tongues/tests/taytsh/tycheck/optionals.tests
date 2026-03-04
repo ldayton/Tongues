@@ -94,7 +94,7 @@ fn Main() -> void {
 }
 ---
 ok
-reveal:7=int
+reveal:6=int
 ---
 
 === error: assign non-matching type to optional

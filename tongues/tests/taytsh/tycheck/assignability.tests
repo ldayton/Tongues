@@ -119,7 +119,7 @@ fn Main() -> void {
 }
 ---
 ok
-reveal:6=int
+reveal:5=int
 ---
 
 === without narrowing optional not assignable to non-optional

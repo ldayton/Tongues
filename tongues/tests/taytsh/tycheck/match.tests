@@ -511,7 +511,7 @@ fn Main() -> void {
 }
 ---
 ok
-reveal:9=string | bool
+reveal:8=bool | string
 ---
 
 === error: duplicate nil case
