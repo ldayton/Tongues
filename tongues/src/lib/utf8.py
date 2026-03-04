@@ -10,7 +10,7 @@ class Utf8Error(Exception):
     position: int
 
 
-def encode_codepoint(cp: int) -> bytes:
+def utf8_encode_codepoint(cp: int) -> bytes:
     """Encode a single Unicode codepoint to UTF-8 bytes."""
     out: list[int] = []
     if cp < 0 or cp > 0x10FFFF or (cp >= 0xD800 and cp <= 0xDFFF):
@@ -34,14 +34,14 @@ def encode_codepoint(cp: int) -> bytes:
     return bytes(out)
 
 
-def encode(codepoints: list[int]) -> bytes:
+def utf8_encode(codepoints: list[int]) -> bytes:
     """Encode a list of Unicode codepoints to UTF-8 bytes."""
     out: list[int] = []
     i: int = 0
     chunk: bytes = b""
     j: int = 0
     while i < len(codepoints):
-        chunk = encode_codepoint(codepoints[i])
+        chunk = utf8_encode_codepoint(codepoints[i])
         j = 0
         while j < len(chunk):
             out.append(chunk[j])
@@ -54,7 +54,7 @@ def _is_cont(b: int) -> bool:
     return (b & 0xC0) == 0x80
 
 
-def decode_codepoint(data: bytes, pos: int) -> tuple[int, int]:
+def utf8_decode_codepoint(data: bytes, pos: int) -> tuple[int, int]:
     """Decode one codepoint starting at pos. Returns (codepoint, next_pos).
 
     Raises Utf8Error on invalid sequences.
@@ -113,7 +113,7 @@ def decode_codepoint(data: bytes, pos: int) -> tuple[int, int]:
     raise Utf8Error(pos)
 
 
-def decode(data: bytes) -> list[int]:
+def utf8_decode(data: bytes) -> list[int]:
     """Decode UTF-8 bytes to a list of Unicode codepoints.
 
     Raises Utf8Error on the first invalid byte.
@@ -121,30 +121,30 @@ def decode(data: bytes) -> list[int]:
     out: list[int] = []
     pos: int = 0
     while pos < len(data):
-        result: tuple[int, int] = decode_codepoint(data, pos)
+        result: tuple[int, int] = utf8_decode_codepoint(data, pos)
         out.append(result[0])
         pos = result[1]
     return out
 
 
-def is_valid(data: bytes) -> bool:
+def utf8_is_valid(data: bytes) -> bool:
     """Return True if data is valid UTF-8."""
     pos: int = 0
     while pos < len(data):
         try:
-            result: tuple[int, int] = decode_codepoint(data, pos)
+            result: tuple[int, int] = utf8_decode_codepoint(data, pos)
             pos = result[1]
         except Utf8Error:
             return False
     return True
 
 
-def codepoint_len(data: bytes) -> int:
+def utf8_codepoint_len(data: bytes) -> int:
     """Count the number of Unicode codepoints in valid UTF-8 data."""
     count: int = 0
     pos: int = 0
     while pos < len(data):
-        result: tuple[int, int] = decode_codepoint(data, pos)
+        result: tuple[int, int] = utf8_decode_codepoint(data, pos)
         pos = result[1]
         count += 1
     return count
