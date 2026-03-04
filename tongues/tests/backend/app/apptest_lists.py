@@ -439,6 +439,14 @@ def test_list_constructor_from_range() -> None:
     assert items == [0, 2, 4, 6, 8]
 
 
+def test_list_constructor_from_bytes() -> None:
+    """list() from bytes produces list of int byte values."""
+    items: list[int] = list(b"\x01\x02\x03")
+    assert items == [1, 2, 3]
+    assert list(b"\x00\xff") == [0, 255]
+    assert list(b"") == []
+
+
 def test_list_constructor_from_string() -> None:
     """list() from string."""
     chars: list[str] = list("hello")
@@ -754,6 +762,7 @@ def main() -> int:
         ("test_list_all_any_truthy", test_list_all_any_truthy),
         ("test_list_nested", test_list_nested),
         ("test_list_nested_modification", test_list_nested_modification),
+        ("test_list_constructor_from_bytes", test_list_constructor_from_bytes),
         ("test_list_constructor_from_range", test_list_constructor_from_range),
         ("test_list_constructor_from_string", test_list_constructor_from_string),
         ("test_list_zip", test_list_zip),

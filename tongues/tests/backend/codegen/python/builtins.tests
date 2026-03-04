@@ -45,5 +45,14 @@ q: int = -7 // 2
 === PythonMod negative dividend
 r: int = -7 % 2
 
+=== RangeList
+xs: list[int] = list(range(5))
+
+=== RangeList with step
+xs: list[int] = list(range(0, 10, 2))
+
+=== ListFrom bytes
+xs: list[int] = list(data)
+
 === IsNil check
 x is None
