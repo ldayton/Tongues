@@ -1810,6 +1810,15 @@ def taytsh_pipeline(argv: list[str]) -> int:
             ei += 1
         return 1
     if stop_at == "check":
+        reveals_out = JList([])
+        ri = 0
+        while ri < len(checker.reveals):
+            rev = checker.reveals[ri]
+            reveals_out.items.append(
+                JDict({"line": JInt(rev[0]), "type": JStr(rev[1])})
+            )
+            ri += 1
+        print(to_json(JDict({"reveals": reveals_out})))
         return 0
     if stop_at == "returns":
         analyze_returns(module, checker)

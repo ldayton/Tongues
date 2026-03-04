@@ -54,7 +54,7 @@ my @TESTS = (
     ]],
     ["taytsh", [
         ["typarse", { dir => "taytsh/typarse",  run => "phase", taytsh => 1, args => ["--stop-at", "parse"], json => 1  }],
-        ["tycheck", { dir => "taytsh/tycheck",  run => "phase", taytsh => 1, args => ["--stop-at", "check"], json => 0  }],
+        ["tycheck", { dir => "taytsh/tycheck",  run => "phase", taytsh => 1, args => ["--stop-at", "check"], json => 1  }],
         ["ty_app",  { dir => "taytsh/app",      run => "ty_app" }],
     ]],
 );
@@ -273,7 +273,7 @@ sub run_phase_tests ($test_dir, $phase_name, $cfg) {
                 expect_json => $cfg->{json},
             );
             my $reveals = $phase_result->{reveals};
-            if ($phase_name eq "pycheck" && !@{$phase_result->{errors}} && defined $phase_result->{data}) {
+            if ($phase_name =~ /^(pycheck|tycheck)$/ && !@{$phase_result->{errors}} && defined $phase_result->{data}) {
                 if (blessed($phase_result->{data}) && $phase_result->{data}->isa("JsonObject")) {
                     eval {
                         my $reveals_arr = get_items(get_field($phase_result->{data}, "reveals"));
