@@ -2445,9 +2445,11 @@ class _PerlEmitter(Emitter):
                 return (
                     "strict_min_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
                 )
-            if len(args) == 2 and isinstance(args[1].value, TFnLit):
-                key_body = self._perl_key_sort_body(args[1].value)
-                return "(sort { " + key_body + " } @{" + self._a(args, 0) + "})[0]"
+            if len(args) == 2:
+                key_val = args[1].value
+                if isinstance(key_val, TFnLit):
+                    key_body = self._perl_key_sort_body(key_val)
+                    return "(sort { " + key_body + " } @{" + self._a(args, 0) + "})[0]"
             if len(args) == 1:
                 return "min(@{" + self._a(args, 0) + "})"
             return "min(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
@@ -2460,9 +2462,11 @@ class _PerlEmitter(Emitter):
                 return (
                     "strict_max_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
                 )
-            if len(args) == 2 and isinstance(args[1].value, TFnLit):
-                key_body = self._perl_key_sort_body(args[1].value, reverse=True)
-                return "(sort { " + key_body + " } @{" + self._a(args, 0) + "})[0]"
+            if len(args) == 2:
+                key_val = args[1].value
+                if isinstance(key_val, TFnLit):
+                    key_body = self._perl_key_sort_body(key_val, reverse=True)
+                    return "(sort { " + key_body + " } @{" + self._a(args, 0) + "})[0]"
             if len(args) == 1:
                 return "max(@{" + self._a(args, 0) + "})"
             return "max(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
@@ -2513,9 +2517,11 @@ class _PerlEmitter(Emitter):
             if self.strict_math and self._is_float_list(sorted_arg):
                 return "strict_sorted_f64(" + self._a(args, 0) + ")"
             a = self._a(args, 0)
-            if len(args) == 2 and isinstance(args[1].value, TFnLit):
-                key_body = self._perl_key_sort_body(args[1].value)
-                return "[sort { " + key_body + " } @{" + a + "}]"
+            if len(args) == 2:
+                key_val = args[1].value
+                if isinstance(key_val, TFnLit):
+                    key_body = self._perl_key_sort_body(key_val)
+                    return "[sort { " + key_body + " } @{" + a + "}]"
             if self._is_set_expr(sorted_arg):
                 return "[sort keys %{" + a + "}]"
             sorted_ann: str = sorted_arg.annotations.get("type", "")
