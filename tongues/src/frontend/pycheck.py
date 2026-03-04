@@ -829,6 +829,8 @@ def _resolve_attr(
         elem = obj_type.element
         if attr == "append":
             return FuncType([elem], VOID_TYPE)
+        if attr == "extend":
+            return FuncType([SliceType(elem)], VOID_TYPE)
         if attr == "insert":
             return FuncType([INT_TYPE, elem], VOID_TYPE)
         if attr == "pop":

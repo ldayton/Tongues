@@ -98,6 +98,27 @@ def f(xs: list[int]) -> None:
 xs = Sorted(xs)
 ---
 
+=== list extend
+def f(xs: list[int]) -> None:
+    xs.extend([1, 2, 3])
+---
+xs = Concat(xs, [1, 2, 3])
+---
+
+=== list extend with range
+def f(xs: list[int]) -> None:
+    xs.extend(range(5))
+---
+xs = Concat(xs, RangeList(0, 5, 1))
+---
+
+=== list extend with string
+def f(xs: list[str]) -> None:
+    xs.extend("abc")
+---
+xs = Concat(xs, ["a", "b", "c"])
+---
+
 === list repeat
 def f(xs: list[int]) -> list[int]:
     return xs * 3
