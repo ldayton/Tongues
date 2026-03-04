@@ -147,6 +147,22 @@ try {
 }
 ---
 
+=== try catch tuple except
+class ErrA(Exception):
+    def __init__(self, msg: str) -> None:
+        self.msg = msg
+class ErrB(Exception):
+    def __init__(self, msg: str) -> None:
+        self.msg = msg
+def f() -> int:
+    try:
+        return 1
+    except (ErrA, ErrB) as e:
+        return 0
+---
+catch e: ErrA | ErrB {
+---
+
 === raise exception
 class MyError(Exception):
     def __init__(self, msg: str) -> None:
