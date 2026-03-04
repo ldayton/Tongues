@@ -5,10 +5,10 @@ for @{(do {
 [ @{$a}, @{$b} ]
 
 === star unpack element then starred
-[ @{[$x]}, @{$rest} ]
+[ $x, @{$rest} ]
 
 === star unpack starred then element
-[ @{$xs}, @{[$y]} ]
+[ @{$xs}, $y ]
 
 === star unpack element starred element
-[ @{[ @{[$x]}, @{$middle} ]}, @{[$y]} ]
+[ $x, @{$middle}, $y ]

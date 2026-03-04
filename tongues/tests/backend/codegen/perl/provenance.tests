@@ -80,10 +80,10 @@ my $v = ($m->{"b"} // 0);
 [ @{$a}, @{$b} ]
 
 === star unpack element then starred (raised)
-[ @{[$x]}, @{$rest} ]
+[ $x, @{$rest} ]
 
 === star unpack starred then element (raised)
-[ @{$xs}, @{[$y]} ]
+[ @{$xs}, $y ]
 
 === star unpack element starred element (raised)
-[ @{[ @{[$x]}, @{$middle} ]}, @{[$y]} ]
+[ $x, @{$middle}, $y ]

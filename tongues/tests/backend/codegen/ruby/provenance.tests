@@ -53,13 +53,13 @@ return x || 0
 v = m.fetch("b", 0)
 
 === star unpack two lists (raised)
-a + b
+[*a, *b]
 
 === star unpack element then starred (raised)
-[x] + rest
+[x, *rest]
 
 === star unpack starred then element (raised)
-xs + [y]
+[*xs, y]
 
 === star unpack element starred element (raised)
-[x] + middle + [y]
+[x, *middle, y]
