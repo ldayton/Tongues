@@ -2884,11 +2884,11 @@ def _lower_key_func(
         inner_env.declared.add(param_name)
         body_expr = _lower_expr(body_node, inner_env, ctx)
         ret_type = _infer_expr_type(body_node, inner_env, ctx)
-        ret_ttype = _typenode_to_ttype(pos, ret_type)
+        lambda_ret = _typenode_to_ttype(pos, ret_type)
         return TFnLit(
             pos,
             [param],
-            ret_ttype,
+            lambda_ret,
             [TExprStmt(pos, body_expr, {})],
             {"fn_lit.arrow": "true"},
         )
@@ -2900,7 +2900,7 @@ def _lower_key_func(
             param_ttype = _typenode_to_ttype(pos, p.typ)
             param_name = p.name
             param = TParam(pos, param_name, param_ttype, {})
-            ret_ttype = _typenode_to_ttype(pos, func_info.return_type)
+            func_ret = _typenode_to_ttype(pos, func_info.return_type)
             inner_env = env.copy()
             inner_env.var_types[param_name] = p.typ
             inner_env.declared.add(param_name)
@@ -2911,7 +2911,7 @@ def _lower_key_func(
                 return TFnLit(
                     pos,
                     [param],
-                    ret_ttype,
+                    func_ret,
                     [TExprStmt(pos, body_call, {})],
                     {"fn_lit.arrow": "true"},
                 )
