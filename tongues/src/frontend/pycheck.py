@@ -1364,6 +1364,8 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     if isinstance(obj_type, TupleType):
         if obj_type.variadic and obj_type.elements:
             return obj_type.elements[0]
+        if slc and _is_type(slc, ["Slice"]):
+            return obj_type
         if slc and _is_type(slc, ["Constant"]):
             _synth_expr(slc, env, ctx)
             slc_v = slc.get("value")
@@ -2313,6 +2315,22 @@ def _validate_ann_assign(
                     uid_jv = value.get("_uid") if isinstance(value, dict) else None
                     if isinstance(uid_jv, JInt):
                         ctx.result.expr_types[uid_jv.value] = ann_type
+                    if (
+                        isinstance(ann_type, MapType)
+                        and isinstance(value, dict)
+                        and _is_type(value, ["DictComp"])
+                    ):
+                        dc_val = get_node(value, "value")
+                        if dc_val:
+                            dc_val_uid = (
+                                dc_val.get("_uid") if isinstance(dc_val, dict) else None
+                            )
+                            if isinstance(dc_val_uid, JInt):
+                                dc_val_t = ctx.result.expr_types.get(dc_val_uid.value)
+                                if dc_val_t is not None and contains_any(dc_val_t):
+                                    ctx.result.expr_types[dc_val_uid.value] = (
+                                        ann_type.value
+                                    )
                 if not _is_assignable(val_type, ann_type, ctx.hier_result):
                     ctx.result.add_error(
                         lineno,

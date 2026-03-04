@@ -1116,6 +1116,7 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
         return (None, f"no emitter for '{lang}'")
     try:
         ast_dict = parse(source)
+        stamp_uids(ast_dict)
         bind_result = run_bind(ast_dict)
         if not bind_result.subset_ok():
             return (None, bind_result.subset_violations[0].message)

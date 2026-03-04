@@ -194,9 +194,6 @@ def test_expr_coverage() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True, reason="pycheck returns set[any] for set() in dict comp"
-)
 def test_empty_set_in_dictcomp() -> None:
     """Dict comp with set() value should infer map[int, set[int]], not map[int, string]."""
     source = (
@@ -212,22 +209,24 @@ def test_empty_set_in_dictcomp() -> None:
     )
 
 
-@pytest.mark.xfail(
-    strict=True, reason="pycheck tuple slice returns element type not tuple"
-)
 def test_tuple_full_slice() -> None:
     """t[:] on a fixed tuple should return the tuple type, not the element type."""
     source = (
         "def f(t: tuple[int, int, int]) -> tuple[int, int, int]:\n    return t[:]\n"
     )
     out = run_pycheck(source)
-    assert "error" not in out.lower()
+    assert not out.errors, f"unexpected errors: {out.errors}"
 
 
-@pytest.mark.xfail(strict=True, reason="emit_from_python missing stamp_uids")
 def test_emit_stamp_uids() -> None:
     """emit_from_python must stamp UIDs so pycheck types are available to lowering."""
-    source = "def f(s: str) -> str:\n    return s.strip()\n"
+    source = (
+        "def main() -> None:\n"
+        "    s: str = 'hello'\n"
+        "    _ = s.strip()\n"
+        "if __name__ == '__main__':\n"
+        "    main()\n"
+    )
     output, err = emit_from_python(source, "python")
     assert err is None, f"emit error: {err}"
     assert output is not None
