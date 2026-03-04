@@ -152,6 +152,39 @@ fn Main() -> void {
     WritelnOut(ToString(v))
 }
 
+=== star unpack two lists (raised)
+fn Main() -> void {
+    let a: list[int] = [1, 2]
+    let b: list[int] = [3, 4]
+    let c: list[int] = @["provenance" = "star_unpack"] Concat(a, b)
+    WritelnOut(ToString(Len(c)))
+}
+
+=== star unpack element then starred (raised)
+fn Main() -> void {
+    let x: int = 1
+    let rest: list[int] = [2, 3]
+    let c: list[int] = @["provenance" = "star_unpack"] Concat([x], rest)
+    WritelnOut(ToString(Len(c)))
+}
+
+=== star unpack starred then element (raised)
+fn Main() -> void {
+    let xs: list[int] = [1, 2]
+    let y: int = 3
+    let c: list[int] = @["provenance" = "star_unpack"] Concat(xs, [y])
+    WritelnOut(ToString(Len(c)))
+}
+
+=== star unpack element starred element (raised)
+fn Main() -> void {
+    let x: int = 1
+    let middle: list[int] = [2, 3]
+    let y: int = 4
+    let c: list[int] = @["provenance" = "star_unpack"] Concat(@["provenance" = "star_unpack"] Concat([x], middle), [y])
+    WritelnOut(ToString(Len(c)))
+}
+
 === del dict key (raised)
 fn Main() -> void {
     let d: map[string, int] = {"a": 1, "b": 2}

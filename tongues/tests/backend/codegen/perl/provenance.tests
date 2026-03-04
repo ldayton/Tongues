@@ -76,6 +76,18 @@ return ($x // 0);
 === Get with default using defined-or (raised)
 my $v = ($m->{"b"} // 0);
 
+=== star unpack two lists (raised)
+[ @{$a}, @{$b} ]
+
+=== star unpack element then starred (raised)
+[ $x, @{$rest} ]
+
+=== star unpack starred then element (raised)
+[ @{$xs}, $y ]
+
+=== star unpack element starred element (raised)
+[ $x, @{$middle}, $y ]
+
 === del dict key (raised)
 delete $d->{"a"};
 

@@ -1,2 +1,14 @@
 === set from dict items
 s = Set.new(d.to_a
+
+=== star unpack two lists
+[*a, *b]
+
+=== star unpack element then starred
+[x, *rest]
+
+=== star unpack starred then element
+[*xs, y]
+
+=== star unpack element starred element
+[x, *middle, y]

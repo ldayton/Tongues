@@ -1756,6 +1756,12 @@ class _PerlEmitter(Emitter):
     def _call(self, expr: TCall) -> str:
         func = expr.func
         args = expr.args
+        if (
+            isinstance(func, TVar)
+            and func.name == "Concat"
+            and expr.annotations.get("provenance") == "star_unpack"
+        ):
+            return self._star_unpack(expr)
         if isinstance(func, TVar) and func.name in BUILTIN_NAMES:
             return self._builtin_call(func.name, args, expr.annotations)
         if isinstance(func, TVar) and func.name in self._PYTHON_CALL_MAP:
@@ -1775,6 +1781,31 @@ class _PerlEmitter(Emitter):
         fn_expr = self._expr(func)
         arg_strs2 = ", ".join(self._expr(a.value) for a in args)
         return fn_expr + "->(" + arg_strs2 + ")"
+
+    def _star_unpack(self, expr: TCall) -> str:
+        """Reconstruct [ @{$a}, $x, @{$b} ] from a Concat chain."""
+        parts: list[TExpr] = []
+        self._flatten_star_unpack(expr, parts)
+        items: list[str] = []
+        for p in parts:
+            if isinstance(p, TListLit):
+                for elem in p.elements:
+                    items.append(self._expr(elem))
+            else:
+                items.append("@{" + self._expr(p) + "}")
+        return "[ " + ", ".join(items) + " ]"
+
+    def _flatten_star_unpack(self, expr: TExpr, parts: list[TExpr]) -> None:
+        if (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "Concat"
+            and expr.annotations.get("provenance") == "star_unpack"
+        ):
+            self._flatten_star_unpack(expr.args[0].value, parts)
+            parts.append(expr.args[1].value)
+        else:
+            parts.append(expr)
 
     def _struct_call(self, name: str, args: list[TArg]) -> str:
         if name in BUILTIN_STRUCTS and name not in self.struct_fields:

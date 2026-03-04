@@ -105,6 +105,34 @@ def f(xs: list[int]) -> list[int]:
 Repeat(xs, 3)
 ---
 
+=== star unpacking two starred
+def f(a: list[int], b: list[int]) -> list[int]:
+    return [*a, *b]
+---
+Concat(a, b)
+---
+
+=== star unpacking starred then element
+def f(xs: list[int], y: int) -> list[int]:
+    return [*xs, y]
+---
+Concat(xs, [y])
+---
+
+=== star unpacking element then starred
+def f(x: int, rest: list[int]) -> list[int]:
+    return [x, *rest]
+---
+Concat([x], rest)
+---
+
+=== star unpacking element starred element
+def f(x: int, middle: list[int], y: int) -> list[int]:
+    return [x, *middle, y]
+---
+Concat(Concat([x], middle), [y])
+---
+
 === dict get no default
 def f(d: dict[str, int], k: str) -> int | None:
     return d.get(k)

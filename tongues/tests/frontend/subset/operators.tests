@@ -520,6 +520,34 @@ def f(a: list[int], b: list[int]) -> list[int]:
 ok
 ---
 
+=== star unpacking two starred
+def f(a: list[int], b: list[int]) -> list[int]:
+    return [*a, *b]
+---
+ok
+---
+
+=== star unpacking element then starred
+def f(x: int, rest: list[int]) -> list[int]:
+    return [x, *rest]
+---
+ok
+---
+
+=== star unpacking starred then element
+def f(xs: list[int], y: int) -> list[int]:
+    return [*xs, y]
+---
+ok
+---
+
+=== star unpacking element starred element
+def f(x: int, middle: list[int], y: int) -> list[int]:
+    return [x, *middle, y]
+---
+ok
+---
+
 === indexing allowed
 def f(xs: list[int]) -> int:
     return xs[0]
