@@ -164,7 +164,6 @@ TAYTSH_KEYWORDS: set[str] = {
 }
 
 
-
 def _safe_name(name: str) -> str:
     """Rename if name collides with a Taytsh keyword."""
     if name in TAYTSH_KEYWORDS:
@@ -750,7 +749,6 @@ class _LowerCtx:
         self.class_bases: dict[str, list[str]] = class_bases
         self.errors: list[LoweringError] = []
         self.isinstance_temp_counter: int = 0
-        self.constant_types: dict[str, TypeNode] = {}
         self.comp_counter: int = 0
         self.pycheck_result: PycheckResult = pycheck_result
         self.class_nodes: dict[str, ASTNode] = {}
@@ -5887,7 +5885,6 @@ def _build_class_constants(class_node: ASTNode, ctx: _LowerCtx) -> list[TModuleI
                         value = _lower_expr(value_node, _Env(), ctx)
                         const_name = class_name + "_" + fname
                         result.append(TLetStmt(pos, const_name, ttype, value, {}))
-                        ctx.constant_types[const_name] = val_type
         elif _is_ast(item, "AnnAssign"):
             target = get_node(item, "target")
             if _is_ast(target, "Name"):
@@ -5913,7 +5910,6 @@ def _build_class_constants(class_node: ASTNode, ctx: _LowerCtx) -> list[TModuleI
                     value = _lower_expr(value_node, _Env(), ctx)
                     const_name = class_name + "_" + fname
                     result.append(TLetStmt(pos, const_name, ttype, value, {}))
-                    ctx.constant_types[const_name] = c_type_dict
     return result
 
 
@@ -5956,7 +5952,6 @@ def _build_module_constant(
                         val_type = PrimitiveType("error")
                     ttype = _typenode_to_ttype(pos, val_type)
                     value = _lower_expr(value_node, _Env(), ctx)
-                    ctx.constant_types[name] = val_type
                     return TLetStmt(pos, name, ttype, value, {})
     elif _is_ast(node, "AnnAssign"):
         target = get_node(node, "target")
@@ -5981,7 +5976,6 @@ def _build_module_constant(
                 ttype = _typenode_to_ttype(pos, type_dict)
                 value_node = get_node(node, "value")
                 value = _lower_expr(value_node, _Env(), ctx)
-                ctx.constant_types[name] = type_dict
                 return TLetStmt(pos, name, ttype, value, {})
     return None
 
