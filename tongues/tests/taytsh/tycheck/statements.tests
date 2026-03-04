@@ -117,24 +117,28 @@ ok
 fn Main() -> void {
     let xs: list[int] = [1, 2, 3]
     for i, x in xs {
-        let idx: int = i
-        let val: int = x
+        reveal_type(i)
+        reveal_type(x)
     }
 }
 ---
 ok
+reveal:4=int
+reveal:5=int
 ---
 
 === for over list of tuples two vars destructures
 fn Main() -> void {
     let pairs: list[(string, int)] = [("a", 1), ("b", 2)]
     for s, n in pairs {
-        let name: string = s
-        let val: int = n
+        reveal_type(s)
+        reveal_type(n)
     }
 }
 ---
 ok
+reveal:4=string
+reveal:5=int
 ---
 
 === for over list of tuples single var
@@ -153,34 +157,38 @@ ok
 fn Main() -> void {
     let m: map[string, int] = {"a": 1}
     for k, v in m {
-        let key: string = k
-        let val: int = v
+        reveal_type(k)
+        reveal_type(v)
     }
 }
 ---
 ok
+reveal:4=string
+reveal:5=int
 ---
 
 === for over map single var yields key
 fn Main() -> void {
     let m: map[string, int] = {"a": 1}
     for k in m {
-        let key: string = k
+        reveal_type(k)
     }
 }
 ---
 ok
+reveal:4=string
 ---
 
 === for over string
 fn Main() -> void {
     let s: string = "hello"
     for ch in s {
-        let c: rune = ch
+        reveal_type(ch)
     }
 }
 ---
 ok
+reveal:4=rune
 ---
 
 === for over string with index
@@ -199,11 +207,12 @@ ok
 fn Main() -> void {
     let data: bytes = b"\x01\x02"
     for b in data {
-        let val: byte = b
+        reveal_type(b)
     }
 }
 ---
 ok
+reveal:4=byte
 ---
 
 === for over bytes with index
@@ -222,11 +231,12 @@ ok
 fn Main() -> void {
     let s: set[int] = {1, 2, 3}
     for x in s {
-        let val: int = x
+        reveal_type(x)
     }
 }
 ---
 ok
+reveal:4=int
 ---
 
 === for over set two variables rejected
@@ -611,14 +621,16 @@ error: cannot assign
 === chained nil checks narrow both
 fn Foo(x: int?, y: string?) -> void {
     if x != nil && y != nil {
-        let a: int = x
-        let b: string = y
+        reveal_type(x)
+        reveal_type(y)
     }
 }
 fn Main() -> void {
 }
 ---
 ok
+reveal:3=int
+reveal:4=string
 ---
 
 === for over list of optionals

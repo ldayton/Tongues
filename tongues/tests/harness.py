@@ -1033,10 +1033,11 @@ def run_tycheck(source: str) -> PhaseResult:
         )
     try:
         signal.alarm(PARSE_TIMEOUT)
-        errors = taytsh_check_fn(source)
+        module = taytsh_parse(source)
+        errors, checker = check_with_info(module)
         if errors:
             return PhaseResult(errors=[str(e) for e in errors])
-        return PhaseResult()
+        return PhaseResult(reveals=checker.reveals)
     except Exception as e:
         return PhaseResult(errors=[str(e)])
     finally:

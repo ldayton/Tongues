@@ -1,0 +1,60 @@
+=== reveal_type int
+fn Main() -> void {
+    let x: int = 42
+    reveal_type(x)
+}
+---
+ok
+reveal:3=int
+---
+
+=== reveal_type string
+fn Main() -> void {
+    let s: string = "hello"
+    reveal_type(s)
+}
+---
+ok
+reveal:3=string
+---
+
+=== reveal_type optional
+fn Main() -> void {
+    let x: int? = nil
+    reveal_type(x)
+}
+---
+ok
+reveal:3=int | nil
+---
+
+=== reveal_type list
+fn Main() -> void {
+    let xs: list[int] = []
+    reveal_type(xs)
+}
+---
+ok
+reveal:3=list[int]
+---
+
+=== reveal_type multiple
+fn Main() -> void {
+    let x: int = 1
+    let y: string = "hi"
+    reveal_type(x)
+    reveal_type(y)
+}
+---
+ok
+reveal:4=int
+reveal:5=string
+---
+
+=== reveal_type wrong arg count
+fn Main() -> void {
+    reveal_type(1, 2)
+}
+---
+error:reveal_type takes exactly 1 argument
+---

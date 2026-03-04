@@ -1116,6 +1116,7 @@ class Checker:
         self._declared: dict[str, Type] = {}
         self.expr_types: dict[tuple[int, int], Type] = {}
         self.bool_facts: dict[str, TExpr] = {}
+        self.reveals: list[tuple[int, str]] = []
 
     def error(self, msg: str, pos: Pos) -> None:
         self.errors.append(CheckError(msg, pos.line, pos.col, pos.source_file))
@@ -3003,6 +3004,14 @@ class Checker:
         return None
 
     def check_call(self, expr: TCall, expected: Type | None) -> Type | None:
+        if isinstance(expr.func, TVar) and expr.func.name == "reveal_type":
+            if len(expr.args) != 1:
+                self.error("reveal_type takes exactly 1 argument", expr.pos)
+                return VOID_T
+            arg_type = self.check_expr(expr.args[0].value, None)
+            if arg_type is not None:
+                self.reveals.append((expr.pos.line, type_name(arg_type)))
+            return VOID_T
         # Struct/interface constructor and builtin dispatch
         if isinstance(expr.func, TVar):
             func_name = expr.func.name
