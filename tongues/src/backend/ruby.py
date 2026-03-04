@@ -2264,7 +2264,20 @@ class _RubyEmitter(Emitter):
                         + self._fn_lit_block_form(key_val)
                     )
             return self._a(args, 0) + ".sort"
+        if name == "RangeList":
+            start = args[0].value
+            end = self._expr(args[1].value)
+            step = args[2].value
+            is_zero_start = isinstance(start, TIntLit) and start.value == 0
+            is_one_step = isinstance(step, TIntLit) and step.value == 1
+            if is_one_step:
+                s = self._expr(start) if not is_zero_start else "0"
+                return "(" + s + "..." + end + ").to_a"
+            s = self._expr(start)
+            return "(" + s + "..." + end + ").step(" + self._expr(step) + ").to_a"
         if name == "ListFrom":
+            if self._is_bytes_type(args[0].value):
+                return self._a(args, 0) + ".bytes"
             return self._a(args, 0) + ".dup"
         if name == "Reversed":
             return self._a(args, 0) + ".reverse"

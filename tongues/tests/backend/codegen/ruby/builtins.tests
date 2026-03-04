@@ -48,5 +48,14 @@ q = -7 / 2
 === PythonMod negative dividend
 r = -7 % 2
 
+=== RangeList
+xs = (0...5).to_a
+
+=== RangeList with step
+xs = (0...10).step(2).to_a
+
+=== ListFrom bytes
+xs = data.bytes
+
 === IsNil check
 x.nil?

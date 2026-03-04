@@ -1775,6 +1775,25 @@ class _PythonEmitter(Emitter):
                         + ")"
                     )
             return "sorted(" + self._a(args, 0) + ")"
+        if name == "RangeList":
+            start = args[0].value
+            end = self._a(args, 1)
+            step = args[2].value
+            is_zero_start = isinstance(start, TIntLit) and start.value == 0
+            is_one_step = isinstance(step, TIntLit) and step.value == 1
+            if is_zero_start and is_one_step:
+                return "list(range(" + end + "))"
+            if is_one_step:
+                return "list(range(" + self._a(args, 0) + ", " + end + "))"
+            return (
+                "list(range("
+                + self._a(args, 0)
+                + ", "
+                + end
+                + ", "
+                + self._a(args, 2)
+                + "))"
+            )
         if name == "ListFrom":
             return "list(" + self._a(args, 0) + ")"
         if name == "Reversed":

@@ -209,3 +209,31 @@ def f(xs: list[int]) -> list[int]:
 ---
 ListFrom(xs)
 ---
+
+=== list from bytes
+def f(data: bytes) -> list[int]:
+    return list(data)
+---
+ListFrom(data)
+---
+
+=== list from range
+def f(n: int) -> list[int]:
+    return list(range(n))
+---
+RangeList(0, n, 1)
+---
+
+=== list from range start stop
+def f(a: int, b: int) -> list[int]:
+    return list(range(a, b))
+---
+RangeList(a, b, 1)
+---
+
+=== list from range start stop step
+def f(a: int, b: int, c: int) -> list[int]:
+    return list(range(a, b, c))
+---
+RangeList(a, b, c)
+---

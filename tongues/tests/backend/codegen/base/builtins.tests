@@ -103,6 +103,25 @@ fn Main() -> void {
     WritelnOut(ToString(r))
 }
 
+=== RangeList
+fn Main() -> void {
+    let xs: list[int] = RangeList(0, 5, 1)
+    WritelnOut(ToString(Len(xs)))
+}
+
+=== RangeList with step
+fn Main() -> void {
+    let xs: list[int] = RangeList(0, 10, 2)
+    WritelnOut(ToString(Len(xs)))
+}
+
+=== ListFrom bytes
+fn Main() -> void {
+    let data: bytes = Bytes(3)
+    let xs: list[int] = ListFrom(data)
+    WritelnOut(ToString(Len(xs)))
+}
+
 === IsNil check
 fn Main() -> void {
     let x: int? = nil

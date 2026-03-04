@@ -47,5 +47,14 @@ my $q = POSIX::floor(-7 / 2);
 === PythonMod negative dividend
 my $r = -7 - POSIX::floor(-7 / 2) * 2;
 
+=== RangeList
+my $xs = [0..4];
+
+=== RangeList with step
+my $xs = [map { 0 + $_ * 2 } 0 .. int((10 - 0 - 1) / 2)];
+
+=== ListFrom bytes
+my $xs = [unpack('C*', $data)];
+
 === IsNil check
 !defined($x)
