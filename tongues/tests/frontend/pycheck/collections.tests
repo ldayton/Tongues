@@ -5,11 +5,11 @@ def f(xs: list[int]) -> None:
 ok
 ---
 
-=== list extend correct type allowed
+=== list extend rejected
 def f(xs: list[int]) -> None:
     xs.extend([1, 2, 3])
 ---
-ok
+error: method
 ---
 
 === list insert correct type allowed
@@ -161,11 +161,11 @@ def f(xs: list[int]) -> None:
 error: type
 ---
 
-=== list extend wrong type not allowed
+=== list extend wrong type also rejected
 def f(xs: list[int]) -> None:
     xs.extend(["a", "b"])
 ---
-error: type
+error: method
 ---
 
 === list insert wrong type not allowed
@@ -316,7 +316,7 @@ def f() -> list[Stmt]:
 ok
 ---
 
-=== list with base annotation extend with base type
+=== list with base annotation extend rejected
 class Stmt:
     pass
 class Assign(Stmt):
@@ -328,10 +328,10 @@ def f() -> list[Stmt]:
     xs.extend(get_stmts())
     return xs
 ---
-ok
+error: method
 ---
 
-=== unannotated list literal extend with sibling subclass fails
+=== unannotated list literal extend rejected
 class Stmt:
     pass
 class Assign(Stmt):
@@ -343,7 +343,7 @@ def f() -> list[Stmt]:
     xs.extend(get_stmts())
     return xs
 ---
-error: assign
+error: method
 ---
 
 === list of union type accepts elements from both branches
