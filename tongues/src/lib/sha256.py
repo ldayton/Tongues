@@ -113,16 +113,13 @@ def _lsig1(x: int) -> int:
 
 def _compress(state: list[int], block: bytes) -> list[int]:
     w: list[int] = []
-    i: int = 0
-    while i < 16:
+    for i in range(16):
         j: int = i * 4
         w.append(
             (block[j] << 24) | (block[j + 1] << 16) | (block[j + 2] << 8) | block[j + 3]
         )
-        i += 1
-    while i < 64:
+    for i in range(16, 64):
         w.append((_lsig1(w[i - 2]) + w[i - 7] + _lsig0(w[i - 15]) + w[i - 16]) & _MASK)
-        i += 1
     a: int = state[0]
     b: int = state[1]
     c: int = state[2]
@@ -131,8 +128,7 @@ def _compress(state: list[int], block: bytes) -> list[int]:
     f: int = state[5]
     g: int = state[6]
     h: int = state[7]
-    i = 0
-    while i < 64:
+    for i in range(64):
         t1: int = (h + _sigma1(e) + _ch(e, f, g) + _K[i] + w[i]) & _MASK
         t2: int = (_sigma0(a) + _maj(a, b, c)) & _MASK
         h = g
@@ -143,7 +139,6 @@ def _compress(state: list[int], block: bytes) -> list[int]:
         c = b
         b = a
         a = (t1 + t2) & _MASK
-        i += 1
     return [
         (state[0] + a) & _MASK,
         (state[1] + b) & _MASK,
@@ -160,17 +155,13 @@ def _pad(data: bytes) -> bytes:
     n: int = len(data)
     bit_len: int = n * 8
     buf: list[int] = []
-    i: int = 0
-    while i < n:
+    for i in range(n):
         buf.append(data[i])
-        i += 1
     buf.append(0x80)
     while len(buf) % 64 != 56:
         buf.append(0)
-    i = 56
-    while i >= 0:
+    for i in range(56, -1, -8):
         buf.append((bit_len >> i) & 0xFF)
-        i -= 8
     return bytes(buf)
 
 
@@ -178,19 +169,14 @@ def sha256_bytes(data: bytes) -> bytes:
     """Return the SHA-256 digest as 32 raw bytes."""
     padded: bytes = _pad(data)
     state: list[int] = [_H[0], _H[1], _H[2], _H[3], _H[4], _H[5], _H[6], _H[7]]
-    i: int = 0
-    while i < len(padded):
+    for i in range(0, len(padded), 64):
         state = _compress(state, padded[i : i + 64])
-        i += 64
     out: list[int] = []
-    j: int = 0
-    while j < 8:
-        val: int = state[j]
+    for val in state:
         out.append((val >> 24) & 0xFF)
         out.append((val >> 16) & 0xFF)
         out.append((val >> 8) & 0xFF)
         out.append(val & 0xFF)
-        j += 1
     return bytes(out)
 
 
@@ -198,10 +184,8 @@ def sha256(data: bytes) -> str:
     """Return the SHA-256 hex digest of data."""
     raw: bytes = sha256_bytes(data)
     parts: list[str] = []
-    i: int = 0
-    while i < len(raw):
+    for i in range(len(raw)):
         b: int = raw[i]
         parts.append(_HEX[b >> 4])
         parts.append(_HEX[b & 0x0F])
-        i += 1
     return "".join(parts)

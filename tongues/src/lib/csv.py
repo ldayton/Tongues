@@ -140,27 +140,19 @@ def csv_write_tsv(records: list[list[str]]) -> str:
 
 def _write(records: list[list[str]], sep: str) -> str:
     parts: list[str] = []
-    i: int = 0
-    while i < len(records):
-        record: list[str] = records[i]
-        j: int = 0
-        while j < len(record):
+    for record in records:
+        for j, field in enumerate(record):
             if j > 0:
                 parts.append(sep)
-            parts.append(_quote_field(record[j], sep))
-            j += 1
+            parts.append(_quote_field(field, sep))
         parts.append("\n")
-        i += 1
     return "".join(parts)
 
 
 def _needs_quoting(field: str, sep: str) -> bool:
-    i: int = 0
-    while i < len(field):
-        ch: str = field[i]
+    for ch in field:
         if ch == sep or ch == '"' or ch == "\n" or ch == "\r":
             return True
-        i += 1
     return False
 
 
@@ -168,13 +160,10 @@ def _quote_field(field: str, sep: str) -> str:
     if not _needs_quoting(field, sep):
         return field
     buf: list[str] = ['"']
-    i: int = 0
-    while i < len(field):
-        ch: str = field[i]
+    for ch in field:
         if ch == '"':
             buf.append('""')
         else:
             buf.append(ch)
-        i += 1
     buf.append('"')
     return "".join(buf)
