@@ -1,0 +1,9 @@
+=== type alias is transparent in lowering
+type Items = list[int]
+def f(x: Items) -> Items:
+    return x
+---
+fn f(x: list[int]) -> list[int] {
+    return x
+}
+---

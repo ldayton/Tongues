@@ -1,0 +1,46 @@
+=== type alias with list
+type Items = list[int]
+def f(x: Items) -> Items:
+    return x
+---
+ok
+---
+
+=== type alias with tuple
+type Pair = tuple[str, int]
+def f() -> Pair:
+    return ("hi", 1)
+---
+ok
+---
+
+=== type alias with union
+type Result = int | str
+def f(x: Result) -> Result:
+    return x
+---
+ok
+---
+
+=== type alias simple name
+type Name = str
+def f(x: Name) -> Name:
+    return x
+---
+ok
+---
+
+=== generic type alias rejected
+type Items[T] = list[T]
+def f() -> None:
+    pass
+---
+error: generic type alias
+---
+
+=== type alias inside function rejected
+def f() -> None:
+    type X = int
+---
+error: module level
+---

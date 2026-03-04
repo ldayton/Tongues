@@ -1,0 +1,31 @@
+=== alias in parameter and return position
+type Items = list[int]
+def f(x: Items) -> Items:
+    return x
+---
+ok
+---
+
+=== alias for tuple
+type Pair = tuple[str, int]
+def f() -> Pair:
+    return ("hi", 1)
+---
+ok
+---
+
+=== alias for union
+type Result = int | str
+def f(x: Result) -> Result:
+    return x
+---
+ok
+---
+
+=== alias type mismatch caught
+type Items = list[int]
+def f(x: str) -> Items:
+    return x
+---
+error: type
+---
