@@ -341,6 +341,121 @@ def test_heapify_100() -> None:
     assert data[0] == 1
 
 
+# -- Two-element heap (single-child sift_down path) --
+
+
+def test_two_elements() -> None:
+    h: list[int] = []
+    push(h, 2)
+    push(h, 1)
+    assert _is_min_heap(h)
+    assert pop(h) == 1
+    assert _is_min_heap(h)
+    assert pop(h) == 2
+
+
+def test_two_elements_already_ordered() -> None:
+    h: list[int] = []
+    push(h, 1)
+    push(h, 2)
+    assert pop(h) == 1
+    assert _is_min_heap(h)
+    assert pop(h) == 2
+
+
+# -- Invariant holds after every intermediate pop --
+
+
+def test_invariant_after_each_pop() -> None:
+    h: list[int] = [9, 1, 7, 3, 5, 2, 8, 4, 6, 0]
+    heapify(h)
+    while len(h) > 0:
+        assert _is_min_heap(h)
+        pop(h)
+    assert _is_min_heap(h)
+
+
+# -- Interleaved push/pop --
+
+
+def test_interleaved() -> None:
+    h: list[int] = []
+    push(h, 5)
+    push(h, 3)
+    assert pop(h) == 3
+    push(h, 7)
+    push(h, 1)
+    assert pop(h) == 1
+    assert pop(h) == 5
+    push(h, 2)
+    push(h, 4)
+    assert pop(h) == 2
+    assert pop(h) == 4
+    assert pop(h) == 7
+    assert size(h) == 0
+
+
+# -- All-same values --
+
+
+def test_all_same() -> None:
+    h: list[int] = []
+    i: int = 0
+    while i < 10:
+        push(h, 42)
+        i += 1
+    assert _is_min_heap(h)
+    while len(h) > 0:
+        assert pop(h) == 42
+
+
+# -- Extreme values --
+
+
+def test_extreme_values() -> None:
+    h: list[int] = []
+    push(h, 2147483647)
+    push(h, -2147483648)
+    push(h, 0)
+    assert pop(h) == -2147483648
+    assert pop(h) == 0
+    assert pop(h) == 2147483647
+
+
+# -- push_pop / replace size invariants --
+
+
+def test_push_pop_size_unchanged() -> None:
+    h: list[int] = [1, 3, 5]
+    heapify(h)
+    push_pop(h, 2)
+    assert size(h) == 3
+    assert _is_min_heap(h)
+
+
+def test_replace_size_unchanged() -> None:
+    h: list[int] = [1, 3, 5]
+    heapify(h)
+    replace(h, 2)
+    assert size(h) == 3
+    assert _is_min_heap(h)
+
+
+# -- heapify idempotent --
+
+
+def test_heapify_idempotent() -> None:
+    h: list[int] = [5, 3, 7, 1, 9, 2]
+    heapify(h)
+    copy: list[int] = []
+    i: int = 0
+    while i < len(h):
+        copy.append(h[i])
+        i += 1
+    heapify(h)
+    assert h == copy
+
+
 def main() -> int:
     passed: int = 0
     failed: int = 0
@@ -378,6 +493,15 @@ def main() -> int:
         ("test_size_after_operations", test_size_after_operations),
         ("test_100_elements", test_100_elements),
         ("test_heapify_100", test_heapify_100),
+        ("test_two_elements", test_two_elements),
+        ("test_two_elements_already_ordered", test_two_elements_already_ordered),
+        ("test_invariant_after_each_pop", test_invariant_after_each_pop),
+        ("test_interleaved", test_interleaved),
+        ("test_all_same", test_all_same),
+        ("test_extreme_values", test_extreme_values),
+        ("test_push_pop_size_unchanged", test_push_pop_size_unchanged),
+        ("test_replace_size_unchanged", test_replace_size_unchanged),
+        ("test_heapify_idempotent", test_heapify_idempotent),
     ]
     for name, fn in tests:
         try:
