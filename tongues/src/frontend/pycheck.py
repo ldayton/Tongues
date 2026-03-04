@@ -871,6 +871,8 @@ def _resolve_attr(
             return FuncType([obj_type], VOID_TYPE)
         if attr == "copy":
             return FuncType([], obj_type)
+        if attr == "clear":
+            return FuncType([], VOID_TYPE)
         if attr == "setdefault":
             return FuncType([key_t, val_t], val_t)
         if attr == "popitem":
@@ -897,6 +899,8 @@ def _resolve_attr(
             return FuncType([], obj_type)
         if attr == "update":
             return FuncType([obj_type], VOID_TYPE)
+        if attr == "clear":
+            return FuncType([], VOID_TYPE)
         lineno = get_int(value_node, "lineno") if isinstance(value_node, dict) else 0
         ctx.result.add_error(lineno, 0, "unsupported method '" + attr + "' on set")
         return ANY_TYPE

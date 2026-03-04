@@ -217,6 +217,13 @@ def f(d: dict[str, int], k: str) -> int | None:
 d[k]
 ---
 
+=== dict clear
+def f(d: dict[str, int]) -> None:
+    d.clear()
+---
+d = Map()
+---
+
 === set add
 def f() -> set[int]:
     s: set[int] = set()
@@ -238,6 +245,13 @@ def f(s: set[int], v: int) -> bool:
     return v in s
 ---
 Contains(s, v)
+---
+
+=== set clear
+def f(s: set[int]) -> None:
+    s.clear()
+---
+s = Set()
 ---
 
 === string contains
