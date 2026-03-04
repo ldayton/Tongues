@@ -105,6 +105,7 @@ from .types import (
     NilLit,
     INT_TYPE,
     BOOL_TYPE,
+    STR_TYPE,  # noqa: F401 — used by _collection_element_type (added on main)
     VOID_TYPE,
     contains_any,
     JsonValue,
