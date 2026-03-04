@@ -155,18 +155,18 @@ def f() -> None:
 error: del
 ---
 
-=== del from list not allowed
+=== del from list allowed
 def f(xs: list[int]) -> None:
     del xs[0]
 ---
-error: del
+ok
 ---
 
-=== del from dict not allowed
+=== del from dict allowed
 def f(d: dict[str, int]) -> None:
     del d["key"]
 ---
-error: del
+ok
 ---
 
 === augmented add allowed

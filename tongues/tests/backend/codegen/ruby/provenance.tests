@@ -63,3 +63,9 @@ v = m.fetch("b", 0)
 
 === star unpack element starred element (raised)
 [x, *middle, y]
+
+=== del dict key (raised)
+d.delete("a")
+
+=== del list index (raised)
+xs.delete_at(0)

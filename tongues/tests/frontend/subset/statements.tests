@@ -556,6 +556,28 @@ async def f(xs: list[int]) -> int:
 error: async
 ---
 
+=== del variable not allowed
+def f() -> None:
+    x: int = 1
+    del x
+---
+error: del
+---
+
+=== del dict key allowed
+def f(d: dict[str, int]) -> None:
+    del d["key"]
+---
+ok
+---
+
+=== del list index allowed
+def f(xs: list[int]) -> None:
+    del xs[0]
+---
+ok
+---
+
 === async with not allowed
 async def f() -> None:
     async with open("file.txt") as f:

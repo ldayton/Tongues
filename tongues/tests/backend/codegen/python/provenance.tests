@@ -63,3 +63,9 @@ m.get("b", 0)
 
 === star unpack element starred element (raised)
 [x, *middle, y]
+
+=== del dict key (raised)
+del d["a"]
+
+=== del list index (raised)
+del xs[0]

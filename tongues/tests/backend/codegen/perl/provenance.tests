@@ -87,3 +87,9 @@ my $v = ($m->{"b"} // 0);
 
 === star unpack element starred element (raised)
 [ $x, @{$middle}, $y ]
+
+=== del dict key (raised)
+delete $d->{"a"};
+
+=== del list index (raised)
+splice(@{$xs}, 0, 1);

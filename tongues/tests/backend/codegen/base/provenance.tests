@@ -184,3 +184,17 @@ fn Main() -> void {
     let c: list[int] = @["provenance" = "star_unpack"] Concat(@["provenance" = "star_unpack"] Concat([x], middle), [y])
     WritelnOut(ToString(Len(c)))
 }
+
+=== del dict key (raised)
+fn Main() -> void {
+    let d: map[string, int] = {"a": 1, "b": 2}
+    @["provenance" = "del_subscript"] Delete(d, "a")
+    WritelnOut(ToString(Len(d)))
+}
+
+=== del list index (raised)
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    @["provenance" = "del_subscript"] RemoveAt(xs, 0)
+    WritelnOut(ToString(Len(xs)))
+}
