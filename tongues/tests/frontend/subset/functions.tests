@@ -139,11 +139,11 @@ f = lambda x: x + 1
 error: lambda
 ---
 
-=== lambda in expression
+=== lambda in key= expression allowed
 def f(items: list[int]) -> list[int]:
     return sorted(items, key=lambda x: -x)
 ---
-error: lambda
+ok
 ---
 
 === lambda as default not allowed

@@ -1796,6 +1796,20 @@ class _RubyEmitter(Emitter):
         result += "  " * self.indent + "}"
         return result
 
+    def _fn_lit_block_form(self, expr: TFnLit) -> str:
+        """Render TFnLit as a Ruby block: { |param| expr }."""
+        params = ", ".join(
+            self._decl_name(p.name, p.annotations)
+            for p in expr.params
+            if p.typ is not None
+        )
+        first = expr.body[0] if expr.body else None
+        if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(
+            first, TExprStmt
+        ):
+            return "{ |" + params + "| " + self._expr(first.expr) + " }"
+        return self._fn_lit(expr)
+
     # ── Calls ─────────────────────────────────────────────────
 
     def _call(self, expr: TCall) -> str:
@@ -2107,6 +2121,12 @@ class _RubyEmitter(Emitter):
                 return (
                     "strict_min_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
                 )
+            if len(args) == 2 and isinstance(args[1].value, TFnLit):
+                return (
+                    self._a(args, 0)
+                    + ".min_by "
+                    + self._fn_lit_block_form(args[1].value)
+                )
             if len(args) == 1:
                 return self._a(args, 0) + ".min"
             return "[" + self._a(args, 0) + ", " + self._a(args, 1) + "].min"
@@ -2118,6 +2138,12 @@ class _RubyEmitter(Emitter):
             ):
                 return (
                     "strict_max_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                )
+            if len(args) == 2 and isinstance(args[1].value, TFnLit):
+                return (
+                    self._a(args, 0)
+                    + ".max_by "
+                    + self._fn_lit_block_form(args[1].value)
                 )
             if len(args) == 1:
                 return self._a(args, 0) + ".max"
@@ -2145,6 +2171,12 @@ class _RubyEmitter(Emitter):
         if name == "Sorted":
             if self.strict_math and self._is_float_list(args[0].value):
                 return "strict_sorted_f64(" + self._a(args, 0) + ")"
+            if len(args) == 2 and isinstance(args[1].value, TFnLit):
+                return (
+                    self._a(args, 0)
+                    + ".sort_by "
+                    + self._fn_lit_block_form(args[1].value)
+                )
             return self._a(args, 0) + ".sort"
         if name == "ListFrom":
             return self._a(args, 0) + ".dup"

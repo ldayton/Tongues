@@ -106,3 +106,12 @@ c = a - b
 xs.each do |x|
   unique.add(x)
 end
+
+=== sorted with key lambda
+xs.sort_by { |x| x.abs }
+
+=== min with key lambda
+xs.min_by { |s| s.length }
+
+=== max with key lambda
+xs.max_by { |s| s.length }

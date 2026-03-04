@@ -1703,6 +1703,14 @@ class _PythonEmitter(Emitter):
                 return (
                     "strict_min_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
                 )
+            if len(args) == 2 and isinstance(args[1].value, TFnLit):
+                return (
+                    "min("
+                    + self._a(args, 0)
+                    + ", key="
+                    + self._fn_lit(args[1].value)
+                    + ")"
+                )
             if len(args) == 1:
                 return "min(" + self._a(args, 0) + ")"
             return "min(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
@@ -1714,6 +1722,14 @@ class _PythonEmitter(Emitter):
             ):
                 return (
                     "strict_max_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                )
+            if len(args) == 2 and isinstance(args[1].value, TFnLit):
+                return (
+                    "max("
+                    + self._a(args, 0)
+                    + ", key="
+                    + self._fn_lit(args[1].value)
+                    + ")"
                 )
             if len(args) == 1:
                 return "max(" + self._a(args, 0) + ")"
@@ -1744,6 +1760,14 @@ class _PythonEmitter(Emitter):
         if name == "Sorted":
             if self.strict_math and self._is_float_list(args[0].value):
                 return "strict_sorted_f64(" + self._a(args, 0) + ")"
+            if len(args) == 2 and isinstance(args[1].value, TFnLit):
+                return (
+                    "sorted("
+                    + self._a(args, 0)
+                    + ", key="
+                    + self._fn_lit(args[1].value)
+                    + ")"
+                )
             return "sorted(" + self._a(args, 0) + ")"
         if name == "ListFrom":
             return "list(" + self._a(args, 0) + ")"

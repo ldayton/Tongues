@@ -1817,6 +1817,25 @@ class _PerlEmitter(Emitter):
         lines.append("    " * self.indent + "}")
         return "\n".join(lines)
 
+    def _perl_key_sort_body(self, fn_lit: TFnLit, reverse: bool = False) -> str:
+        """Build Perl sort comparator from a key function TFnLit."""
+        first = fn_lit.body[0] if fn_lit.body else None
+        if not isinstance(first, TExprStmt):
+            return "$a <=> $b"
+        param_name = fn_lit.params[0].name if fn_lit.params else "x"
+        expr_a = self._perl_key_subst(first.expr, param_name, "$a")
+        expr_b = self._perl_key_subst(first.expr, param_name, "$b")
+        if reverse:
+            return expr_b + " <=> " + expr_a
+        return expr_a + " <=> " + expr_b
+
+    def _perl_key_subst(self, expr: TExpr, param_name: str, replacement: str) -> str:
+        """Render a TExpr with a variable name substituted."""
+        self.var_alias[param_name] = replacement
+        result = self._expr(expr)
+        del self.var_alias[param_name]
+        return result
+
     _PYTHON_BUILTINS: dict[str, str] = {
         "oct": "sub { sprintf('0o%o', $_[0]) }",
         "bin": "sub { sprintf('0b%b', $_[0]) }",
@@ -2426,6 +2445,9 @@ class _PerlEmitter(Emitter):
                 return (
                     "strict_min_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
                 )
+            if len(args) == 2 and isinstance(args[1].value, TFnLit):
+                key_body = self._perl_key_sort_body(args[1].value)
+                return "(sort { " + key_body + " } @{" + self._a(args, 0) + "})[0]"
             if len(args) == 1:
                 return "min(@{" + self._a(args, 0) + "})"
             return "min(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
@@ -2438,6 +2460,9 @@ class _PerlEmitter(Emitter):
                 return (
                     "strict_max_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
                 )
+            if len(args) == 2 and isinstance(args[1].value, TFnLit):
+                key_body = self._perl_key_sort_body(args[1].value, reverse=True)
+                return "(sort { " + key_body + " } @{" + self._a(args, 0) + "})[0]"
             if len(args) == 1:
                 return "max(@{" + self._a(args, 0) + "})"
             return "max(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
@@ -2488,6 +2513,9 @@ class _PerlEmitter(Emitter):
             if self.strict_math and self._is_float_list(sorted_arg):
                 return "strict_sorted_f64(" + self._a(args, 0) + ")"
             a = self._a(args, 0)
+            if len(args) == 2 and isinstance(args[1].value, TFnLit):
+                key_body = self._perl_key_sort_body(args[1].value)
+                return "[sort { " + key_body + " } @{" + a + "}]"
             if self._is_set_expr(sorted_arg):
                 return "[sort keys %{" + a + "}]"
             sorted_ann: str = sorted_arg.annotations.get("type", "")

@@ -89,6 +89,43 @@ def f(xs: list[int]) -> list[int]:
 Reversed(Sorted(xs))
 ---
 
+=== sorted with key lambda
+def f(xs: list[int]) -> list[int]:
+    return sorted(xs, key=lambda x: -x)
+---
+Sorted(xs, (x: int) -> int => -x)
+---
+
+=== sorted with key and reverse
+def f(xs: list[str]) -> list[str]:
+    return sorted(xs, key=len, reverse=True)
+---
+Reversed(Sorted(xs, (s: string) -> int => Len(s)))
+---
+
+=== min with key lambda
+def f(xs: list[tuple[str, int]]) -> tuple[str, int]:
+    return min(xs, key=lambda t: t[1])
+---
+Min(xs, (t: (string, int)) -> int => t.1)
+---
+
+=== max with key lambda
+def f(xs: list[str]) -> str:
+    return max(xs, key=lambda s: len(s))
+---
+Max(xs, (s: string) -> int => Len(s))
+---
+
+=== sorted with key named function
+def get_len(s: str) -> int:
+    return len(s)
+def f(xs: list[str]) -> list[str]:
+    return sorted(xs, key=get_len)
+---
+Sorted(xs, (s: string) -> int => Len(s))
+---
+
 === bool from int
 def f(n: int) -> bool:
     return bool(n)
