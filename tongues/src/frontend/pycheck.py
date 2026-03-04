@@ -2029,6 +2029,16 @@ def _validate_stmt(
     if t == "Match":
         _validate_match(stmt, env, func_info, ctx)
         return False
+    if t == "Delete":
+        for target in get_nodes(stmt, "targets"):
+            if _is_type(target, ["Subscript"]):
+                obj = get_node(target, "value")
+                slc = get_node(target, "slice")
+                if obj:
+                    _synth_expr(obj, env, ctx)
+                if slc:
+                    _synth_expr(slc, env, ctx)
+        return False
     if t == "FunctionDef":
         lineno = get_int(stmt, "lineno")
         ctx.result.add_error(lineno, 0, "nested function definitions are not allowed")
@@ -4417,6 +4427,14 @@ def run_pycheck(
                     while ei < len(result._errors):
                         result._errors[ei].source_file = stmt_sf
                         ei += 1
+                elif _is_type(stmt, ["Assign"]):
+                    val = get_node(stmt, "value")
+                    if val:
+                        _synth_expr(val, TypeEnv(), ctx)
+                elif _is_type(stmt, ["AnnAssign"]):
+                    val = get_node(stmt, "value")
+                    if val:
+                        _synth_expr(val, TypeEnv(), ctx)
     return result
 
 
