@@ -4248,6 +4248,8 @@ class Checker:
                     return tu
                 if isinstance(tu, SetT):
                     return ListT(kind="list", element=tu.element)
+                if type_eq(tu, BYTES_T):
+                    return ListT(kind="list", element=INT_T)
                 if tu.kind != TY_ERROR:
                     self.error("ListFrom requires list or set argument", pos)
             return None
