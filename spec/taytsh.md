@@ -1463,6 +1463,10 @@ Some Python patterns are desugared during lowering into simpler IR forms. The or
 | `negative_index`     | `x[Len(x) - 1]`                    | `x[-1]`                     |
 | `open_start`         | `xs[0:n]`                          | `xs[:n]`                    |
 | `open_end`           | `xs[n:Len(xs)]`                    | `xs[n:]`                    |
+| `partition`          | `Find`/ternary/slicing             | `s.partition(sep)`          |
+| `rpartition`         | `RFind`/ternary/slicing            | `s.rpartition(sep)`         |
+| `removeprefix`       | `StartsWith`/ternary/slicing       | `s.removeprefix(p)`         |
+| `removesuffix`       | `EndsWith`/ternary/slicing         | `s.removesuffix(p)`         |
 | `star_unpack`        | `Concat` chain                     | `[*a, x, *b]`               |
 | `del_subscript`      | `Delete(d, k)` / `RemoveAt(xs, i)` | `del d[k]` / `del xs[i]`    |
 

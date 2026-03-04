@@ -71,13 +71,13 @@ d.delete("a")
 xs.delete_at(0)
 
 === string partition (raised)
-return s.index(sep) || -1 >= 0 ? [s[0...s.index(sep) || -1], sep, s[s.index(sep) || -1 + sep.length...s.length]] : [s, "", ""]
+return s.partition(sep)
 
 === string rpartition (raised)
-return s.rindex(sep) || -1 >= 0 ? [s[0...s.rindex(sep) || -1], sep, s[s.rindex(sep) || -1 + sep.length...s.length]] : ["", "", s]
+return s.rpartition(sep)
 
 === string removeprefix (raised)
-return s.start_with?(p) ? s[p.length...s.length] : s
+return s.delete_prefix(p)
 
 === string removesuffix (raised)
-return s.end_with?(p) ? s[0...s.length - p.length] : s
+return s.delete_suffix(p)
