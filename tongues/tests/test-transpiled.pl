@@ -276,8 +276,8 @@ sub run_phase_tests ($test_dir, $phase_name, $cfg) {
             if ($phase_name =~ /^(pycheck|tycheck)$/ && !@{$phase_result->{errors}} && defined $phase_result->{data}) {
                 if (blessed($phase_result->{data}) && $phase_result->{data}->isa("JsonObject")) {
                     eval {
-                        my $reveals_arr = get_items(get_field($phase_result->{data}, "reveals"));
-                        $reveals = [map { [int(get_number(get_field($_, "line"))), get_string(get_field($_, "type"))] } @$reveals_arr];
+                        my $reveals_arr = json_get_items(json_get_field($phase_result->{data}, "reveals"));
+                        $reveals = [map { [int(json_get_number(json_get_field($_, "line"))), json_get_string(json_get_field($_, "type"))] } @$reveals_arr];
                     };
                 }
             }
