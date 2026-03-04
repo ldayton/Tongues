@@ -81,3 +81,6 @@ return s.removeprefix(p)
 
 === string removesuffix (raised)
 return s.removesuffix(p)
+
+=== isinstance with tuple of types (raised)
+return isinstance(v, (A, B))

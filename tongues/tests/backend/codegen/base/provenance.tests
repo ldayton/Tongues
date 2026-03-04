@@ -232,3 +232,11 @@ fn f(s: string, p: string) -> string {
 fn Main() -> void {
     WritelnOut(f("hello", "lo"))
 }
+
+=== isinstance with tuple of types (raised)
+fn f(v: A | B | C) -> bool {
+    return @["provenance" = "isinstance_tuple"] (IsType(v, "A") || IsType(v, "B"))
+}
+fn Main() -> void {
+    WritelnOut(ToString(f(A(0))))
+}

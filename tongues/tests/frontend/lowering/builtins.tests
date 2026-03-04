@@ -128,6 +128,23 @@ def f(n: Node) -> bool:
 Leaf
 ---
 
+=== isinstance with tuple of types
+from dataclasses import dataclass
+@dataclass
+class A:
+    x: int
+@dataclass
+class B:
+    y: str
+@dataclass
+class C:
+    z: float
+def f(v: A | B | C) -> bool:
+    return isinstance(v, (A, B))
+---
+IsType(v, "A") || IsType(v, "B")
+---
+
 === sum of list
 def f(xs: list[int]) -> int:
     return sum(xs)

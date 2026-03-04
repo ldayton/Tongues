@@ -152,6 +152,13 @@ def f(x: object) -> bool:
 ok
 ---
 
+=== isinstance with tuple of types allowed
+def f(x: object) -> bool:
+    return isinstance(x, (int, str))
+---
+ok
+---
+
 === range in for loop allowed
 def f() -> int:
     total: int = 0
