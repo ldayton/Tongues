@@ -2905,6 +2905,25 @@ def _validate_match(
                             cls_name, ctx.known_classes, sig_errors, 0, 0
                         )
                         case_env.narrow(subj_name, narrowed)
+            elif pattern and _is_type(pattern, ["MatchOr"]):
+                or_patterns = get_nodes(pattern, "patterns")
+                variants: list[TypeNode] = []
+                for op in or_patterns:
+                    if _is_type(op, ["MatchClass"]):
+                        op_cls = get_node(op, "cls")
+                        if op_cls and _is_type(op_cls, ["Name"]):
+                            op_name = get_str(op_cls, "id")
+                            if op_name:
+                                sig_errors2: list[TypeCollectError] = []
+                                vt = py_type_to_type_dict(
+                                    op_name, ctx.known_classes, sig_errors2, 0, 0
+                                )
+                                variants.append(vt)
+                if variants:
+                    if len(variants) == 1:
+                        case_env.narrow(subj_name, variants[0])
+                    else:
+                        case_env.narrow(subj_name, UnionType(variants))
         case_body = get_nodes(case, "body")
         _validate_stmts(case_body, case_env, func_info, ctx)
 

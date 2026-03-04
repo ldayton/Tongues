@@ -1,0 +1,48 @@
+=== sequence pattern rejected
+def f(x: list[int]) -> int:
+    match x:
+        case [a, b]:
+            return a + b
+        case _:
+            return 0
+---
+error: pattern
+---
+
+=== mapping pattern rejected
+def f(x: dict[str, int]) -> int:
+    match x:
+        case {"key": v}:
+            return v
+        case _:
+            return 0
+---
+error: pattern
+---
+
+=== star pattern rejected
+def f(x: list[int]) -> int:
+    match x:
+        case [first, *rest]:
+            return first
+        case _:
+            return 0
+---
+error: pattern
+---
+
+=== match with guard rejected
+class Node:
+    pass
+class Leaf(Node):
+    def __init__(self, val: int) -> None:
+        self.val = val
+def f(n: Node) -> int:
+    match n:
+        case Leaf() if n.val > 0:
+            return n.val
+        case _:
+            return 0
+---
+error: guard
+---

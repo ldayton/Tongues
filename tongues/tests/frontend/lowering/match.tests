@@ -1,0 +1,66 @@
+=== match on class hierarchy
+class Node:
+    pass
+class Leaf(Node):
+    def __init__(self, val: int) -> None:
+        self.val = val
+class Branch(Node):
+    def __init__(self, left: Node, right: Node) -> None:
+        self.left = left
+        self.right = right
+def f(n: Node) -> int:
+    match n:
+        case Leaf():
+            return n.val
+        case Branch():
+            return 0
+    return -1
+---
+match n {
+    case leaf: Leaf {
+---
+
+=== match with wildcard default
+class Node:
+    pass
+class Leaf(Node):
+    def __init__(self, val: int) -> None:
+        self.val = val
+class Branch(Node):
+    def __init__(self, left: Node, right: Node) -> None:
+        self.left = left
+        self.right = right
+def f(n: Node) -> int:
+    match n:
+        case Leaf():
+            return n.val
+        case _:
+            return 0
+---
+match n {
+    case leaf: Leaf {
+---
+
+=== match on optional with None
+def f(x: int | None) -> int:
+    match x:
+        case int():
+            return x
+        case None:
+            return 0
+---
+match x {
+    case nil {
+---
+
+=== match on union
+def f(x: int | str) -> str:
+    match x:
+        case int():
+            return str(x)
+        case str():
+            return x
+---
+match x {
+    case int0: int {
+---
