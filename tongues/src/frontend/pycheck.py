@@ -1364,6 +1364,8 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     if isinstance(obj_type, TupleType):
         if obj_type.variadic and obj_type.elements:
             return obj_type.elements[0]
+        if slc and _is_type(slc, ["Slice"]):
+            return obj_type
         if slc and _is_type(slc, ["Constant"]):
             _synth_expr(slc, env, ctx)
             slc_v = slc.get("value")
@@ -1383,6 +1385,8 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
                         + " out of bounds for tuple of length "
                         + str(len(obj_type.elements)),
                     )
+        if obj_type.elements:
+            return combine_types(obj_type.elements)
     return ANY_TYPE
 
 
@@ -1451,6 +1455,16 @@ def _synth_binop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         return lt
     if (lk == "int" or lk == "bool") and isinstance(rt, SliceType):
         return rt
+    # Tuple concatenation
+    if isinstance(lt, TupleType) and isinstance(rt, TupleType):
+        if op_type == "Add":
+            variadic = lt.variadic or rt.variadic
+            return TupleType(list(lt.elements) + list(rt.elements), variadic)
+    # Tuple * int
+    if isinstance(lt, TupleType) and (rk == "int" or rk == "bool"):
+        return TupleType(lt.elements, True)
+    if (lk == "int" or lk == "bool") and isinstance(rt, TupleType):
+        return TupleType(rt.elements, True)
     # Dict merge (|)
     if isinstance(lt, MapType) and isinstance(rt, MapType):
         if op_type == "BitOr":
@@ -2017,6 +2031,16 @@ def _validate_stmt(
     if t == "Match":
         _validate_match(stmt, env, func_info, ctx)
         return False
+    if t == "Delete":
+        for target in get_nodes(stmt, "targets"):
+            if _is_type(target, ["Subscript"]):
+                obj = get_node(target, "value")
+                slc = get_node(target, "slice")
+                if obj:
+                    _synth_expr(obj, env, ctx)
+                if slc:
+                    _synth_expr(slc, env, ctx)
+        return False
     if t == "FunctionDef":
         lineno = get_int(stmt, "lineno")
         ctx.result.add_error(lineno, 0, "nested function definitions are not allowed")
@@ -2291,6 +2315,22 @@ def _validate_ann_assign(
                     uid_jv = value.get("_uid") if isinstance(value, dict) else None
                     if isinstance(uid_jv, JInt):
                         ctx.result.expr_types[uid_jv.value] = ann_type
+                    if (
+                        isinstance(ann_type, MapType)
+                        and isinstance(value, dict)
+                        and _is_type(value, ["DictComp"])
+                    ):
+                        dc_val = get_node(value, "value")
+                        if dc_val:
+                            dc_val_uid = (
+                                dc_val.get("_uid") if isinstance(dc_val, dict) else None
+                            )
+                            if isinstance(dc_val_uid, JInt):
+                                dc_val_t = ctx.result.expr_types.get(dc_val_uid.value)
+                                if dc_val_t is not None and contains_any(dc_val_t):
+                                    ctx.result.expr_types[dc_val_uid.value] = (
+                                        ann_type.value
+                                    )
                 if not _is_assignable(val_type, ann_type, ctx.hier_result):
                     ctx.result.add_error(
                         lineno,
@@ -2847,6 +2887,9 @@ def _validate_assert(
     if _has_new_errors(ctx, err_snap):
         return
     _synth_expr(test, env, ctx)
+    msg = stmt.get("msg")
+    if isinstance(msg, JDict):
+        _synth_expr(msg.entries, env, ctx)
     dummy_else = env.copy()
     _extract_narrowing(test, env, dummy_else, ctx)
     narrow_id = _find_succ_narrow(ctx)
@@ -4424,6 +4467,14 @@ def run_pycheck(
                     while ei < len(result._errors):
                         result._errors[ei].source_file = stmt_sf
                         ei += 1
+                elif _is_type(stmt, ["Assign"]):
+                    val = get_node(stmt, "value")
+                    if val:
+                        _synth_expr(val, TypeEnv(), ctx)
+                elif _is_type(stmt, ["AnnAssign"]):
+                    val = get_node(stmt, "value")
+                    if val:
+                        _synth_expr(val, TypeEnv(), ctx)
     return result
 
 

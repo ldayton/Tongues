@@ -356,6 +356,22 @@ _PRIM_MAP: dict[str, str] = {
     "None": "void",
 }
 
+_BUILTIN_EXCEPTIONS: set[str] = {
+    "Exception",
+    "AssertionError",
+    "ValueError",
+    "TypeError",
+    "KeyError",
+    "IndexError",
+    "RuntimeError",
+    "StopIteration",
+    "ArithmeticError",
+    "OverflowError",
+    "ZeroDivisionError",
+    "Base64Error",
+    "JsonError",
+}
+
 
 def py_type_to_type_dict(
     py_type: str,
@@ -407,6 +423,9 @@ def py_type_to_type_dict(
     canonical = known_classes.get(s)
     if canonical is not None:
         return PointerType(StructRef(canonical))
+    # Builtin and lib exception classes
+    if s in _BUILTIN_EXCEPTIONS:
+        return PointerType(StructRef(s))
     errors.append(TypeCollectError(lineno, col, "unknown type '" + s + "'"))
     return InterfaceRef("any")
 

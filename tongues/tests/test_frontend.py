@@ -20,6 +20,7 @@ from tests.harness import (
     contains_normalized,
     discover_cli_tests,
     discover_specs,
+    emit_from_python,
     lower_to_taytsh,
     run_cli,
     run_fields,
@@ -186,3 +187,46 @@ def test_expr_coverage() -> None:
         assert covered.get(node_type, 0) > 0, (
             f"{node_type}: zero coverage ({totals[node_type]} instances)"
         )
+
+
+# ---------------------------------------------------------------------------
+# Regression tests for pycheck gaps exposed by fallback engine removal
+# ---------------------------------------------------------------------------
+
+
+def test_empty_set_in_dictcomp() -> None:
+    """Dict comp with set() value should infer map[int, set[int]], not map[int, string]."""
+    source = (
+        "def f(pairs: list[tuple[int, str]]) -> None:\n"
+        "    deps: dict[int, set[int]] = {idx: set() for idx, _ in pairs}\n"
+        "    _ = deps\n"
+    )
+    output, err = lower_to_taytsh(source)
+    assert err is None, f"lowering error: {err}"
+    assert output is not None
+    assert "map[int, string]" not in output, (
+        "dict comp value typed as string instead of set[int]"
+    )
+
+
+def test_tuple_full_slice() -> None:
+    """t[:] on a fixed tuple should return the tuple type, not the element type."""
+    source = (
+        "def f(t: tuple[int, int, int]) -> tuple[int, int, int]:\n    return t[:]\n"
+    )
+    out = run_pycheck(source)
+    assert not out.errors, f"unexpected errors: {out.errors}"
+
+
+def test_emit_stamp_uids() -> None:
+    """emit_from_python must stamp UIDs so pycheck types are available to lowering."""
+    source = (
+        "def main() -> None:\n"
+        "    s: str = 'hello'\n"
+        "    _ = s.strip()\n"
+        "if __name__ == '__main__':\n"
+        "    main()\n"
+    )
+    output, err = emit_from_python(source, "python")
+    assert err is None, f"emit error: {err}"
+    assert output is not None

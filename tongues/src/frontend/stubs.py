@@ -56,6 +56,11 @@ MODULE_FUNCS: dict[str, dict[str, FuncType]] = {
     "os": {
         "getenv": FuncType([_STR], OptionalType(_STR)),
     },
+    "base64": {
+        "b64encode": FuncType([SliceType(PrimitiveType("byte"))], _STR),
+        "b64decode": FuncType([_STR], SliceType(PrimitiveType("byte"))),
+        "b64decode_strict": FuncType([_STR], SliceType(PrimitiveType("byte"))),
+    },
 }
 
 # Stub type methods: STUB_METHODS[type_name][method] -> FuncType
