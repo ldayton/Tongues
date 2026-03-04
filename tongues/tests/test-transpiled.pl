@@ -472,6 +472,22 @@ sub run_app_tests ($test_dir) {
         my $stem = basename($test_file, ".py");
         my $source = _read_file($test_file);
         my $lib_names = find_lib_imports($source);
+        # Transitively resolve cross-lib imports
+        my %seen = map { $_ => 1 } @$lib_names;
+        my @queue = @$lib_names;
+        while (@queue) {
+            my $name = shift @queue;
+            my $lib_path = File::Spec->catfile($LIB_DIR, "$name.py");
+            next unless -f $lib_path;
+            my $deps = find_lib_imports(_read_file($lib_path));
+            for my $dep (@$deps) {
+                unless ($seen{$dep}) {
+                    $seen{$dep} = 1;
+                    push @$lib_names, $dep;
+                    push @queue, $dep;
+                }
+            }
+        }
         for my $target (@available) {
             my $test_id = "$stem" . "[$target]";
             my $result;

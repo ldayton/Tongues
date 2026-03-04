@@ -376,6 +376,21 @@ def run_app_tests(test_dir)
     stem = File.basename(test_file, ".py")
     source = File.read(test_file)
     lib_names = find_lib_imports(source)
+    # Transitively resolve cross-lib imports
+    seen = lib_names.to_a.dup
+    queue = lib_names.to_a.dup
+    until queue.empty?
+      name = queue.shift
+      lib_path = File.join(LIB_DIR, "#{name}.py")
+      next unless File.exist?(lib_path)
+      find_lib_imports(File.read(lib_path)).each do |dep|
+        unless seen.include?(dep)
+          seen << dep
+          queue << dep
+        end
+      end
+    end
+    lib_names = seen
     available.each do |target|
       test_id = "#{stem}[#{target}]"
       if lib_names.empty?
