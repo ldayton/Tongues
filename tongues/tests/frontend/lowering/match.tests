@@ -53,6 +53,28 @@ match x {
     case nil {
 ---
 
+=== match or pattern lowers all alternatives
+class Node:
+    pass
+class Add(Node):
+    def __init__(self) -> None:
+        self.result: int = 0
+class Sub(Node):
+    def __init__(self) -> None:
+        self.result: int = 0
+class Mul(Node):
+    pass
+def f(n: Node) -> int:
+    match n:
+        case Add() | Sub():
+            return n.result
+        case Mul():
+            return 0
+    return -1
+---
+case sub: Sub {
+---
+
 === match on union
 def f(x: int | str) -> str:
     match x:

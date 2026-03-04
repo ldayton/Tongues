@@ -31,6 +31,37 @@ def f(x: list[int]) -> int:
 error: pattern
 ---
 
+=== match subject expression validated
+def f(x: int) -> int:
+    match (lambda: x)():
+        case _:
+            return 0
+---
+error: lambda
+---
+
+=== literal value pattern rejected
+def f(x: int) -> int:
+    match x:
+        case 42:
+            return 1
+        case _:
+            return 0
+---
+error: pattern
+---
+
+=== boolean singleton pattern rejected
+def f(x: bool) -> int:
+    match x:
+        case True:
+            return 1
+        case False:
+            return 0
+---
+error: pattern
+---
+
 === match with guard rejected
 class Node:
     pass

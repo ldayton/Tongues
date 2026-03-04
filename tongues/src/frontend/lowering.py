@@ -5597,33 +5597,35 @@ def _lower_match(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                 nil_cases.append(TMatchCase(pos, TPatternNil(pos), case_body, {}))
         elif pt == "MatchOr":
             subs = get_nodes(pattern, "patterns")
-            # Use the first MatchClass alternative for the pattern
-            first_cls = ""
+            # Build union type for narrowing from all MatchClass alternatives
+            variant_types: list[TypeNode] = []
             for sub in subs:
                 if get_str(sub, "_type") == "MatchClass":
                     sub_cls = get_node(sub, "cls")
-                    first_cls = get_str(sub_cls, "id")
-                    break
-            if first_cls:
-                type_name = first_cls
-                binding_name = _match_binding_name(type_name, env)
-                env.declared.add(binding_name)
-                # Build union type for narrowing from all MatchClass alternatives
-                variant_types: list[TypeNode] = []
-                for sub in subs:
-                    if get_str(sub, "_type") == "MatchClass":
-                        sub_cls = get_node(sub, "cls")
-                        vname = get_str(sub_cls, "id")
-                        variant_types.append(PointerType(StructRef(vname)))
-                case_env = env.copy()
-                if subj_name and variant_types:
-                    if len(variant_types) == 1:
-                        case_env.var_types[subj_name] = variant_types[0]
-                    else:
-                        case_env.var_types[subj_name] = UnionType(variant_types)
-                case_body = _lower_stmts(case_body_nodes, case_env, ctx)
-                tp = TPatternType(pos, binding_name, TIdentType(pos, type_name), {})
-                type_cases.append(TMatchCase(pos, tp, case_body, {}))
+                    vname = get_str(sub_cls, "id")
+                    variant_types.append(PointerType(StructRef(vname)))
+            case_env = env.copy()
+            if subj_name and variant_types:
+                if len(variant_types) == 1:
+                    case_env.var_types[subj_name] = variant_types[0]
+                else:
+                    case_env.var_types[subj_name] = UnionType(variant_types)
+            case_body = _lower_stmts(case_body_nodes, case_env, ctx)
+            # Emit one case arm per MatchClass alternative
+            for sub in subs:
+                if get_str(sub, "_type") == "MatchClass":
+                    sub_cls = get_node(sub, "cls")
+                    type_name = get_str(sub_cls, "id")
+                    binding_name = _match_binding_name(type_name, env)
+                    env.declared.add(binding_name)
+                    tp = TPatternType(pos, binding_name, TIdentType(pos, type_name), {})
+                    type_cases.append(TMatchCase(pos, tp, case_body, {}))
+                elif get_str(sub, "_type") == "MatchSingleton":
+                    v = sub.get("value")
+                    if isinstance(v, JNull):
+                        nil_cases.append(
+                            TMatchCase(pos, TPatternNil(pos), case_body, {})
+                        )
     if default is None:
         default = TDefault(pos, None, [], {})
     cases: list[TMatchCase] = nil_cases + type_cases

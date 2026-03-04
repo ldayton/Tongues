@@ -907,6 +907,9 @@ class Verifier:
 
     def visit_Match(self, node: ASTNode) -> None:
         """Validate match/case patterns."""
+        subject = get_node(node, "subject")
+        if subject:
+            self.visit(subject)
         cases = get_nodes(node, "cases")
         for case_node in cases:
             if _has_present(case_node, "guard"):
@@ -925,7 +928,14 @@ class Verifier:
             return
         if pt == "MatchAs":
             return
-        if pt == "MatchValue" or pt == "MatchSingleton":
+        if pt == "MatchSingleton":
+            v = pattern.get("value")
+            if isinstance(v, JNull):
+                return
+            self.error(pattern, "pattern", "unsupported pattern value")
+            return
+        if pt == "MatchValue":
+            self.error(pattern, "pattern", "unsupported pattern value")
             return
         if pt == "MatchOr":
             subs = get_nodes(pattern, "patterns")

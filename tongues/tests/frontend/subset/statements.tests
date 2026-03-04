@@ -308,7 +308,7 @@ def f(s: str) -> int:
 ok
 ---
 
-=== match case with literals allowed
+=== match case with literals rejected
 def f(x: int) -> str:
     match x:
         case 1:
@@ -318,7 +318,7 @@ def f(x: int) -> str:
         case _:
             return "other"
 ---
-ok
+error: pattern
 ---
 
 === match case with type patterns allowed
@@ -343,7 +343,7 @@ def f(x: int | str) -> str:
 ok
 ---
 
-=== match case with or pattern allowed
+=== match case with or literal pattern rejected
 def f(x: int) -> str:
     match x:
         case 1 | 2 | 3:
@@ -351,7 +351,7 @@ def f(x: int) -> str:
         case _:
             return "large"
 ---
-ok
+error: pattern
 ---
 
 === match case with guard rejected
@@ -382,7 +382,7 @@ def f(xs: list[int]) -> int:
 error: pattern
 ---
 
-=== nested match allowed
+=== nested match with literals rejected
 def f(x: int, y: int) -> str:
     match x:
         case 1:
@@ -394,7 +394,7 @@ def f(x: int, y: int) -> str:
         case _:
             return "other"
 ---
-ok
+error: pattern
 ---
 
 === match in loop with guard rejected
