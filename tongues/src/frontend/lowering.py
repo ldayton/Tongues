@@ -919,6 +919,21 @@ def _infer_synthetic_type(node: ASTNode, env: _Env) -> TypeNode:
     return VOID_TYPE
 
 
+def _is_empty_collection_node(node: ASTNode) -> bool:
+    """Check if node is an empty collection literal or no-arg constructor call."""
+    t = get_str(node, "_type")
+    if t in ("Dict", "Set", "List"):
+        return True
+    if t == "Call":
+        func = get_node(node, "func")
+        if func and get_str(func, "_type") == "Name":
+            if get_str(func, "id") in ("set", "dict", "list", "frozenset"):
+                args = get_nodes(node, "args")
+                if not args:
+                    return True
+    return False
+
+
 def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
     """Look up expression type from pycheck results."""
     if _is_synthetic(node):
@@ -933,6 +948,8 @@ def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
         return _env_name_fallback(node, env)
     check_t = pt.ret if isinstance(pt, FuncType) else pt
     if contains_any(check_t):
+        if isinstance(node, dict) and _is_empty_collection_node(node):
+            return check_t
         return _env_name_fallback(node, env)
     return _adjust_pycheck_type(node, pt, env)
 
@@ -2016,6 +2033,12 @@ def _lower_conversion_call(
         if args and isinstance(args[0], dict):
             if _is_ast(args[0], "Constant") and isinstance(args[0].get("value"), JNull):
                 return TBoolLit(pos, False, {})
+            if _is_ast(args[0], "Dict"):
+                return TBoolLit(pos, len(get_nodes(args[0], "keys")) > 0, {})
+            if _is_ast(args[0], "Set"):
+                return TBoolLit(pos, len(get_nodes(args[0], "elts")) > 0, {})
+            if _is_ast(args[0], "List"):
+                return TBoolLit(pos, len(get_nodes(args[0], "elts")) > 0, {})
             arg_type = _infer_expr_type(args[0], env, ctx)
             arg = _lower_expr(args[0], env, ctx)
             if _is_optional_type(arg_type):
@@ -4017,6 +4040,10 @@ def _lower_as_bool(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     pos = _node_pos(node)
     # Structural cases that always need truthiness lowering, regardless of type
     t = get_str(node, "_type")
+    if t == "Dict":
+        return TBoolLit(pos, len(get_nodes(node, "keys")) > 0, {})
+    if t == "Set" or t == "List":
+        return TBoolLit(pos, len(get_nodes(node, "elts")) > 0, {})
     if t == "Compare":
         return _lower_expr(node, env, ctx)
     if t == "BoolOp":

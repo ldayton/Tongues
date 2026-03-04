@@ -2887,6 +2887,9 @@ def _validate_assert(
     if _has_new_errors(ctx, err_snap):
         return
     _synth_expr(test, env, ctx)
+    msg = stmt.get("msg")
+    if isinstance(msg, JDict):
+        _synth_expr(msg.entries, env, ctx)
     dummy_else = env.copy()
     _extract_narrowing(test, env, dummy_else, ctx)
     narrow_id = _find_succ_narrow(ctx)
