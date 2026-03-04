@@ -3628,6 +3628,11 @@ class Checker:
             t1 = _bctx_arg(ctx, 0)
             t2 = _bctx_arg(ctx, 1)
             if t1 is not None and t2 is not None:
+                if isinstance(t2, FnT):
+                    if isinstance(t1, ListT):
+                        return t1.element
+                    self.error(name + " with key requires list", pos)
+                    return None
                 if not type_eq(t1, t2):
                     self.error(
                         name
@@ -4291,15 +4296,16 @@ class Checker:
                 self.error("Reversed requires list", pos)
             return None
         if name == "Sorted":
-            if not _bctx_require(ctx, 1):
+            if not _bctx_require_range(ctx, 1, 2):
                 return None
             t = _bctx_arg(ctx, 0)
             if t is not None:
                 t_so = _unwrap_nil_union(t)
             else:
                 t_so = None
+            has_key = n == 2 and isinstance(_bctx_arg(ctx, 1), FnT)
             if t_so is not None and isinstance(t_so, ListT):
-                if t_so.element.kind not in (
+                if not has_key and t_so.element.kind not in (
                     TY_INT,
                     TY_FLOAT,
                     TY_BYTE,
@@ -4310,7 +4316,7 @@ class Checker:
                     self.error("Sorted requires ordered type", pos)
                 return t_so
             if t_so is not None and isinstance(t_so, SetT):
-                if t_so.element.kind not in (
+                if not has_key and t_so.element.kind not in (
                     TY_INT,
                     TY_FLOAT,
                     TY_BYTE,

@@ -633,11 +633,11 @@ def f() -> None:
 error: quit
 ---
 
-=== min with key not allowed
+=== min with key allowed
 def f(xs: list[str]) -> str:
     return min(xs, key=len)
 ---
-error: key
+ok
 ---
 
 === min with default not allowed
@@ -647,11 +647,11 @@ def f(xs: list[int]) -> int:
 error: default
 ---
 
-=== max with key not allowed
+=== max with key allowed
 def f(xs: list[str]) -> str:
     return max(xs, key=len)
 ---
-error: key
+ok
 ---
 
 === max with default not allowed
@@ -661,11 +661,32 @@ def f(xs: list[int]) -> int:
 error: default
 ---
 
-=== sorted with key not allowed
+=== sorted with key allowed
 def f(xs: list[str]) -> list[str]:
     return sorted(xs, key=len)
 ---
-error: key
+ok
+---
+
+=== sorted with key lambda allowed
+def f(xs: list[int]) -> list[int]:
+    return sorted(xs, key=lambda x: -x)
+---
+ok
+---
+
+=== min with key lambda allowed
+def f(xs: list[tuple[str, int]]) -> tuple[str, int]:
+    return min(xs, key=lambda t: t[1])
+---
+ok
+---
+
+=== max with key lambda allowed
+def f(xs: list[tuple[str, int]]) -> tuple[str, int]:
+    return max(xs, key=lambda t: t[1])
+---
+ok
 ---
 
 === print multiple values not allowed

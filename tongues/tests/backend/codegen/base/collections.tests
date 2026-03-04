@@ -243,3 +243,24 @@ fn Main() -> void {
     }
     WritelnOut(ToString(Len(unique)))
 }
+
+=== sorted with key lambda
+fn Main() -> void {
+    let xs: list[int] = [3, -1, 2]
+    let s: list[int] = Sorted(xs, (x: int) -> int => Abs(x))
+    WritelnOut(ToString(Len(s)))
+}
+
+=== min with key lambda
+fn Main() -> void {
+    let xs: list[string] = ["bb", "a", "ccc"]
+    let m: string = Min(xs, (s: string) -> int => Len(s))
+    WritelnOut(m)
+}
+
+=== max with key lambda
+fn Main() -> void {
+    let xs: list[string] = ["bb", "a", "ccc"]
+    let m: string = Max(xs, (s: string) -> int => Len(s))
+    WritelnOut(m)
+}

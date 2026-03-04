@@ -30,6 +30,7 @@ from ..taytsh.ast import (
     TFieldAccess,
     TFieldDecl,
     TFnDecl,
+    TFnLit,
     TFloatLit,
     TFuncType,
     TForStmt,
@@ -51,6 +52,7 @@ from ..taytsh.ast import (
     TOpAssignStmt,
     TOptionalType,
     TParam,
+    TPatternNil,
     TPatternType,
     TPrimitive,
     TRange,
@@ -753,6 +755,7 @@ class _LowerCtx:
         self.comp_counter: int = 0
         self.pycheck_result: PycheckResult = pycheck_result
         self.class_nodes: dict[str, ASTNode] = {}
+        self.func_nodes: dict[str, ASTNode] = {}
 
 
 class _Env:
@@ -1881,7 +1884,12 @@ def _lower_call(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
 
 
 def _lower_arithmetic_call(
-    fname: str, pos: Pos, args: list[ASTNode], env: _Env, ctx: _LowerCtx
+    fname: str,
+    pos: Pos,
+    args: list[ASTNode],
+    keywords: list[ASTNode],
+    env: _Env,
+    ctx: _LowerCtx,
 ) -> TExpr | None:
     """Lower arithmetic builtins: sum, round, min, max, pow, abs, divmod."""
     if fname == "sum":
@@ -1902,6 +1910,12 @@ def _lower_arithmetic_call(
             if _is_type_dict(at, ["bool"]):
                 la = _bool_to_int(pos, la)
             lowered.append(la)
+        key_node = _get_keyword_value(keywords, "key")
+        if key_node is not None and len(lowered) == 1:
+            arg_type = _infer_expr_type(args[0], env, ctx)
+            elem_type = _collection_element_type(arg_type)
+            key_fn = _lower_key_func(pos, key_node, elem_type, env, ctx)
+            return _make_call(pos, builtin, [lowered[0], key_fn])
         if len(lowered) == 1:
             return _make_call(pos, builtin, lowered)
         if len(lowered) >= 3:
@@ -2100,10 +2114,18 @@ def _lower_collection_call(
             arg = _lower_expr(args[0], env, ctx)
             if isinstance(arg_type, MapType):
                 arg = _make_call(pos, "Keys", [arg])
+            key_node = _get_keyword_value(keywords, "key")
+            sorted_args: list[TExpr] = [arg]
+            if key_node is not None:
+                elem_type = _collection_element_type(arg_type)
+                key_fn = _lower_key_func(pos, key_node, elem_type, env, ctx)
+                sorted_args.append(key_fn)
             is_reversed = _has_keyword_true(keywords, "reverse")
             if is_reversed:
-                return _make_call(pos, "Reversed", [_make_call(pos, "Sorted", [arg])])
-            return _make_call(pos, "Sorted", [arg])
+                return _make_call(
+                    pos, "Reversed", [_make_call(pos, "Sorted", sorted_args)]
+                )
+            return _make_call(pos, "Sorted", sorted_args)
     if fname == "list":
         if args and isinstance(args[0], dict):
             if _is_ast(args[0], "Call"):
@@ -2253,7 +2275,7 @@ def _lower_name_call(
                     {},
                 )
             return _make_call(pos, "Len", [_lower_expr(args[0], env, ctx)])
-    arith = _lower_arithmetic_call(fname, pos, args, env, ctx)
+    arith = _lower_arithmetic_call(fname, pos, args, keywords, env, ctx)
     if arith is not None:
         return arith
     conv = _lower_conversion_call(fname, pos, args, env, ctx)
@@ -2344,6 +2366,129 @@ def _get_keyword_value(keywords: list[ASTNode], name: str) -> ASTNode | None:
             val_node = get_node(kw, "value")
             if val_node:
                 return val_node
+    return None
+
+
+def _collection_element_type(t: TypeNode) -> TypeNode:
+    """Get element type from a collection type."""
+    if isinstance(t, SliceType):
+        return t.element
+    if isinstance(t, SetType):
+        return t.element
+    if isinstance(t, MapType):
+        return t.key
+    if isinstance(t, PrimitiveType) and t.kind == "string":
+        return STR_TYPE
+    return INT_TYPE
+
+
+def _lower_key_func(
+    pos: Pos,
+    key_node: ASTNode,
+    elem_type: TypeNode,
+    env: _Env,
+    ctx: _LowerCtx,
+) -> TFnLit:
+    """Lower a key= argument (lambda or named function) to a TFnLit."""
+    if _is_ast(key_node, "Lambda"):
+        args_node = get_node(key_node, "args")
+        param_args = get_nodes(args_node, "args") if args_node else []
+        param_name = "x"
+        if param_args and isinstance(param_args[0], dict):
+            param_name = get_str(param_args[0], "arg")
+        param_ttype = _typenode_to_ttype(pos, elem_type)
+        param = TParam(pos, param_name, param_ttype, {})
+        body_node = get_node(key_node, "body")
+        inner_env = env.copy()
+        inner_env.var_types[param_name] = elem_type
+        inner_env.declared.add(param_name)
+        body_expr = _lower_expr(body_node, inner_env, ctx)
+        ret_type = _infer_expr_type(body_node, inner_env, ctx)
+        lambda_ret = _typenode_to_ttype(pos, ret_type)
+        return TFnLit(
+            pos,
+            [param],
+            lambda_ret,
+            [TExprStmt(pos, body_expr, {})],
+            {"fn_lit.arrow": "true"},
+        )
+    if _is_ast(key_node, "Name"):
+        fname = get_str(key_node, "id")
+        func_info = ctx.tc_result.functions.get(fname)
+        if func_info is not None and func_info.params:
+            p = func_info.params[0]
+            param_ttype = _typenode_to_ttype(pos, p.typ)
+            param_name = p.name
+            param = TParam(pos, param_name, param_ttype, {})
+            func_ret = _typenode_to_ttype(pos, func_info.return_type)
+            inner_env = env.copy()
+            inner_env.var_types[param_name] = p.typ
+            inner_env.declared.add(param_name)
+            body_call = _lower_user_func_body_as_expr(
+                pos, fname, param_name, inner_env, ctx
+            )
+            if body_call is not None:
+                return TFnLit(
+                    pos,
+                    [param],
+                    func_ret,
+                    [TExprStmt(pos, body_call, {})],
+                    {"fn_lit.arrow": "true"},
+                )
+        if fname == "len":
+            param_ttype = _typenode_to_ttype(pos, elem_type)
+            param_name = _key_param_name(elem_type)
+            param = TParam(pos, param_name, param_ttype, {})
+            ret_ttype = TPrimitive(pos, "int")
+            body_expr = _make_call(pos, "Len", [TVar(pos, param_name, {})])
+            return TFnLit(
+                pos,
+                [param],
+                ret_ttype,
+                [TExprStmt(pos, body_expr, {})],
+                {"fn_lit.arrow": "true"},
+            )
+    param_ttype = _typenode_to_ttype(pos, elem_type)
+    param_name = _key_param_name(elem_type)
+    param = TParam(pos, param_name, param_ttype, {})
+    ret_ttype = TPrimitive(pos, "int")
+    inner_env = env.copy()
+    inner_env.var_types[param_name] = elem_type
+    inner_env.declared.add(param_name)
+    body_expr = _lower_expr(key_node, inner_env, ctx)
+    return TFnLit(
+        pos,
+        [param],
+        ret_ttype,
+        [TExprStmt(pos, body_expr, {})],
+        {"fn_lit.arrow": "true"},
+    )
+
+
+def _key_param_name(elem_type: TypeNode) -> str:
+    """Choose a sensible parameter name for a key function based on element type."""
+    if isinstance(elem_type, PrimitiveType):
+        if elem_type.kind == "string":
+            return "s"
+        if elem_type.kind == "int":
+            return "x"
+        if elem_type.kind == "float":
+            return "x"
+    return "x"
+
+
+def _lower_user_func_body_as_expr(
+    pos: Pos, fname: str, param_name: str, env: _Env, ctx: _LowerCtx
+) -> TExpr | None:
+    """Inline a single-expression user function as a TExpr for key= inlining."""
+    node = ctx.func_nodes.get(fname)
+    if node is None:
+        return None
+    body = get_nodes(node, "body")
+    if len(body) == 1 and _is_ast(body[0], "Return"):
+        ret_val = get_node(body[0], "value")
+        if ret_val:
+            return _lower_expr(ret_val, env, ctx)
     return None
 
 
@@ -3964,6 +4109,8 @@ def _lower_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         return [TContinueStmt(pos, {})]
     if t == "With":
         return _lower_with_open(node, env, ctx)
+    if t == "Match":
+        return _lower_match(node, env, ctx)
     if t == "Pass":
         return []
     if t == "Delete":
@@ -5055,6 +5202,100 @@ def _lower_isinstance_chain(
     return pre_stmts
 
 
+def _match_binding_name(type_name: str, env: _Env) -> str:
+    """Generate a unique binding name for a match case pattern."""
+    base = type_name[0].lower() + type_name[1:] if type_name else type_name
+    if base not in env.declared and base not in TAYTSH_KEYWORDS:
+        return base
+    suffix = 0
+    while base + str(suffix) in env.declared:
+        suffix += 1
+    return base + str(suffix)
+
+
+def _lower_match(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
+    """Lower a match/case statement to TMatchStmt."""
+    pos = _node_pos(node)
+    subject = get_node(node, "subject")
+    cases_nodes = get_nodes(node, "cases")
+    # Hoist variables first-assigned in any case body
+    all_body_nodes: list[ASTNode] = []
+    for cn in cases_nodes:
+        for b in get_nodes(cn, "body"):
+            all_body_nodes.append(b)
+    hoist_names = _scan_hoist_names(all_body_nodes, env)
+    pre_stmts: list[TStmt] = []
+    _emit_hoisted_placeholders(pos, hoist_names, env, pre_stmts)
+    expr = _lower_expr(subject, env, ctx)
+    subj_name = ""
+    if _is_ast(subject, "Name"):
+        subj_name = get_str(subject, "id")
+    nil_cases: list[TMatchCase] = []
+    type_cases: list[TMatchCase] = []
+    default: TDefault | None = None
+    for cn in cases_nodes:
+        pattern = get_node(cn, "pattern")
+        case_body_nodes = get_nodes(cn, "body")
+        pt = get_str(pattern, "_type")
+        if pt == "MatchAs" and isinstance(pattern.get("name"), JNull):
+            # Wildcard _ → default
+            default_body = _lower_stmts(case_body_nodes, env, ctx)
+            default = TDefault(pos, None, default_body, {})
+        elif pt == "MatchClass":
+            cls = get_node(pattern, "cls")
+            type_name = get_str(cls, "id")
+            binding_name = _match_binding_name(type_name, env)
+            env.declared.add(binding_name)
+            case_env = env.copy()
+            if subj_name:
+                case_env.var_types[subj_name] = PointerType(StructRef(type_name))
+            case_body = _lower_stmts(case_body_nodes, case_env, ctx)
+            tp = TPatternType(pos, binding_name, TIdentType(pos, type_name), {})
+            type_cases.append(TMatchCase(pos, tp, case_body, {}))
+        elif pt == "MatchSingleton" or pt == "MatchValue":
+            v = pattern.get("value")
+            if isinstance(v, JNull):
+                # case None → case nil
+                case_body = _lower_stmts(case_body_nodes, env, ctx)
+                nil_cases.append(TMatchCase(pos, TPatternNil(pos), case_body, {}))
+        elif pt == "MatchOr":
+            subs = get_nodes(pattern, "patterns")
+            # Build union type for narrowing from all MatchClass alternatives
+            variant_types: list[TypeNode] = []
+            for sub in subs:
+                if get_str(sub, "_type") == "MatchClass":
+                    sub_cls = get_node(sub, "cls")
+                    vname = get_str(sub_cls, "id")
+                    variant_types.append(PointerType(StructRef(vname)))
+            case_env = env.copy()
+            if subj_name and variant_types:
+                if len(variant_types) == 1:
+                    case_env.var_types[subj_name] = variant_types[0]
+                else:
+                    case_env.var_types[subj_name] = UnionType(variant_types)
+            case_body = _lower_stmts(case_body_nodes, case_env, ctx)
+            # Emit one case arm per MatchClass alternative
+            for sub in subs:
+                if get_str(sub, "_type") == "MatchClass":
+                    sub_cls = get_node(sub, "cls")
+                    type_name = get_str(sub_cls, "id")
+                    binding_name = _match_binding_name(type_name, env)
+                    env.declared.add(binding_name)
+                    tp = TPatternType(pos, binding_name, TIdentType(pos, type_name), {})
+                    type_cases.append(TMatchCase(pos, tp, case_body, {}))
+                elif get_str(sub, "_type") == "MatchSingleton":
+                    v = sub.get("value")
+                    if isinstance(v, JNull):
+                        nil_cases.append(
+                            TMatchCase(pos, TPatternNil(pos), case_body, {})
+                        )
+    if default is None:
+        default = TDefault(pos, None, [], {})
+    cases: list[TMatchCase] = nil_cases + type_cases
+    pre_stmts.append(TMatchStmt(pos, expr, cases, default, {}))
+    return pre_stmts
+
+
 def _lower_while(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     pos = _node_pos(node)
     test = get_node(node, "test")
@@ -6027,10 +6268,12 @@ def _build_module(tree: ASTNode, ctx: _LowerCtx) -> TModule:
     body = get_nodes(tree, "body")
     decls: list[TModuleItem] = []
     entry_point_func = _detect_entry_point(body)
-    # Index class AST nodes for ancestor method lookup
+    # Index class and function AST nodes
     for node in body:
         if _is_ast(node, "ClassDef"):
             ctx.class_nodes[get_str(node, "name")] = node
+        elif _is_ast(node, "FunctionDef"):
+            ctx.func_nodes[get_str(node, "name")] = node
     # Build structs/interfaces first (needed for type resolution)
     # Also extract class-level constants
     for node in body:
