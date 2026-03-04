@@ -1686,6 +1686,12 @@ class _RubyEmitter(Emitter):
     def _call(self, expr: TCall) -> str:
         func = expr.func
         args = expr.args
+        if (
+            isinstance(func, TVar)
+            and func.name == "Concat"
+            and expr.annotations.get("provenance") == "star_unpack"
+        ):
+            return self._star_unpack(expr)
         # Builtin call
         if isinstance(func, TVar) and func.name in BUILTIN_NAMES:
             return self._builtin_call(func.name, args, expr)
@@ -1706,6 +1712,31 @@ class _RubyEmitter(Emitter):
         if arg_strs:
             return fn_expr + ".call(" + arg_strs + ")"
         return fn_expr + ".call"
+
+    def _star_unpack(self, expr: TCall) -> str:
+        """Reconstruct [*a, x, *b] from a Concat chain with star_unpack provenance."""
+        parts: list[TExpr] = []
+        self._flatten_star_unpack(expr, parts)
+        items: list[str] = []
+        for p in parts:
+            if isinstance(p, TListLit):
+                for elem in p.elements:
+                    items.append(self._expr(elem))
+            else:
+                items.append("*" + self._expr(p))
+        return "[" + ", ".join(items) + "]"
+
+    def _flatten_star_unpack(self, expr: TExpr, parts: list[TExpr]) -> None:
+        if (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "Concat"
+            and expr.annotations.get("provenance") == "star_unpack"
+        ):
+            self._flatten_star_unpack(expr.args[0].value, parts)
+            parts.append(expr.args[1].value)
+        else:
+            parts.append(expr)
 
     def _struct_call(self, name: str, args: list[TArg]) -> str:
         fields = self.struct_fields.get(name, [])
