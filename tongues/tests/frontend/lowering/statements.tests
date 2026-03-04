@@ -286,3 +286,65 @@ def f(obj: Foo) -> str:
 ---
 let val: string? = Get(obj.data, "key")
 ---
+
+=== hoisted bytes variable gets correct zero value
+def encode_codepoint(cp: int) -> bytes:
+    return b""
+def f(codepoints: list[int]) -> None:
+    i: int = 0
+    while i < len(codepoints):
+        chunk: bytes = encode_codepoint(codepoints[i])
+        i += 1
+---
+let chunk: bytes = b""
+---
+
+=== hoisted string variable gets correct zero value
+def f(xs: list[int]) -> None:
+    i: int = 0
+    while i < len(xs):
+        s: str = str(xs[i])
+        i += 1
+---
+let s: string = ""
+---
+
+=== hoisted float variable gets correct zero value
+def f(xs: list[int]) -> None:
+    i: int = 0
+    while i < len(xs):
+        fl: float = float(xs[i])
+        i += 1
+---
+let fl: float = 0.0
+---
+
+=== hoisted bool variable gets correct zero value
+def f(xs: list[int]) -> None:
+    i: int = 0
+    while i < len(xs):
+        flag: bool = xs[i] > 0
+        i += 1
+---
+let flag: bool = false
+---
+
+=== hoisted list variable gets correct zero value
+def f(xs: list[int]) -> None:
+    i: int = 0
+    while i < len(xs):
+        chunk: list[int] = [xs[i]]
+        i += 1
+---
+let chunk: list[int] = []
+---
+
+=== hoisted bytes variable in for loop gets correct zero value
+def process_byte(b: int) -> bytes:
+    return b""
+def f(xs: list[int]) -> None:
+    for x in xs:
+        chunk: bytes = process_byte(x)
+---
+let chunk: bytes = b""
+---

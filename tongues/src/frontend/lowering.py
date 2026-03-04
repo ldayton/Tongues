@@ -621,6 +621,12 @@ def _default_value_for_type(pos: Pos, td: TypeNode) -> TExpr:
         for elem in td.elements:
             parts.append(_default_value_for_type(pos, elem))
         return TTupleLit(pos, parts, {})
+    if (
+        isinstance(td, SliceType)
+        and isinstance(td.element, PrimitiveType)
+        and td.element.kind == "byte"
+    ):
+        return TBytesLit(pos, b"", {})
     if kind == "Slice":
         return TListLit(pos, [], {})
     if kind == "Map":
