@@ -232,6 +232,22 @@ def test_overlong_3byte() -> None:
         assert e.position == 0
 
 
+def test_overlong_3byte_max() -> None:
+    """E0 9F BF encodes U+07FF — valid codepoint, but must use 2 bytes."""
+    try:
+        decode(b"\xe0\x9f\xbf")
+        assert False, "expected Utf8Error"
+    except Utf8Error as e:
+        assert e.position == 0
+
+
+def test_overlong_3byte_boundary() -> None:
+    """E0 A0 80 = U+0800 — first valid 3-byte encoding."""
+    result: tuple[int, int] = decode_codepoint(b"\xe0\xa0\x80", 0)
+    assert result[0] == 0x800
+    assert result[1] == 3
+
+
 def test_overlong_4byte() -> None:
     """F0 80 80 80 is overlong encoding of U+0000."""
     try:
@@ -239,6 +255,22 @@ def test_overlong_4byte() -> None:
         assert False, "expected Utf8Error"
     except Utf8Error as e:
         assert e.position == 0
+
+
+def test_overlong_4byte_max() -> None:
+    """F0 8F BF BF encodes U+FFFF — valid codepoint, but must use 3 bytes."""
+    try:
+        decode(b"\xf0\x8f\xbf\xbf")
+        assert False, "expected Utf8Error"
+    except Utf8Error as e:
+        assert e.position == 0
+
+
+def test_overlong_4byte_boundary() -> None:
+    """F0 90 80 80 = U+10000 — first valid 4-byte encoding."""
+    result: tuple[int, int] = decode_codepoint(b"\xf0\x90\x80\x80", 0)
+    assert result[0] == 0x10000
+    assert result[1] == 4
 
 
 # -- Invalid decode: surrogates --
@@ -262,6 +294,18 @@ def test_encoded_surrogate_trail() -> None:
         assert e.position == 0
 
 
+def test_surrogate_boundary_before() -> None:
+    """U+D7FF — last codepoint before surrogate range, must be valid."""
+    result: tuple[int, int] = decode_codepoint(b"\xed\x9f\xbf", 0)
+    assert result[0] == 0xD7FF
+
+
+def test_surrogate_boundary_after() -> None:
+    """U+E000 — first codepoint after surrogate range, must be valid."""
+    result: tuple[int, int] = decode_codepoint(b"\xee\x80\x80", 0)
+    assert result[0] == 0xE000
+
+
 # -- Invalid decode: out of range --
 
 
@@ -269,6 +313,15 @@ def test_above_max() -> None:
     """F4 90 80 80 = U+110000 — above max codepoint."""
     try:
         decode(b"\xf4\x90\x80\x80")
+        assert False, "expected Utf8Error"
+    except Utf8Error as e:
+        assert e.position == 0
+
+
+def test_f5_byte() -> None:
+    """F5 would start a sequence for U+140000+ — always invalid."""
+    try:
+        decode(b"\xf5\x80\x80\x80")
         assert False, "expected Utf8Error"
     except Utf8Error as e:
         assert e.position == 0
@@ -296,6 +349,15 @@ def test_bare_continuation() -> None:
     """A continuation byte (0x80-0xBF) without a lead byte."""
     try:
         decode(b"\x80")
+        assert False, "expected Utf8Error"
+    except Utf8Error as e:
+        assert e.position == 0
+
+
+def test_bare_continuation_bf() -> None:
+    """0xBF — highest continuation byte, still invalid as lead."""
+    try:
+        decode(b"\xbf")
         assert False, "expected Utf8Error"
     except Utf8Error as e:
         assert e.position == 0
@@ -340,6 +402,40 @@ def test_invalid_detected() -> None:
     assert not is_valid(b"\xff")
     assert not is_valid(b"\xc0\x80")
     assert not is_valid(b"abc\xfe")
+
+
+# -- Noncharacters (valid codepoints, must not be rejected) --
+
+
+def test_noncharacter_fffe() -> None:
+    """U+FFFE is a noncharacter but valid in UTF-8."""
+    cps: list[int] = decode(b"\xef\xbf\xbe")
+    assert cps == [0xFFFE]
+
+
+def test_noncharacter_ffff() -> None:
+    """U+FFFF is a noncharacter but valid in UTF-8."""
+    cps: list[int] = decode(b"\xef\xbf\xbf")
+    assert cps == [0xFFFF]
+
+
+def test_roundtrip_noncharacters() -> None:
+    cps: list[int] = [0xFFFE, 0xFFFF]
+    assert decode(encode(cps)) == cps
+
+
+# -- Encode surrogate/OOR boundary roundtrips --
+
+
+def test_encode_surrogate_boundaries() -> None:
+    """U+D7FF and U+E000 should roundtrip cleanly."""
+    cps: list[int] = [0xD7FF, 0xE000]
+    assert decode(encode(cps)) == cps
+
+
+def test_encode_max_codepoint_roundtrip() -> None:
+    cps: list[int] = [0x10FFFF]
+    assert decode(encode(cps)) == cps
 
 
 # -- codepoint_len --
@@ -398,19 +494,32 @@ def main() -> int:
         ("test_bad_continuation_4byte", test_bad_continuation_4byte),
         ("test_overlong_2byte", test_overlong_2byte),
         ("test_overlong_3byte", test_overlong_3byte),
+        ("test_overlong_3byte_max", test_overlong_3byte_max),
+        ("test_overlong_3byte_boundary", test_overlong_3byte_boundary),
         ("test_overlong_4byte", test_overlong_4byte),
+        ("test_overlong_4byte_max", test_overlong_4byte_max),
+        ("test_overlong_4byte_boundary", test_overlong_4byte_boundary),
         ("test_encoded_surrogate", test_encoded_surrogate),
         ("test_encoded_surrogate_trail", test_encoded_surrogate_trail),
+        ("test_surrogate_boundary_before", test_surrogate_boundary_before),
+        ("test_surrogate_boundary_after", test_surrogate_boundary_after),
         ("test_above_max", test_above_max),
+        ("test_f5_byte", test_f5_byte),
         ("test_fe_byte", test_fe_byte),
         ("test_ff_byte", test_ff_byte),
         ("test_bare_continuation", test_bare_continuation),
+        ("test_bare_continuation_bf", test_bare_continuation_bf),
         ("test_error_position_after_valid", test_error_position_after_valid),
         ("test_error_position_mid_multibyte", test_error_position_mid_multibyte),
         ("test_valid_empty", test_valid_empty),
         ("test_valid_ascii", test_valid_ascii),
         ("test_valid_multibyte", test_valid_multibyte),
         ("test_invalid_detected", test_invalid_detected),
+        ("test_noncharacter_fffe", test_noncharacter_fffe),
+        ("test_noncharacter_ffff", test_noncharacter_ffff),
+        ("test_roundtrip_noncharacters", test_roundtrip_noncharacters),
+        ("test_encode_surrogate_boundaries", test_encode_surrogate_boundaries),
+        ("test_encode_max_codepoint_roundtrip", test_encode_max_codepoint_roundtrip),
         ("test_len_empty", test_len_empty),
         ("test_len_ascii", test_len_ascii),
         ("test_len_multibyte", test_len_multibyte),
