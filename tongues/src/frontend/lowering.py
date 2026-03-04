@@ -180,6 +180,8 @@ _FALLBACK_COUNTS: dict[str, int] = {
     "synthetic": 0,
 }
 _FALLBACK_DETAILS: dict[str, dict[str, int]] = {
+    "no_uid": {},
+    "no_entry": {},
     "is_any": {},
     "contains_any": {},
 }
@@ -216,16 +218,30 @@ def _record_fallback(reason: str, node: ASTNode | None = None) -> None:
             key = ntype
         detail = _FALLBACK_DETAILS[reason]
         detail[key] = detail.get(key, 0) + 1
-    if _FALLBACK_LOCATIONS and node is not None and reason == "is_any":
+    if _FALLBACK_LOCATIONS and node is not None and reason in _FALLBACK_DETAILS:
         ntype = get_str(node, "_type")
         line = get_int(node, "lineno")
         sf = get_str(node, "_source_file")
+        label = ntype
         if ntype == "Attribute":
-            attr = get_str(node, "attr")
-            print(f"  is_any .{attr} at {sf}:{str(line)}", file=sys.stderr)
+            label = "." + get_str(node, "attr")
         elif ntype == "Name":
-            name = get_str(node, "id")
-            print(f"  is_any {name} at {sf}:{str(line)}", file=sys.stderr)
+            label = get_str(node, "id")
+        elif ntype == "Call":
+            func = get_node(node, "func")
+            ft = get_str(func, "_type")
+            if ft == "Name":
+                label = get_str(func, "id") + "()"
+            elif ft == "Attribute":
+                label = "." + get_str(func, "attr") + "()"
+        elif ntype == "Subscript":
+            val = get_node(node, "value")
+            vt = get_str(val, "_type")
+            if vt == "Name":
+                label = get_str(val, "id") + "[]"
+            elif vt == "Attribute":
+                label = "." + get_str(val, "attr") + "[]"
+        print(f"  {reason} {label} at {sf}:{str(line)}", file=sys.stderr)
 
 
 def print_fallback_stats() -> None:
@@ -242,7 +258,7 @@ def print_fallback_stats() -> None:
         print(f"  {k}: {str(v)}", file=sys.stderr)
     print(f"  total_fallback: {str(total)}", file=sys.stderr)
     if _FALLBACK_VERBOSE:
-        for reason in ["is_any", "contains_any"]:
+        for reason in ["no_uid", "no_entry", "is_any", "contains_any"]:
             detail = _FALLBACK_DETAILS[reason]
             if detail:
                 print(f"  {reason} breakdown:", file=sys.stderr)
@@ -1031,12 +1047,12 @@ def _lookup_expr_type(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TypeNode:
             return _infer_synthetic_type(node, env, ctx)
         uid_jv = node.get("_uid") if isinstance(node, dict) else None
         if not isinstance(uid_jv, JInt):
-            _record_fallback("no_uid")
+            _record_fallback("no_uid", node)
             fb = _infer_expr_type_fallback(node, env, ctx)
             return fb
         pt = ctx.pycheck_result.expr_types.get(uid_jv.value)
         if pt is None:
-            _record_fallback("no_entry")
+            _record_fallback("no_entry", node)
             fb = _infer_expr_type_fallback(node, env, ctx)
             return fb
         if _is_any_type(pt):
