@@ -783,6 +783,12 @@ class Compiler:
         elif isinstance(stmt, TTupleAssignStmt):
             self._compile_tuple_assign(stmt, fc)
         elif isinstance(stmt, TExprStmt):
+            if (
+                isinstance(stmt.expr, TCall)
+                and isinstance(stmt.expr.func, TVar)
+                and stmt.expr.func.name == "reveal_type"
+            ):
+                return
             self._compile_expr(stmt.expr, fc)
             fc.emit(OP_POP, 0, stmt.pos.line)
         elif isinstance(stmt, TReturnStmt):

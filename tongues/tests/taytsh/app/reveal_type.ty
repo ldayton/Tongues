@@ -1,0 +1,10 @@
+-- reveal_type must not leak into backend code
+fn TestRevealTypeIsStripped() -> void {
+    let x: int = 42
+    reveal_type(x)
+    Assert(x == 42)
+}
+
+fn Main() -> void {
+    TestRevealTypeIsStripped()
+}

@@ -1575,6 +1575,12 @@ class Runtime:
             self._stmt_assign(st, env, fn_ret)
             return
         if isinstance(st, TExprStmt):
+            if (
+                isinstance(st.expr, TCall)
+                and isinstance(st.expr.func, TVar)
+                and st.expr.func.name == "reveal_type"
+            ):
+                return
             self._eval_expr(st.expr, env)
             return
         if isinstance(st, TReturnStmt):
