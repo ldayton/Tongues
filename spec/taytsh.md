@@ -1463,6 +1463,7 @@ Some Python patterns are desugared during lowering into simpler IR forms. The or
 | `negative_index`     | `x[Len(x) - 1]`                | `x[-1]`                     |
 | `open_start`         | `xs[0:n]`                      | `xs[:n]`                    |
 | `open_end`           | `xs[n:Len(xs)]`                | `xs[n:]`                    |
+| `star_unpack`        | `Concat` chain                 | `[*a, x, *b]`               |
 
 Provenance is advisory — the lowered form is always correct as-is.
 
