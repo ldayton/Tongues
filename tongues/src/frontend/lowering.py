@@ -3604,23 +3604,23 @@ def _lower_step_slice(
     idx_name = "__i"
     idx_var = TVar(pos, idx_name, {})
     # Element access: obj[__i] (for strings, wrap in ToString)
-    elem = TIndex(pos, obj, idx_var, {})
+    idx_expr: TExpr = TIndex(pos, obj, idx_var, {})
     if is_string:
-        elem = _make_call(pos, "ToString", [elem])
+        idx_expr = _make_call(pos, "ToString", [idx_expr])
     # Build: let acc: list[T]/string = []/""
     if is_string:
         let_type: TType = TPrimitive(pos, "string")
         let_init: TExpr = TStringLit(pos, "", {})
         # Accumulate with Concat
         append_stmt: TStmt = TAssignStmt(
-            pos, result_var, _make_call(pos, "Concat", [result_var, elem]), {}
+            pos, result_var, _make_call(pos, "Concat", [result_var, idx_expr]), {}
         )
         body: list[TStmt] = [append_stmt]
     else:
         elt_ttype = _elem_type_from_obj(pos, obj_type)
         let_type = TListType(pos, elt_ttype)
         let_init = TListLit(pos, [], {})
-        append_call = _make_call(pos, "Append", [result_var, elem])
+        append_call = _make_call(pos, "Append", [result_var, idx_expr])
         body = [TExprStmt(pos, append_call, {})]
     let_stmt = TLetStmt(pos, rname, let_type, let_init, {})
     range_expr = TRange(pos, [start, end, step_expr], {})
