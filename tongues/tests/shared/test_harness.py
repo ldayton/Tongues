@@ -16,13 +16,13 @@ from lib.json import (
     JsonString,
     JsonArray,
     JsonObject,
-    parse as json_parse,
-    get_string,
-    get_number,
-    get_items,
-    get_field,
-    is_null,
-    stringify,
+    json_parse,
+    json_get_string,
+    json_get_number,
+    json_get_items,
+    json_get_field,
+    json_is_null,
+    json_stringify,
 )
 
 
@@ -358,7 +358,7 @@ def to_comparable(
         return str(n)
     if isinstance(value, JsonString):
         return value.value
-    return stringify(value)
+    return json_stringify(value)
 
 
 def check_reveals(

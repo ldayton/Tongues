@@ -309,20 +309,18 @@ def f64_mul(a: int, b: int) -> int:
     if exp_a == 0:
         if sig_a == 0:
             return pack_f64(sign_z, 0, 0)
-        norm: tuple[int, int] = norm_subnormal_f64_sig(sig_a)
-        exp_a = norm[0]
-        sig_a = norm[1]
+        exp_a, sig_a = norm_subnormal_f64_sig(sig_a)
     if exp_b == 0:
         if sig_b == 0:
             return pack_f64(sign_z, 0, 0)
-        norm = norm_subnormal_f64_sig(sig_b)
-        exp_b = norm[0]
-        sig_b = norm[1]
+        exp_b, sig_b = norm_subnormal_f64_sig(sig_b)
     exp_z: int = exp_a + exp_b - 0x3FF
     sig_a = (sig_a | 0x0010000000000000) << 10
     sig_b = (sig_b | 0x0010000000000000) << 11
-    prod: tuple[int, int] = mul64_to_128(sig_a, sig_b)
-    sig_z: int = prod[0] | (1 if prod[1] != 0 else 0)
+    prod_hi: int = 0
+    prod_lo: int = 0
+    prod_hi, prod_lo = mul64_to_128(sig_a, sig_b)
+    sig_z: int = prod_hi | (1 if prod_lo != 0 else 0)
     if sig_z < 0x4000000000000000:
         exp_z = exp_z - 1
         sig_z = sig_z << 1
@@ -359,15 +357,11 @@ def f64_div(a: int, b: int) -> int:
             if (exp_a | sig_a) == 0:
                 return DEFAULT_NAN
             return pack_f64(sign_z, 0x7FF, 0)
-        norm: tuple[int, int] = norm_subnormal_f64_sig(sig_b)
-        exp_b = norm[0]
-        sig_b = norm[1]
+        exp_b, sig_b = norm_subnormal_f64_sig(sig_b)
     if exp_a == 0:
         if sig_a == 0:
             return pack_f64(sign_z, 0, 0)
-        norm = norm_subnormal_f64_sig(sig_a)
-        exp_a = norm[0]
-        sig_a = norm[1]
+        exp_a, sig_a = norm_subnormal_f64_sig(sig_a)
     exp_z: int = exp_a - exp_b + 0x3FE
     sig_a = sig_a | 0x0010000000000000
     sig_b = sig_b | 0x0010000000000000
@@ -417,9 +411,7 @@ def f64_sqrt(a: int) -> int:
     if exp_a == 0:
         if sig_a == 0:
             return a
-        norm: tuple[int, int] = norm_subnormal_f64_sig(sig_a)
-        exp_a = norm[0]
-        sig_a = norm[1]
+        exp_a, sig_a = norm_subnormal_f64_sig(sig_a)
     exp_z: int = ((exp_a - 0x3FF) >> 1) + 0x3FE
     sig_a = sig_a | 0x0010000000000000
     if (exp_a & 1) == 0:
@@ -460,15 +452,11 @@ def f64_fmod(a: int, b: int) -> int:
     if exp_b == 0:
         if sig_b == 0:
             return DEFAULT_NAN
-        norm: tuple[int, int] = norm_subnormal_f64_sig(sig_b)
-        exp_b = norm[0]
-        sig_b = norm[1]
+        exp_b, sig_b = norm_subnormal_f64_sig(sig_b)
     if exp_a == 0:
         if sig_a == 0:
             return a
-        norm = norm_subnormal_f64_sig(sig_a)
-        exp_a = norm[0]
-        sig_a = norm[1]
+        exp_a, sig_a = norm_subnormal_f64_sig(sig_a)
     sig_a = sig_a | 0x0010000000000000
     sig_b = sig_b | 0x0010000000000000
     exp_diff: int = exp_a - exp_b

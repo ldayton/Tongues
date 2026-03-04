@@ -10,168 +10,168 @@ from lib.json import (
     JsonArray,
     JsonObject,
     JsonError,
-    parse,
-    stringify,
-    get_string,
-    get_number,
-    get_bool,
-    get_items,
-    get_field,
-    is_null,
+    json_parse,
+    json_stringify,
+    json_get_string,
+    json_get_number,
+    json_get_bool,
+    json_get_items,
+    json_get_field,
+    json_is_null,
 )
 
 
 def test_parse_primitives() -> None:
-    assert stringify(parse("null")) == "null"
-    assert stringify(parse("true")) == "true"
-    assert stringify(parse("false")) == "false"
-    assert stringify(parse("0")) == "0"
-    assert stringify(parse("42")) == "42"
-    assert stringify(parse("-7")) == "-7"
-    assert stringify(parse("3.14")) == "3.14"
-    assert stringify(parse("1e10")) == "10000000000"
-    assert stringify(parse("-0.5")) == "-0.5"
-    assert stringify(parse("1E2")) == "100"
-    assert stringify(parse("1e+2")) == "100"
-    assert stringify(parse("1e-1")) == "0.1"
+    assert json_stringify(json_parse("null")) == "null"
+    assert json_stringify(json_parse("true")) == "true"
+    assert json_stringify(json_parse("false")) == "false"
+    assert json_stringify(json_parse("0")) == "0"
+    assert json_stringify(json_parse("42")) == "42"
+    assert json_stringify(json_parse("-7")) == "-7"
+    assert json_stringify(json_parse("3.14")) == "3.14"
+    assert json_stringify(json_parse("1e10")) == "10000000000"
+    assert json_stringify(json_parse("-0.5")) == "-0.5"
+    assert json_stringify(json_parse("1E2")) == "100"
+    assert json_stringify(json_parse("1e+2")) == "100"
+    assert json_stringify(json_parse("1e-1")) == "0.1"
 
 
 def test_parse_strings() -> None:
-    assert stringify(parse('"hello"')) == '"hello"'
-    assert stringify(parse('""')) == '""'
-    assert stringify(parse('"a\\nb"')) == '"a\\nb"'
-    assert stringify(parse('"a\\tb"')) == '"a\\tb"'
-    assert stringify(parse('"a\\\\b"')) == '"a\\\\b"'
-    assert stringify(parse('"a\\"b"')) == '"a\\"b"'
-    assert stringify(parse('"a\\/b"')) == '"a/b"'
-    assert stringify(parse('"\\b\\f"')) == '"\\b\\f"'
+    assert json_stringify(json_parse('"hello"')) == '"hello"'
+    assert json_stringify(json_parse('""')) == '""'
+    assert json_stringify(json_parse('"a\\nb"')) == '"a\\nb"'
+    assert json_stringify(json_parse('"a\\tb"')) == '"a\\tb"'
+    assert json_stringify(json_parse('"a\\\\b"')) == '"a\\\\b"'
+    assert json_stringify(json_parse('"a\\"b"')) == '"a\\"b"'
+    assert json_stringify(json_parse('"a\\/b"')) == '"a/b"'
+    assert json_stringify(json_parse('"\\b\\f"')) == '"\\b\\f"'
 
 
 def test_parse_unicode() -> None:
-    assert stringify(parse('"\\u0041"')) == '"A"'
-    assert stringify(parse('"\\u0048\\u0069"')) == '"Hi"'
-    assert stringify(parse('"\\u0000"')) == '"\\u0000"'
+    assert json_stringify(json_parse('"\\u0041"')) == '"A"'
+    assert json_stringify(json_parse('"\\u0048\\u0069"')) == '"Hi"'
+    assert json_stringify(json_parse('"\\u0000"')) == '"\\u0000"'
     # Surrogate pair for U+1F600 (grinning face)
-    emoji: str = get_string(parse('"\\uD83D\\uDE00"'))
+    emoji: str = json_get_string(json_parse('"\\uD83D\\uDE00"'))
     assert len(emoji) == 1
     assert ord(emoji) == 0x1F600
 
 
 def test_parse_arrays() -> None:
-    assert stringify(parse("[]")) == "[]"
-    assert stringify(parse("[1,2,3]")) == "[1,2,3]"
-    assert stringify(parse("[[1],[2]]")) == "[[1],[2]]"
-    assert stringify(parse('[1,"two",true,null]')) == '[1,"two",true,null]'
-    assert stringify(parse("[  1 , 2 , 3  ]")) == "[1,2,3]"
+    assert json_stringify(json_parse("[]")) == "[]"
+    assert json_stringify(json_parse("[1,2,3]")) == "[1,2,3]"
+    assert json_stringify(json_parse("[[1],[2]]")) == "[[1],[2]]"
+    assert json_stringify(json_parse('[1,"two",true,null]')) == '[1,"two",true,null]'
+    assert json_stringify(json_parse("[  1 , 2 , 3  ]")) == "[1,2,3]"
 
 
 def test_parse_objects() -> None:
-    assert stringify(parse("{}")) == "{}"
-    assert stringify(parse('{"a":1,"b":2}')) == '{"a":1,"b":2}'
-    assert stringify(parse('{"a":{"b":{"c":3}}}')) == '{"a":{"b":{"c":3}}}'
+    assert json_stringify(json_parse("{}")) == "{}"
+    assert json_stringify(json_parse('{"a":1,"b":2}')) == '{"a":1,"b":2}'
+    assert json_stringify(json_parse('{"a":{"b":{"c":3}}}')) == '{"a":{"b":{"c":3}}}'
     assert (
-        stringify(parse('{"n":null,"b":true,"a":[1,"two"]}'))
+        json_stringify(json_parse('{"n":null,"b":true,"a":[1,"two"]}'))
         == '{"n":null,"b":true,"a":[1,"two"]}'
     )
 
 
 def test_stringify() -> None:
-    assert stringify(parse("null")) == "null"
-    assert stringify(parse("true")) == "true"
-    assert stringify(parse("false")) == "false"
-    assert stringify(parse("42")) == "42"
-    assert stringify(parse("3.14")) == "3.14"
-    assert stringify(parse('"hello"')) == '"hello"'
-    assert stringify(parse("[1,2,3]")) == "[1,2,3]"
-    assert stringify(parse('{"a":1}')) == '{"a":1}'
+    assert json_stringify(json_parse("null")) == "null"
+    assert json_stringify(json_parse("true")) == "true"
+    assert json_stringify(json_parse("false")) == "false"
+    assert json_stringify(json_parse("42")) == "42"
+    assert json_stringify(json_parse("3.14")) == "3.14"
+    assert json_stringify(json_parse('"hello"')) == '"hello"'
+    assert json_stringify(json_parse("[1,2,3]")) == "[1,2,3]"
+    assert json_stringify(json_parse('{"a":1}')) == '{"a":1}'
     # Integers render without decimal
-    assert stringify(parse("100")) == "100"
-    assert stringify(parse("-0")) == "0"
+    assert json_stringify(json_parse("100")) == "100"
+    assert json_stringify(json_parse("-0")) == "0"
 
 
 def test_round_trip() -> None:
     doc: str = '{"name":"test","values":[1,2.5,true,null],"nested":{"a":"b"}}'
-    rt1: str = stringify(parse(doc))
-    rt2: str = stringify(parse(rt1))
+    rt1: str = json_stringify(json_parse(doc))
+    rt2: str = json_stringify(json_parse(rt1))
     assert rt1 == rt2
     complex_doc: str = (
         '{"arr":[[1,2],[3,4]],"obj":{"x":{"y":true}},"s":"hello\\nworld"}'
     )
-    c1: str = stringify(parse(complex_doc))
-    c2: str = stringify(parse(c1))
+    c1: str = json_stringify(json_parse(complex_doc))
+    c2: str = json_stringify(json_parse(c1))
     assert c1 == c2
 
 
 def test_accessors() -> None:
-    doc: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = parse(
+    doc: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = json_parse(
         '{"name":"alice","age":30,"active":true,"scores":[95,87],"extra":null}'
     )
-    assert get_string(get_field(doc, "name")) == "alice"
-    assert get_number(get_field(doc, "age")) == 30.0
-    assert get_bool(get_field(doc, "active")) == True
-    assert is_null(get_field(doc, "extra")) == True
+    assert json_get_string(json_get_field(doc, "name")) == "alice"
+    assert json_get_number(json_get_field(doc, "age")) == 30.0
+    assert json_get_bool(json_get_field(doc, "active")) == True
+    assert json_is_null(json_get_field(doc, "extra")) == True
     scores: list[
         JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject
-    ] = get_items(get_field(doc, "scores"))
+    ] = json_get_items(json_get_field(doc, "scores"))
     assert len(scores) == 2
-    assert get_number(scores[0]) == 95.0
-    assert get_number(scores[1]) == 87.0
+    assert json_get_number(scores[0]) == 95.0
+    assert json_get_number(scores[1]) == 87.0
 
 
 def test_accessor_errors() -> None:
-    num: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = parse(
+    num: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = json_parse(
         "42"
     )
     str_val: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = (
-        parse('"hi"')
+        json_parse('"hi"')
     )
-    arr: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = parse(
+    arr: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = json_parse(
         "[1]"
     )
     null_val: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = (
-        parse("null")
+        json_parse("null")
     )
     # get_string on non-string
     try:
-        get_string(num)
+        json_get_string(num)
         assert False, "expected JsonError"
     except JsonError:
         pass
     # get_number on non-number
     try:
-        get_number(str_val)
+        json_get_number(str_val)
         assert False, "expected JsonError"
     except JsonError:
         pass
     # get_bool on non-bool
     try:
-        get_bool(num)
+        json_get_bool(num)
         assert False, "expected JsonError"
     except JsonError:
         pass
     # get_items on non-array
     try:
-        get_items(num)
+        json_get_items(num)
         assert False, "expected JsonError"
     except JsonError:
         pass
     # get_field on non-object
     try:
-        get_field(arr, "x")
+        json_get_field(arr, "x")
         assert False, "expected JsonError"
     except JsonError:
         pass
     # get_field with missing key
-    obj: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = parse(
+    obj: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = json_parse(
         '{"a":1}'
     )
     try:
-        get_field(obj, "z")
+        json_get_field(obj, "z")
         assert False, "expected JsonError"
     except JsonError:
         pass
     # is_null on non-null
-    assert is_null(num) == False
+    assert json_is_null(num) == False
 
 
 def test_parse_errors() -> None:
@@ -191,7 +191,7 @@ def test_parse_errors() -> None:
     i: int = 0
     while i < len(bad_inputs):
         try:
-            parse(bad_inputs[i])
+            json_parse(bad_inputs[i])
             assert False, "expected JsonError for: " + bad_inputs[i]
         except JsonError:
             pass
@@ -199,11 +199,11 @@ def test_parse_errors() -> None:
 
 
 def test_whitespace_handling() -> None:
-    assert stringify(parse("  null  ")) == "null"
-    assert stringify(parse("\t\n\r 42 \t\n\r")) == "42"
-    assert stringify(parse('  { "x" : [ 1 , 2 ] }  ')) == '{"x":[1,2]}'
-    assert stringify(parse(" [\n  1,\n  2,\n  3\n] ")) == "[1,2,3]"
-    assert stringify(parse('{\r\n\t"a"\t:\t1\t}')) == '{"a":1}'
+    assert json_stringify(json_parse("  null  ")) == "null"
+    assert json_stringify(json_parse("\t\n\r 42 \t\n\r")) == "42"
+    assert json_stringify(json_parse('  { "x" : [ 1 , 2 ] }  ')) == '{"x":[1,2]}'
+    assert json_stringify(json_parse(" [\n  1,\n  2,\n  3\n] ")) == "[1,2,3]"
+    assert json_stringify(json_parse('{\r\n\t"a"\t:\t1\t}')) == '{"a":1}'
 
 
 def main() -> int:
