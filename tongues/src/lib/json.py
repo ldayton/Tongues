@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
 
 
 class JsonError(Exception):
     pass
+
+
+_HEX: str = "0123456789abcdef"
 
 
 # -- JSON value types (discriminated union via isinstance) --
@@ -303,10 +305,10 @@ def _parse_value(s: str, pos: int) -> ParseResult:
         raise JsonError(f"unexpected character '{ch}' at position {str(pos)}")
 
 
-def parse(
+def json_parse(
     s: str,
 ) -> JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject:
-    """Parse a JSON string into a JsonValue."""
+    """Parse a JSON string into a JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject."""
     result: ParseResult = _parse_value(s, 0)
     pos: int = _skip_ws(s, result.pos)
     if pos < len(s):
@@ -317,10 +319,10 @@ def parse(
 # -- Serialization --
 
 
-def stringify(
+def json_stringify(
     value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
 ) -> str:
-    """Serialize a JsonValue to a JSON string."""
+    """Serialize a JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject to a JSON string."""
     if isinstance(value, JsonNull):
         return "null"
     elif isinstance(value, JsonBool):
@@ -341,14 +343,14 @@ def stringify(
     elif isinstance(value, JsonArray):
         parts: list[str] = []
         for item in value.items:
-            parts.append(stringify(item))
+            parts.append(json_stringify(item))
         return "[" + ",".join(parts) + "]"
     elif isinstance(value, JsonObject):
         parts: list[str] = []
         for key, val in value.entries:
-            parts.append(_escape_string(key) + ":" + stringify(val))
+            parts.append(_escape_string(key) + ":" + json_stringify(val))
         return "{" + ",".join(parts) + "}"
-    raise JsonError("invalid JsonValue")
+    raise JsonError("invalid json value")
 
 
 def _escape_string(s: str) -> str:
@@ -370,8 +372,8 @@ def _escape_string(s: str) -> str:
             parts.append("\\f")
         elif ord(ch) < 0x20:
             code: int = ord(ch)
-            h3: str = "0123456789abcdef"[code % 16]
-            h2: str = "0123456789abcdef"[(code // 16) % 16]
+            h3: str = _HEX[code % 16]
+            h2: str = _HEX[(code // 16) % 16]
             parts.append("\\u00" + h2 + h3)
         else:
             parts.append(ch)
@@ -382,7 +384,7 @@ def _escape_string(s: str) -> str:
 # -- Accessors --
 
 
-def get_string(
+def json_get_string(
     value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
 ) -> str:
     if isinstance(value, JsonString):
@@ -390,7 +392,7 @@ def get_string(
     raise JsonError("expected JsonString")
 
 
-def get_number(
+def json_get_number(
     value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
 ) -> float:
     if isinstance(value, JsonNumber):
@@ -398,7 +400,7 @@ def get_number(
     raise JsonError("expected JsonNumber")
 
 
-def get_bool(
+def json_get_bool(
     value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
 ) -> bool:
     if isinstance(value, JsonBool):
@@ -406,7 +408,7 @@ def get_bool(
     raise JsonError("expected JsonBool")
 
 
-def get_items(
+def json_get_items(
     value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
 ) -> list[JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject]:
     if isinstance(value, JsonArray):
@@ -414,7 +416,7 @@ def get_items(
     raise JsonError("expected JsonArray")
 
 
-def get_field(
+def json_get_field(
     value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
     key: str,
 ) -> JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject:
@@ -426,117 +428,7 @@ def get_field(
     raise JsonError("expected JsonObject")
 
 
-def is_null(
+def json_is_null(
     value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
 ) -> bool:
     return isinstance(value, JsonNull)
-
-
-# -- Main (self-test) --
-
-
-def _check(name: str, input: str, expected: str) -> bool:
-    try:
-        v: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = (
-            parse(input)
-        )
-        actual: str = stringify(v)
-        if actual == expected:
-            print("  PASS " + name)
-            return True
-        else:
-            print("  FAIL " + name + ": got " + actual + ", want " + expected)
-            return False
-    except JsonError as e:
-        print("  FAIL " + name + ": " + str(e))
-        return False
-
-
-def _self_test() -> int:
-    passed: int = 0
-    failed: int = 0
-    cases: list[tuple[str, str, str]] = [
-        ("null", "null", "null"),
-        ("true", "true", "true"),
-        ("false", "false", "false"),
-        ("zero", "0", "0"),
-        ("int", "42", "42"),
-        ("neg", "-7", "-7"),
-        ("float", "3.14", "3.14"),
-        ("exp", "1e10", "10000000000"),
-        ("string", '"hello"', '"hello"'),
-        ("escape", '"a\\nb"', '"a\\nb"'),
-        ("unicode", '"\\u0041"', '"A"'),
-        ("empty_array", "[]", "[]"),
-        ("array", "[1,2,3]", "[1,2,3]"),
-        ("nested", "[[1],[2]]", "[[1],[2]]"),
-        ("empty_object", "{}", "{}"),
-        ("object", '{"a":1,"b":2}', '{"a":1,"b":2}'),
-        ("whitespace", '  { "x" : [ 1 , 2 ] }  ', '{"x":[1,2]}'),
-        (
-            "mixed",
-            '{"n":null,"b":true,"a":[1,"two"]}',
-            '{"n":null,"b":true,"a":[1,"two"]}',
-        ),
-    ]
-    i: int = 0
-    while i < len(cases):
-        if _check(cases[i][0], cases[i][1], cases[i][2]):
-            passed += 1
-        else:
-            failed += 1
-        i += 1
-
-    # round-trip test
-    try:
-        src: str = '{"name":"test","values":[1,2.5,true,null],"nested":{"a":"b"}}'
-        rt: str = stringify(parse(src))
-        rt2: str = stringify(parse(rt))
-        if rt == rt2:
-            print("  PASS round_trip")
-            passed += 1
-        else:
-            print("  FAIL round_trip: mismatch after double round-trip")
-            failed += 1
-    except JsonError as e:
-        print("  FAIL round_trip: " + str(e))
-        failed += 1
-
-    # accessor test
-    try:
-        doc: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = (
-            parse('{"name":"alice","age":30,"scores":[95,87]}')
-        )
-        assert get_string(get_field(doc, "name")) == "alice"
-        assert get_number(get_field(doc, "age")) == 30.0
-        scores: list[
-            JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject
-        ] = get_items(get_field(doc, "scores"))
-        assert len(scores) == 2
-        assert get_number(scores[0]) == 95.0
-        print("  PASS accessors")
-        passed += 1
-    except JsonError as e:
-        print("  FAIL accessors: " + str(e))
-        failed += 1
-    except AssertionError as e:
-        print("  FAIL accessors: " + str(e))
-        failed += 1
-
-    # error test
-    try:
-        parse("{invalid}")
-        print("  FAIL error_handling: should have raised")
-        failed += 1
-    except JsonError:
-        print("  PASS error_handling")
-        passed += 1
-
-    print(str(passed) + " passed, " + str(failed) + " failed")
-    if failed > 0:
-        return 1
-    return 0
-
-
-if __name__ == "__main__":
-    sys.exit(_self_test())

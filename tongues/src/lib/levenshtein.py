@@ -3,50 +3,47 @@
 
 def levenshtein(a: str, b: str) -> int:
     """Return the Levenshtein edit distance between two strings."""
-    la: int = len(a)
-    lb: int = len(b)
-    if la == 0:
-        return lb
-    if lb == 0:
-        return la
+    len_a: int = len(a)
+    len_b: int = len(b)
+    if len_a == 0:
+        return len_b
+    if len_b == 0:
+        return len_a
     short: str = a
     long: str = b
-    sn: int = la
-    ln: int = lb
-    if la > lb:
+    short_len: int = len_a
+    long_len: int = len_b
+    if len_a > len_b:
         short = b
         long = a
-        sn = lb
-        ln = la
-    prev: list[int] = list(range(sn + 1))
-    curr: list[int] = [0] * (sn + 1)
+        short_len = len_b
+        long_len = len_a
+    prev: list[int] = list(range(short_len + 1))
+    curr: list[int] = [0] * (short_len + 1)
     i: int = 0
     cost: int = 0
-    ins: int = 0
-    dele: int = 0
-    sub: int = 0
+    ins_cost: int = 0
+    del_cost: int = 0
+    sub_cost: int = 0
     best: int = 0
-    while i < ln:
+    while i < long_len:
         curr[0] = i + 1
-        j = 0
-        while j < sn:
+        j: int = 0
+        while j < short_len:
             if long[i] == short[j]:
                 cost = 0
             else:
                 cost = 1
-            ins = curr[j] + 1
-            dele = prev[j + 1] + 1
-            sub = prev[j] + cost
-            best = ins
-            if dele < best:
-                best = dele
-            if sub < best:
-                best = sub
+            ins_cost = curr[j] + 1
+            del_cost = prev[j + 1] + 1
+            sub_cost = prev[j] + cost
+            best = ins_cost
+            if del_cost < best:
+                best = del_cost
+            if sub_cost < best:
+                best = sub_cost
             curr[j + 1] = best
             j += 1
-        j = 0
-        while j <= sn:
-            prev[j] = curr[j]
-            j += 1
+        prev, curr = curr, prev
         i += 1
-    return prev[sn]
+    return prev[short_len]

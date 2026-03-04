@@ -276,8 +276,8 @@ sub run_phase_tests ($test_dir, $phase_name, $cfg) {
             if ($phase_name =~ /^(pycheck|tycheck)$/ && !@{$phase_result->{errors}} && defined $phase_result->{data}) {
                 if (blessed($phase_result->{data}) && $phase_result->{data}->isa("JsonObject")) {
                     eval {
-                        my $reveals_arr = get_items(get_field($phase_result->{data}, "reveals"));
-                        $reveals = [map { [int(get_number(get_field($_, "line"))), get_string(get_field($_, "type"))] } @$reveals_arr];
+                        my $reveals_arr = json_get_items(json_get_field($phase_result->{data}, "reveals"));
+                        $reveals = [map { [int(json_get_number(json_get_field($_, "line"))), json_get_string(json_get_field($_, "type"))] } @$reveals_arr];
                     };
                 }
             }
@@ -472,6 +472,22 @@ sub run_app_tests ($test_dir) {
         my $stem = basename($test_file, ".py");
         my $source = _read_file($test_file);
         my $lib_names = find_lib_imports($source);
+        # Transitively resolve cross-lib imports
+        my %seen = map { $_ => 1 } @$lib_names;
+        my @queue = @$lib_names;
+        while (@queue) {
+            my $name = shift @queue;
+            my $lib_path = File::Spec->catfile($LIB_DIR, "$name.py");
+            next unless -f $lib_path;
+            my $deps = find_lib_imports(_read_file($lib_path));
+            for my $dep (@$deps) {
+                unless ($seen{$dep}) {
+                    $seen{$dep} = 1;
+                    push @$lib_names, $dep;
+                    push @queue, $dep;
+                }
+            }
+        }
         for my $target (@available) {
             my $test_id = "$stem" . "[$target]";
             my $result;

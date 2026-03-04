@@ -3,126 +3,126 @@
 import sys
 
 from lib.csv import CsvError
-from lib.csv import parse
-from lib.csv import parse_tsv
-from lib.csv import write
-from lib.csv import write_tsv
+from lib.csv import csv_parse
+from lib.csv import csv_parse_tsv
+from lib.csv import csv_write
+from lib.csv import csv_write_tsv
 
 
 # -- Basic parsing --
 
 
 def test_parse_empty() -> None:
-    assert parse("") == []
+    assert csv_parse("") == []
 
 
 def test_parse_single_field() -> None:
-    assert parse("hello\n") == [["hello"]]
+    assert csv_parse("hello\n") == [["hello"]]
 
 
 def test_parse_single_field_no_newline() -> None:
-    assert parse("hello") == [["hello"]]
+    assert csv_parse("hello") == [["hello"]]
 
 
 def test_parse_single_record() -> None:
-    assert parse("a,b,c\n") == [["a", "b", "c"]]
+    assert csv_parse("a,b,c\n") == [["a", "b", "c"]]
 
 
 def test_parse_multiple_records() -> None:
-    result: list[list[str]] = parse("a,b\nc,d\n")
+    result: list[list[str]] = csv_parse("a,b\nc,d\n")
     assert result == [["a", "b"], ["c", "d"]]
 
 
 def test_parse_no_trailing_newline() -> None:
-    assert parse("a,b\nc,d") == [["a", "b"], ["c", "d"]]
+    assert csv_parse("a,b\nc,d") == [["a", "b"], ["c", "d"]]
 
 
 # -- Quoted fields --
 
 
 def test_quoted_simple() -> None:
-    assert parse('"hello"\n') == [["hello"]]
+    assert csv_parse('"hello"\n') == [["hello"]]
 
 
 def test_quoted_with_comma() -> None:
-    assert parse('"a,b",c\n') == [["a,b", "c"]]
+    assert csv_parse('"a,b",c\n') == [["a,b", "c"]]
 
 
 def test_quoted_with_newline() -> None:
-    assert parse('"a\nb",c\n') == [["a\nb", "c"]]
+    assert csv_parse('"a\nb",c\n') == [["a\nb", "c"]]
 
 
 def test_quoted_with_escaped_quote() -> None:
-    assert parse('"a""b"\n') == [['a"b']]
+    assert csv_parse('"a""b"\n') == [['a"b']]
 
 
 def test_quoted_empty() -> None:
-    assert parse('""\n') == [[""]]
+    assert csv_parse('""\n') == [[""]]
 
 
 def test_quoted_only_quotes() -> None:
-    assert parse('""""\n') == [['"']]
+    assert csv_parse('""""\n') == [['"']]
 
 
 def test_quoted_multiple_escaped() -> None:
-    assert parse('"he said ""hi"" and ""bye"""\n') == [['he said "hi" and "bye"']]
+    assert csv_parse('"he said ""hi"" and ""bye"""\n') == [['he said "hi" and "bye"']]
 
 
 # -- Empty fields --
 
 
 def test_empty_fields() -> None:
-    assert parse(",\n") == [["", ""]]
+    assert csv_parse(",\n") == [["", ""]]
 
 
 def test_empty_middle() -> None:
-    assert parse("a,,b\n") == [["a", "", "b"]]
+    assert csv_parse("a,,b\n") == [["a", "", "b"]]
 
 
 def test_trailing_comma() -> None:
-    assert parse("a,b,\n") == [["a", "b", ""]]
+    assert csv_parse("a,b,\n") == [["a", "b", ""]]
 
 
 def test_leading_comma() -> None:
-    assert parse(",a,b\n") == [["", "a", "b"]]
+    assert csv_parse(",a,b\n") == [["", "a", "b"]]
 
 
 def test_all_empty() -> None:
-    assert parse(",,\n") == [["", "", ""]]
+    assert csv_parse(",,\n") == [["", "", ""]]
 
 
 # -- CRLF handling --
 
 
 def test_crlf_line_ending() -> None:
-    assert parse("a,b\r\nc,d\r\n") == [["a", "b"], ["c", "d"]]
+    assert csv_parse("a,b\r\nc,d\r\n") == [["a", "b"], ["c", "d"]]
 
 
 def test_cr_only_line_ending() -> None:
-    assert parse("a,b\rc,d\r") == [["a", "b"], ["c", "d"]]
+    assert csv_parse("a,b\rc,d\r") == [["a", "b"], ["c", "d"]]
 
 
 def test_crlf_in_quoted_field() -> None:
-    assert parse('"a\r\nb"\n') == [["a\nb"]]
+    assert csv_parse('"a\r\nb"\n') == [["a\nb"]]
 
 
 def test_mixed_line_endings() -> None:
-    assert parse("a\nb\r\nc\rd") == [["a"], ["b"], ["c"], ["d"]]
+    assert csv_parse("a\nb\r\nc\rd") == [["a"], ["b"], ["c"], ["d"]]
 
 
 # -- Blank lines skipped --
 
 
 def test_blank_lines_skipped() -> None:
-    assert parse("a\n\nb\n") == [["a"], ["b"]]
+    assert csv_parse("a\n\nb\n") == [["a"], ["b"]]
 
 
 def test_multiple_blank_lines() -> None:
-    assert parse("\n\na,b\n\n\nc,d\n\n") == [["a", "b"], ["c", "d"]]
+    assert csv_parse("\n\na,b\n\n\nc,d\n\n") == [["a", "b"], ["c", "d"]]
 
 
 def test_only_blank_lines() -> None:
-    assert parse("\n\n\n") == []
+    assert csv_parse("\n\n\n") == []
 
 
 # -- Bare quote errors --
@@ -130,7 +130,7 @@ def test_only_blank_lines() -> None:
 
 def test_bare_quote_in_unquoted() -> None:
     try:
-        parse('a"b\n')
+        csv_parse('a"b\n')
         assert False, "expected CsvError"
     except CsvError as e:
         assert e.line == 1
@@ -138,7 +138,7 @@ def test_bare_quote_in_unquoted() -> None:
 
 def test_unterminated_quote() -> None:
     try:
-        parse('"abc\n')
+        csv_parse('"abc\n')
         assert False, "expected CsvError"
     except CsvError as e:
         assert e.line == 2
@@ -146,7 +146,7 @@ def test_unterminated_quote() -> None:
 
 def test_unterminated_quote_eof() -> None:
     try:
-        parse('"abc')
+        csv_parse('"abc')
         assert False, "expected CsvError"
     except CsvError as e:
         assert e.line == 1
@@ -156,35 +156,35 @@ def test_unterminated_quote_eof() -> None:
 
 
 def test_write_empty() -> None:
-    assert write([]) == ""
+    assert csv_write([]) == ""
 
 
 def test_write_single_record() -> None:
-    assert write([["a", "b", "c"]]) == "a,b,c\n"
+    assert csv_write([["a", "b", "c"]]) == "a,b,c\n"
 
 
 def test_write_multiple_records() -> None:
-    assert write([["a", "b"], ["c", "d"]]) == "a,b\nc,d\n"
+    assert csv_write([["a", "b"], ["c", "d"]]) == "a,b\nc,d\n"
 
 
 def test_write_quotes_comma() -> None:
-    assert write([["a,b", "c"]]) == '"a,b",c\n'
+    assert csv_write([["a,b", "c"]]) == '"a,b",c\n'
 
 
 def test_write_quotes_newline() -> None:
-    assert write([["a\nb", "c"]]) == '"a\nb",c\n'
+    assert csv_write([["a\nb", "c"]]) == '"a\nb",c\n'
 
 
 def test_write_quotes_quote() -> None:
-    assert write([['a"b', "c"]]) == '"a""b",c\n'
+    assert csv_write([['a"b', "c"]]) == '"a""b",c\n'
 
 
 def test_write_empty_field() -> None:
-    assert write([["", "a"]]) == ",a\n"
+    assert csv_write([["", "a"]]) == ",a\n"
 
 
 def test_write_all_empty() -> None:
-    assert write([["", "", ""]]) == ",,\n"
+    assert csv_write([["", "", ""]]) == ",,\n"
 
 
 # -- Roundtrip --
@@ -192,43 +192,43 @@ def test_write_all_empty() -> None:
 
 def test_roundtrip_simple() -> None:
     records: list[list[str]] = [["a", "b", "c"], ["d", "e", "f"]]
-    assert parse(write(records)) == records
+    assert csv_parse(csv_write(records)) == records
 
 
 def test_roundtrip_quoted() -> None:
     records: list[list[str]] = [["hello, world", 'say "hi"'], ["a\nb", ""]]
-    assert parse(write(records)) == records
+    assert csv_parse(csv_write(records)) == records
 
 
 def test_roundtrip_empty_fields() -> None:
     records: list[list[str]] = [["", "", ""], ["a", "", "b"]]
-    assert parse(write(records)) == records
+    assert csv_parse(csv_write(records)) == records
 
 
 def test_roundtrip_single_field() -> None:
     records: list[list[str]] = [["only"]]
-    assert parse(write(records)) == records
+    assert csv_parse(csv_write(records)) == records
 
 
 # -- TSV --
 
 
 def test_tsv_parse() -> None:
-    assert parse_tsv("a\tb\tc\n") == [["a", "b", "c"]]
+    assert csv_parse_tsv("a\tb\tc\n") == [["a", "b", "c"]]
 
 
 def test_tsv_write() -> None:
-    assert write_tsv([["a", "b", "c"]]) == "a\tb\tc\n"
+    assert csv_write_tsv([["a", "b", "c"]]) == "a\tb\tc\n"
 
 
 def test_tsv_roundtrip() -> None:
     records: list[list[str]] = [["hello\tworld", "b"], ["c", "d"]]
-    assert parse_tsv(write_tsv(records)) == records
+    assert csv_parse_tsv(csv_write_tsv(records)) == records
 
 
 def test_tsv_comma_not_special() -> None:
     """Commas are literal in TSV."""
-    assert parse_tsv("a,b\tc\n") == [["a,b", "c"]]
+    assert csv_parse_tsv("a,b\tc\n") == [["a,b", "c"]]
 
 
 # -- Realistic data --
@@ -236,7 +236,7 @@ def test_tsv_comma_not_special() -> None:
 
 def test_header_and_data() -> None:
     text: str = 'name,age,city\nAlice,30,"New York"\nBob,25,London\n'
-    result: list[list[str]] = parse(text)
+    result: list[list[str]] = csv_parse(text)
     assert len(result) == 3
     assert result[0] == ["name", "age", "city"]
     assert result[1] == ["Alice", "30", "New York"]
@@ -244,38 +244,38 @@ def test_header_and_data() -> None:
 
 
 def test_all_quoted_fields() -> None:
-    assert parse('"a","b","c"\n') == [["a", "b", "c"]]
+    assert csv_parse('"a","b","c"\n') == [["a", "b", "c"]]
 
 
 def test_quoted_at_middle() -> None:
-    assert parse('a,"b,c",d\n') == [["a", "b,c", "d"]]
+    assert csv_parse('a,"b,c",d\n') == [["a", "b,c", "d"]]
 
 
 def test_mixed_quoted_unquoted() -> None:
-    assert parse('plain,"has,comma",plain2\n') == [["plain", "has,comma", "plain2"]]
+    assert csv_parse('plain,"has,comma",plain2\n') == [["plain", "has,comma", "plain2"]]
 
 
 def test_field_just_quote() -> None:
     """A field whose value is a single double-quote character."""
-    assert parse('""""\n') == [['"']]
+    assert csv_parse('""""\n') == [['"']]
 
 
 def test_single_column() -> None:
-    assert parse("a\nb\nc\n") == [["a"], ["b"], ["c"]]
+    assert csv_parse("a\nb\nc\n") == [["a"], ["b"], ["c"]]
 
 
 def test_write_cr_in_field() -> None:
-    assert write([["a\rb", "c"]]) == '"a\rb",c\n'
+    assert csv_write([["a\rb", "c"]]) == '"a\rb",c\n'
 
 
 def test_parse_cr_in_quoted_normalized() -> None:
     """Bare CR inside quoted field is normalized to LF."""
-    assert parse('"a\rb"\n') == [["a\nb"]]
+    assert csv_parse('"a\rb"\n') == [["a\nb"]]
 
 
 def test_multiline_quoted_field() -> None:
     text: str = 'id,notes\n1,"line one\nline two\nline three"\n2,simple\n'
-    result: list[list[str]] = parse(text)
+    result: list[list[str]] = csv_parse(text)
     assert len(result) == 3
     assert result[1] == ["1", "line one\nline two\nline three"]
     assert result[2] == ["2", "simple"]

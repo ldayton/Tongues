@@ -63,12 +63,21 @@ def _find_lib_imports(source: str) -> list[str]:
 
 
 def _read_lib_sources(names: list[str]) -> list[tuple[str, str]]:
-    """Read lib modules. Returns [(import_path, source)] e.g. [('lib/base64.py', '...')]."""
+    """Read lib modules, transitively resolving cross-lib imports."""
     result: list[tuple[str, str]] = []
-    for name in names:
+    seen: set[str] = set()
+    queue = list(names)
+    while queue:
+        name = queue.pop(0)
+        if name in seen:
+            continue
+        seen.add(name)
         file_path = LIB_DIR / f"{name}.py"
-        import_path = f"lib/{name}.py"
-        result.append((import_path, file_path.read_text()))
+        source = file_path.read_text()
+        result.append((f"lib/{name}.py", source))
+        for dep in _find_lib_imports(source):
+            if dep not in seen:
+                queue.append(dep)
     return result
 
 

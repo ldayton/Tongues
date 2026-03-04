@@ -11,7 +11,7 @@ class CsvError(Exception):
     column: int
 
 
-def parse(text: str) -> list[list[str]]:
+def csv_parse(text: str) -> list[list[str]]:
     """Parse CSV text into a list of records (list of fields).
 
     Follows RFC 4180: comma-delimited, double-quote escaping via "",
@@ -21,7 +21,7 @@ def parse(text: str) -> list[list[str]]:
     return _parse(text, ",")
 
 
-def parse_tsv(text: str) -> list[list[str]]:
+def csv_parse_tsv(text: str) -> list[list[str]]:
     """Parse tab-separated text into a list of records."""
     return _parse(text, "\t")
 
@@ -128,12 +128,12 @@ def _parse_quoted(text: str, pos: int, line: int) -> tuple[str, int, int]:
     raise CsvError(line, pos + 1)
 
 
-def write(records: list[list[str]]) -> str:
+def csv_write(records: list[list[str]]) -> str:
     """Write records to CSV text (RFC 4180, LF line endings)."""
     return _write(records, ",")
 
 
-def write_tsv(records: list[list[str]]) -> str:
+def csv_write_tsv(records: list[list[str]]) -> str:
     """Write records to tab-separated text."""
     return _write(records, "\t")
 

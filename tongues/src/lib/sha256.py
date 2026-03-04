@@ -168,7 +168,7 @@ def _pad(data: bytes) -> bytes:
 def sha256_bytes(data: bytes) -> bytes:
     """Return the SHA-256 digest as 32 raw bytes."""
     padded: bytes = _pad(data)
-    state: list[int] = [_H[0], _H[1], _H[2], _H[3], _H[4], _H[5], _H[6], _H[7]]
+    state: list[int] = list(_H)
     for i in range(0, len(padded), 64):
         state = _compress(state, padded[i : i + 64])
     out: list[int] = []

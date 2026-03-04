@@ -16,7 +16,7 @@ def _is_unreserved(b: int) -> bool:
     return False
 
 
-def _hex_val(c: int) -> int:
+def _hex_value(c: int) -> int:
     """Return 0-15 for an ASCII hex digit ordinal, or -1 if invalid."""
     if c >= 48 and c <= 57:
         return c - 48
@@ -92,8 +92,8 @@ def percent_decode(s: str) -> str:
     lo: int = 0
     while i < n:
         if s[i] == "%" and i + 2 < n:
-            hi = _hex_val(ord(s[i + 1]))
-            lo = _hex_val(ord(s[i + 2]))
+            hi = _hex_value(ord(s[i + 1]))
+            lo = _hex_value(ord(s[i + 2]))
             if hi >= 0 and lo >= 0:
                 raw.append(hi * 16 + lo)
                 i += 3

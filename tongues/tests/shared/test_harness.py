@@ -16,13 +16,13 @@ from lib.json import (
     JsonString,
     JsonArray,
     JsonObject,
-    parse as json_parse,
-    get_string,
-    get_number,
-    get_items,
-    get_field,
-    is_null,
-    stringify,
+    json_parse,
+    json_get_string,
+    json_get_number,
+    json_get_items,
+    json_get_field,
+    json_is_null,
+    json_stringify,
 )
 
 
@@ -275,14 +275,14 @@ def parse_simple_tests(text: str) -> list[SimpleEntry]:
     return result
 
 
-# -- Dotpath resolution on JsonValue --
+# -- Dotpath resolution on JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject --
 
 
 def resolve_dotpath(
     obj: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
     path: str,
 ) -> JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject:
-    """Resolve a dot-separated path against a JsonValue tree."""
+    """Resolve a dot-separated path against a JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject tree."""
     parts: list[str] = path.split(".")
     current: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject = (
         obj
@@ -343,7 +343,7 @@ def resolve_dotpath(
 def to_comparable(
     value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
 ) -> str:
-    """Convert a JsonValue to its string form for comparison."""
+    """Convert a JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject to its string form for comparison."""
     if isinstance(value, JsonNull):
         return "null"
     if isinstance(value, JsonBool):
@@ -358,7 +358,7 @@ def to_comparable(
         return str(n)
     if isinstance(value, JsonString):
         return value.value
-    return stringify(value)
+    return json_stringify(value)
 
 
 def check_reveals(

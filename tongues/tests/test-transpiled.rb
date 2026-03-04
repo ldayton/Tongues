@@ -198,8 +198,8 @@ def run_phase_tests(test_dir, phase_name, cfg)
       if %w[pycheck tycheck].include?(phase_name) && phase_result[:errors].empty? && phase_result[:data]
         if phase_result[:data].is_a?(JsonObject)
           begin
-            reveals_arr = get_items(get_field(phase_result[:data], "reveals"))
-            reveals = reveals_arr.map { |r| [get_number(get_field(r, "line")).to_i, get_string(get_field(r, "type"))] }
+            reveals_arr = json_get_items(json_get_field(phase_result[:data], "reveals"))
+            reveals = reveals_arr.map { |r| [json_get_number(json_get_field(r, "line")).to_i, json_get_string(json_get_field(r, "type"))] }
           rescue
           end
         end
@@ -376,6 +376,21 @@ def run_app_tests(test_dir)
     stem = File.basename(test_file, ".py")
     source = File.read(test_file)
     lib_names = find_lib_imports(source)
+    # Transitively resolve cross-lib imports
+    seen = lib_names.to_a.dup
+    queue = lib_names.to_a.dup
+    until queue.empty?
+      name = queue.shift
+      lib_path = File.join(LIB_DIR, "#{name}.py")
+      next unless File.exist?(lib_path)
+      find_lib_imports(File.read(lib_path)).each do |dep|
+        unless seen.include?(dep)
+          seen << dep
+          queue << dep
+        end
+      end
+    end
+    lib_names = seen
     available.each do |target|
       test_id = "#{stem}[#{target}]"
       if lib_names.empty?
