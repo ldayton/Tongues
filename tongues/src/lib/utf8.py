@@ -121,9 +121,8 @@ def utf8_decode(data: bytes) -> list[int]:
     out: list[int] = []
     pos: int = 0
     while pos < len(data):
-        result: tuple[int, int] = utf8_decode_codepoint(data, pos)
-        out.append(result[0])
-        pos = result[1]
+        cp, pos = utf8_decode_codepoint(data, pos)
+        out.append(cp)
     return out
 
 
@@ -132,8 +131,7 @@ def utf8_is_valid(data: bytes) -> bool:
     pos: int = 0
     while pos < len(data):
         try:
-            result: tuple[int, int] = utf8_decode_codepoint(data, pos)
-            pos = result[1]
+            _, pos = utf8_decode_codepoint(data, pos)
         except Utf8Error:
             return False
     return True
@@ -144,7 +142,6 @@ def utf8_codepoint_len(data: bytes) -> int:
     count: int = 0
     pos: int = 0
     while pos < len(data):
-        result: tuple[int, int] = utf8_decode_codepoint(data, pos)
-        pos = result[1]
+        _, pos = utf8_decode_codepoint(data, pos)
         count += 1
     return count
