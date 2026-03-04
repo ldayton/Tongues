@@ -1383,6 +1383,8 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
                         + " out of bounds for tuple of length "
                         + str(len(obj_type.elements)),
                     )
+        if obj_type.elements:
+            return combine_types(obj_type.elements)
     return ANY_TYPE
 
 
@@ -1451,6 +1453,16 @@ def _synth_binop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         return lt
     if (lk == "int" or lk == "bool") and isinstance(rt, SliceType):
         return rt
+    # Tuple concatenation
+    if isinstance(lt, TupleType) and isinstance(rt, TupleType):
+        if op_type == "Add":
+            variadic = lt.variadic or rt.variadic
+            return TupleType(list(lt.elements) + list(rt.elements), variadic)
+    # Tuple * int
+    if isinstance(lt, TupleType) and (rk == "int" or rk == "bool"):
+        return TupleType(lt.elements, True)
+    if (lk == "int" or lk == "bool") and isinstance(rt, TupleType):
+        return TupleType(rt.elements, True)
     # Dict merge (|)
     if isinstance(lt, MapType) and isinstance(rt, MapType):
         if op_type == "BitOr":
