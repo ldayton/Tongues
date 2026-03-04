@@ -54,6 +54,7 @@ from ..taytsh.ast import (
     TOpAssignStmt,
     TOptionalType,
     TParam,
+    TPatternNil,
     TPatternType,
     TPrimitive,
     TRange,
@@ -4589,6 +4590,8 @@ def _lower_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         return [TContinueStmt(pos, {})]
     if t == "With":
         return _lower_with_open(node, env, ctx)
+    if t == "Match":
+        return _lower_match(node, env, ctx)
     if t == "Pass":
         return []
     if t == "Delete":
@@ -5676,6 +5679,100 @@ def _lower_isinstance_chain(
         default = TDefault(pos, None, [], {})
     else:
         default = TDefault(pos, None, [], {})
+    pre_stmts.append(TMatchStmt(pos, expr, cases, default, {}))
+    return pre_stmts
+
+
+def _match_binding_name(type_name: str, env: _Env) -> str:
+    """Generate a unique binding name for a match case pattern."""
+    base = type_name[0].lower() + type_name[1:] if type_name else type_name
+    if base not in env.declared and base not in TAYTSH_KEYWORDS:
+        return base
+    suffix = 0
+    while base + str(suffix) in env.declared:
+        suffix += 1
+    return base + str(suffix)
+
+
+def _lower_match(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
+    """Lower a match/case statement to TMatchStmt."""
+    pos = _node_pos(node)
+    subject = get_node(node, "subject")
+    cases_nodes = get_nodes(node, "cases")
+    # Hoist variables first-assigned in any case body
+    all_body_nodes: list[ASTNode] = []
+    for cn in cases_nodes:
+        for b in get_nodes(cn, "body"):
+            all_body_nodes.append(b)
+    hoist_names = _scan_hoist_names(all_body_nodes, env)
+    pre_stmts: list[TStmt] = []
+    _emit_hoisted_placeholders(pos, hoist_names, env, pre_stmts)
+    expr = _lower_expr(subject, env, ctx)
+    subj_name = ""
+    if _is_ast(subject, "Name"):
+        subj_name = get_str(subject, "id")
+    nil_cases: list[TMatchCase] = []
+    type_cases: list[TMatchCase] = []
+    default: TDefault | None = None
+    for cn in cases_nodes:
+        pattern = get_node(cn, "pattern")
+        case_body_nodes = get_nodes(cn, "body")
+        pt = get_str(pattern, "_type")
+        if pt == "MatchAs" and isinstance(pattern.get("name"), JNull):
+            # Wildcard _ → default
+            default_body = _lower_stmts(case_body_nodes, env, ctx)
+            default = TDefault(pos, None, default_body, {})
+        elif pt == "MatchClass":
+            cls = get_node(pattern, "cls")
+            type_name = get_str(cls, "id")
+            binding_name = _match_binding_name(type_name, env)
+            env.declared.add(binding_name)
+            case_env = env.copy()
+            if subj_name:
+                case_env.var_types[subj_name] = PointerType(StructRef(type_name))
+            case_body = _lower_stmts(case_body_nodes, case_env, ctx)
+            tp = TPatternType(pos, binding_name, TIdentType(pos, type_name), {})
+            type_cases.append(TMatchCase(pos, tp, case_body, {}))
+        elif pt == "MatchSingleton" or pt == "MatchValue":
+            v = pattern.get("value")
+            if isinstance(v, JNull):
+                # case None → case nil
+                case_body = _lower_stmts(case_body_nodes, env, ctx)
+                nil_cases.append(TMatchCase(pos, TPatternNil(pos), case_body, {}))
+        elif pt == "MatchOr":
+            subs = get_nodes(pattern, "patterns")
+            # Build union type for narrowing from all MatchClass alternatives
+            variant_types: list[TypeNode] = []
+            for sub in subs:
+                if get_str(sub, "_type") == "MatchClass":
+                    sub_cls = get_node(sub, "cls")
+                    vname = get_str(sub_cls, "id")
+                    variant_types.append(PointerType(StructRef(vname)))
+            case_env = env.copy()
+            if subj_name and variant_types:
+                if len(variant_types) == 1:
+                    case_env.var_types[subj_name] = variant_types[0]
+                else:
+                    case_env.var_types[subj_name] = UnionType(variant_types)
+            case_body = _lower_stmts(case_body_nodes, case_env, ctx)
+            # Emit one case arm per MatchClass alternative
+            for sub in subs:
+                if get_str(sub, "_type") == "MatchClass":
+                    sub_cls = get_node(sub, "cls")
+                    type_name = get_str(sub_cls, "id")
+                    binding_name = _match_binding_name(type_name, env)
+                    env.declared.add(binding_name)
+                    tp = TPatternType(pos, binding_name, TIdentType(pos, type_name), {})
+                    type_cases.append(TMatchCase(pos, tp, case_body, {}))
+                elif get_str(sub, "_type") == "MatchSingleton":
+                    v = sub.get("value")
+                    if isinstance(v, JNull):
+                        nil_cases.append(
+                            TMatchCase(pos, TPatternNil(pos), case_body, {})
+                        )
+    if default is None:
+        default = TDefault(pos, None, [], {})
+    cases: list[TMatchCase] = nil_cases + type_cases
     pre_stmts.append(TMatchStmt(pos, expr, cases, default, {}))
     return pre_stmts
 

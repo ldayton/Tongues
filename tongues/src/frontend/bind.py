@@ -426,7 +426,7 @@ class Verifier:
         elif node_type == "TypeAlias":
             self.visit_TypeAlias(node)
         elif node_type == "Match":
-            pass
+            self.visit_Match(node)
         else:
             # Unknown node types get a warning
             if node_type and not self.is_known_node(node_type):
@@ -923,6 +923,45 @@ class Verifier:
             return
         value = get_node(node, "value")
         self.visit(value)
+
+    def visit_Match(self, node: ASTNode) -> None:
+        """Validate match/case patterns."""
+        subject = get_node(node, "subject")
+        if subject:
+            self.visit(subject)
+        cases = get_nodes(node, "cases")
+        for case_node in cases:
+            if _has_present(case_node, "guard"):
+                self.error(case_node, "pattern", "match guards not supported")
+            pattern = get_node(case_node, "pattern")
+            if pattern:
+                self._check_match_pattern(pattern)
+            body = get_nodes(case_node, "body")
+            for stmt in body:
+                self.visit(stmt)
+
+    def _check_match_pattern(self, pattern: ASTNode) -> None:
+        """Check that a match pattern is in the supported subset."""
+        pt = get_str(pattern, "_type")
+        if pt == "MatchClass":
+            return
+        if pt == "MatchAs":
+            return
+        if pt == "MatchSingleton":
+            v = pattern.get("value")
+            if isinstance(v, JNull):
+                return
+            self.error(pattern, "pattern", "unsupported pattern value")
+            return
+        if pt == "MatchValue":
+            self.error(pattern, "pattern", "unsupported pattern value")
+            return
+        if pt == "MatchOr":
+            subs = get_nodes(pattern, "patterns")
+            for sub in subs:
+                self._check_match_pattern(sub)
+            return
+        self.error(pattern, "pattern", "unsupported pattern type: " + pt)
 
     def visit_AnnAssign(self, node: ASTNode) -> None:
         """Check annotated assignment constraints."""
