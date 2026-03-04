@@ -383,3 +383,21 @@ fn Main() -> void {
 ---
 ok
 ---
+
+=== hoisted bytes variable with correct zero value
+fn Main() -> void {
+    let chunk: bytes = b""
+    chunk = b"\x01\x02"
+}
+---
+ok
+---
+
+=== hoisted bytes variable with wrong zero value rejected
+fn Main() -> void {
+    let chunk: bytes = []
+    chunk = b"\x01\x02"
+}
+---
+error: cannot assign
+---
