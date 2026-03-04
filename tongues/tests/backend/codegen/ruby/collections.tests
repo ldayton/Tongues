@@ -20,7 +20,7 @@ if m.key?("a")
 idx = xs.index(20) || -1
 
 === Pop and RemoveAt
-last_ = xs.pop
+last = xs.pop
 xs.delete_at(0)
 
 === Insert on list

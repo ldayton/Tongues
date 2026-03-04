@@ -78,7 +78,7 @@ from ..taytsh.ast import (
 )
 from ..taytsh.check import BUILTIN_NAMES, BUILTIN_STRUCTS
 
-_PERL_RESERVED = frozenset(
+_PERL_KEYWORDS = frozenset(
     {
         "and",
         "cmp",
@@ -101,6 +101,7 @@ _PERL_RESERVED = frozenset(
         "no",
         "not",
         "or",
+        "our",
         "package",
         "return",
         "sub",
@@ -110,11 +111,227 @@ _PERL_RESERVED = frozenset(
         "use",
         "while",
         "xor",
+        "local",
+        "state",
     }
 )
 
+# Built-in functions and preamble-injected names that collide with
+# user-defined *subroutine* names.  Perl's sigil system means $foo
+# never shadows foo(), so these only matter for sub definitions and
+# bare-word function calls.
+_PERL_BUILTIN_FUNCS = frozenset(
+    {
+        "abs",
+        "accept",
+        "alarm",
+        "atan2",
+        "bind",
+        "binmode",
+        "bless",
+        "break",
+        "caller",
+        "chdir",
+        "chmod",
+        "chomp",
+        "chop",
+        "chown",
+        "chr",
+        "chroot",
+        "close",
+        "closedir",
+        "connect",
+        "cos",
+        "crypt",
+        "dbmclose",
+        "dbmopen",
+        "defined",
+        "delete",
+        "die",
+        "dump",
+        "each",
+        "endgrent",
+        "endhostent",
+        "endnetent",
+        "endprotoent",
+        "endpwent",
+        "endservent",
+        "eof",
+        "eval",
+        "exec",
+        "exists",
+        "exit",
+        "exp",
+        "fcntl",
+        "fileno",
+        "flock",
+        "fork",
+        "format",
+        "formline",
+        "getc",
+        "getgrent",
+        "getgrgid",
+        "getgrnam",
+        "gethostbyaddr",
+        "gethostbyname",
+        "gethostent",
+        "getlogin",
+        "getnetbyaddr",
+        "getnetbyname",
+        "getnetent",
+        "getpeername",
+        "getpgrp",
+        "getppid",
+        "getpriority",
+        "getprotobyname",
+        "getprotobynumber",
+        "getprotoent",
+        "getpwent",
+        "getpwnam",
+        "getpwuid",
+        "getservbyname",
+        "getservbyport",
+        "getservent",
+        "getsockname",
+        "getsockopt",
+        "glob",
+        "gmtime",
+        "goto",
+        "grep",
+        "hex",
+        "import",
+        "index",
+        "int",
+        "ioctl",
+        "join",
+        "keys",
+        "kill",
+        "lc",
+        "lcfirst",
+        "length",
+        "link",
+        "listen",
+        "localtime",
+        "log",
+        "lstat",
+        "map",
+        "mkdir",
+        "msgctl",
+        "msgget",
+        "msgrcv",
+        "msgsnd",
+        "oct",
+        "open",
+        "opendir",
+        "ord",
+        "pack",
+        "pipe",
+        "pop",
+        "pos",
+        "print",
+        "printf",
+        "prototype",
+        "push",
+        "quotemeta",
+        "rand",
+        "read",
+        "readdir",
+        "readline",
+        "readlink",
+        "readpipe",
+        "recv",
+        "redo",
+        "ref",
+        "rename",
+        "require",
+        "reset",
+        "reverse",
+        "rewinddir",
+        "rindex",
+        "rmdir",
+        "say",
+        "scalar",
+        "seek",
+        "seekdir",
+        "select",
+        "semctl",
+        "semget",
+        "semop",
+        "send",
+        "setgrent",
+        "sethostent",
+        "setnetent",
+        "setpgrp",
+        "setpriority",
+        "setprotoent",
+        "setpwent",
+        "setservent",
+        "setsockopt",
+        "shift",
+        "shmctl",
+        "shmget",
+        "shmread",
+        "shmwrite",
+        "shutdown",
+        "sin",
+        "sleep",
+        "socket",
+        "socketpair",
+        "sort",
+        "splice",
+        "split",
+        "sprintf",
+        "sqrt",
+        "srand",
+        "stat",
+        "study",
+        "substr",
+        "symlink",
+        "syscall",
+        "sysopen",
+        "sysread",
+        "sysseek",
+        "system",
+        "syswrite",
+        "tell",
+        "telldir",
+        "tie",
+        "tied",
+        "time",
+        "times",
+        "truncate",
+        "uc",
+        "ucfirst",
+        "umask",
+        "unlink",
+        "unpack",
+        "unshift",
+        "untie",
+        "values",
+        "vec",
+        "wait",
+        "waitpid",
+        "wantarray",
+        "warn",
+        "write",
+        # Preamble imports (injected by emit_module)
+        "floor",
+        "ceil",
+        "min",
+        "max",
+        "sum",
+        "looks_like_number",
+        "encode",
+        "decode",
+    }
+)
+
+# Perl pragmas that poison an entire variable-name prefix.
+_PERL_POISONED_PREFIXES = ("utf8_", "bytes_")
+
 
 def _safe_name(name: str) -> str:
+    """Mangle a name for use as a Perl variable ($name)."""
     if name == "_":
         return "_unused"
     prefix = "_" if name.startswith("_") and len(name) > 1 else ""
@@ -122,7 +339,18 @@ def _safe_name(name: str) -> str:
     if not safe:
         return "_unused"
     safe = prefix + safe
-    if safe in _PERL_RESERVED:
+    if safe in _PERL_KEYWORDS:
+        return safe + "_"
+    for pp in _PERL_POISONED_PREFIXES:
+        if safe.startswith(pp) or safe == pp[:-1]:
+            return "t_" + safe
+    return safe
+
+
+def _safe_fn_name(name: str) -> str:
+    """Mangle a name for use as a Perl subroutine (sub name / name())."""
+    safe = _safe_name(name)
+    if safe in _PERL_BUILTIN_FUNCS:
         return safe + "_"
     return safe
 
@@ -133,6 +361,14 @@ def _restore_name(name: str, annotations: Ann) -> str:
     if key in annotations:
         return _safe_name(annotations[key])
     return _safe_name(name)
+
+
+def _restore_fn_name(name: str, annotations: Ann) -> str:
+    """Like _restore_name but for subroutine contexts."""
+    key = "name.original." + name
+    if key in annotations:
+        return _safe_fn_name(annotations[key])
+    return _safe_fn_name(name)
 
 
 _LIST_UTIL_BUILTINS = frozenset({"Min", "Max", "Sum"})
@@ -510,7 +746,7 @@ class _PerlEmitter(Emitter):
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
                 args.append("$" + _restore_name(p.name, p.annotations))
-        self._line("sub " + _safe_name(decl.name) + " {")
+        self._line("sub " + _safe_fn_name(decl.name) + " {")
         self.indent += 1
         if args:
             self._line("my (" + ", ".join(args) + ") = @_;")
@@ -1405,7 +1641,7 @@ class _PerlEmitter(Emitter):
                 return self.var_alias[expr.name]
             if expr.name in self.function_names and expr.name not in self.var_types:
                 prefix = "main::" if self.in_package else ""
-                return "\\&" + prefix + _restore_name(expr.name, expr.annotations)
+                return "\\&" + prefix + _restore_fn_name(expr.name, expr.annotations)
             if expr.name in self.struct_names and expr.name not in self.var_types:
                 return expr.name + "->new()"
             if expr.name in self.enum_names and expr.name not in self.var_types:
@@ -1881,7 +2117,7 @@ class _PerlEmitter(Emitter):
                 return self._expr(func) + "->(" + arg_strs + ")"
             if func.name in self.function_names:
                 prefix = "main::" if self.in_package else ""
-                return prefix + _safe_name(func.name) + "(" + arg_strs + ")"
+                return prefix + _safe_fn_name(func.name) + "(" + arg_strs + ")"
         fn_expr = self._expr(func)
         arg_strs2 = ", ".join(self._expr(a.value) for a in args)
         return fn_expr + "->(" + arg_strs2 + ")"
