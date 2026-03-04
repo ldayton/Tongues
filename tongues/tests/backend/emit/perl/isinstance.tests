@@ -1,2 +1,5 @@
 === isinstance check
 eval { $a->isa('Dog') }
+
+=== isinstance with tuple of types
+eval { $a->isa('Dog') } || eval { $a->isa('Cat') }

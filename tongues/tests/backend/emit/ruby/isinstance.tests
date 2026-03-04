@@ -1,2 +1,5 @@
 === isinstance check
 a.is_a?(Dog)
+
+=== isinstance with tuple of types
+a.is_a?(Dog) || a.is_a?(Cat)

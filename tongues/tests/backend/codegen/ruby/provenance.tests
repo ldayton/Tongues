@@ -81,3 +81,6 @@ return s.delete_prefix(p)
 
 === string removesuffix (raised)
 return s.delete_suffix(p)
+
+=== isinstance with tuple of types (raised)
+return v.is_a?(A) || v.is_a?(B)

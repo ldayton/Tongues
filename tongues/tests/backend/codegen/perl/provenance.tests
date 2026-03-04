@@ -105,3 +105,6 @@ return ((($s =~ /^\Q${\ $p}\E/) ? 1 : 0) ? substr($s, length($p), (length($s)) -
 
 === string removesuffix (raised)
 return ((($s =~ /\Q${\ $p}\E$/) ? 1 : 0) ? substr($s, 0, (length($s) - length($p)) - (0)) : $s);
+
+=== isinstance with tuple of types (raised)
+return eval { $v->isa('A') } || eval { $v->isa('B') };
