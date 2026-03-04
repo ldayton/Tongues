@@ -3527,6 +3527,7 @@ def _lower_slice(
     has_step = step_jv is not None and not isinstance(step_jv, JNull)
     is_bytes = _is_type_dict(obj_type, ["bytes"]) or _is_bytes_slice(obj_type)
     if has_step and not isinstance(obj_type, TupleType) and not is_bytes:
+        assert step_jv is not None
         return _lower_step_slice(
             pos, obj, obj_type, lower_jv, upper_jv, step_jv, env, ctx
         )
@@ -3611,10 +3612,10 @@ def _lower_step_slice(
         let_type: TType = TPrimitive(pos, "string")
         let_init: TExpr = TStringLit(pos, "", {})
         # Accumulate with Concat
-        append_expr: TExpr = TAssignStmt(
+        append_stmt: TStmt = TAssignStmt(
             pos, result_var, _make_call(pos, "Concat", [result_var, elem]), {}
         )
-        body: list[TStmt] = [append_expr]
+        body: list[TStmt] = [append_stmt]
     else:
         elt_ttype = _elem_type_from_obj(pos, obj_type)
         let_type = TListType(pos, elt_ttype)
