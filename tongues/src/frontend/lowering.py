@@ -3524,7 +3524,8 @@ def _lower_slice(
     upper_jv = slice_node.get("upper")
     step_jv = slice_node.get("step")
     has_step = step_jv is not None and not isinstance(step_jv, JNull)
-    if has_step and not isinstance(obj_type, TupleType):
+    is_bytes = _is_type_dict(obj_type, ["bytes"]) or _is_bytes_slice(obj_type)
+    if has_step and not isinstance(obj_type, TupleType) and not is_bytes:
         return _lower_step_slice(
             pos, obj, obj_type, lower_jv, upper_jv, step_jv, env, ctx
         )
