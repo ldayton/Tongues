@@ -327,6 +327,108 @@ def test_intersection_with_empty() -> None:
     assert bitset_popcount(result) == 0
 
 
+def test_non_aligned_size() -> None:
+    """Size 33 requires 2 words but only 1 bit in the second."""
+    bs: list[int] = bitset_new(33)
+    bitset_set(bs, 32)
+    assert bitset_test(bs, 32)
+    assert bitset_popcount(bs) == 1
+
+
+def test_non_aligned_size_50() -> None:
+    bs: list[int] = bitset_new(50)
+    bitset_set(bs, 0)
+    bitset_set(bs, 31)
+    bitset_set(bs, 32)
+    bitset_set(bs, 49)
+    assert bitset_to_list(bs) == [0, 31, 32, 49]
+    assert bitset_popcount(bs) == 4
+
+
+def test_popcount_after_clear() -> None:
+    bs: list[int] = bitset_new(64)
+    bitset_set(bs, 0)
+    bitset_set(bs, 10)
+    bitset_set(bs, 20)
+    assert bitset_popcount(bs) == 3
+    bitset_clear(bs, 10)
+    assert bitset_popcount(bs) == 2
+
+
+def test_toggle_word_boundary() -> None:
+    bs: list[int] = bitset_new(96)
+    bitset_toggle(bs, 31)
+    bitset_toggle(bs, 32)
+    assert bitset_test(bs, 31)
+    assert bitset_test(bs, 32)
+    bitset_toggle(bs, 31)
+    assert not bitset_test(bs, 31)
+    assert bitset_test(bs, 32)
+
+
+def test_union_via_to_list() -> None:
+    a: list[int] = bitset_new(64)
+    b: list[int] = bitset_new(64)
+    bitset_set(a, 1)
+    bitset_set(a, 3)
+    bitset_set(b, 2)
+    bitset_set(b, 3)
+    assert bitset_to_list(bitset_union(a, b)) == [1, 2, 3]
+
+
+def test_intersection_via_to_list() -> None:
+    a: list[int] = bitset_new(64)
+    b: list[int] = bitset_new(64)
+    bitset_set(a, 1)
+    bitset_set(a, 3)
+    bitset_set(a, 5)
+    bitset_set(b, 3)
+    bitset_set(b, 5)
+    bitset_set(b, 7)
+    assert bitset_to_list(bitset_intersection(a, b)) == [3, 5]
+
+
+def test_difference_via_to_list() -> None:
+    a: list[int] = bitset_new(64)
+    b: list[int] = bitset_new(64)
+    bitset_set(a, 1)
+    bitset_set(a, 3)
+    bitset_set(a, 5)
+    bitset_set(b, 3)
+    bitset_set(b, 7)
+    assert bitset_to_list(bitset_difference(a, b)) == [1, 5]
+
+
+def test_difference_b_extra_bits_ignored() -> None:
+    """Bits in b but not in a should not appear in result."""
+    a: list[int] = bitset_new(64)
+    b: list[int] = bitset_new(64)
+    bitset_set(a, 0)
+    bitset_set(b, 0)
+    bitset_set(b, 1)
+    bitset_set(b, 2)
+    result: list[int] = bitset_difference(a, b)
+    assert bitset_to_list(result) == []
+
+
+def test_to_list_three_words() -> None:
+    bs: list[int] = bitset_new(96)
+    bitset_set(bs, 0)
+    bitset_set(bs, 33)
+    bitset_set(bs, 65)
+    bitset_set(bs, 95)
+    assert bitset_to_list(bs) == [0, 33, 65, 95]
+
+
+def test_set_ops_single_bit() -> None:
+    a: list[int] = bitset_new(1)
+    b: list[int] = bitset_new(1)
+    bitset_set(a, 0)
+    assert bitset_to_list(bitset_union(a, b)) == [0]
+    assert bitset_to_list(bitset_intersection(a, b)) == []
+    assert bitset_to_list(bitset_difference(a, b)) == [0]
+
+
 def test_difference_with_self() -> None:
     a: list[int] = bitset_new(64)
     bitset_set(a, 0)
@@ -372,6 +474,16 @@ def main() -> int:
         ("test_set_idempotent", test_set_idempotent),
         ("test_union_with_empty", test_union_with_empty),
         ("test_intersection_with_empty", test_intersection_with_empty),
+        ("test_non_aligned_size", test_non_aligned_size),
+        ("test_non_aligned_size_50", test_non_aligned_size_50),
+        ("test_popcount_after_clear", test_popcount_after_clear),
+        ("test_toggle_word_boundary", test_toggle_word_boundary),
+        ("test_union_via_to_list", test_union_via_to_list),
+        ("test_intersection_via_to_list", test_intersection_via_to_list),
+        ("test_difference_via_to_list", test_difference_via_to_list),
+        ("test_difference_b_extra_bits_ignored", test_difference_b_extra_bits_ignored),
+        ("test_to_list_three_words", test_to_list_three_words),
+        ("test_set_ops_single_bit", test_set_ops_single_bit),
         ("test_difference_with_self", test_difference_with_self),
     ]
     for name, fn in tests:
