@@ -244,6 +244,20 @@ def f() -> None:
 let val: int? = get_maybe(5)
 ---
 
+=== del dict key
+def f(d: dict[str, int], k: str) -> None:
+    del d[k]
+---
+Delete(d, k)
+---
+
+=== del list index
+def f(xs: list[int], i: int) -> None:
+    del xs[i]
+---
+RemoveAt(xs, i)
+---
+
 === optional annotated with method call value
 class Foo:
     def __init__(self) -> None:

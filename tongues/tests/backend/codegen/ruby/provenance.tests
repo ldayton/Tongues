@@ -51,3 +51,9 @@ return x || 0
 
 === Get with default using defined-or (raised)
 v = m.fetch("b", 0)
+
+=== del dict key (raised)
+d.delete("a")
+
+=== del list index (raised)
+xs.delete_at(0)

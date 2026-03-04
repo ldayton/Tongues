@@ -75,3 +75,9 @@ return ($x // 0);
 
 === Get with default using defined-or (raised)
 my $v = ($m->{"b"} // 0);
+
+=== del dict key (raised)
+delete $d->{"a"};
+
+=== del list index (raised)
+splice(@{$xs}, 0, 1);

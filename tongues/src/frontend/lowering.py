@@ -4243,9 +4243,31 @@ def _lower_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         return _lower_with_open(node, env, ctx)
     if t == "Pass":
         return []
+    if t == "Delete":
+        return _lower_delete(node, env, ctx)
     if t == "Import" or t == "ImportFrom":
         return []
     return []
+
+
+def _lower_delete(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
+    """Lower del d[key] → Delete(d, key); del xs[i] → RemoveAt(xs, i)."""
+    pos = _node_pos(node)
+    result: list[TStmt] = []
+    for target in get_nodes(node, "targets"):
+        if get_str(target, "_type") != "Subscript":
+            continue
+        obj_node = get_node(target, "value")
+        key_node = get_node(target, "slice")
+        obj_type = _unwrap_pointer(_infer_expr_type(obj_node, env, ctx))
+        obj = _lower_expr(obj_node, env, ctx)
+        key = _lower_expr(key_node, env, ctx)
+        ann: Ann = {"provenance": "del_subscript"}
+        if _is_type_dict(obj_type, ["Map"]):
+            result.append(TExprStmt(pos, _make_call(pos, "Delete", [obj, key]), ann))
+        elif _is_type_dict(obj_type, ["Slice"]):
+            result.append(TExprStmt(pos, _make_call(pos, "RemoveAt", [obj, key]), ann))
+    return result
 
 
 def _lower_return(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:

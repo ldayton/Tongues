@@ -1448,21 +1448,22 @@ A backend that doesn't support hex literals can emit decimal instead. The `large
 
 Some Python patterns are desugared during lowering into simpler IR forms. The original pattern is recorded under the `provenance` key so middleend raising passes can reconstruct idiomatic forms for targets that support them.
 
-| `provenance` value   | Taytsh form                    | Python source               |
-| -------------------- | ------------------------------ | --------------------------- |
-| `chained_comparison` | `a < b && b < c`               | `a < b < c`                 |
-| `list_comprehension` | for loop + `Append`            | `[x*2 for x in items]`      |
-| `dict_comprehension` | for loop + map insert          | `{k: v for k, v in items}`  |
-| `set_comprehension`  | for loop + `Add`               | `{x for x in items}`        |
-| `in_operator`        | `Contains(xs, v)`              | `v in xs`                   |
-| `not_in_operator`    | `!Contains(xs, v)`             | `v not in xs`               |
-| `truthiness`         | `Len(xs) > 0`, `s != ""`, etc. | `if items:`, `if s:`        |
-| `enumerate`          | `for i, v in xs`               | `for i, v in enumerate(xs)` |
-| `string_multiply`    | `Repeat(s, n)`                 | `s * n`                     |
-| `list_multiply`      | `Repeat(xs, n)`                | `xs * n`                    |
-| `negative_index`     | `x[Len(x) - 1]`                | `x[-1]`                     |
-| `open_start`         | `xs[0:n]`                      | `xs[:n]`                    |
-| `open_end`           | `xs[n:Len(xs)]`                | `xs[n:]`                    |
+| `provenance` value   | Taytsh form                        | Python source               |
+| -------------------- | ---------------------------------- | --------------------------- |
+| `chained_comparison` | `a < b && b < c`                   | `a < b < c`                 |
+| `list_comprehension` | for loop + `Append`                | `[x*2 for x in items]`      |
+| `dict_comprehension` | for loop + map insert              | `{k: v for k, v in items}`  |
+| `set_comprehension`  | for loop + `Add`                   | `{x for x in items}`        |
+| `in_operator`        | `Contains(xs, v)`                  | `v in xs`                   |
+| `not_in_operator`    | `!Contains(xs, v)`                 | `v not in xs`               |
+| `truthiness`         | `Len(xs) > 0`, `s != ""`, etc.     | `if items:`, `if s:`        |
+| `enumerate`          | `for i, v in xs`                   | `for i, v in enumerate(xs)` |
+| `string_multiply`    | `Repeat(s, n)`                     | `s * n`                     |
+| `list_multiply`      | `Repeat(xs, n)`                    | `xs * n`                    |
+| `negative_index`     | `x[Len(x) - 1]`                    | `x[-1]`                     |
+| `open_start`         | `xs[0:n]`                          | `xs[:n]`                    |
+| `open_end`           | `xs[n:Len(xs)]`                    | `xs[n:]`                    |
+| `del_subscript`      | `Delete(d, k)` / `RemoveAt(xs, i)` | `del d[k]` / `del xs[i]`    |
 
 Provenance is advisory — the lowered form is always correct as-is.
 
