@@ -42,10 +42,8 @@ def _parse(text: str, sep: str) -> list[list[str]]:
                 pos += 1
             line += 1
             continue
-        result: tuple[list[str], int, int] = _parse_record(text, pos, line, sep)
-        records.append(result[0])
-        pos = result[1]
-        line = result[2]
+        record, pos, line = _parse_record(text, pos, line, sep)
+        records.append(record)
     return records
 
 
@@ -56,10 +54,8 @@ def _parse_record(
     n: int = len(text)
     fields: list[str] = []
     while True:
-        result: tuple[str, int, int] = _parse_field(text, pos, line, sep)
-        fields.append(result[0])
-        pos = result[1]
-        line = result[2]
+        field, pos, line = _parse_field(text, pos, line, sep)
+        fields.append(field)
         if pos >= n:
             break
         if text[pos] == sep:

@@ -80,7 +80,7 @@ def _match_chunk(
     """Match pattern[ps:pe] against text at tp. Returns (ok, next_tp)."""
     tn: int = len(text)
     ch: str = ""
-    result: tuple[bool, int] = (False, 0)
+    ok: bool = False
     while ps < pe:
         if tp >= tn:
             return (False, tp)
@@ -90,10 +90,9 @@ def _match_chunk(
             tp += 1
         elif ch == "[":
             ps += 1
-            result = _match_class(pattern, ps, text[tp])
-            if not result[0]:
+            ok, ps = _match_class(pattern, ps, text[tp])
+            if not ok:
                 return (False, tp)
-            ps = result[1]
             tp += 1
         elif ch == "\\":
             ps += 1
@@ -117,32 +116,29 @@ def glob_match(pattern: str, text: str) -> bool:
     tp: int = 0
     pn: int = len(pattern)
     tn: int = len(text)
-    scan: tuple[bool, int, int] = (False, 0, 0)
     star: bool = False
     cs: int = 0
     ce: int = 0
-    result: tuple[bool, int] = (False, 0)
+    ok: bool = False
+    next_tp: int = 0
     found: bool = False
     i: int = 0
     while pp < pn:
-        scan = _scan_chunk(pattern, pp)
-        star = scan[0]
-        cs = scan[1]
-        ce = scan[2]
+        star, cs, ce = _scan_chunk(pattern, pp)
         if star and cs == ce:
             return True
-        result = _match_chunk(pattern, cs, ce, text, tp)
-        if result[0] and (result[1] == tn or ce < pn):
-            tp = result[1]
+        ok, next_tp = _match_chunk(pattern, cs, ce, text, tp)
+        if ok and (next_tp == tn or ce < pn):
+            tp = next_tp
             pp = ce
             continue
         if star:
             found = False
             i = tp + 1
             while i <= tn:
-                result = _match_chunk(pattern, cs, ce, text, i)
-                if result[0] and (result[1] == tn or ce < pn):
-                    tp = result[1]
+                ok, next_tp = _match_chunk(pattern, cs, ce, text, i)
+                if ok and (next_tp == tn or ce < pn):
+                    tp = next_tp
                     pp = ce
                     found = True
                     break
