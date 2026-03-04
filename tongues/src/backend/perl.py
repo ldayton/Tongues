@@ -2765,8 +2765,37 @@ class _PerlEmitter(Emitter):
             if is_str_list:
                 return "[sort @{" + a + "}]"
             return "[sort { $a <=> $b } @{" + a + "}]"
+        if name == "RangeList":
+            start_val = self._static_int(args[0].value)
+            end_val = self._static_int(args[1].value)
+            step_val = self._static_int(args[2].value)
+            if step_val == 1:
+                if start_val == 0 and end_val is not None:
+                    return "[0.." + str(end_val - 1) + "]"
+                s = self._a(args, 0)
+                if end_val is not None:
+                    return "[" + s + " .. " + str(end_val - 1) + "]"
+                return "[" + s + " .. " + self._a(args, 1) + " - 1]"
+            s = self._a(args, 0)
+            e = self._a(args, 1)
+            st = self._a(args, 2)
+            return (
+                "[map { "
+                + s
+                + " + $_ * "
+                + st
+                + " } 0 .. int(("
+                + e
+                + " - "
+                + s
+                + " - 1) / "
+                + st
+                + ")]"
+            )
         if name == "ListFrom":
             a = self._a(args, 0)
+            if self._is_bytes_expr(args[0].value):
+                return "[unpack('C*', " + a + ")]"
             if self._is_set_expr(args[0].value):
                 return "[sort keys %{" + self._deref_safe(a) + "}]"
             return "[@{" + self._deref_safe(a) + "}]"

@@ -356,3 +356,50 @@ def f(x: int | None) -> bool:
 ---
 error: argument 1 has type int | None, expected int
 ---
+
+=== recursive call uses declared return type
+def encode(cp: int) -> bytes:
+    if cp < 0:
+        return encode(0xFFFD)
+    return b"\xEF\xBF\xBD"
+---
+ok
+---
+
+=== recursive call with bytes constructor
+def encode_codepoint(cp: int) -> bytes:
+    if cp < 0:
+        return encode_codepoint(0xFFFD)
+    if cp < 0x80:
+        return bytes([cp])
+    if cp < 0x800:
+        return bytes([0xC0 | (cp >> 6), 0x80 | (cp & 0x3F)])
+    if cp < 0x10000:
+        return bytes([0xE0 | (cp >> 12), 0x80 | ((cp >> 6) & 0x3F), 0x80 | (cp & 0x3F)])
+    return bytes([0xF0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3F), 0x80 | ((cp >> 6) & 0x3F), 0x80 | (cp & 0x3F)])
+---
+ok
+---
+
+=== recursive call return type assigned to variable
+def fib(n: int) -> int:
+    if n <= 1:
+        return n
+    x: int = fib(n - 1)
+    return x + fib(n - 2)
+---
+ok
+---
+
+=== mutually recursive calls use declared return types
+def is_even(n: int) -> bool:
+    if n == 0:
+        return True
+    return is_odd(n - 1)
+def is_odd(n: int) -> bool:
+    if n == 0:
+        return False
+    return is_even(n - 1)
+---
+ok
+---

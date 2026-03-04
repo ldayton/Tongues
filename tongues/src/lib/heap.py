@@ -84,9 +84,7 @@ def heapify(data: list[int]) -> None:
 
 def heap_sort(data: list[int]) -> list[int]:
     """Return a new sorted list using heapsort."""
-    h: list[int] = []
-    for val in data:
-        h.append(val)
+    h: list[int] = list(data)
     heapify(h)
     out: list[int] = []
     while len(h) > 0:

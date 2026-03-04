@@ -255,3 +255,12 @@ def f(b: Buf) -> int:
 ---
 b.count()
 ---
+
+=== recursive function call
+def encode(cp: int) -> bytes:
+    if cp < 0:
+        return encode(0xFFFD)
+    return b"\xEF\xBF\xBD"
+---
+return encode(65533)
+---

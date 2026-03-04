@@ -103,9 +103,8 @@ def percent_decode(s: str) -> str:
     data: bytes = bytes(raw)
     out: list[str] = []
     j: int = 0
-    result: tuple[int, int] = (0, 0)
+    cp: int = 0
     while j < len(data):
-        result = _decode_cp(data, j)
-        out.append(chr(result[0]))
-        j = result[1]
+        cp, j = _decode_cp(data, j)
+        out.append(chr(cp))
     return "".join(out)

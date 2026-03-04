@@ -18,13 +18,8 @@ def levenshtein(a: str, b: str) -> int:
         long = a
         sn = lb
         ln = la
-    prev: list[int] = []
-    curr: list[int] = []
-    j: int = 0
-    while j <= sn:
-        prev.append(j)
-        curr.append(0)
-        j += 1
+    prev: list[int] = list(range(sn + 1))
+    curr: list[int] = [0] * (sn + 1)
     i: int = 0
     cost: int = 0
     ins: int = 0
