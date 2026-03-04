@@ -542,6 +542,11 @@ def _collect_module_names(
                     if tid != "":
                         result.append((tid, lineno, col, stmt))
                 j += 1
+        elif node_type == "TypeAlias":
+            name_node = get_node(stmt, "name")
+            tid = get_str(name_node, "id")
+            if tid != "":
+                result.append((tid, lineno, col, stmt))
         elif node_type == "AnnAssign":
             tgt = get_node(stmt, "target")
             if get_str(tgt, "_type") == "Name":
@@ -1308,6 +1313,9 @@ def merge_project(
             def_name = ""
             if stype == "ClassDef" or stype == "FunctionDef":
                 def_name = get_str(bstmt, "name")
+            elif stype == "TypeAlias":
+                ta_name_node = get_node(bstmt, "name")
+                def_name = get_str(ta_name_node, "id")
             elif stype == "Assign":
                 targets = get_nodes(bstmt, "targets")
                 if len(targets) > 0:

@@ -11,7 +11,7 @@ from ..frontend.types import JsonValue, JStr, JInt, JFloat, JBool, JNull, JList,
 # Annotation type alias (not a runtime construct, just for brevity)
 # ============================================================
 
-Ann = dict[str, str]
+type Ann = dict[str, str]
 
 
 # ============================================================

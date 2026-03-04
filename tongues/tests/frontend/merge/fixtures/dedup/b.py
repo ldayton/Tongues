@@ -1,6 +1,6 @@
 from .a import make_a
 
-ASTNode = dict[str, object]
+type ASTNode = dict[str, object]
 
 
 def make_b() -> ASTNode:

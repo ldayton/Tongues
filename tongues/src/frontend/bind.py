@@ -182,7 +182,6 @@ BANNED_NODES: set[str] = {
     "Lambda",
     "Global",
     "Nonlocal",
-    "TypeAlias",
     "TryStar",
 }
 
@@ -421,6 +420,8 @@ class Verifier:
             self.visit_YieldFrom(node)
         elif node_type == "With":
             self.visit_With(node)
+        elif node_type == "TypeAlias":
+            self.visit_TypeAlias(node)
         elif node_type == "Match":
             pass
         else:
@@ -524,6 +525,7 @@ class Verifier:
             "Load",
             "Store",
             "Del",
+            "TypeAlias",
         }
         return node_type in known
 
@@ -889,6 +891,18 @@ class Verifier:
         # Visit children
         for tgt in targets:
             self.visit(tgt)
+        self.visit(value)
+
+    def visit_TypeAlias(self, node: ASTNode) -> None:
+        """Check type alias constraints."""
+        if self.in_function:
+            self.error(node, "syntax", "type alias must be at module level")
+            return
+        type_params = get_nodes(node, "type_params")
+        if type_params:
+            self.error(node, "syntax", "generic type aliases not supported")
+            return
+        value = get_node(node, "value")
         self.visit(value)
 
     def visit_AnnAssign(self, node: ASTNode) -> None:
@@ -1651,20 +1665,6 @@ def is_all_caps(name: str) -> bool:
     return has_letter
 
 
-def is_type_alias(name: str, value: ASTNode) -> bool:
-    """Check if this looks like a type alias (PascalCase = type expression)."""
-    if not name:
-        return False
-    # Must start with uppercase
-    if not name[0].isupper():
-        return False
-    # Value should be a Subscript (like dict[str, object]) or Name (like int)
-    value_type = get_str(value, "_type")
-    if value_type == "Subscript" or value_type == "Name" or value_type == "BinOp":
-        return True
-    return False
-
-
 class NameResolver:
     """Resolves names in a dict-based AST."""
 
@@ -1760,11 +1760,12 @@ class NameResolver:
                                 name, "constant", "module", lineno, col, "", ""
                             )
                             self._register_module_name(stmt, info)
-                        elif is_type_alias(name, value):
-                            info = NameInfo(
-                                name, "type_alias", "module", lineno, col, "", ""
-                            )
-                            self._register_module_name(stmt, info)
+            elif node_type == "TypeAlias":
+                name_node = get_node(stmt, "name")
+                name = get_str(name_node, "id")
+                if name:
+                    info = NameInfo(name, "type_alias", "module", lineno, col, "", "")
+                    self._register_module_name(stmt, info)
             elif node_type == "AnnAssign":
                 target = get_node(stmt, "target")
                 if get_str(target, "_type") == "Name":
@@ -2348,22 +2349,17 @@ def _compute_derived(
             result.class_bases[mname] = list(info.bases)
     ta_body = get_nodes(ast_dict, "body")
     for ta_stmt in ta_body:
-        if get_str(ta_stmt, "_type") == "Assign":
-            ta_targets = get_nodes(ta_stmt, "targets")
-            if len(ta_targets) == 1:
-                ta_target = ta_targets[0]
-                if get_str(ta_target, "_type") == "Name":
-                    ta_name = get_str(ta_target, "id")
-                    if ta_name:
-                        ta_info = table.module_names.get(ta_name)
-                        if ta_info is not None and ta_info.kind == "type_alias":
-                            ta_value_v = ta_stmt.get("value")
-                            ta_value: ASTNode | None = None
-                            if isinstance(ta_value_v, JDict):
-                                ta_value = ta_value_v.entries
-                            ta_str = annotation_to_str(ta_value)
-                            if ta_str:
-                                result.type_aliases[ta_name] = ta_str
+        if get_str(ta_stmt, "_type") == "TypeAlias":
+            ta_name_node = get_node(ta_stmt, "name")
+            ta_name = get_str(ta_name_node, "id")
+            if ta_name:
+                ta_value_v = ta_stmt.get("value")
+                ta_value: ASTNode | None = None
+                if isinstance(ta_value_v, JDict):
+                    ta_value = ta_value_v.entries
+                ta_str = annotation_to_str(ta_value)
+                if ta_str:
+                    result.type_aliases[ta_name] = ta_str
     csf_body = get_nodes(ast_dict, "body")
     for csf_node in csf_body:
         if get_str(csf_node, "_type") == "ClassDef":

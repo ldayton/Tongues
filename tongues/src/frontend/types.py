@@ -228,7 +228,7 @@ class JDict(JsonValue):
 
 
 # Type alias for AST dict nodes
-ASTNode = dict[str, JsonValue]
+type ASTNode = dict[str, JsonValue]
 
 
 # ============================================================

@@ -1,4 +1,4 @@
-ASTNode = dict[str, object]
+type ASTNode = dict[str, object]
 
 
 def make_a() -> ASTNode:
