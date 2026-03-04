@@ -99,3 +99,6 @@ r = s.chars.each_slice(2).map(&:first).join
 
 === reversed slice on string (raised)
 r = s.reverse
+
+=== isinstance with tuple of types (raised)
+return v.is_a?(A) || v.is_a?(B)

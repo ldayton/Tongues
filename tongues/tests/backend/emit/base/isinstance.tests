@@ -11,3 +11,20 @@ def main() -> None:
         print("yes")
 if __name__ == "__main__":
     main()
+
+=== isinstance with tuple of types
+import sys
+class Animal:
+    name: str
+class Dog(Animal):
+    breed: str
+class Cat(Animal):
+    color: str
+def check(a: Animal) -> bool:
+    return isinstance(a, (Dog, Cat))
+def main() -> None:
+    d: Dog = Dog(name="Rex", breed="Lab")
+    if check(d):
+        print("yes")
+if __name__ == "__main__":
+    main()

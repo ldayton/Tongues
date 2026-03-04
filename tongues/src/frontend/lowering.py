@@ -2764,7 +2764,8 @@ def _lower_name_call(
                     "IsType",
                     [lowered_arg, TStringLit(pos, tnames[ti], {})],
                 )
-                result_expr = TBinaryOp(pos, "||", result_expr, right, {})
+                ann: Ann = {"provenance": "isinstance_tuple"} if len(tnames) > 1 else {}
+                result_expr = TBinaryOp(pos, "||", result_expr, right, ann)
                 ti += 1
             return result_expr
     if fname == "any" or fname == "all":

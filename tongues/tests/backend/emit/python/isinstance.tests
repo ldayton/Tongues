@@ -1,2 +1,5 @@
 === isinstance check
 isinstance(a, Dog)
+
+=== isinstance with tuple of types
+isinstance(a, (Dog, Cat))

@@ -286,3 +286,11 @@ fn Main() -> void {
     let r: string = @["provenance" = "reversed_slice"] Reverse(s)
     WritelnOut(r)
 }
+
+=== isinstance with tuple of types (raised)
+fn f(v: A | B | C) -> bool {
+    return @["provenance" = "isinstance_tuple"] (IsType(v, "A") || IsType(v, "B"))
+}
+fn Main() -> void {
+    WritelnOut(ToString(f(A(0))))
+}

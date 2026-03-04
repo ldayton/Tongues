@@ -1318,6 +1318,12 @@ class _PythonEmitter(Emitter):
                     + self._expr(expr.right)
                     + ")"
                 )
+        # isinstance tuple: IsType(x, A) || IsType(x, B) → isinstance(x, (A, B))
+        if op == "||" and expr.annotations.get("provenance") == "isinstance_tuple":
+            types: list[str] = []
+            obj = self._flatten_isinstance_tuple(expr, types)
+            if obj is not None:
+                return "isinstance(" + obj + ", (" + ", ".join(types) + "))"
         # chained comparison: a OP1 b && b OP2 c → a OP1 b OP2 c
         if op == "&&" and expr.annotations.get("provenance") == "chained_comparison":
             chained = self._chain_comparison(expr)
@@ -1390,6 +1396,31 @@ class _PythonEmitter(Emitter):
                 + " "
                 + self._expr(right.right)
             )
+        return None
+
+    def _flatten_isinstance_tuple(self, expr: TExpr, types: list[str]) -> str | None:
+        """Flatten IsType(x, A) || IsType(x, B) || ... into obj and type names."""
+        if isinstance(expr, TBinaryOp) and expr.op == "||":
+            obj = self._flatten_isinstance_tuple(expr.left, types)
+            rhs = expr.right
+            if (
+                isinstance(rhs, TCall)
+                and isinstance(rhs.func, TVar)
+                and rhs.func.name == "IsType"
+            ):
+                type_arg = rhs.args[1].value
+                if isinstance(type_arg, TStringLit):
+                    types.append(type_arg.value)
+                return obj
+        if (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "IsType"
+        ):
+            type_arg = expr.args[1].value
+            if isinstance(type_arg, TStringLit):
+                types.append(type_arg.value)
+            return self._expr(expr.args[0].value)
         return None
 
     def _maybe_paren(self, expr: TExpr, parent_op: str, is_left: bool) -> str:

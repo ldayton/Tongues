@@ -99,3 +99,6 @@ r = s[::2]
 
 === reversed slice on string (raised)
 r: str = s[::-1]
+
+=== isinstance with tuple of types (raised)
+return isinstance(v, (A, B))
