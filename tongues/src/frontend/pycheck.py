@@ -794,6 +794,8 @@ def _resolve_attr(
             return FuncType(
                 [STR_TYPE], TupleType([STR_TYPE, STR_TYPE, STR_TYPE], False)
             )
+        lineno = get_int(value_node, "lineno") if isinstance(value_node, dict) else 0
+        ctx.result.add_error(lineno, 0, "unsupported method '" + attr + "' on str")
         return ANY_TYPE
     # Bytes methods
     if _prim_kind(obj_type) == "bytes" or (
@@ -821,6 +823,8 @@ def _resolve_attr(
             return FuncType([SliceType(BYTES_TYPE)], BYTES_TYPE)
         if attr == "hex":
             return FuncType([], STR_TYPE)
+        lineno = get_int(value_node, "lineno") if isinstance(value_node, dict) else 0
+        ctx.result.add_error(lineno, 0, "unsupported method '" + attr + "' on bytes")
         return ANY_TYPE
     # List methods
     if isinstance(obj_type, SliceType):
@@ -847,6 +851,8 @@ def _resolve_attr(
             return FuncType([elem], INT_TYPE)
         if attr == "remove":
             return FuncType([elem], VOID_TYPE)
+        lineno = get_int(value_node, "lineno") if isinstance(value_node, dict) else 0
+        ctx.result.add_error(lineno, 0, "unsupported method '" + attr + "' on list")
         return ANY_TYPE
     # Dict methods
     if isinstance(obj_type, MapType):
@@ -871,6 +877,10 @@ def _resolve_attr(
             return FuncType([], VOID_TYPE)
         if attr == "setdefault":
             return FuncType([key_t, val_t], val_t)
+        if attr == "popitem":
+            return FuncType([], TupleType([key_t, val_t], False))
+        lineno = get_int(value_node, "lineno") if isinstance(value_node, dict) else 0
+        ctx.result.add_error(lineno, 0, "unsupported method '" + attr + "' on dict")
         return ANY_TYPE
     # Set methods
     if isinstance(obj_type, SetType):
@@ -881,15 +891,27 @@ def _resolve_attr(
             return FuncType([elem], VOID_TYPE)
         if attr == "union" or attr == "intersection" or attr == "difference":
             return FuncType([obj_type], obj_type)
+        if attr == "symmetric_difference":
+            return FuncType([obj_type], obj_type)
+        if attr == "issubset" or attr == "issuperset" or attr == "isdisjoint":
+            return FuncType([obj_type], BOOL_TYPE)
+        if attr == "pop":
+            return FuncType([], elem)
         if attr == "copy":
             return FuncType([], obj_type)
+        if attr == "update":
+            return FuncType([obj_type], VOID_TYPE)
         if attr == "clear":
             return FuncType([], VOID_TYPE)
+        lineno = get_int(value_node, "lineno") if isinstance(value_node, dict) else 0
+        ctx.result.add_error(lineno, 0, "unsupported method '" + attr + "' on set")
         return ANY_TYPE
     # Tuple methods
     if isinstance(obj_type, TupleType):
         if attr == "count" or attr == "index":
             return FuncType([ANY_TYPE], INT_TYPE)
+        lineno = get_int(value_node, "lineno") if isinstance(value_node, dict) else 0
+        ctx.result.add_error(lineno, 0, "unsupported method '" + attr + "' on tuple")
         return ANY_TYPE
     # Iterator methods
     if isinstance(obj_type, IteratorType):

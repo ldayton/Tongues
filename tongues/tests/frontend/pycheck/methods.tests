@@ -1,0 +1,288 @@
+=== unrecognized str method rejected
+def f(s: str) -> str:
+    return s.gobbledygook()
+---
+error: method
+---
+
+=== unrecognized str method with args rejected
+def f(s: str) -> str:
+    return s.frobnicate("x", 3)
+---
+error: method
+---
+
+=== unrecognized bytes method rejected
+def f(b: bytes) -> bytes:
+    return b.gobbledygook()
+---
+error: method
+---
+
+=== plausible but unsupported bytes method hex rejected
+def f(b: bytes) -> str:
+    return b.hex()
+---
+ok
+---
+
+=== plausible but unsupported bytes method center rejected
+def f(b: bytes) -> bytes:
+    return b.center(10)
+---
+error: method
+---
+
+=== unrecognized list method rejected
+def f(xs: list[int]) -> None:
+    xs.gobbledygook()
+---
+error: method
+---
+
+=== unrecognized dict method rejected
+def f(d: dict[str, int]) -> None:
+    d.gobbledygook()
+---
+error: method
+---
+
+=== unrecognized set method rejected
+def f(s: set[int]) -> None:
+    s.gobbledygook()
+---
+error: method
+---
+
+=== unrecognized tuple method rejected
+def f(t: tuple[int, str]) -> None:
+    t.gobbledygook()
+---
+error: method
+---
+
+=== plausible but unsupported tuple method count rejected
+def f(t: tuple[int, str]) -> int:
+    return t.count(1)
+---
+ok
+---
+
+=== plausible but unsupported tuple method index rejected
+def f(t: tuple[int, str]) -> int:
+    return t.index(1)
+---
+ok
+---
+
+=== plausible but unsupported str method rejected
+def f(s: str) -> str:
+    return s.capitalize()
+---
+ok
+---
+
+=== plausible but unsupported str method title rejected
+def f(s: str) -> str:
+    return s.title()
+---
+ok
+---
+
+=== plausible but unsupported str method center rejected
+def f(s: str) -> str:
+    return s.center(10)
+---
+ok
+---
+
+=== plausible but unsupported str method zfill rejected
+def f(s: str) -> str:
+    return s.zfill(5)
+---
+ok
+---
+
+=== plausible but unsupported str method swapcase rejected
+def f(s: str) -> str:
+    return s.swapcase()
+---
+ok
+---
+
+=== plausible but unsupported str method expandtabs rejected
+def f(s: str) -> str:
+    return s.expandtabs()
+---
+error: method
+---
+
+=== plausible but unsupported list method sort rejected
+def f(xs: list[int]) -> None:
+    xs.sort()
+---
+ok
+---
+
+=== plausible but unsupported list method reverse rejected
+def f(xs: list[int]) -> None:
+    xs.reverse()
+---
+ok
+---
+
+=== plausible but unsupported list method copy rejected
+def f(xs: list[int]) -> list[int]:
+    return xs.copy()
+---
+ok
+---
+
+=== plausible but unsupported dict method update rejected
+def f(d: dict[str, int]) -> None:
+    d.update({"a": 1})
+---
+ok
+---
+
+=== plausible but unsupported dict method setdefault rejected
+def f(d: dict[str, int]) -> int:
+    return d.setdefault("a", 0)
+---
+ok
+---
+
+=== plausible but unsupported dict method popitem rejected
+def f(d: dict[str, int]) -> tuple[str, int]:
+    return d.popitem()
+---
+ok
+---
+
+=== plausible but unsupported dict method copy rejected
+def f(d: dict[str, int]) -> dict[str, int]:
+    return d.copy()
+---
+ok
+---
+
+=== plausible but unsupported set method union rejected
+def f(s: set[int]) -> set[int]:
+    return s.union({1, 2})
+---
+ok
+---
+
+=== plausible but unsupported set method intersection rejected
+def f(s: set[int]) -> set[int]:
+    return s.intersection({1, 2})
+---
+ok
+---
+
+=== plausible but unsupported set method difference rejected
+def f(s: set[int]) -> set[int]:
+    return s.difference({1, 2})
+---
+ok
+---
+
+=== plausible but unsupported set method symmetric_difference rejected
+def f(s: set[int]) -> set[int]:
+    return s.symmetric_difference({1, 2})
+---
+ok
+---
+
+=== plausible but unsupported set method remove rejected
+def f(s: set[int]) -> None:
+    s.remove(1)
+---
+ok
+---
+
+=== plausible but unsupported set method pop rejected
+def f(s: set[int]) -> int:
+    return s.pop()
+---
+ok
+---
+
+=== plausible but unsupported set method copy rejected
+def f(s: set[int]) -> set[int]:
+    return s.copy()
+---
+ok
+---
+
+=== unrecognized str method does not type as int
+def f(s: str) -> int:
+    return s.gobbledygook()
+---
+error: method
+---
+
+=== unrecognized str method does not type as bool
+def f(s: str) -> bool:
+    return s.gobbledygook()
+---
+error: method
+---
+
+=== unrecognized list method does not type as int
+def f(xs: list[int]) -> int:
+    return xs.gobbledygook()
+---
+error: method
+---
+
+=== unrecognized dict method does not type as str
+def f(d: dict[str, int]) -> str:
+    return d.gobbledygook()
+---
+error: method
+---
+
+=== unrecognized set method does not type as list
+def f(s: set[int]) -> list[int]:
+    return s.gobbledygook()
+---
+error: method
+---
+
+=== unrecognized bytes method does not type as str
+def f(b: bytes) -> str:
+    return b.gobbledygook()
+---
+error: method
+---
+
+=== unrecognized tuple method does not type as int
+def f(t: tuple[int, str]) -> int:
+    return t.gobbledygook()
+---
+error: method
+---
+
+=== unrecognized method in expression rejected
+def f(s: str) -> int:
+    return len(s.gobbledygook())
+---
+error: method
+---
+
+=== unrecognized method in condition rejected
+def f(s: str) -> str:
+    if s.gobbledygook():
+        return "yes"
+    return "no"
+---
+error: method
+---
+
+=== unrecognized method as argument rejected
+def f(xs: list[int]) -> None:
+    print(xs.gobbledygook())
+---
+error: method
+---
