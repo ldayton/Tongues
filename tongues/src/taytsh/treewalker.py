@@ -2198,7 +2198,7 @@ class Runtime:
         else:
             for e in expr.elements:
                 list_elems.append(self._eval_expr(e, env))
-            if len(list_elems) == 0:
+            if not list_elems:
                 raise TaytshRuntimeFault("cannot infer list type", expr.pos)
             list_typ = ListT(kind="list", element=list_elems[0].ty())
         return VList(list_elems, list_typ)
@@ -3085,7 +3085,7 @@ def _bi_min(rt: Runtime, args: list[Value]) -> Value:
         elif isinstance(a, VTuple):
             items = a.elements
         if items is not None:
-            if len(items) == 0:
+            if not items:
                 rt._throw_err("ValueError", "min() arg is an empty sequence")
             best = items[0]
             i = 1
@@ -3115,7 +3115,7 @@ def _bi_max(rt: Runtime, args: list[Value]) -> Value:
         elif isinstance(a, VTuple):
             items = a.elements
         if items is not None:
-            if len(items) == 0:
+            if not items:
                 rt._throw_err("ValueError", "max() arg is an empty sequence")
             best = items[0]
             i = 1
@@ -3147,7 +3147,7 @@ def _bi_sum(rt: Runtime, args: list[Value]) -> Value:
         return VInt(itotal)
     if not isinstance(xs, VList):
         raise TaytshRuntimeFault("Sum expects list, set, or tuple", None)
-    if len(xs.elements) == 0:
+    if not xs.elements:
         if type_eq(xs.typ.element, FLOAT_T):
             return VFloat(0.0)
         return VInt(0)
@@ -3551,7 +3551,7 @@ def _bi_concat(rt: Runtime, args: list[Value]) -> Value:
         return VList(merged, b.typ)
     if isinstance(a, VTuple) and isinstance(b, VTuple):
         elem_ty: Type = ERROR_T
-        if len(a.typ.elements) > 0:
+        if a.typ.elements:
             elem_ty = a.typ.elements[0]
         merged = list(a.elements) + list(b.elements)
         return VList(merged, ListT(kind="list", element=elem_ty))
@@ -3604,7 +3604,7 @@ def _bi_format(rt: Runtime, args: list[Value]) -> Value:
 def _bi_is_digit(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        return VBool(len(x.value) > 0 and all(str(c).isdigit() for c in x.value))
+        return VBool(x.value and all(str(c).isdigit() for c in x.value))
     if isinstance(x, VRune):
         return VBool(str(x.value).isdigit())
     raise TaytshRuntimeFault("IsDigit expects string or rune", None)
@@ -3613,7 +3613,7 @@ def _bi_is_digit(rt: Runtime, args: list[Value]) -> Value:
 def _bi_is_alpha(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        return VBool(len(x.value) > 0 and all(str(c).isalpha() for c in x.value))
+        return VBool(x.value and all(str(c).isalpha() for c in x.value))
     if isinstance(x, VRune):
         return VBool(str(x.value).isalpha())
     raise TaytshRuntimeFault("IsAlpha expects string or rune", None)
@@ -3622,7 +3622,7 @@ def _bi_is_alpha(rt: Runtime, args: list[Value]) -> Value:
 def _bi_is_alnum(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        return VBool(len(x.value) > 0 and all(str(c).isalnum() for c in x.value))
+        return VBool(x.value and all(str(c).isalnum() for c in x.value))
     if isinstance(x, VRune):
         return VBool(str(x.value).isalnum())
     raise TaytshRuntimeFault("IsAlnum expects string or rune", None)
@@ -3631,7 +3631,7 @@ def _bi_is_alnum(rt: Runtime, args: list[Value]) -> Value:
 def _bi_is_space(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        return VBool(len(x.value) > 0 and all(str(c).isspace() for c in x.value))
+        return VBool(x.value and all(str(c).isspace() for c in x.value))
     if isinstance(x, VRune):
         return VBool(str(x.value).isspace())
     raise TaytshRuntimeFault("IsSpace expects string or rune", None)
@@ -3684,12 +3684,12 @@ def _bi_insert(rt: Runtime, args: list[Value]) -> Value:
 def _bi_pop(rt: Runtime, args: list[Value]) -> Value:
     xs = args[0]
     if isinstance(xs, VSet):
-        if len(xs.elements) == 0:
+        if not xs.elements:
             rt._throw_err("KeyError", "Pop on empty set")
         return xs.elements.pop()
     if not isinstance(xs, VList):
         raise TaytshRuntimeFault("Pop expects list or set", None)
-    if len(xs.elements) == 0:
+    if not xs.elements:
         rt._throw_err("IndexError", "Pop on empty list")
     return xs.elements.pop()
 
@@ -3861,7 +3861,7 @@ def _bi_sorted(rt: Runtime, args: list[Value]) -> Value:
             sort_sj += 1
         return VList(sresult, ListT(kind="list", element=xs.typ.element))
     if isinstance(xs, VTuple):
-        if len(xs.elements) == 0:
+        if not xs.elements:
             return VList([], ListT(kind="list", element=INT_T))
         t_keys: list[tuple[int, float, str]] = []
         t_idx: list[int] = []
@@ -3876,7 +3876,7 @@ def _bi_sorted(rt: Runtime, args: list[Value]) -> Value:
         while sort_tj < len(t_idx):
             tresult.append(xs.elements[t_idx[sort_tj]])
             sort_tj += 1
-        elem_t = xs.typ.elements[0] if len(xs.typ.elements) > 0 else INT_T
+        elem_t = xs.typ.elements[0] if xs.typ.elements else INT_T
         return VList(tresult, ListT(kind="list", element=elem_t))
     if not isinstance(xs, VList):
         raise TaytshRuntimeFault("Sorted expects list, set, or tuple", None)
@@ -3961,7 +3961,7 @@ def _bi_pop_item(rt: Runtime, args: list[Value]) -> Value:
     m = args[0]
     if not isinstance(m, VMap):
         raise TaytshRuntimeFault("PopItem expects map", None)
-    if len(m.map_keys) == 0:
+    if not m.map_keys:
         raise TaytshRuntimeFault("PopItem on empty map", None)
     last_key = m.map_keys.pop()
     last_val = m.map_vals.pop()

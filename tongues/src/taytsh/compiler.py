@@ -487,7 +487,7 @@ class Compiler:
         result = check_with_info(module)
         errors = result[0]
         checker = result[1]
-        if len(errors) > 0:
+        if errors:
             msgs: list[str] = []
             i = 0
             while i < len(errors):
@@ -1006,7 +1006,7 @@ class Compiler:
             self._compile_expr(a, fc)
         fc.emit(OP_GET_ITER, len(rng.args), stmt.pos.line)
         # Binding variable
-        binding = stmt.binding[0] if len(stmt.binding) > 0 else "_"
+        binding = stmt.binding[0] if stmt.binding else "_"
         local = fc.scope.lookup(binding) if binding != "_" else None
         loop_start = fc.current_offset()
         loop_ctx = _LoopCtx(fc.handler_depth, fc.match_depth)
@@ -1075,7 +1075,7 @@ class Compiler:
             else:
                 fc.emit(OP_POP, 0, stmt.pos.line)
         else:
-            binding = stmt.binding[0] if len(stmt.binding) > 0 else "_"
+            binding = stmt.binding[0] if stmt.binding else "_"
             local = fc.scope.lookup(binding) if binding != "_" else None
             if stmt.annotations.get("iter_kind") == "map":
                 # Map 1-var: stack has key, value (top). Discard value, keep key.
@@ -1102,7 +1102,7 @@ class Compiler:
         fc.loop_stack.pop()
 
     def _compile_break(self, stmt: TBreakStmt, fc: _FnCompiler) -> None:
-        if len(fc.loop_stack) == 0:
+        if not fc.loop_stack:
             return
         ctx = fc.loop_stack[-1]
         # Pop match scrutinee/dup values pushed inside the loop
@@ -1121,7 +1121,7 @@ class Compiler:
         ctx.break_patches.append(bp)
 
     def _compile_continue(self, stmt: TContinueStmt, fc: _FnCompiler) -> None:
-        if len(fc.loop_stack) == 0:
+        if not fc.loop_stack:
             return
         ctx = fc.loop_stack[-1]
         # Pop match scrutinee/dup values pushed inside the loop
@@ -1144,7 +1144,7 @@ class Compiler:
         if has_finally:
             finally_jump = fc.emit_jump(OP_PUSH_FINALLY, stmt.pos.line)
             fc.handler_depth += 1
-        if len(stmt.catches) > 0:
+        if stmt.catches:
             catch_jump = fc.emit_jump(OP_PUSH_HANDLER, stmt.pos.line)
             fc.handler_depth += 1
             self._compile_block(stmt.body, fc)
@@ -1159,7 +1159,7 @@ class Compiler:
                 catch = stmt.catches[ci]
                 local = fc.scope.lookup(catch.name)
                 # If not last catch, check type and skip if no match
-                if ci < len(stmt.catches) - 1 or len(catch.types) > 0:
+                if ci < len(stmt.catches) - 1 or catch.types:
                     fc.emit(OP_DUP, 0, catch.pos.line)
                     # Check type match
                     self._emit_catch_type_check(catch.types, fc, catch.pos.line)
@@ -1204,7 +1204,7 @@ class Compiler:
     def _emit_catch_type_check(
         self, types: list[TType], fc: _FnCompiler, line: int
     ) -> None:
-        if len(types) == 0:
+        if not types:
             fc.emit(OP_POP, 0, line)
             fc.emit(OP_TRUE, 0, line)
             return
@@ -1622,7 +1622,7 @@ class Compiler:
         sd = self.struct_defs[sidx]
         # Build args in field order
         # Support both positional and named args
-        has_named = len(expr.args) > 0 and expr.args[0].name is not None
+        has_named = expr.args and expr.args[0].name is not None
         if has_named:
             # Named args: emit in field order, use defaults for missing
             for fname in sd.field_names:
@@ -1650,7 +1650,7 @@ class Compiler:
     ) -> None:
         """Compile construction of built-in error structs (ValueError, etc.)."""
         # Error structs have a single 'message' field
-        if len(expr.args) > 0:
+        if expr.args:
             self._compile_expr(expr.args[0].value, fc)
         else:
             fc.emit_const(VStr(""), expr.pos.line)
@@ -1777,13 +1777,13 @@ class Compiler:
                 return obj_type.elements[expr.index]
             return VOID_T
         if isinstance(expr, TListLit):
-            if len(expr.elements) > 0:
+            if expr.elements:
                 return ListT(
                     kind="list", element=self._resolve_expr_type(expr.elements[0], fc)
                 )
             return ListT(kind="list", element=VOID_T)
         if isinstance(expr, TMapLit):
-            if len(expr.entries) > 0:
+            if expr.entries:
                 k, v = expr.entries[0]
                 return MapT(
                     kind="map",
@@ -1792,7 +1792,7 @@ class Compiler:
                 )
             return MapT(kind="map", key=VOID_T, value=VOID_T)
         if isinstance(expr, TSetLit):
-            if len(expr.elements) > 0:
+            if expr.elements:
                 return SetT(
                     kind="set", element=self._resolve_expr_type(expr.elements[0], fc)
                 )
@@ -1874,7 +1874,7 @@ class Compiler:
                 return STRING_T
             if name in ("Abs", "Min", "Max", "Sum", "Pow"):
                 # Return type matches first arg
-                if len(expr.args) > 0:
+                if expr.args:
                     return self._resolve_expr_type(expr.args[0].value, fc)
                 return INT_T
             if name in ("Find", "RFind", "Count", "IndexOf"):
