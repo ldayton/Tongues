@@ -808,7 +808,7 @@ def _walk_loop_head(
                         dup = True
                 if not dup:
                     variants.append(bt)
-        if len(variants) == 0:
+        if not variants:
             new_t: TypeNode | None = None
         elif len(variants) == 1:
             new_t = variants[0]

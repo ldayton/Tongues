@@ -739,7 +739,7 @@ class _BuiltinDispatch:
     # ── I/O ───────────────────────────────────────────────────
 
     def _assert(self, args: list[Val]) -> Val:
-        if len(args) == 0:
+        if not args:
             raise _VMThrow(_make_error_struct("AssertError", "assertion failed"))
         cond = args[0]
         if isinstance(cond, VBool) and cond.value:
@@ -750,29 +750,29 @@ class _BuiltinDispatch:
         raise _VMThrow(_make_error_struct("AssertError", msg))
 
     def _writeln_out(self, args: list[Val]) -> Val:
-        s = _val_to_string(args[0]) if len(args) > 0 else ""
+        s = _val_to_string(args[0]) if args else ""
         self.vm.stdout_buf.append(s)
         self.vm.stdout_buf.append("\n")
         return _NONE_VAL
 
     def _writeln_err(self, args: list[Val]) -> Val:
-        s = _val_to_string(args[0]) if len(args) > 0 else ""
+        s = _val_to_string(args[0]) if args else ""
         self.vm.stderr_buf.append(s)
         self.vm.stderr_buf.append("\n")
         return _NONE_VAL
 
     def _write_out(self, args: list[Val]) -> Val:
-        s = _val_to_string(args[0]) if len(args) > 0 else ""
+        s = _val_to_string(args[0]) if args else ""
         self.vm.stdout_buf.append(s)
         return _NONE_VAL
 
     def _write_err(self, args: list[Val]) -> Val:
-        s = _val_to_string(args[0]) if len(args) > 0 else ""
+        s = _val_to_string(args[0]) if args else ""
         self.vm.stderr_buf.append(s)
         return _NONE_VAL
 
     def _to_string(self, args: list[Val]) -> Val:
-        if len(args) == 0:
+        if not args:
             return VStr("")
         v = args[0]
         if isinstance(v, VStruct):
@@ -785,7 +785,7 @@ class _BuiltinDispatch:
 
     def _exit(self, args: list[Val]) -> Val:
         code = 0
-        if len(args) > 0 and isinstance(args[0], VInt):
+        if args and isinstance(args[0], VInt):
             code = args[0].value
         raise _VMExit(code)
 
@@ -851,7 +851,7 @@ class _BuiltinDispatch:
 
     def _split(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr) and isinstance(args[1], VStr):
-            if args[1].value == "":
+            if not args[1].value:
                 raise _VMThrow(_make_error_struct("ValueError", "empty separator"))
             parts = args[0].value.split(args[1].value)
             items: list[Val] = []
@@ -1065,7 +1065,7 @@ class _BuiltinDispatch:
             elif isinstance(a, VTuple):
                 items = a.items
             if items is not None:
-                if len(items) == 0:
+                if not items:
                     raise _VMThrow(
                         _make_error_struct(
                             "ValueError", "min() arg is an empty sequence"
@@ -1094,7 +1094,7 @@ class _BuiltinDispatch:
             elif isinstance(a, VTuple):
                 items = a.items
             if items is not None:
-                if len(items) == 0:
+                if not items:
                     raise _VMThrow(
                         _make_error_struct(
                             "ValueError", "max() arg is an empty sequence"
@@ -1118,9 +1118,9 @@ class _BuiltinDispatch:
         lst = args[0]
         if not isinstance(lst, VList):
             return _ZERO_INT
-        if len(lst.items) == 0:
+        if not lst.items:
             return _ZERO_INT
-        first = lst.items[0] if len(lst.items) > 0 else None
+        first = lst.items[0] if lst.items else None
         if first is not None and isinstance(first, VFloat):
             total = 0.0
             for item in lst.items:
@@ -1328,7 +1328,7 @@ class _BuiltinDispatch:
 
     def _pop(self, args: list[Val]) -> Val:
         if isinstance(args[0], VList):
-            if len(args[0].items) == 0:
+            if not args[0].items:
                 raise _VMThrow(_make_error_struct("IndexError", "pop from empty list"))
             return args[0].items.pop()
         return _NONE_VAL
@@ -1469,7 +1469,7 @@ class _BuiltinDispatch:
 
     def _map_pop_item(self, args: list[Val]) -> Val:
         if isinstance(args[0], VMap):
-            if len(args[0].keys) == 0:
+            if not args[0].keys:
                 raise _VMThrow(_make_error_struct("KeyError", "pop from empty map"))
             pk = args[0].keys.pop()
             pv = args[0].values.pop()
@@ -2096,17 +2096,17 @@ class VM:
             return VMResult(1, "".join(self.stdout_buf), "".join(self.stderr_buf))
 
     def _dispatch(self) -> None:
-        while len(self.frames) > 0:
+        while self.frames:
             try:
                 self._dispatch_one()
             except _VMThrow as t:
-                if len(self.handlers) > 0:
+                if self.handlers:
                     self._throw(t.value)
                 else:
                     raise t
 
     def _dispatch_one(self) -> None:
-        while len(self.frames) > 0:
+        while self.frames:
             frame = self.frames[-1]
             code = frame.code.code
             if frame.ip >= len(code):
@@ -2620,7 +2620,7 @@ class VM:
                 )
                 self.handlers.append(handler)
             elif op == OP_POP_HANDLER:
-                if len(self.handlers) > 0:
+                if self.handlers:
                     self.handlers.pop()
             elif op == OP_THROW:
                 val = self.stack.pop()
@@ -2693,7 +2693,7 @@ class VM:
 
     def _throw(self, val: Val) -> None:
         """Throw an exception, unwinding to the nearest handler."""
-        while len(self.handlers) > 0:
+        while self.handlers:
             handler = self.handlers.pop()
             # Unwind frames
             while len(self.frames) > handler.frame_depth + 1:

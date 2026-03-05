@@ -125,7 +125,7 @@ def read_source(input_file: str | None) -> tuple[str, int]:
             return ("", 1)
     else:
         raw = sys.stdin.buffer.read()
-    if len(raw) > 0:
+    if raw:
         source = ""
         try:
             source = raw.decode("utf-8")
@@ -187,7 +187,7 @@ def _to_json(obj: JsonValue, indent: int, level: int) -> str:
     if isinstance(obj, JStr):
         return '"' + _json_escape(obj.value) + '"'
     if isinstance(obj, JList):
-        if len(obj.items) == 0:
+        if not obj.items:
             return "[]"
         parts: list[str] = []
         pad = " " * (indent * (level + 1))
@@ -196,7 +196,7 @@ def _to_json(obj: JsonValue, indent: int, level: int) -> str:
             parts.append(pad + _to_json(item, indent, level + 1))
         return "[\n" + ",\n".join(parts) + "\n" + pad_close + "]"
     if isinstance(obj, JDict):
-        if len(obj.entries) == 0:
+        if not obj.entries:
             return "{}"
         parts: list[str] = []
         pad = " " * (indent * (level + 1))
@@ -229,7 +229,7 @@ def _name_info_to_dict(info: NameInfo) -> JsonValue:
         d["decl_class"] = JStr(info.decl_class)
     if info.decl_func != "":
         d["decl_func"] = JStr(info.decl_func)
-    if len(info.bases) > 0:
+    if info.bases:
         bases_jv: list[JsonValue] = []
         for base in info.bases:
             bases_jv.append(JStr(base))
@@ -258,7 +258,7 @@ def _name_table_to_dict(table: NameTable) -> JsonValue:
             scope_names[sname] = _name_info_to_dict(sinfo)
         scopes.append(JDict({"scope": JStr(scope_key), "names": JDict(scope_names)}))
     result: dict[str, JsonValue] = {"names": JDict(names)}
-    if len(scopes) > 0:
+    if scopes:
         result["scopes"] = JList(scopes)
     return JDict(result)
 
@@ -279,7 +279,7 @@ def _extract_pragmas(
     consumed = 0
     for line in lines:
         stripped = line.strip()
-        if stripped == "":
+        if not stripped:
             consumed += 1
             continue
         if not stripped.startswith("@@["):
@@ -325,9 +325,9 @@ def _classify_import(node: ASTNode) -> str:
     if module in IMPORT_ONLY_MODULES:
         return "stdlib"
     parts = module.split(".")
-    if len(parts) > 0 and parts[0] in ALLOWED_FROM_MODULES:
+    if parts and parts[0] in ALLOWED_FROM_MODULES:
         return "stdlib"
-    if len(parts) > 0 and parts[0] in IMPORT_ONLY_MODULES:
+    if parts and parts[0] in IMPORT_ONLY_MODULES:
         return "stdlib"
     return "project"
 
@@ -415,7 +415,7 @@ def _dependency_order(files: list[str], deps: dict[str, list[str]]) -> list[str]
             ready.append(f)
     ready.sort()
     result: list[str] = []
-    while len(ready) > 0:
+    while ready:
         node = ready[0]
         ready = ready[1:]
         result.append(node)
@@ -643,7 +643,7 @@ def _compute_module_stems(paths: list[str]) -> dict[str, str]:
                 stem = parent[parent_slash + 1 :]
             else:
                 stem = parent
-            if stem == "":
+            if not stem:
                 stem = "__init__"
         else:
             if filename.endswith(".py"):
@@ -679,7 +679,7 @@ def _compute_module_stems(paths: list[str]) -> dict[str, str]:
 
 def _is_all_caps(name: str) -> bool:
     """Check if name follows ALL_CAPS convention."""
-    if len(name) == 0:
+    if not name:
         return False
     has_letter = False
     i = 0
@@ -695,7 +695,7 @@ def _is_all_caps(name: str) -> bool:
 
 def _prefix_name(name: str, stem: str) -> str:
     """Compute prefixed name for collision resolution."""
-    if len(name) > 0 and name[0] == "_":
+    if name and name[0] == "_":
         if _is_all_caps(name[1:]):
             return "_" + stem.upper() + "_" + name[1:]
         return "_" + stem + "_" + name[1:]
@@ -925,7 +925,7 @@ def _stdlib_import_seen(
             if bound not in stdlib_seen:
                 new_indices.append(ni)
                 stdlib_seen.add(bound)
-    if len(new_indices) == 0:
+    if not new_indices:
         return True
     if len(new_indices) < len(names_list):
         kept: list[JsonValue] = []
@@ -970,7 +970,7 @@ def merge_project(
                             errors.append(rerr)
         deps[path] = file_deps
         file_import_info[path] = import_entries
-    if len(errors) > 0:
+    if errors:
         return (None, errors, {})
     all_file_names: dict[str, list[tuple[str, int, int, ASTNode]]] = {}
     for path, ast_dict in file_asts:
@@ -999,7 +999,7 @@ def merge_project(
         if found_ast is None:
             continue
         ast_body = get_nodes(found_ast, "body")
-        if len(ast_body) == 0:
+        if not ast_body:
             continue
         rename_map: dict[str, str] = {}
         module_bindings: dict[str, str] = {}
@@ -1007,7 +1007,7 @@ def merge_project(
         for imp_stmt, imp_module, imp_resolved in import_entries:
             names_list = get_nodes(imp_stmt, "names")
             level = get_int(imp_stmt, "level")
-            if imp_module == "" and level > 0:
+            if not imp_module and level > 0:
                 for ni, alias in enumerate(names_list):
                     name = get_str(alias, "name")
                     v = alias.get("asname")
@@ -1022,7 +1022,7 @@ def merge_project(
                                 module_bindings[bound] = rpath
             else:
                 source_file = ""
-                if len(imp_resolved) > 0:
+                if imp_resolved:
                     source_file = imp_resolved[0][0]
                 source_renames = file_renames.get(source_file, {})
                 for alias in names_list:
@@ -1037,7 +1037,7 @@ def merge_project(
                             rename_map[bound] = source_renames[name]
                         elif bound != name:
                             rename_map[bound] = name
-        if len(module_bindings) > 0:
+        if module_bindings:
             slash_idx = path.rfind("/")
             if slash_idx >= 0:
                 init_path = path[:slash_idx] + "/__init__.py"
@@ -1053,9 +1053,9 @@ def merge_project(
         own_renames = file_renames.get(path, {})
         for k in own_renames:
             rename_map[k] = own_renames[k]
-        if len(rename_map) > 0:
+        if rename_map:
             _rewrite_names(found_ast, rename_map)
-        if len(module_bindings) > 0:
+        if module_bindings:
             rewrite_errors = _rewrite_module_attrs(
                 found_ast, module_bindings, file_name_map
             )
@@ -1073,7 +1073,7 @@ def merge_project(
                 def_name = get_str(ta_name_node, "id")
             elif stype == "Assign":
                 targets = get_nodes(bstmt, "targets")
-                if len(targets) > 0:
+                if targets:
                     t = targets[0]
                     if get_str(t, "_type") == "Name":
                         def_name = get_str(t, "id")
@@ -1109,7 +1109,7 @@ def merge_project(
             _tag_source_file(bstmt, path)
             new_body.append(bstmt)
         merged_body.extend(new_body)
-    if len(errors) > 0:
+    if errors:
         return (None, errors, {})
     wrapped_body = JList([])
     for b in merged_body:
@@ -1133,7 +1133,7 @@ def _pipeline_post_parse(
         _print_errors(err_strs)
         return (1, "")
     if stop_at == "subset":
-        if len(bind_result.subset_warnings) > 0:
+        if bind_result.subset_warnings:
             warn_strs: list[str] = [str(w) for w in bind_result.subset_warnings]
             _print_errors(warn_strs)
         return (0, "")
@@ -1142,7 +1142,7 @@ def _pipeline_post_parse(
         _print_errors(err_strs)
         return (1, "")
     if stop_at == "names":
-        if len(bind_result.name_warnings) > 0:
+        if bind_result.name_warnings:
             warn_strs: list[str] = [str(w) for w in bind_result.name_warnings]
             _print_errors(warn_strs)
         return (0, to_json(_name_table_to_dict(bind_result.table)))
@@ -1170,7 +1170,7 @@ def _pipeline_post_parse(
             ast_dict, known_classes, node_classes, bind_result.type_aliases, class_bases
         )
         sig_errors = sig_result.errors()
-        if len(sig_errors) > 0:
+        if sig_errors:
             err_strs: list[str] = [str(e) for e in sig_errors]
             _print_errors(err_strs)
             return (1, "")
@@ -1179,7 +1179,7 @@ def _pipeline_post_parse(
         known_classes, class_bases, bind_result.class_source_files
     )
     hier_errors = hier_result.errors()
-    if len(hier_errors) > 0:
+    if hier_errors:
         err_strs: list[str] = [str(e) for e in hier_errors]
         _print_errors(err_strs)
         return (1, "")
@@ -1195,7 +1195,7 @@ def _pipeline_post_parse(
         hierarchy_roots,
     )
     tc_errors = tc_result.errors()
-    if len(tc_errors) > 0:
+    if tc_errors:
         err_strs: list[str] = [str(e) for e in tc_errors]
         _print_errors(err_strs)
         return (1, "")
@@ -1211,7 +1211,7 @@ def _pipeline_post_parse(
         bind_result.flow_graphs,
     )
     inf_errors = inf_result.errors()
-    if len(inf_errors) > 0:
+    if inf_errors:
         err_strs: list[str] = [str(e) for e in inf_errors]
         _print_errors(err_strs)
         return (1, "")
@@ -1232,7 +1232,7 @@ def _pipeline_post_parse(
         class_bases,
         inf_result,
     )
-    if len(lower_errors) > 0:
+    if lower_errors:
         err_strs: list[str] = [str(e) for e in lower_errors]
         _print_errors(err_strs)
         return (1, "")
@@ -1249,7 +1249,7 @@ def _pipeline_post_parse(
         return (0, to_json(module_to_dict(module)))
     checker = Checker()
     checker.collect_declarations(module)
-    if len(checker.errors) > 0:
+    if checker.errors:
         err_strs: list[str] = [str(e) for e in checker.errors]
         _print_errors(err_strs)
         return (1, "")
@@ -1258,7 +1258,7 @@ def _pipeline_post_parse(
         if isinstance(cdecl, TLetStmt):
             checker.check_let_stmt(cdecl)
     checker.check_bodies(module)
-    if len(checker.errors) > 0:
+    if checker.errors:
         err_strs: list[str] = [str(e) for e in checker.errors]
         _print_errors(err_strs)
         return (1, "")
@@ -1480,7 +1480,7 @@ def taytsh_pipeline(argv: list[str]) -> int:
     check_result = check_with_info(module)
     errors = check_result[0]
     checker = check_result[1]
-    if len(errors) > 0:
+    if errors:
         for e in errors:
             print(str(e), file=sys.stderr)
         return 1
@@ -1561,11 +1561,11 @@ def main() -> None:
         source, err = read_source(input_file)
         if err != 0:
             sys.exit(err)
-        if len(source) == 0:
+        if not source:
             print("error: no input provided", file=sys.stderr)
             sys.exit(2)
         files = _parse_project_input(source)
-        if len(files) == 0:
+        if not files:
             print("error: no .py files found in directory", file=sys.stderr)
             sys.exit(1)
         sys.exit(
@@ -1576,7 +1576,7 @@ def main() -> None:
     source, err = read_source(input_file)
     if err != 0:
         sys.exit(err)
-    if len(source) == 0:
+    if not source:
         print("error: no input provided", file=sys.stderr)
         sys.exit(2)
     exit_code, output = run_pipeline(
@@ -1584,7 +1584,7 @@ def main() -> None:
     )
     if exit_code != 0:
         sys.exit(exit_code)
-    if len(output) > 0:
+    if output:
         sys.exit(write_output(output, output_file))
 
 
@@ -1626,7 +1626,7 @@ def main_project(
         output = to_json(JList(items))
         return write_output(output, output_file)
     merged_ast, merge_errors, file_renames = merge_project(file_asts)
-    if len(merge_errors) > 0:
+    if merge_errors:
         _print_errors(merge_errors)
         return 1
     if merged_ast is None:
@@ -1644,7 +1644,7 @@ def main_project(
     )
     if exit_code != 0:
         return exit_code
-    if len(output) > 0:
+    if output:
         return write_output(output, output_file)
     return 0
 

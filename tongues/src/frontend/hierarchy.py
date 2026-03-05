@@ -72,7 +72,7 @@ class HierarchyResult:
         cur = name
         while True:
             cur_ancestors = self.ancestors.get(cur)
-            if cur_ancestors is None or len(cur_ancestors) == 0:
+            if cur_ancestors is None or not cur_ancestors:
                 return None
             parent = cur_ancestors[0]
             if self.is_hierarchy_root(parent):
@@ -135,7 +135,7 @@ def _detect_cycles(
                 return True
             visited.add(cur)
             bases = class_bases.get(cur)
-            if bases is not None and len(bases) > 0:
+            if bases is not None and bases:
                 cur = bases[0]
             else:
                 break
@@ -158,7 +158,7 @@ def _is_exception_subclass(
     if name in cache:
         return cache[name]
     bases = class_bases.get(name)
-    if bases is None or len(bases) == 0:
+    if bases is None or not bases:
         cache[name] = False
         return False
     for base in bases:
@@ -219,7 +219,7 @@ def _is_node_subclass(
     if name in cache:
         return cache[name]
     bases = class_bases.get(name)
-    if bases is None or len(bases) == 0:
+    if bases is None or not bases:
         cache[name] = False
         return False
     for base in bases:

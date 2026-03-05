@@ -47,12 +47,12 @@ def cli_main(argv: list[str] | None = None) -> int:
         elif arg.startswith("-"):
             print("taytsh: unknown flag '" + arg + "'", file=sys.stderr)
             return 2
-        elif filepath == "":
+        elif not filepath:
             filepath = arg
         else:
             print("taytsh: unexpected argument '" + arg + "'", file=sys.stderr)
             return 2
-    if filepath == "":
+    if not filepath:
         print("taytsh: missing file argument", file=sys.stderr)
         return 2
 

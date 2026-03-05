@@ -338,7 +338,7 @@ def _is_ancestor(child: str, ancestor: str, hier: HierarchyResult) -> bool:
             return False
         visited.add(current)
         bases = hier.ancestors.get(current)
-        if bases is None or len(bases) == 0:
+        if bases is None or not bases:
             return False
         for base in bases:
             if base == ancestor:
@@ -959,7 +959,7 @@ def _resolve_struct_attr(
             break
         visited.add(current)
         bases = ctx.hier_result.ancestors.get(current)
-        if bases is None or len(bases) == 0:
+        if bases is None or not bases:
             break
         anc = bases[0]
         anc_cls = ctx.tc_result.classes.get(anc)
@@ -1002,9 +1002,9 @@ def _resolve_struct_attr(
 def _find_parent_class(class_name: str, ctx: _InferCtx) -> str:
     """Find the parent class name, returning '' if unknown or not in our type tables."""
     bases = ctx.hier_result.ancestors.get(class_name)
-    if bases is None or len(bases) == 0:
+    if bases is None or not bases:
         bases = ctx.class_bases.get(class_name)
-    if bases is not None and len(bases) > 0:
+    if bases is not None and bases:
         parent = bases[0]
         if parent in ctx.known_classes:
             return parent
@@ -1335,7 +1335,7 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         return STR_TYPE
     # Bytes indexing
     if _prim_kind(obj_type) == "bytes":
-        if len(slc) > 0 and _is_type(slc, ["Slice"]):
+        if slc and _is_type(slc, ["Slice"]):
             return obj_type
         return PrimitiveType("byte")
     # List indexing
@@ -4322,7 +4322,7 @@ def _class_has_attr(class_name: str, attr_name: str, ctx: _InferCtx) -> bool:
                 print(f"DBG attr hit: {class_name}.{attr_name} (method on {current})")
             return True
         bases = ctx.class_bases.get(current)
-        if bases is not None and len(bases) > 0:
+        if bases is not None and bases:
             current = bases[0]
         else:
             current = ""
