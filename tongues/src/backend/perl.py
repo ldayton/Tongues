@@ -648,36 +648,34 @@ class _PerlEmitter(Emitter):
                 continue
             if need_blank:
                 self._line()
-            if isinstance(decl, TStructDecl):
-                if current_package != decl.name:
-                    self._line("package " + decl.name + ";")
-                    if _struct_needs_list_util(decl):
-                        self._line("use List::Util qw(min max sum);")
-                    current_package = decl.name
-                    self._line()
-                self._emit_struct(decl)
-                need_blank = True
-            elif isinstance(decl, TEnumDecl):
-                if current_package != decl.name:
-                    self._line("package " + decl.name + ";")
-                    current_package = decl.name
-                    self._line()
-                self._emit_enum(decl)
-                need_blank = True
-            elif isinstance(decl, TLetStmt):
-                if current_package != "main":
-                    self._line("package main;")
-                    self._line()
-                    current_package = "main"
-                self._emit_stmt(decl)
-                need_blank = True
-            elif isinstance(decl, TFnDecl):
-                if current_package != "main":
-                    self._line("package main;")
-                    self._line()
-                    current_package = "main"
-                self._emit_fn(decl)
-                need_blank = True
+            match decl:
+                case TStructDecl():
+                    if current_package != decl.name:
+                        self._line("package " + decl.name + ";")
+                        if _struct_needs_list_util(decl):
+                            self._line("use List::Util qw(min max sum);")
+                        current_package = decl.name
+                        self._line()
+                    self._emit_struct(decl)
+                case TEnumDecl():
+                    if current_package != decl.name:
+                        self._line("package " + decl.name + ";")
+                        current_package = decl.name
+                        self._line()
+                    self._emit_enum(decl)
+                case TLetStmt():
+                    if current_package != "main":
+                        self._line("package main;")
+                        self._line()
+                        current_package = "main"
+                    self._emit_stmt(decl)
+                case TFnDecl():
+                    if current_package != "main":
+                        self._line("package main;")
+                        self._line()
+                        current_package = "main"
+                    self._emit_fn(decl)
+            need_blank = True
 
     def _emit_enum(self, decl: TEnumDecl) -> None:
         for i, variant in enumerate(decl.variants):

@@ -393,18 +393,16 @@ class _PythonEmitter(Emitter):
             if need_blank:
                 self._line()
                 self._line()
-            if isinstance(decl, TStructDecl):
-                self._emit_struct(decl)
-                need_blank = True
-            elif isinstance(decl, TEnumDecl):
-                self._emit_enum(decl)
-                need_blank = True
-            elif isinstance(decl, TLetStmt):
-                self._emit_let(decl)
-                need_blank = True
-            elif isinstance(decl, TFnDecl):
-                self._emit_fn(decl)
-                need_blank = True
+            match decl:
+                case TStructDecl():
+                    self._emit_struct(decl)
+                case TEnumDecl():
+                    self._emit_enum(decl)
+                case TLetStmt():
+                    self._emit_let(decl)
+                case TFnDecl():
+                    self._emit_fn(decl)
+            need_blank = True
 
     # ── Enum ──────────────────────────────────────────────────
 

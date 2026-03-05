@@ -632,25 +632,24 @@ def _sa_collect_lets(
             a = _sa_strip(stmt.annotations, pfx, plen)
             if a:
                 lets[stmt.name] = a
-        if isinstance(stmt, TIfStmt):
-            _sa_collect_lets(stmt.then_body, lets, pfx, plen)
-            if stmt.else_body is not None:
-                _sa_collect_lets(stmt.else_body, lets, pfx, plen)
-        elif isinstance(stmt, TWhileStmt):
-            _sa_collect_lets(stmt.body, lets, pfx, plen)
-        elif isinstance(stmt, TForStmt):
-            _sa_collect_lets(stmt.body, lets, pfx, plen)
-        elif isinstance(stmt, TMatchStmt):
-            for case in stmt.cases:
-                _sa_collect_lets(case.body, lets, pfx, plen)
-            if stmt.default is not None:
-                _sa_collect_lets(stmt.default.body, lets, pfx, plen)
-        elif isinstance(stmt, TTryStmt):
-            _sa_collect_lets(stmt.body, lets, pfx, plen)
-            for catch in stmt.catches:
-                _sa_collect_lets(catch.body, lets, pfx, plen)
-            if stmt.finally_body is not None:
-                _sa_collect_lets(stmt.finally_body, lets, pfx, plen)
+        match stmt:
+            case TIfStmt():
+                _sa_collect_lets(stmt.then_body, lets, pfx, plen)
+                if stmt.else_body is not None:
+                    _sa_collect_lets(stmt.else_body, lets, pfx, plen)
+            case TWhileStmt() | TForStmt():
+                _sa_collect_lets(stmt.body, lets, pfx, plen)
+            case TMatchStmt():
+                for case in stmt.cases:
+                    _sa_collect_lets(case.body, lets, pfx, plen)
+                if stmt.default is not None:
+                    _sa_collect_lets(stmt.default.body, lets, pfx, plen)
+            case TTryStmt():
+                _sa_collect_lets(stmt.body, lets, pfx, plen)
+                for catch in stmt.catches:
+                    _sa_collect_lets(catch.body, lets, pfx, plen)
+                if stmt.finally_body is not None:
+                    _sa_collect_lets(stmt.finally_body, lets, pfx, plen)
 
 
 def _sa_collect_vars_expr(

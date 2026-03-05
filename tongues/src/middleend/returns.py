@@ -198,26 +198,27 @@ def _contains_return(stmts: list[TStmt]) -> bool:
     for stmt in stmts:
         if isinstance(stmt, TReturnStmt):
             return True
-        if isinstance(stmt, TIfStmt):
-            if _contains_return(stmt.then_body):
-                return True
-            if stmt.else_body is not None and _contains_return(stmt.else_body):
-                return True
-        elif isinstance(stmt, (TWhileStmt, TForStmt)):
-            if _contains_return(stmt.body):
-                return True
-        elif isinstance(stmt, TTryStmt):
-            if _contains_return(stmt.body):
-                return True
-            for c in stmt.catches:
-                if _contains_return(c.body):
+        match stmt:
+            case TIfStmt():
+                if _contains_return(stmt.then_body):
                     return True
-        elif isinstance(stmt, TMatchStmt):
-            for case in stmt.cases:
-                if _contains_return(case.body):
+                if stmt.else_body is not None and _contains_return(stmt.else_body):
                     return True
-            if stmt.default is not None and _contains_return(stmt.default.body):
-                return True
+            case TWhileStmt() | TForStmt():
+                if _contains_return(stmt.body):
+                    return True
+            case TTryStmt():
+                if _contains_return(stmt.body):
+                    return True
+                for c in stmt.catches:
+                    if _contains_return(c.body):
+                        return True
+            case TMatchStmt():
+                for case in stmt.cases:
+                    if _contains_return(case.body):
+                        return True
+                if stmt.default is not None and _contains_return(stmt.default.body):
+                    return True
     return False
 
 
@@ -235,30 +236,31 @@ def _check_needs_named_returns(stmts: list[TStmt]) -> bool:
             for c in stmt.catches:
                 if _contains_return(c.body):
                     return True
-        if isinstance(stmt, TIfStmt):
-            if _check_needs_named_returns(stmt.then_body):
-                return True
-            if stmt.else_body is not None and _check_needs_named_returns(
-                stmt.else_body
-            ):
-                return True
-        elif isinstance(stmt, (TWhileStmt, TForStmt)):
-            if _check_needs_named_returns(stmt.body):
-                return True
-        elif isinstance(stmt, TTryStmt):
-            if _check_needs_named_returns(stmt.body):
-                return True
-            for c in stmt.catches:
-                if _check_needs_named_returns(c.body):
+        match stmt:
+            case TIfStmt():
+                if _check_needs_named_returns(stmt.then_body):
                     return True
-        elif isinstance(stmt, TMatchStmt):
-            for case in stmt.cases:
-                if _check_needs_named_returns(case.body):
+                if stmt.else_body is not None and _check_needs_named_returns(
+                    stmt.else_body
+                ):
                     return True
-            if stmt.default is not None and _check_needs_named_returns(
-                stmt.default.body
-            ):
-                return True
+            case TWhileStmt() | TForStmt():
+                if _check_needs_named_returns(stmt.body):
+                    return True
+            case TTryStmt():
+                if _check_needs_named_returns(stmt.body):
+                    return True
+                for c in stmt.catches:
+                    if _check_needs_named_returns(c.body):
+                        return True
+            case TMatchStmt():
+                for case in stmt.cases:
+                    if _check_needs_named_returns(case.body):
+                        return True
+                if stmt.default is not None and _check_needs_named_returns(
+                    stmt.default.body
+                ):
+                    return True
     return False
 
 
