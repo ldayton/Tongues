@@ -65,7 +65,7 @@ def heap_pop(h: list[int]) -> int:
 
 def heap_peek(h: list[int]) -> int:
     """Return the minimum value without removing it. Raises IndexError if empty."""
-    if len(h) == 0:
+    if not h:
         raise IndexError("heap_peek at empty heap")
     return h[0]
 
@@ -87,14 +87,14 @@ def heap_sort(data: list[int]) -> list[int]:
     h: list[int] = list(data)
     heapify(h)
     out: list[int] = []
-    while len(h) > 0:
+    while h:
         out.append(heap_pop(h))
     return out
 
 
 def heap_push_pop(h: list[int], val: int) -> int:
     """Push val, then pop and return the minimum. More efficient than heap_push+heap_pop."""
-    if len(h) > 0 and h[0] < val:
+    if h and h[0] < val:
         result: int = h[0]
         h[0] = val
         _sift_down(h, 0, len(h))
@@ -104,7 +104,7 @@ def heap_push_pop(h: list[int], val: int) -> int:
 
 def heap_replace(h: list[int], val: int) -> int:
     """Pop the minimum, then push val. Raises IndexError if empty."""
-    if len(h) == 0:
+    if not h:
         raise IndexError("heap_replace on empty heap")
     result: int = h[0]
     h[0] = val

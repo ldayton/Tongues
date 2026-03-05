@@ -226,7 +226,7 @@ def _ancestor_chain_hier(name: str) -> list[str]:
     cur = name
     while True:
         parents = _LOWER_ANCESTORS.get(cur)
-        if parents is None or len(parents) == 0:
+        if parents is None or not parents:
             break
         parent = parents[0]
         if parent in visited:
@@ -583,7 +583,7 @@ def _lower_dict_literal_typed(
             if key_is_int and _is_ast(k, "Constant"):
                 kval = k.get("value")
                 if isinstance(kval, JBool):
-                    if kval.value is True:
+                    if kval.value:
                         key_expr = TIntLit(pos, 1, "1", {})
                     else:
                         key_expr = TIntLit(pos, 0, "0", {})
@@ -909,7 +909,7 @@ def _is_synthetic(node: ASTNode) -> bool:
     if not isinstance(node, dict):
         return False
     syn = node.get("_synthetic")
-    return isinstance(syn, JBool) and syn.value is True
+    return isinstance(syn, JBool) and syn.value
 
 
 def _infer_synthetic_type(node: ASTNode, env: _Env) -> TypeNode:
@@ -2416,7 +2416,7 @@ def _has_keyword_true(keywords: list[ASTNode], name: str) -> bool:
         if get_str(kw, "arg") == name:
             val_node = get_node(kw, "value")
             v = val_node.get("value")
-            if isinstance(v, JBool) and v.value is True:
+            if isinstance(v, JBool) and v.value:
                 return True
     return False
 

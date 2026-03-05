@@ -398,7 +398,7 @@ def remove_nil(t: Type) -> Type:
         for m in t.members:
             if not type_eq(m, NIL_T):
                 remaining.append(m)
-        if len(remaining) == 0:
+        if not remaining:
             return NIL_T
         if len(remaining) == 1:
             return remaining[0]
@@ -469,13 +469,13 @@ def _has_zero_value(t: Type) -> bool:
     if isinstance(t, UnionT):
         return contains_nil(t)
     if isinstance(t, FnT):
-        return type_eq(t.ret, VOID_T) and len(t.params) == 0
+        return type_eq(t.ret, VOID_T) and not t.params
     return False
 
 
 def _block_is_complete(stmts: list[TStmt]) -> bool:
     """Return True if all paths through this block return or throw."""
-    if len(stmts) == 0:
+    if not stmts:
         return False
     last = stmts[len(stmts) - 1]
     if isinstance(last, (TReturnStmt, TThrowStmt)):
@@ -488,7 +488,7 @@ def _block_is_complete(stmts: list[TStmt]) -> bool:
             return False
         return _block_is_complete(last.then_body) and _block_is_complete(last.else_body)
     if isinstance(last, TWhileStmt):
-        if isinstance(last.cond, TBoolLit) and last.cond.value is True:
+        if isinstance(last.cond, TBoolLit) and last.cond.value:
             return not _stmts_contain_break(last.body)
         return False
     if isinstance(last, TMatchStmt):
@@ -497,14 +497,14 @@ def _block_is_complete(stmts: list[TStmt]) -> bool:
                 if not _block_is_complete(case.body):
                     return False
             return _block_is_complete(last.default.body)
-        if len(last.cases) > 0:
+        if last.cases:
             for case in last.cases:
                 if not _block_is_complete(case.body):
                     return False
             return True
         return False
     if isinstance(last, TTryStmt):
-        if len(last.catches) == 0:
+        if not last.catches:
             return _block_is_complete(last.body)
         return _block_is_complete(last.body) or all(
             _block_is_complete(c.body) for c in last.catches
@@ -514,7 +514,7 @@ def _block_is_complete(stmts: list[TStmt]) -> bool:
 
 def _block_always_exits(stmts: list[TStmt]) -> bool:
     """Return True if all paths exit via return, throw, break, or continue."""
-    if len(stmts) == 0:
+    if not stmts:
         return False
     last = stmts[len(stmts) - 1]
     if isinstance(last, (TReturnStmt, TThrowStmt, TBreakStmt, TContinueStmt)):
@@ -529,7 +529,7 @@ def _block_always_exits(stmts: list[TStmt]) -> bool:
             last.else_body
         )
     if isinstance(last, TWhileStmt):
-        if isinstance(last.cond, TBoolLit) and last.cond.value is True:
+        if isinstance(last.cond, TBoolLit) and last.cond.value:
             return not _stmts_contain_break(last.body)
         return False
     if isinstance(last, TMatchStmt):
@@ -538,14 +538,14 @@ def _block_always_exits(stmts: list[TStmt]) -> bool:
                 if not _block_always_exits(case.body):
                     return False
             return _block_always_exits(last.default.body)
-        if len(last.cases) > 0:
+        if last.cases:
             for case in last.cases:
                 if not _block_always_exits(case.body):
                     return False
             return True
         return False
     if isinstance(last, TTryStmt):
-        if len(last.catches) == 0:
+        if not last.catches:
             return _block_always_exits(last.body)
         return _block_always_exits(last.body) or all(
             _block_always_exits(c.body) for c in last.catches
@@ -580,7 +580,7 @@ def _stmts_contain_break(stmts: list[TStmt]) -> bool:
 
 def _body_always_exits(stmts: list[TStmt]) -> bool:
     """Return True if the last statement unconditionally exits the block."""
-    if len(stmts) == 0:
+    if not stmts:
         return False
     last = stmts[len(stmts) - 1]
     return isinstance(last, (TReturnStmt, TBreakStmt, TContinueStmt, TThrowStmt))
@@ -809,7 +809,7 @@ def is_assignable(source: Type, target: Type) -> bool:
                 return True
     # list[T] assignable to tuple of T elements (tuple augmented assignment)
     if isinstance(source, ListT) and isinstance(target, TupleT):
-        if len(target.elements) > 0:
+        if target.elements:
             all_ok = True
             ei = 0
             while ei < len(target.elements):
@@ -1142,7 +1142,7 @@ class Checker:
             self.error("cannot use reserved name '" + name + "'", pos)
             return
         # Check current scope for duplicate
-        if len(self.scopes) > 0 and name in self.scopes[-1]:
+        if self.scopes and name in self.scopes[-1]:
             self.error("'" + name + "' shadows outer binding", pos)
             return
         # Check outer scopes for shadowing
@@ -1152,13 +1152,13 @@ class Checker:
                 self.error("'" + name + "' shadows outer binding", pos)
                 return
             i -= 1
-        if len(self.scopes) > 0:
+        if self.scopes:
             self.scopes[-1][name] = typ
             self._declared[name] = typ
 
     def narrow(self, name: str, typ: Type) -> None:
         """Shadow an outer binding with a narrowed type in the current scope."""
-        if len(self.scopes) > 0:
+        if self.scopes:
             self.scopes[-1][name] = typ
 
     def _try_lookup(self, name: str) -> Type | None:
@@ -1620,7 +1620,7 @@ class Checker:
             # After Assert(cond), narrow nil-checked and type-checked vars
             if isinstance(s, TExprStmt) and isinstance(s.expr, TCall):
                 if isinstance(s.expr.func, TVar) and s.expr.func.name == "Assert":
-                    if len(s.expr.args) > 0:
+                    if s.expr.args:
                         assert_cond = s.expr.args[0].value
                         checks = _collect_nil_checks(assert_cond, False, "&&")
                         for var_name, check_kind in checks:
@@ -2094,7 +2094,7 @@ class Checker:
             self.check_exhaustiveness(scrutinee_type, covered, stmt.pos)
             exhaustive = len(self.errors) == err_count
         # Merge: if exhaustive, var is initialized only if ALL branches initialized it
-        if exhaustive and len(case_uninits) > 0:
+        if exhaustive and case_uninits:
             merged: set[str] = set()
             for v in case_uninits[0]:
                 merged.add(v)
@@ -2265,7 +2265,7 @@ class Checker:
                     continue
                 if _type_key(vt) not in covered:
                     remaining.append(vt)
-            if len(remaining) == 0:
+            if not remaining:
                 return scrutinee
             if len(remaining) == 1:
                 return remaining[0]
@@ -2286,7 +2286,7 @@ class Checker:
                 else:
                     if _type_key(m) not in covered:
                         remaining2.append(m)
-            if len(remaining2) == 0:
+            if not remaining2:
                 return scrutinee
             if len(remaining2) == 1:
                 return remaining2[0]
@@ -2332,7 +2332,7 @@ class Checker:
         for r in required:
             if r not in covered:
                 missing.append(r)
-        if len(missing) > 0:
+        if missing:
             self.error("non-exhaustive match: missing cases", pos)
 
     def check_try_stmt(self, stmt: TTryStmt) -> None:
@@ -2344,7 +2344,7 @@ class Checker:
         seen_catch_types: list[Type] = []
         for catch in stmt.catches:
             self.enter_scope()
-            if len(catch.types) == 0:
+            if not catch.types:
                 catch_type = ERROR_T
             elif len(catch.types) == 1:
                 catch_type = self.resolve_type(catch.types[0])
@@ -2456,7 +2456,7 @@ class Checker:
         if expr.op == "&&":
             checks = _collect_nil_checks(expr.left, False, "&&")
             tc = _collect_type_checks(expr.left)
-            if len(checks) > 0 or len(tc) > 0:
+            if checks or tc:
                 self.enter_scope()
                 for var_name, check_kind in checks:
                     if "." in var_name:
@@ -2486,7 +2486,7 @@ class Checker:
         elif expr.op == "||":
             checks = _collect_nil_checks(expr.left, False, "||")
             tc = _collect_type_checks(expr.left)
-            if len(checks) > 0 or len(tc) > 0:
+            if checks or tc:
                 self.enter_scope()
                 for var_name, check_kind in checks:
                     if "." in var_name:
@@ -3136,7 +3136,7 @@ class Checker:
         self, st: StructT, args: list[TArg], pos: Pos
     ) -> Type | None:
         field_names = st.field_order if st.field_order else list(st.fields.keys())
-        if len(args) == 0 and len(field_names) == 0:
+        if not args and not field_names:
             return st
         min_f = st.min_fields if st.min_fields >= 0 else len(field_names)
         if len(args) < min_f or len(args) > len(field_names):
@@ -3150,7 +3150,7 @@ class Checker:
                 pos,
             )
             return st
-        if len(args) == 0:
+        if not args:
             return st
         # Check if named or positional
         if args[0].name is not None:
@@ -3277,7 +3277,7 @@ class Checker:
         return ERROR_T
 
     def check_list_lit(self, expr: TListLit, expected: Type | None) -> Type | None:
-        if len(expr.elements) == 0:
+        if not expr.elements:
             if expected is not None and isinstance(expected, ListT):
                 return expected
             return ListT(kind="list", element=ERROR_T)
@@ -3312,7 +3312,7 @@ class Checker:
         return ListT(kind="list", element=check_type)
 
     def check_map_lit(self, expr: TMapLit, expected: Type | None) -> Type | None:
-        if len(expr.entries) == 0:
+        if not expr.entries:
             if expected is not None and isinstance(expected, MapT):
                 return expected
             self.error("cannot infer type of empty map literal", expr.pos)
@@ -3370,7 +3370,7 @@ class Checker:
         return None
 
     def check_set_lit(self, expr: TSetLit, expected: Type | None) -> Type | None:
-        if len(expr.elements) == 0:
+        if not expr.elements:
             if expected is not None and isinstance(expected, SetT):
                 return expected
             self.error("cannot infer type of empty set literal", expr.pos)
@@ -3656,11 +3656,11 @@ class Checker:
                     return INT_T
                 if isinstance(t, SetT) and t.element.kind in (TY_INT, TY_FLOAT):
                     return t.element
-                if isinstance(t, TupleT) and len(t.elements) > 0:
+                if isinstance(t, TupleT) and t.elements:
                     elem = t.elements[0]
                     if elem.kind in (TY_INT, TY_FLOAT):
                         return elem
-                if isinstance(t, TupleT) and len(t.elements) == 0:
+                if isinstance(t, TupleT) and not t.elements:
                     return INT_T
                 self.error(
                     "Sum requires list[int], list[float], set[int], or set[float]", pos
@@ -4772,7 +4772,7 @@ def check(module: TModule) -> list[CheckError]:
     checker = Checker()
     checker.strict_math = module.strict_math
     checker.collect_declarations(module)
-    if len(checker.errors) > 0:
+    if checker.errors:
         return checker.errors
     checker.enter_scope()
     for decl in module.decls:
@@ -4788,7 +4788,7 @@ def check_with_info(module: TModule) -> tuple[list[CheckError], Checker]:
     checker = Checker()
     checker.strict_math = module.strict_math
     checker.collect_declarations(module)
-    if len(checker.errors) > 0:
+    if checker.errors:
         return (checker.errors, checker)
     checker.enter_scope()
     for decl in module.decls:
@@ -4804,7 +4804,7 @@ def _check_main(checker: Checker) -> None:
         checker.error("missing Main", Pos(1, 1))
         return
     main = checker.functions["Main"]
-    if len(main.params) > 0:
+    if main.params:
         checker.error("Main must take no parameters", Pos(1, 1))
     if not type_eq(main.ret, VOID_T):
         checker.error("Main must return void", Pos(1, 1))
