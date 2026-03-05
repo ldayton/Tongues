@@ -3687,9 +3687,7 @@ def _narrow_or_isinstance(
             return
         func = get_node(v, "func")
         if not (
-            func
-            and _is_type(func, ["Name"])
-            and get_str(func, "id") == "isinstance"
+            func and _is_type(func, ["Name"]) and get_str(func, "id") == "isinstance"
         ):
             return
         args = get_nodes(v, "args")
