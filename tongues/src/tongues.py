@@ -710,14 +710,14 @@ def _collect_definition_refs(node: ASTNode) -> set[str]:
             ki = 0
             while ki < len(keys):
                 val = node_entries[keys[ki]]
-                if isinstance(val, JDict) or isinstance(val, JList):
+                if isinstance(val, (JDict, JList)):
                     work.append(val)
                 ki += 1
         elif isinstance(item, JList):
             li = 0
             while li < len(item.items):
                 child = item.items[li]
-                if isinstance(child, JDict) or isinstance(child, JList):
+                if isinstance(child, (JDict, JList)):
                     work.append(child)
                 li += 1
         wi += 1
@@ -936,14 +936,14 @@ def _rewrite_names(node: ASTNode, rename_map: dict[str, str]) -> None:
             ki = 0
             while ki < len(keys):
                 val = node_entries[keys[ki]]
-                if isinstance(val, JDict) or isinstance(val, JList):
+                if isinstance(val, (JDict, JList)):
                     work.append(val)
                 ki += 1
         elif isinstance(item, JList):
             li = 0
             while li < len(item.items):
                 child = item.items[li]
-                if isinstance(child, JDict) or isinstance(child, JList):
+                if isinstance(child, (JDict, JList)):
                     work.append(child)
                 li += 1
         wi += 1
@@ -1036,7 +1036,7 @@ def _rewrite_module_attrs(
             li = 0
             while li < len(item.items):
                 child = item.items[li]
-                if isinstance(child, JDict) or isinstance(child, JList):
+                if isinstance(child, (JDict, JList)):
                     work.append(child)
                 li += 1
         wi += 1
@@ -1057,14 +1057,14 @@ def _tag_source_file(node: ASTNode, source_file: str) -> None:
             ki = 0
             while ki < len(keys):
                 val = node_entries[keys[ki]]
-                if isinstance(val, JDict) or isinstance(val, JList):
+                if isinstance(val, (JDict, JList)):
                     work.append(val)
                 ki += 1
         elif isinstance(item, JList):
             li = 0
             while li < len(item.items):
                 child = item.items[li]
-                if isinstance(child, JDict) or isinstance(child, JList):
+                if isinstance(child, (JDict, JList)):
                     work.append(child)
                 li += 1
         wi += 1

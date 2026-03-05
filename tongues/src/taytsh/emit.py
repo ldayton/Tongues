@@ -474,7 +474,7 @@ class _Emitter:
 
     def _render_type_name(self, typ: TType) -> str:
         # TypeName in the grammar intentionally excludes union and optional.
-        if isinstance(typ, TOptionalType) or isinstance(typ, TUnionType):
+        if isinstance(typ, (TOptionalType, TUnionType)):
             raise ValueError("TypeName cannot be optional/union")
         return self._render_type(typ)
 
