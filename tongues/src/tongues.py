@@ -616,11 +616,11 @@ def _collect_definition_refs(node: ASTNode) -> set[str]:
                 if nid != "":
                     refs.add(nid)
             for val in node_entries.values():
-                if isinstance(val, JDict) or isinstance(val, JList):
+                if isinstance(val, (JDict, JList)):
                     work.append(val)
         elif isinstance(item, JList):
             for child in item.items:
-                if isinstance(child, JDict) or isinstance(child, JList):
+                if isinstance(child, (JDict, JList)):
                     work.append(child)
         wi += 1
     return refs
@@ -781,11 +781,11 @@ def _rewrite_names(node: ASTNode, rename_map: dict[str, str]) -> None:
                 if def_name != "" and def_name in rename_map:
                     node_entries["name"] = JStr(rename_map[def_name])
             for val in node_entries.values():
-                if isinstance(val, JDict) or isinstance(val, JList):
+                if isinstance(val, (JDict, JList)):
                     work.append(val)
         elif isinstance(item, JList):
             for child in item.items:
-                if isinstance(child, JDict) or isinstance(child, JList):
+                if isinstance(child, (JDict, JList)):
                     work.append(child)
         wi += 1
 
@@ -871,7 +871,7 @@ def _rewrite_module_attrs(
                     work.append(val)
         elif isinstance(item, JList):
             for child in item.items:
-                if isinstance(child, JDict) or isinstance(child, JList):
+                if isinstance(child, (JDict, JList)):
                     work.append(child)
         wi += 1
     return errors
@@ -888,11 +888,11 @@ def _tag_source_file(node: ASTNode, source_file: str) -> None:
             if has_key(node_entries, "_type"):
                 node_entries["_source_file"] = JStr(source_file)
             for val in node_entries.values():
-                if isinstance(val, JDict) or isinstance(val, JList):
+                if isinstance(val, (JDict, JList)):
                     work.append(val)
         elif isinstance(item, JList):
             for child in item.items:
-                if isinstance(child, JDict) or isinstance(child, JList):
+                if isinstance(child, (JDict, JList)):
                     work.append(child)
         wi += 1
 

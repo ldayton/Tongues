@@ -256,7 +256,7 @@ def is_singleton_constant(node: ASTNode) -> bool:
     if get_str(node, "_type") != "Constant":
         return False
     val = node.get("value")
-    return isinstance(val, JNull) or isinstance(val, JBool)
+    return isinstance(val, (JNull, JBool))
 
 
 def _is_type_call(node: ASTNode) -> bool:
