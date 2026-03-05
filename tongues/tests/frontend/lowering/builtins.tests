@@ -217,6 +217,20 @@ def f(data: bytes) -> list[int]:
 ListFrom(data)
 ---
 
+=== list from dict
+def f(d: dict[str, int]) -> list[str]:
+    return list(d)
+---
+ListFrom(Keys(d))
+---
+
+=== set from dict
+def f(d: dict[str, int]) -> set[str]:
+    return set(d)
+---
+SetFromList(Keys(d))
+---
+
 === list from range
 def f(n: int) -> list[int]:
     return list(range(n))

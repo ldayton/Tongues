@@ -13,6 +13,12 @@ v: int | None = m.get("b")
 === Keys Values Items on map
 ks: list[str] = list(m.keys())
 
+=== ListFrom map keys
+ks: list[str] = list(m)
+
+=== SetFromList map keys
+s: set[str] = set(m)
+
 === Contains on map
 if "a" in m:
 

@@ -6,6 +6,22 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== list from dict
+def main() -> None:
+    d: dict[str, int] = {"a": 1, "b": 2, "c": 3}
+    ks: list[str] = sorted(list(d))
+    print(str(len(ks)))
+if __name__ == "__main__":
+    main()
+
+=== set from dict
+def main() -> None:
+    d: dict[str, int] = {"a": 1, "b": 2, "c": 3}
+    s: set[str] = set(d)
+    print(str(len(s)))
+if __name__ == "__main__":
+    main()
+
 === star unpack two lists
 def main() -> None:
     a: list[int] = [1, 2]
