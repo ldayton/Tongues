@@ -202,16 +202,14 @@ def _resolve_struct_union(t: UnionType) -> TypeNode:
         return t
     chain0 = _ancestor_chain_hier(names[0])
     common: set[str] = set(chain0)
-    i = 1
-    while i < len(names):
-        chain_i = _ancestor_chain_hier(names[i])
+    for name in names[1:]:
+        chain_i = _ancestor_chain_hier(name)
         chain_set: set[str] = set(chain_i)
         new_common: set[str] = set()
         for ancestor in chain0:
             if ancestor in chain_set and ancestor in common:
                 new_common.add(ancestor)
         common = new_common
-        i += 1
     for ancestor in chain0:
         if ancestor in common:
             return InterfaceRef(ancestor)
@@ -1379,12 +1377,9 @@ def _lower_boolop(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         if not isinstance(first, dict):
             return TBoolLit(pos, True, {})
         result: TExpr = _lower_as_bool(first, env, ctx)
-        i = 1
-        while i < len(values):
-            v = values[i]
+        for v in values[1:]:
             right = _lower_as_bool(v, env, ctx)
             result = TBinaryOp(pos, op_str, result, right, {})
-            i += 1
         return result
     # Non-bool operands: use ternaries for Python short-circuit semantics
     # a and b → truthy(a) ? b : a
@@ -1412,25 +1407,18 @@ def _lower_compare(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     left = _lower_expr(left_node, env, ctx)
     parts: list[TExpr] = []
     prev_expr = left
-    i = 0
-    while i < len(ops):
-        op_n = ops[i]
-        comp_n = comparators[i]
+    for op_n, comp_n in zip(ops, comparators):
         if not isinstance(op_n, dict) or not isinstance(comp_n, dict):
-            i += 1
             continue
         right = _lower_expr(comp_n, env, ctx)
         cmp = _make_compare_expr(pos, prev_expr, op_n, right)
         parts.append(cmp)
         prev_expr = right
-        i += 1
     if not parts:
         return TBoolLit(pos, True, {})
     result = parts[0]
-    i = 1
-    while i < len(parts):
-        result = TBinaryOp(pos, "&&", result, parts[i], {})
-        i += 1
+    for part in parts[1:]:
+        result = TBinaryOp(pos, "&&", result, part, {})
     return result
 
 
@@ -1825,10 +1813,8 @@ def _lower_in_expr(
             right = _lower_expr(e, env, ctx)
             parts.append(TBinaryOp(pos, "==", left, right, {}))
         result: TExpr = parts[0]
-        i = 1
-        while i < len(parts):
-            result = TBinaryOp(pos, "||", result, parts[i], {})
-            i += 1
+        for part in parts[1:]:
+            result = TBinaryOp(pos, "||", result, part, {})
         return result
     # x in collection → Contains(collection, x)
     # Type mismatch on map keys → always false
@@ -1952,10 +1938,8 @@ def _lower_arithmetic_call(
             return _make_call(pos, builtin, lowered)
         if len(lowered) >= 3:
             result = _make_call(pos, builtin, [lowered[0], lowered[1]])
-            j = 2
-            while j < len(lowered):
-                result = _make_call(pos, builtin, [result, lowered[j]])
-                j += 1
+            for item in lowered[2:]:
+                result = _make_call(pos, builtin, [result, item])
             return result
         return _make_call(pos, builtin, lowered)
     if fname == "pow":
@@ -2347,10 +2331,9 @@ def _lower_name_call(
     if coll is not None:
         return coll
     if fname == "zip":
-        if len(args) >= 2 and isinstance(args[0], dict) and isinstance(args[1], dict):
-            zip_a = _lower_expr(args[0], env, ctx)
-            zip_b = _lower_expr(args[1], env, ctx)
-            return _make_call(pos, "Zip", [zip_a, zip_b])
+        if len(args) >= 2 and all(isinstance(a, dict) for a in args):
+            zip_args = [_lower_expr(a, env, ctx) for a in args]
+            return _make_call(pos, "Zip", zip_args)
     if fname == "isinstance":
         if len(args) >= 2 and isinstance(args[0], dict) and isinstance(args[1], dict):
             tnames = _isinstance_types_from_args(args)
@@ -2360,16 +2343,14 @@ def _lower_name_call(
             result_expr: TExpr = _make_call(
                 pos, "IsType", [lowered_arg, TStringLit(pos, tnames[0], {})]
             )
-            ti = 1
-            while ti < len(tnames):
+            for tname in tnames[1:]:
                 right: TExpr = _make_call(
                     pos,
                     "IsType",
-                    [lowered_arg, TStringLit(pos, tnames[ti], {})],
+                    [lowered_arg, TStringLit(pos, tname, {})],
                 )
                 ann: Ann = {"provenance": "isinstance_tuple"} if len(tnames) > 1 else {}
                 result_expr = TBinaryOp(pos, "||", result_expr, right, ann)
-                ti += 1
             return result_expr
     if fname == "any" or fname == "all":
         if args and isinstance(args[0], dict):
@@ -2931,10 +2912,8 @@ def _lower_startswith_endswith(
             if not parts:
                 return TBoolLit(pos, False, {})
             result: TExpr = parts[0]
-            i = 1
-            while i < len(parts):
-                result = TBinaryOp(pos, "||", result, parts[i], {})
-                i += 1
+            for part in parts[1:]:
+                result = TBinaryOp(pos, "||", result, part, {})
             return result
         # Single argument
         lowered_arg = _lower_expr(arg, env, ctx)
@@ -3104,11 +3083,8 @@ def _lower_set_method(
 ) -> TExpr:
     """Lower set method calls."""
     lowered: list[TExpr] = []
-    i = 0
-    while i < len(args):
-        a = args[i]
+    for a in args:
         lowered.append(_lower_expr(a, env, ctx))
-        i += 1
     if method == "add":
         return _make_call(pos, "Add", [obj] + lowered)
     if method == "remove":
@@ -3122,26 +3098,20 @@ def _lower_set_method(
     if method == "union":
         if len(lowered) >= 1:
             result: TExpr = obj
-            li = 0
-            while li < len(lowered):
-                result = _make_call(pos, "Union", [result, lowered[li]])
-                li += 1
+            for lv in lowered:
+                result = _make_call(pos, "Union", [result, lv])
             return result
     if method == "intersection":
         if len(lowered) >= 1:
             result_i: TExpr = obj
-            li = 0
-            while li < len(lowered):
-                result_i = _make_call(pos, "Intersection", [result_i, lowered[li]])
-                li += 1
+            for lv in lowered:
+                result_i = _make_call(pos, "Intersection", [result_i, lv])
             return result_i
     if method == "difference":
         if len(lowered) >= 1:
             result_d: TExpr = obj
-            li = 0
-            while li < len(lowered):
-                result_d = _make_call(pos, "Difference", [result_d, lowered[li]])
-                li += 1
+            for lv in lowered:
+                result_d = _make_call(pos, "Difference", [result_d, lv])
             return result_d
     if method == "symmetric_difference":
         if len(lowered) == 1:
@@ -3622,8 +3592,8 @@ def _lower_list_literal(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         parts.append(TListLit(pos, plain, {}))
     result = parts[0]
     ann: Ann = {"provenance": "star_unpack"}
-    for i in range(1, len(parts)):
-        call = _make_call(pos, "Concat", [result, parts[i]])
+    for part in parts[1:]:
+        call = _make_call(pos, "Concat", [result, part])
         call.annotations = ann
         result = call
     return result
@@ -4083,11 +4053,9 @@ def _lower_as_bool(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         if not values:
             return TBoolLit(pos, True, {})
         result: TExpr = _lower_as_bool(values[0], env, ctx)
-        i = 1
-        while i < len(values):
-            right = _lower_as_bool(values[i], env, ctx)
+        for val in values[1:]:
+            right = _lower_as_bool(val, env, ctx)
             result = TBinaryOp(pos, op_str, result, right, {})
-            i += 1
         return result
     expr_type = _infer_expr_type(node, env, ctx)
     if _is_type_dict(expr_type, ["bool"]):
@@ -4413,9 +4381,7 @@ def _lower_tuple_assign(
             elem_types.append(elem)
     stmts: list[TStmt] = []
     targets: list[TExpr] = []
-    i = 0
-    while i < len(elts):
-        e = elts[i]
+    for i, e in enumerate(elts):
         if _is_ast(e, "Name"):
             name = get_str(e, "id")
             safe = _safe_name(name)
@@ -4431,7 +4397,6 @@ def _lower_tuple_assign(
                 et = elem_types[i] if i < len(elem_types) else INT_TYPE
                 _backpatch_hoisted(pos, name, et, env)
             targets.append(TVar(pos, safe, ann))
-        i += 1
     stmts.append(TTupleAssignStmt(pos, targets, value, {}))
     return stmts
 
@@ -4849,18 +4814,14 @@ def _try_split_guards(
     if _is_ast(test, "BoolOp") and get_str(get_node(test, "op"), "_type") == "And":
         values = get_nodes(test, "values")
         first_sub_idx = -1
-        vi = 0
-        while vi < len(values):
-            if _find_isinstance_subscripts(values[vi]):
+        for vi, val in enumerate(values):
+            if _find_isinstance_subscripts(val):
                 first_sub_idx = vi
                 break
-            vi += 1
         if first_sub_idx > 0:
             guard_jv: list[JsonValue] = []
-            gi = 0
-            while gi < first_sub_idx:
-                guard_jv.append(JDict(values[gi]))
-                gi += 1
+            for gval in values[:first_sub_idx]:
+                guard_jv.append(JDict(gval))
             if len(guard_jv) == 1:
                 guard_test: ASTNode = values[0]
             else:
@@ -4871,10 +4832,8 @@ def _try_split_guards(
                     "values": JList(guard_jv),
                 }
             rest_jv: list[JsonValue] = []
-            ri = first_sub_idx
-            while ri < len(values):
-                rest_jv.append(JDict(values[ri]))
-                ri += 1
+            for rval in values[first_sub_idx:]:
+                rest_jv.append(JDict(rval))
             if len(rest_jv) == 1:
                 inner_test: ASTNode = values[first_sub_idx]
             else:
@@ -5180,11 +5139,9 @@ def _lower_isinstance_chain(
         if extra_conds is not None:
             # Lower extra conditions as && chain
             cond: TExpr = _lower_as_bool(extra_conds[0], case_env, ctx)
-            ci = 1
-            while ci < len(extra_conds):
-                right = _lower_as_bool(extra_conds[ci], case_env, ctx)
+            for ec in extra_conds[1:]:
+                right = _lower_as_bool(ec, case_env, ctx)
                 cond = TBinaryOp(pos, "&&", cond, right, {})
-                ci += 1
             cond_pre: list[TStmt] = []
             if case_env.pre_stmts:
                 cond_pre = case_env.pre_stmts
@@ -5320,6 +5277,14 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     hoist_names = _scan_hoist_names(body, env)
     pre_stmts: list[TStmt] = []
     _emit_hoisted_placeholders(pos, hoist_names, env, pre_stmts)
+    # reversed(range(...)) → reversed TRange, reversed(xs) → Reversed(xs)
+    if _is_ast(iter_node, "Call"):
+        func = get_node(iter_node, "func")
+        if _is_ast(func, "Name") and get_str(func, "id") == "reversed":
+            result = _lower_for_reversed(target_node, iter_node, body, env, ctx)
+            for r in result:
+                pre_stmts.append(r)
+            return pre_stmts
     # range() → TRange
     if _is_ast(iter_node, "Call"):
         func = get_node(iter_node, "func")
@@ -5360,10 +5325,8 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         if elems:
             iter_lowered = _lower_expr(iter_node, env, ctx)
             items: list[TExpr] = []
-            j = 0
-            while j < len(elems):
+            for j in range(len(elems)):
                 items.append(TTupleAccess(pos, iter_lowered, j, {}))
-                j += 1
             binding, b_ann = _extract_binding(target_node)
             body_stmts = _lower_stmts(body, env, ctx)
             list_expr = TListLit(pos, items, {})
@@ -5376,10 +5339,8 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         elem = iter_type.element
         if isinstance(elem, TupleType) and len(elem.elements) == len(binding):
             b_ann["iter_kind"] = "tuple_unpack"
-            j = 0
-            while j < len(binding):
-                env.var_types[binding[j]] = elem.elements[j]
-                j += 1
+            for bname, btype in zip(binding, elem.elements):
+                env.var_types[bname] = btype
     elif len(binding) == 1:
         elem_type: TypeNode = VOID_TYPE
         if _is_type_dict(iter_type, ["string"]):
@@ -5440,6 +5401,69 @@ def _lower_for_range(
     return [TForStmt(pos, binding, TRange(pos, range_args, {}), body_stmts, b_ann)]
 
 
+def _lower_for_reversed(
+    target_node: ASTNode,
+    iter_node: ASTNode,
+    body: list[ASTNode],
+    env: _Env,
+    ctx: _LowerCtx,
+) -> list[TStmt]:
+    """Lower for x in reversed(...)."""
+    pos = _node_pos(target_node)
+    rev_args = get_nodes(iter_node, "args")
+    if not rev_args or not isinstance(rev_args[0], dict):
+        return []
+    inner = rev_args[0]
+    binding, b_ann = _extract_binding(target_node)
+    # reversed(range(...)) → range with reversed bounds
+    if _is_ast(inner, "Call"):
+        inner_func = get_node(inner, "func")
+        if _is_ast(inner_func, "Name") and get_str(inner_func, "id") == "range":
+            range_args = get_nodes(inner, "args")
+            if len(binding) == 1:
+                env.var_types[binding[0]] = INT_TYPE
+            lowered: list[TExpr] = []
+            for a in range_args:
+                lowered.append(_lower_expr(a, env, ctx))
+            if len(lowered) == 1:
+                # reversed(range(n)) → range(n-1, -1, -1)
+                n = lowered[0]
+                rev_range = TRange(
+                    pos,
+                    [
+                        TBinaryOp(pos, "-", n, TIntLit(pos, 1, "1", {}), {}),
+                        TIntLit(pos, -1, "-1", {}),
+                        TIntLit(pos, -1, "-1", {}),
+                    ],
+                    {},
+                )
+            elif len(lowered) == 2:
+                # reversed(range(a, b)) → range(b-1, a-1, -1)
+                rev_range = TRange(
+                    pos,
+                    [
+                        TBinaryOp(pos, "-", lowered[1], TIntLit(pos, 1, "1", {}), {}),
+                        TBinaryOp(pos, "-", lowered[0], TIntLit(pos, 1, "1", {}), {}),
+                        TIntLit(pos, -1, "-1", {}),
+                    ],
+                    {},
+                )
+            else:
+                # reversed(range(a, b, s)) — not supported, fall through
+                rev_range = TRange(pos, lowered, {})
+            b_ann["provenance"] = "reversed_range"
+            body_stmts = _lower_stmts(body, env, ctx)
+            return [TForStmt(pos, binding, rev_range, body_stmts, b_ann)]
+    # reversed(xs) → for x in Reversed(xs)
+    inner_expr = _lower_expr(inner, env, ctx)
+    inner_type = _infer_expr_type(inner, env, ctx)
+    if len(binding) == 1 and isinstance(inner_type, SliceType):
+        env.var_types[binding[0]] = inner_type.element
+    iter_expr = _make_call(pos, "Reversed", [inner_expr])
+    body_stmts = _lower_stmts(body, env, ctx)
+    return [TForStmt(pos, binding, iter_expr, body_stmts, b_ann)]
+
+
 def _lower_for_enumerate(
     target_node: ASTNode,
     iter_node: ASTNode,
@@ -5464,10 +5488,8 @@ def _lower_for_enumerate(
         if elems:
             iter_lowered = _lower_expr(inner, env, ctx)
             items_list: list[TExpr] = []
-            j = 0
-            while j < len(elems):
+            for j in range(len(elems)):
                 items_list.append(TTupleAccess(pos, iter_lowered, j, {}))
-                j += 1
             body_stmts = _lower_stmts(body, env, ctx)
             return [
                 TForStmt(

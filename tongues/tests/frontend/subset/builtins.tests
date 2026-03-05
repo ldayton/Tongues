@@ -220,6 +220,42 @@ def f(xs: list[int]) -> list[int]:
 ok
 ---
 
+=== reversed range in for loop allowed
+def f(n: int) -> int:
+    total: int = 0
+    for i in reversed(range(n)):
+        total += i
+    return total
+---
+ok
+---
+
+=== reversed range with start stop in for loop allowed
+def f() -> int:
+    total: int = 0
+    for i in reversed(range(1, 10)):
+        total += i
+    return total
+---
+ok
+---
+
+=== zip with three arguments allowed
+def f(a: list[int], b: list[str], c: list[float]) -> None:
+    for x, y, z in zip(a, b, c):
+        pass
+---
+ok
+---
+
+=== zip with bytes allowed
+def f(a: bytes, b: bytes) -> None:
+    for x, y in zip(a, b):
+        pass
+---
+ok
+---
+
 === repr allowed
 def f(x: object) -> str:
     return repr(x)

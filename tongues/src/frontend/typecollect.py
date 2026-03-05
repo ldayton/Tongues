@@ -817,8 +817,7 @@ def extract_func_info(
     n_positional = len(non_self_posonly) + len(non_self_regular)
     n_defaults = len(defaults)
     had_error = False
-    i = 0
-    while i < len(non_self_posonly):
+    for i, posonly_arg in enumerate(non_self_posonly):
         has_default = i >= n_positional - n_defaults
         default_node: ASTNode | None = None
         if has_default:
@@ -826,7 +825,7 @@ def extract_func_info(
             if default_idx >= 0 and default_idx < len(defaults):
                 default_node = defaults[default_idx]
         p = _make_param(
-            non_self_posonly[i],
+            posonly_arg,
             "positional",
             has_default,
             default_node,
@@ -839,9 +838,7 @@ def extract_func_info(
             params.append(p)
         else:
             had_error = True
-        i += 1
-    i = 0
-    while i < len(non_self_regular):
+    for i, regular_arg in enumerate(non_self_regular):
         global_i = len(non_self_posonly) + i
         has_default = global_i >= n_positional - n_defaults
         default_node = None
@@ -850,7 +847,7 @@ def extract_func_info(
             if default_idx >= 0 and default_idx < len(defaults):
                 default_node = defaults[default_idx]
         p = _make_param(
-            non_self_regular[i],
+            regular_arg,
             "pos_or_kw",
             has_default,
             default_node,
@@ -863,9 +860,7 @@ def extract_func_info(
             params.append(p)
         else:
             had_error = True
-        i += 1
-    i = 0
-    while i < len(kwonlyargs):
+    for i, kw_arg in enumerate(kwonlyargs):
         has_default = False
         default_node = None
         if i < len(kw_defaults):
@@ -875,7 +870,7 @@ def extract_func_info(
                 if isinstance(kw_def, JDict):
                     default_node = kw_def.entries
         p = _make_param(
-            kwonlyargs[i],
+            kw_arg,
             "keyword",
             has_default,
             default_node,
@@ -888,7 +883,6 @@ def extract_func_info(
             params.append(p)
         else:
             had_error = True
-        i += 1
     returns = get_node(node, "returns")
     if not returns:
         if func_name == "__init__":
@@ -968,10 +962,8 @@ def collect_signatures(
         if t == "FunctionDef":
             err_before = len(result._errors)
             info = extract_func_info(node, known_classes, result._errors, False, "")
-            ei = err_before
-            while ei < len(result._errors):
-                result._errors[ei].source_file = sf
-                ei += 1
+            for err in result._errors[err_before:]:
+                err.source_file = sf
             if info is not None:
                 result.functions[info.name] = info
         elif t == "ClassDef":
@@ -987,10 +979,8 @@ def collect_signatures(
                     method_info = extract_func_info(
                         stmt, known_classes, result._errors, True, class_name
                     )
-                    ei = err_before
-                    while ei < len(result._errors):
-                        result._errors[ei].source_file = stmt_sf
-                        ei += 1
+                    for err in result._errors[err_before:]:
+                        err.source_file = stmt_sf
                     if method_info is not None:
                         class_methods[method_info.name] = method_info
             if class_methods:
@@ -1494,26 +1484,20 @@ def _collect_init_fields(
             non_self_regular.append(a)
     n_positional = len(non_self_posonly) + len(non_self_regular)
     n_defaults = len(defaults)
-    i = 0
-    while i < len(non_self_posonly):
-        pname = get_str(non_self_posonly[i], "arg")
+    for i, posonly_arg in enumerate(non_self_posonly):
+        pname = get_str(posonly_arg, "arg")
         if pname:
             param_has_default[pname] = i >= n_positional - n_defaults
-        i += 1
-    i = 0
-    while i < len(non_self_regular):
-        pname = get_str(non_self_regular[i], "arg")
+    for i, regular_arg in enumerate(non_self_regular):
+        pname = get_str(regular_arg, "arg")
         if pname:
             idx = len(non_self_posonly) + i
             param_has_default[pname] = idx >= n_positional - n_defaults
-        i += 1
-    i = 0
-    while i < len(kwonlyargs):
-        pname = get_str(kwonlyargs[i], "arg")
+    for i, kw_arg in enumerate(kwonlyargs):
+        pname = get_str(kw_arg, "arg")
         if pname and pname != "self":
             has_kw_def = i < len(kw_defaults) and not isinstance(kw_defaults[i], JNull)
             param_has_default[pname] = has_kw_def
-        i += 1
     has_computed_init = False
     body = get_nodes(init, "body")
     lineno = get_int(init, "lineno")
@@ -1879,10 +1863,8 @@ def collect_fields(
                 func_return_types,
                 result,
             )
-            ei = err_before
-            while ei < len(result._errors):
-                result._errors[ei].source_file = sf
-                ei += 1
+            for err in result._errors[err_before:]:
+                err.source_file = sf
             if result._errors:
                 return result
     return result

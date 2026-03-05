@@ -1220,6 +1220,10 @@ class _PerlEmitter(Emitter):
             self._emit_for_range(
                 stmt.binding, stmt.iterable.args, stmt.body, stmt.annotations
             )
+        elif self._is_builtin_call(stmt.iterable, "Reversed"):
+            self._emit_for_reversed(stmt)
+        elif self._is_builtin_call(stmt.iterable, "Zip"):
+            self._emit_for_zip(stmt)
         else:
             self._emit_for_iter(
                 stmt.binding, stmt.iterable, stmt.body, stmt.annotations
@@ -1247,16 +1251,15 @@ class _PerlEmitter(Emitter):
             step_val = self._static_int(args[2])
             if step_val is not None and step_val < 0:
                 end_val = self._static_int(args[1])
+                start_val = self._static_int(args[0])
+                start_str = (
+                    str(start_val) if start_val is not None else self._expr(args[0])
+                )
                 if end_val is not None:
-                    range_expr = (
-                        "reverse " + str(end_val + 1) + " .. " + self._expr(args[0])
-                    )
+                    range_expr = "reverse " + str(end_val + 1) + " .. " + start_str
                 else:
                     range_expr = (
-                        "reverse "
-                        + self._expr(args[1])
-                        + " + 1 .. "
-                        + self._expr(args[0])
+                        "reverse " + self._expr(args[1]) + " + 1 .. " + start_str
                     )
             else:
                 start = self._expr(args[0])
@@ -1299,6 +1302,54 @@ class _PerlEmitter(Emitter):
         if len(binding) >= 2:
             self._line("my $" + _restore_name(binding[1], ann) + " = " + i + ";")
         self._emit_stmts(body)
+        self.indent -= 1
+        self._line("}")
+
+    def _is_builtin_call(self, expr: TExpr, name: str) -> bool:
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == name
+        )
+
+    def _emit_for_reversed(self, stmt: TForStmt) -> None:
+        ann = stmt.annotations
+        assert isinstance(stmt.iterable, TCall)
+        inner = stmt.iterable.args[0].value
+        name = "$" + _restore_name(stmt.binding[0], ann)
+        inner_str = self._expr(inner)
+        safe = self._deref_safe(inner_str)
+        self._line("for my " + name + " (reverse @{" + safe + "}) {")
+        self.indent += 1
+        self._emit_stmts(stmt.body)
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_for_zip(self, stmt: TForStmt) -> None:
+        ann = stmt.annotations
+        assert isinstance(stmt.iterable, TCall)
+        zip_args = stmt.iterable.args
+        sizes: list[str] = []
+        for a in zip_args:
+            arg_expr = self._expr(a.value)
+            if self._is_bytes_expr(a.value):
+                sizes.append("length(" + arg_expr + ")")
+            else:
+                sizes.append("scalar(@{" + arg_expr + "})")
+        idx = self._tmp("__i")
+        min_expr = "min(" + ", ".join(sizes) + ") - 1"
+        self._line("for my " + idx + " (0 .. " + min_expr + ") {")
+        self.indent += 1
+        for i, b in enumerate(stmt.binding):
+            var = "$" + _restore_name(b, ann)
+            arg_expr = self._expr(zip_args[i].value)
+            if self._is_bytes_expr(zip_args[i].value):
+                self._line(
+                    "my " + var + " = ord(substr(" + arg_expr + ", " + idx + ", 1));"
+                )
+            else:
+                self._line("my " + var + " = " + arg_expr + "->[" + idx + "];")
+        self._emit_stmts(stmt.body)
         self.indent -= 1
         self._line("}")
 
@@ -1718,10 +1769,19 @@ class _PerlEmitter(Emitter):
         if isinstance(expr, TUnaryOp):
             return self._unary(expr)
         if isinstance(expr, TTernary):
-            if expr.annotations.get("provenance") == "none_coalesce":
+            prov = expr.annotations.get("provenance")
+            if prov == "none_coalesce":
                 val = self._nil_coalesce_value(expr)
                 if val is not None:
                     return val
+            if prov == "removeprefix":
+                s, p = self._removefix_args(expr, "StartsWith")
+                if s is not None:
+                    return "(" + s + " =~ s/^\\Q" + p + "\\E//r)"
+            if prov == "removesuffix":
+                s, p = self._removefix_args(expr, "EndsWith")
+                if s is not None:
+                    return "(" + s + " =~ s/\\Q" + p + "\\E$//r)"
             return (
                 "("
                 + self._expr(expr.cond)
@@ -1780,6 +1840,10 @@ class _PerlEmitter(Emitter):
         if prov == "open_start" and self._is_zero(expr.low):
             low = "0"
         if self._is_string_expr(expr.obj) or self._is_bytes_expr(expr.obj):
+            if self._is_len_call(expr.high) and self._len_matches_obj(
+                expr.high, expr.obj
+            ):
+                return "substr(" + obj + ", " + low + ")"
             if prov == "open_end" and self._is_len_call(expr.high):
                 return "substr(" + obj + ", " + low + ")"
             if self._is_negative_literal(expr.high):
@@ -1796,6 +1860,8 @@ class _PerlEmitter(Emitter):
                     + low
                     + "))"
                 )
+            if self._is_zero(expr.low):
+                return "substr(" + obj + ", 0, " + high + ")"
             return "substr(" + obj + ", " + low + ", (" + high + ") - (" + low + "))"
         is_list = self._is_list_expr(expr.obj)
         if not is_list:
@@ -2997,7 +3063,7 @@ class _PerlEmitter(Emitter):
                 return "looks_like_number(" + a0 + ")"
             if type_name in ("bool", "Bool"):
                 return "!ref(" + a0 + ")"
-            return "eval { " + a0 + "->isa('" + type_name + "') }"
+            return "(defined(" + a0 + ") && " + a0 + "->isa('" + type_name + "'))"
         if name == "Assert":
             cond = self._a(args, 0)
             if len(args) > 1:
@@ -3252,6 +3318,15 @@ class _PerlEmitter(Emitter):
             and isinstance(expr.operand, TIntLit)
         ):
             return -expr.operand.value
+        if (
+            isinstance(expr, TBinaryOp)
+            and expr.op in ("+", "-")
+            and isinstance(expr.left, TIntLit)
+            and isinstance(expr.right, TIntLit)
+        ):
+            if expr.op == "+":
+                return expr.left.value + expr.right.value
+            return expr.left.value - expr.right.value
         return None
 
     def _is_negative_literal(self, expr: TExpr) -> bool:
@@ -3273,6 +3348,26 @@ class _PerlEmitter(Emitter):
         var = "$" + _safe_name(cond.left.name)
         default = self._expr(expr.else_expr)
         return "(" + var + " // " + default + ")"
+
+    def _len_matches_obj(self, len_expr: TExpr, obj: TExpr) -> bool:
+        """Check if Len(x) refers to the same variable as obj."""
+        if not isinstance(len_expr, TCall) or not len_expr.args:
+            return False
+        inner = len_expr.args[0].value
+        return (
+            isinstance(inner, TVar) and isinstance(obj, TVar) and inner.name == obj.name
+        )
+
+    def _removefix_args(self, expr: TTernary, func_name: str) -> tuple[str | None, str]:
+        """Extract (s, p) from a removeprefix/removesuffix ternary."""
+        cond = expr.cond
+        if (
+            isinstance(cond, TCall)
+            and isinstance(cond.func, TVar)
+            and cond.func.name == func_name
+        ):
+            return self._expr(cond.args[0].value), self._expr(cond.args[1].value)
+        return None, ""
 
     def _format_interpolated(self, args: list[TArg]) -> str:
         """Emit Perl double-quoted string with variable interpolation."""

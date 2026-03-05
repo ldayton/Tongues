@@ -95,16 +95,16 @@ delete $d->{"a"};
 splice(@{$xs}, 0, 1);
 
 === string partition (raised)
-return (index($s, $sep) >= 0 ? [substr($s, 0, (index($s, $sep)) - (0)), $sep, substr($s, index($s, $sep) + length($sep), (length($s)) - (index($s, $sep) + length($sep)))] : [$s, "", ""]);
+return (index($s, $sep) >= 0 ? [substr($s, 0, index($s, $sep)), $sep, substr($s, index($s, $sep) + length($sep))] : [$s, "", ""]);
 
 === string rpartition (raised)
-return (rindex($s, $sep) >= 0 ? [substr($s, 0, (rindex($s, $sep)) - (0)), $sep, substr($s, rindex($s, $sep) + length($sep), (length($s)) - (rindex($s, $sep) + length($sep)))] : ["", "", $s]);
+return (rindex($s, $sep) >= 0 ? [substr($s, 0, rindex($s, $sep)), $sep, substr($s, rindex($s, $sep) + length($sep))] : ["", "", $s]);
 
 === string removeprefix (raised)
-return ((($s =~ /^\Q${\ $p}\E/) ? 1 : 0) ? substr($s, length($p), (length($s)) - (length($p))) : $s);
+return ($s =~ s/^\Q$p\E//r);
 
 === string removesuffix (raised)
-return ((($s =~ /\Q${\ $p}\E$/) ? 1 : 0) ? substr($s, 0, (length($s) - length($p)) - (0)) : $s);
+return ($s =~ s/\Q$p\E$//r);
 
 === reversed slice on list (raised)
 my $r = [reverse @{$xs}];
@@ -124,5 +124,23 @@ my $r = join("", @{[split("", $s)]}[grep { $_ % 2 == 0 } 0 .. length($s) - 1]);
 === reversed slice on string (raised)
 my $r = scalar(reverse($s));
 
+=== reversed for loop (raised)
+for my $x (reverse @{$xs}) {
+
+=== reversed range for loop (raised)
+for my $i (reverse 0 .. 9) {
+
+=== zip two lists for loop (raised)
+0 .. min(scalar(@{$a}), scalar(@{$b})) - 1) {
+
+=== zip three lists for loop (raised)
+0 .. min(scalar(@{$a}), scalar(@{$b}), scalar(@{$c})) - 1) {
+
+=== string iteration for loop (raised)
+for my $ch (split(//, $s)) {
+
+=== list repetition (raised)
+my $xs = [(0) x 5];
+
 === isinstance with tuple of types (raised)
-return eval { $v->isa('A') } || eval { $v->isa('B') };
+return (defined($v) && $v->isa('A')) || (defined($v) && $v->isa('B'));

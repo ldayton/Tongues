@@ -287,6 +287,56 @@ fn Main() -> void {
     WritelnOut(r)
 }
 
+=== reversed for loop (raised)
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    @["provenance" = "reversed_for"] for x in Reversed(xs) {
+        WritelnOut(ToString(x))
+    }
+}
+
+=== reversed range for loop (raised)
+fn Main() -> void {
+    @["provenance" = "reversed_range"] for i in range(9, -1, -1) {
+        WritelnOut(ToString(i))
+    }
+}
+
+=== zip two lists for loop (raised)
+fn Main() -> void {
+    let a: list[int] = [1, 2, 3]
+    let b: list[string] = ["a", "b", "c"]
+    @["provenance" = "zip_for"] for x, y in Zip(a, b) {
+        WritelnOut(Format("{} {}", ToString(x), y))
+    }
+}
+
+=== zip three lists for loop (raised)
+fn Main() -> void {
+    let a: list[int] = [1, 2]
+    let b: list[string] = ["a", "b"]
+    let c: list[float] = [1.0, 2.0]
+    @["provenance" = "zip_for"] for x, y, z in Zip(a, b, c) {
+        WritelnOut(Format("{} {} {}", ToString(x), y, ToString(z)))
+    }
+}
+
+=== string iteration for loop (raised)
+fn Main() -> void {
+    let s: string = "abc"
+    let result: list[rune] = []
+    @["provenance" = "string_for"] for ch in s {
+        Append(result, ch)
+    }
+    WritelnOut(ToString(Len(result)))
+}
+
+=== list repetition (raised)
+fn Main() -> void {
+    let xs: list[int] = @["provenance" = "list_repetition"] Repeat([0], 5)
+    WritelnOut(ToString(Len(xs)))
+}
+
 === isinstance with tuple of types (raised)
 fn f(v: A | B | C) -> bool {
     return @["provenance" = "isinstance_tuple"] (IsType(v, "A") || IsType(v, "B"))

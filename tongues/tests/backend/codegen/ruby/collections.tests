@@ -121,3 +121,18 @@ xs.min_by { |s| s.length }
 
 === max with key lambda
 xs.max_by { |s| s.length }
+
+=== for over Reversed list
+xs.reverse_each do |x|
+
+=== Zip two lists
+a.zip(b).each do |x, y|
+
+=== Zip three lists
+a.zip(b, c).each do |x, y, z|
+
+=== Zip bytes
+a.bytes.zip(b.bytes).each do |x, y|
+
+=== for over string yields rune
+s.each_char do |ch|
