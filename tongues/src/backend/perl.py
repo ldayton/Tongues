@@ -1769,10 +1769,19 @@ class _PerlEmitter(Emitter):
         if isinstance(expr, TUnaryOp):
             return self._unary(expr)
         if isinstance(expr, TTernary):
-            if expr.annotations.get("provenance") == "none_coalesce":
+            prov = expr.annotations.get("provenance")
+            if prov == "none_coalesce":
                 val = self._nil_coalesce_value(expr)
                 if val is not None:
                     return val
+            if prov == "removeprefix":
+                s, p = self._removefix_args(expr, "StartsWith")
+                if s is not None:
+                    return "(" + s + " =~ s/^\\Q" + p + "\\E//r)"
+            if prov == "removesuffix":
+                s, p = self._removefix_args(expr, "EndsWith")
+                if s is not None:
+                    return "(" + s + " =~ s/\\Q" + p + "\\E$//r)"
             return (
                 "("
                 + self._expr(expr.cond)
@@ -1831,7 +1840,7 @@ class _PerlEmitter(Emitter):
         if prov == "open_start" and self._is_zero(expr.low):
             low = "0"
         if self._is_string_expr(expr.obj) or self._is_bytes_expr(expr.obj):
-            if prov == "open_end" and self._is_len_call(expr.high):
+            if self._is_len_call(expr.high):
                 return "substr(" + obj + ", " + low + ")"
             if self._is_negative_literal(expr.high):
                 return (
@@ -1847,6 +1856,8 @@ class _PerlEmitter(Emitter):
                     + low
                     + "))"
                 )
+            if self._is_zero(expr.low):
+                return "substr(" + obj + ", 0, " + high + ")"
             return "substr(" + obj + ", " + low + ", (" + high + ") - (" + low + "))"
         is_list = self._is_list_expr(expr.obj)
         if not is_list:
@@ -3023,7 +3034,7 @@ class _PerlEmitter(Emitter):
                 return "looks_like_number(" + a0 + ")"
             if type_name in ("bool", "Bool"):
                 return "!ref(" + a0 + ")"
-            return "eval { " + a0 + "->isa('" + type_name + "') }"
+            return "defined(" + a0 + ") && " + a0 + "->isa('" + type_name + "')"
         if name == "Assert":
             cond = self._a(args, 0)
             if len(args) > 1:
@@ -3308,6 +3319,17 @@ class _PerlEmitter(Emitter):
         var = "$" + _safe_name(cond.left.name)
         default = self._expr(expr.else_expr)
         return "(" + var + " // " + default + ")"
+
+    def _removefix_args(self, expr: TTernary, func_name: str) -> tuple[str | None, str]:
+        """Extract (s, p) from a removeprefix/removesuffix ternary."""
+        cond = expr.cond
+        if (
+            isinstance(cond, TCall)
+            and isinstance(cond.func, TVar)
+            and cond.func.name == func_name
+        ):
+            return self._expr(cond.args[0].value), self._expr(cond.args[1].value)
+        return None, ""
 
     def _format_interpolated(self, args: list[TArg]) -> str:
         """Emit Perl double-quoted string with variable interpolation."""
