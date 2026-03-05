@@ -301,21 +301,17 @@ def _is_assignable(
         if not actual.variadic and not expected.variadic:
             if len(actual.elements) != len(expected.elements):
                 return False
-            j = 0
-            while j < len(actual.elements):
-                if not _is_assignable(actual.elements[j], expected.elements[j], hier):
+            for act_el, exp_el in zip(actual.elements, expected.elements):
+                if not _is_assignable(act_el, exp_el, hier):
                     return False
-                j += 1
             return True
     # FuncType assignability
     if isinstance(actual, FuncType) and isinstance(expected, FuncType):
         if len(actual.params) != len(expected.params):
             return False
-        j = 0
-        while j < len(actual.params):
-            if not _is_assignable(expected.params[j], actual.params[j], hier):
+        for act_p, exp_p in zip(actual.params, expected.params):
+            if not _is_assignable(exp_p, act_p, hier):
                 return False
-            j += 1
         return _is_assignable(actual.ret, expected.ret, hier)
     # T assignable to Union if assignable to any variant
     if isinstance(expected, UnionType):
@@ -987,13 +983,10 @@ def _resolve_struct_attr(
         all_classes = list(ctx.class_bases.keys())
         resolved: TypeNode = ANY_TYPE
         found = 0
-        i = 0
-        while i < len(all_classes):
-            child = all_classes[i]
+        for child in all_classes:
             child_bases = ctx.class_bases.get(child, [])
-            j = 0
-            while j < len(child_bases):
-                if child_bases[j] == sname:
+            for cb in child_bases:
+                if cb == sname:
                     found += 1
                     sub_type = _resolve_struct_attr(child, attr, ctx, _depth + 1)
                     if sub_type != ANY_TYPE:
@@ -1001,8 +994,6 @@ def _resolve_struct_attr(
                             resolved = sub_type
                         elif resolved != sub_type:
                             return ANY_TYPE
-                j += 1
-            i += 1
         if found >= 2 and resolved != ANY_TYPE:
             return resolved
     return ANY_TYPE
@@ -1498,23 +1489,19 @@ def _synth_boolop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     op_t = get_str(op, "_type")
     if op_t == "And":
         work = env.copy()
-        j = 0
-        while j < len(values) - 1:
-            _synth_expr(values[j], work, ctx)
+        for v in values[:-1]:
+            _synth_expr(v, work, ctx)
             dummy = env.copy()
-            _extract_narrowing(values[j], work, dummy, ctx)
-            j += 1
-        return _synth_expr(values[len(values) - 1], work, ctx)
+            _extract_narrowing(v, work, dummy, ctx)
+        return _synth_expr(values[-1], work, ctx)
     if op_t == "Or":
         work = env.copy()
-        j = 0
-        while j < len(values) - 1:
-            _synth_expr(values[j], work, ctx)
+        for v in values[:-1]:
+            _synth_expr(v, work, ctx)
             dummy = env.copy()
-            _extract_narrowing(values[j], dummy, work, ctx)
-            j += 1
-        return _synth_expr(values[len(values) - 1], work, ctx)
-    return _synth_expr(values[len(values) - 1], env, ctx)
+            _extract_narrowing(v, dummy, work, ctx)
+        return _synth_expr(values[-1], work, ctx)
+    return _synth_expr(values[-1], env, ctx)
 
 
 def _synth_ifexp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
@@ -1556,12 +1543,10 @@ def _synth_dict(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         return MapType(ANY_TYPE, ANY_TYPE)
     kt = _synth_expr(keys[0], env, ctx)
     vt = _synth_expr(values[0], env, ctx) if values else ANY_TYPE
-    i = 1
-    while i < len(keys):
-        _synth_expr(keys[i], env, ctx)
+    for i, k in enumerate(keys[1:], 1):
+        _synth_expr(k, env, ctx)
         if i < len(values):
             _synth_expr(values[i], env, ctx)
-        i += 1
     return MapType(kt, vt)
 
 
@@ -1695,10 +1680,8 @@ def _bind_target(target: ASTNode, typ: TypeNode, env: TypeEnv) -> None:
     elif _is_type(target, ["Tuple", "List"]):
         elts = get_nodes(target, "elts")
         if isinstance(typ, TupleType):
-            j = 0
-            while j < len(elts) and j < len(typ.elements):
-                _bind_target(elts[j], typ.elements[j], env)
-                j += 1
+            for elt, tel in zip(elts, typ.elements):
+                _bind_target(elt, tel, env)
 
 
 # ---------------------------------------------------------------------------
@@ -2209,11 +2192,9 @@ def _validate_unpack(
             + " targets",
         )
         return
-    j = 0
-    while j < len(elts):
-        _bind_target(elts[j], val_type.elements[j], env)
-        _synth_expr(elts[j], env, ctx)
-        j += 1
+    for elt, tel in zip(elts, val_type.elements):
+        _bind_target(elt, tel, env)
+        _synth_expr(elt, env, ctx)
 
 
 def _validate_subscript_assign(
@@ -2455,23 +2436,19 @@ def _validate_expr_calls(
         values = get_nodes(node, "values")
         if op_t == "And":
             work = env.copy()
-            j = 0
-            while j < len(values):
-                _validate_expr_calls(values[j], work, ctx, lineno)
+            for j, v in enumerate(values):
+                _validate_expr_calls(v, work, ctx, lineno)
                 if j < len(values) - 1:
                     dummy = env.copy()
-                    _extract_narrowing(values[j], work, dummy, ctx)
-                j += 1
+                    _extract_narrowing(v, work, dummy, ctx)
             return
         if op_t == "Or":
             work = env.copy()
-            j = 0
-            while j < len(values):
-                _validate_expr_calls(values[j], work, ctx, lineno)
+            for j, v in enumerate(values):
+                _validate_expr_calls(v, work, ctx, lineno)
                 if j < len(values) - 1:
                     dummy = env.copy()
-                    _extract_narrowing(values[j], dummy, work, ctx)
-                j += 1
+                    _extract_narrowing(v, dummy, work, ctx)
             return
         return
 
@@ -2587,9 +2564,7 @@ def _check_call_args(
             "expected " + str(len(params)) + " arguments, got " + str(len(args)),
         )
         return
-    j = 0
-    while j < len(args):
-        arg = args[j]
+    for j, arg in enumerate(args):
         if j < len(params):
             actual = _synth_expr(arg, env, ctx)
             expected = params[j].typ
@@ -2605,7 +2580,6 @@ def _check_call_args(
                     + _type_name(expected),
                 )
                 return
-        j += 1
 
 
 def _check_func_type_args(
@@ -2624,9 +2598,7 @@ def _check_func_type_args(
             "expected " + str(len(ftype.params)) + " arguments, got " + str(len(args)),
         )
         return
-    j = 0
-    while j < len(args):
-        arg = args[j]
+    for j, arg in enumerate(args):
         if j < len(ftype.params):
             actual = _synth_expr(arg, env, ctx)
             expected = ftype.params[j]
@@ -2642,7 +2614,6 @@ def _check_func_type_args(
                     + _type_name(expected),
                 )
                 return
-        j += 1
 
 
 def _validate_collection_method_args(
@@ -3006,16 +2977,14 @@ def _check_truthiness(test: ASTNode, env: TypeEnv, ctx: _InferCtx, lineno: int) 
                 _extract_narrowing(values[0], work, dummy, ctx)
             elif op_t == "Or":
                 _extract_narrowing(values[0], dummy, work, ctx)
-            j = 1
-            while j < len(values):
-                _check_truthiness(values[j], work, ctx, lineno)
+            for j, v in enumerate(values[1:], 1):
+                _check_truthiness(v, work, ctx, lineno)
                 if j + 1 < len(values):
                     dummy2 = work.copy()
                     if op_t == "And":
-                        _extract_narrowing(values[j], work, dummy2, ctx)
+                        _extract_narrowing(v, work, dummy2, ctx)
                     elif op_t == "Or":
-                        _extract_narrowing(values[j], dummy2, work, ctx)
-                j += 1
+                        _extract_narrowing(v, dummy2, work, ctx)
         return
     if t == "UnaryOp":
         op = get_node(test, "op")
@@ -3863,9 +3832,8 @@ def _validate_list_literal(
         return
     first = elts[0]
     first_type = _synth_expr(first, env, ctx)
-    j = 1
-    while j < len(elts):
-        et = _synth_expr(elts[j], env, ctx)
+    for elt in elts[1:]:
+        et = _synth_expr(elt, env, ctx)
         if exp_elem is not None:
             if not _is_assignable(et, exp_elem, ctx.hier_result):
                 ctx.result.add_error(
@@ -3889,7 +3857,6 @@ def _validate_list_literal(
                 + _type_name(et),
             )
             return
-        j += 1
 
 
 def _validate_dict_literal(
@@ -3917,9 +3884,8 @@ def _validate_dict_literal(
     first_vt = ANY_TYPE
     if values:
         first_vt = _synth_expr(values[0], env, ctx)
-    j = 1
-    while j < len(keys):
-        kt = _synth_expr(keys[j], env, ctx)
+    for j, k in enumerate(keys[1:], 1):
+        kt = _synth_expr(k, env, ctx)
         if not _is_assignable(kt, first_kt, ctx.hier_result):
             ctx.result.add_error(lineno, 0, "mixed key types in dict literal")
             return
@@ -3935,7 +3901,6 @@ def _validate_dict_literal(
                 else:
                     ctx.result.add_error(lineno, 0, "mixed value types in dict literal")
                     return
-        j += 1
 
 
 # ---------------------------------------------------------------------------
@@ -4255,18 +4220,16 @@ def _validate_expr_access(
                 _extract_narrowing(values[0], narrowed_env, dummy_env, ctx)
             elif op_t == "Or":
                 _extract_narrowing(values[0], dummy_env, narrowed_env, ctx)
-            j = 1
-            while j < len(values):
-                _validate_expr_access(values[j], narrowed_env, ctx, lineno)
+            for j, v in enumerate(values[1:], 1):
+                _validate_expr_access(v, narrowed_env, ctx, lineno)
                 if _has_new_errors(ctx, err_snap):
                     return
                 if j + 1 < len(values):
                     dummy2 = narrowed_env.copy()
                     if op_t == "And":
-                        _extract_narrowing(values[j], narrowed_env, dummy2, ctx)
+                        _extract_narrowing(v, narrowed_env, dummy2, ctx)
                     elif op_t == "Or":
-                        _extract_narrowing(values[j], dummy2, narrowed_env, ctx)
-                j += 1
+                        _extract_narrowing(v, dummy2, narrowed_env, ctx)
         return
     if t == "IfExp":
         err_snap = len(ctx.result._errors)
@@ -4449,10 +4412,8 @@ def run_pycheck(
         if t == "FunctionDef":
             err_before = len(result._errors)
             _validate_func(node, ctx, "")
-            ei = err_before
-            while ei < len(result._errors):
-                result._errors[ei].source_file = sf
-                ei += 1
+            for err in result._errors[err_before:]:
+                err.source_file = sf
         elif t == "ClassDef":
             class_name = get_str(node, "name")
             class_body = get_nodes(node, "body")
@@ -4463,10 +4424,8 @@ def run_pycheck(
                         stmt_sf = sf
                     err_before = len(result._errors)
                     _validate_func(stmt, ctx, class_name)
-                    ei = err_before
-                    while ei < len(result._errors):
-                        result._errors[ei].source_file = stmt_sf
-                        ei += 1
+                    for err in result._errors[err_before:]:
+                        err.source_file = stmt_sf
                 elif _is_type(stmt, ["Assign"]):
                     val = get_node(stmt, "value")
                     if val:
