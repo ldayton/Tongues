@@ -1198,7 +1198,7 @@ class _PerlEmitter(Emitter):
         return None
 
     def _emit_else_body(self, else_body: list[TStmt] | None) -> None:
-        if not else_body:
+        if else_body is None or not else_body:
             return
         elif_stmt: TStmt | None = None
         if len(else_body) == 1:

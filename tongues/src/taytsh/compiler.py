@@ -1622,7 +1622,7 @@ class Compiler:
         sd = self.struct_defs[sidx]
         # Build args in field order
         # Support both positional and named args
-        has_named = expr.args and expr.args[0].name is not None
+        has_named = len(expr.args) > 0 and expr.args[0].name is not None
         if has_named:
             # Named args: emit in field order, use defaults for missing
             for fname in sd.field_names:

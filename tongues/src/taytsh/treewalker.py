@@ -3604,7 +3604,7 @@ def _bi_format(rt: Runtime, args: list[Value]) -> Value:
 def _bi_is_digit(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        return VBool(x.value and all(str(c).isdigit() for c in x.value))
+        return VBool(len(x.value) > 0 and all(str(c).isdigit() for c in x.value))
     if isinstance(x, VRune):
         return VBool(str(x.value).isdigit())
     raise TaytshRuntimeFault("IsDigit expects string or rune", None)
@@ -3613,7 +3613,7 @@ def _bi_is_digit(rt: Runtime, args: list[Value]) -> Value:
 def _bi_is_alpha(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        return VBool(x.value and all(str(c).isalpha() for c in x.value))
+        return VBool(len(x.value) > 0 and all(str(c).isalpha() for c in x.value))
     if isinstance(x, VRune):
         return VBool(str(x.value).isalpha())
     raise TaytshRuntimeFault("IsAlpha expects string or rune", None)
@@ -3622,7 +3622,7 @@ def _bi_is_alpha(rt: Runtime, args: list[Value]) -> Value:
 def _bi_is_alnum(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        return VBool(x.value and all(str(c).isalnum() for c in x.value))
+        return VBool(len(x.value) > 0 and all(str(c).isalnum() for c in x.value))
     if isinstance(x, VRune):
         return VBool(str(x.value).isalnum())
     raise TaytshRuntimeFault("IsAlnum expects string or rune", None)
@@ -3631,7 +3631,7 @@ def _bi_is_alnum(rt: Runtime, args: list[Value]) -> Value:
 def _bi_is_space(rt: Runtime, args: list[Value]) -> Value:
     x = args[0]
     if isinstance(x, VString):
-        return VBool(x.value and all(str(c).isspace() for c in x.value))
+        return VBool(len(x.value) > 0 and all(str(c).isspace() for c in x.value))
     if isinstance(x, VRune):
         return VBool(str(x.value).isspace())
     raise TaytshRuntimeFault("IsSpace expects string or rune", None)

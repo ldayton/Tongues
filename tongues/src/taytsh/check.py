@@ -3062,7 +3062,7 @@ class Checker:
             )
             return fn.ret
         # Check for named args
-        has_named = args and args[0].name is not None
+        has_named = len(args) > 0 and args[0].name is not None
         if has_named and param_names is not None:
             # Validate no mixing
             for a in args:

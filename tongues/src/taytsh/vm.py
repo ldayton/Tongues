@@ -1033,27 +1033,27 @@ class _BuiltinDispatch:
 
     def _is_digit(self, args: list[Val]) -> Val:
         s = _extract_str_or_rune(args[0])
-        return VBool(s and s.isdigit()) if s is not None else _FALSE_VAL
+        return VBool(len(s) > 0 and s.isdigit()) if s is not None else _FALSE_VAL
 
     def _is_alpha(self, args: list[Val]) -> Val:
         s = _extract_str_or_rune(args[0])
-        return VBool(s and s.isalpha()) if s is not None else _FALSE_VAL
+        return VBool(len(s) > 0 and s.isalpha()) if s is not None else _FALSE_VAL
 
     def _is_alnum(self, args: list[Val]) -> Val:
         s = _extract_str_or_rune(args[0])
-        return VBool(s and s.isalnum()) if s is not None else _FALSE_VAL
+        return VBool(len(s) > 0 and s.isalnum()) if s is not None else _FALSE_VAL
 
     def _is_space(self, args: list[Val]) -> Val:
         s = _extract_str_or_rune(args[0])
-        return VBool(s and s.isspace()) if s is not None else _FALSE_VAL
+        return VBool(len(s) > 0 and s.isspace()) if s is not None else _FALSE_VAL
 
     def _is_upper(self, args: list[Val]) -> Val:
         s = _extract_str_or_rune(args[0])
-        return VBool(s and s.isupper()) if s is not None else _FALSE_VAL
+        return VBool(len(s) > 0 and s.isupper()) if s is not None else _FALSE_VAL
 
     def _is_lower(self, args: list[Val]) -> Val:
         s = _extract_str_or_rune(args[0])
-        return VBool(s and s.islower()) if s is not None else _FALSE_VAL
+        return VBool(len(s) > 0 and s.islower()) if s is not None else _FALSE_VAL
 
     def _format(self, args: list[Val]) -> Val:
         if len(args) < 1:

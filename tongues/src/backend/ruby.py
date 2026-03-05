@@ -509,7 +509,7 @@ def _scan_stmt_for_needs(stmt: TStmt, flags: list[bool]) -> None:
             _scan_expr_for_needs(stmt.value, flags)
     elif isinstance(stmt, TIfStmt):
         _scan_stmts_for_needs(stmt.then_body, flags)
-        if stmt.else_body:
+        if stmt.else_body is not None and stmt.else_body:
             _scan_stmts_for_needs(stmt.else_body, flags)
     elif isinstance(stmt, TWhileStmt):
         _scan_stmts_for_needs(stmt.body, flags)
@@ -1282,7 +1282,7 @@ class _RubyEmitter(Emitter):
         return None
 
     def _emit_else_body(self, else_body: list[TStmt] | None) -> None:
-        if not else_body:
+        if else_body is None or not else_body:
             return
         elif_stmt: TStmt | None = None
         if len(else_body) == 1:

@@ -342,7 +342,7 @@ def _is_ancestor(child: str, ancestor: str, hier: HierarchyResult) -> bool:
             return False
         visited.add(current)
         bases = hier.ancestors.get(current)
-        if not bases:
+        if bases is None or not bases:
             return False
         for base in bases:
             if base == ancestor:
@@ -963,7 +963,7 @@ def _resolve_struct_attr(
             break
         visited.add(current)
         bases = ctx.hier_result.ancestors.get(current)
-        if not bases:
+        if bases is None or not bases:
             break
         anc = bases[0]
         anc_cls = ctx.tc_result.classes.get(anc)
@@ -1011,9 +1011,9 @@ def _resolve_struct_attr(
 def _find_parent_class(class_name: str, ctx: _InferCtx) -> str:
     """Find the parent class name, returning '' if unknown or not in our type tables."""
     bases = ctx.hier_result.ancestors.get(class_name)
-    if not bases:
+    if bases is None or not bases:
         bases = ctx.class_bases.get(class_name)
-    if bases:
+    if bases is not None and bases:
         parent = bases[0]
         if parent in ctx.known_classes:
             return parent
@@ -2252,7 +2252,7 @@ def _validate_subscript_assign(
                 + _type_name(obj_type.value),
             )
     elif isinstance(obj_type, SliceType):
-        is_slice = slc and get_str(slc, "_type") == "Slice"
+        is_slice = len(slc) > 0 and get_str(slc, "_type") == "Slice"
         if is_slice:
             if not _is_assignable(val_type, obj_type, ctx.hier_result):
                 ctx.result.add_error(
@@ -3687,7 +3687,7 @@ def _narrow_or_isinstance(
             return
         func = get_node(v, "func")
         if not (
-            func and _is_type(func, ["Name"]) and get_str(func, "id") == "isinstance"
+            len(func) > 0 and _is_type(func, ["Name"]) and get_str(func, "id") == "isinstance"
         ):
             return
         args = get_nodes(v, "args")
@@ -4357,7 +4357,7 @@ def _class_has_attr(class_name: str, attr_name: str, ctx: _InferCtx) -> bool:
                 print(f"DBG attr hit: {class_name}.{attr_name} (method on {current})")
             return True
         bases = ctx.class_bases.get(current)
-        if bases:
+        if bases is not None and bases:
             current = bases[0]
         else:
             current = ""
