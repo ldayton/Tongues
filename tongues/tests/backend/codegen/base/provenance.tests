@@ -324,7 +324,7 @@ fn Main() -> void {
 === string iteration for loop (raised)
 fn Main() -> void {
     let s: string = "abc"
-    let result: list[string] = []
+    let result: list[rune] = []
     @["provenance" = "string_for"] for ch in s {
         Append(result, ch)
     }

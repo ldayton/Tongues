@@ -1314,6 +1314,7 @@ class _PerlEmitter(Emitter):
 
     def _emit_for_reversed(self, stmt: TForStmt) -> None:
         ann = stmt.annotations
+        assert isinstance(stmt.iterable, TCall)
         inner = stmt.iterable.args[0].value
         name = "$" + _restore_name(stmt.binding[0], ann)
         inner_str = self._expr(inner)
@@ -1326,6 +1327,7 @@ class _PerlEmitter(Emitter):
 
     def _emit_for_zip(self, stmt: TForStmt) -> None:
         ann = stmt.annotations
+        assert isinstance(stmt.iterable, TCall)
         zip_args = stmt.iterable.args
         sizes: list[str] = []
         for a in zip_args:

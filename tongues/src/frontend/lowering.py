@@ -5366,7 +5366,7 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     elif len(binding) == 1:
         elem_type: TypeNode = VOID_TYPE
         if _is_type_dict(iter_type, ["string"]):
-            elem_type = PrimitiveType("string")
+            elem_type = PrimitiveType("rune")
         elif _is_type_dict(iter_type, ["bytes"]):
             elem_type = PrimitiveType("byte")
         elif isinstance(iter_type, SliceType):

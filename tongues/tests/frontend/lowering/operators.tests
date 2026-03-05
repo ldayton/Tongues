@@ -166,14 +166,14 @@ def f(a: int, b: int) -> bool:
 a >= b
 ---
 
-=== string char compared to string variable
+=== rune compared to string variable
 def f(s: str, quote: str) -> bool:
     for ch in s:
         if ch == quote:
             return True
     return False
 ---
-ch == quote
+ToString(ch) == quote
 ---
 
 === char comparison in string iteration
@@ -183,7 +183,7 @@ def f(s: str) -> bool:
             return True
     return False
 ---
-ch == "\n"
+== '\n'
 ---
 
 === struct field compared to module constant
@@ -262,44 +262,44 @@ def f(i: int) -> bool:
 op == "add"
 ---
 
-=== string char in tuple comparison
+=== rune in tuple promotes to rune literals
 def f(s: str) -> bool:
     for ch in s:
         if ch in ("$", "@"):
             return True
     return False
 ---
-ch == "$" || ch == "@"
+== '$' || ch == '@'
 ---
 
-=== string char not in tuple comparison
+=== rune not in tuple promotes to rune literals
 def f(s: str) -> bool:
     for ch in s:
         if ch not in ("a", "b"):
             return True
     return False
 ---
-!(ch == "a" || ch == "b")
+!(ch == 'a' || ch == 'b')
 ---
 
-=== string char in single-element tuple
+=== rune in single-element tuple promotes to rune literal
 def f(s: str) -> bool:
     for ch in s:
         if ch in ("x",):
             return True
     return False
 ---
-ch == "x"
+ch == 'x'
 ---
 
-=== string char in tuple with escape chars
+=== rune in tuple with escape char promotes to rune literal
 def f(s: str) -> bool:
     for ch in s:
         if ch in ("\n", "\t"):
             return True
     return False
 ---
-ch == "\n" || ch == "\t"
+== '\n' || ch == '\t'
 ---
 
 === field from narrowed optional used in dict containment

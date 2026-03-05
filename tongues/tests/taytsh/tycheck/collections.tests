@@ -522,7 +522,7 @@ reveal:7=string
 reveal:8=float
 ---
 
-=== valid: string iteration yields string
+=== valid: string iteration yields rune
 fn Main() -> void {
     let s: string = "hello"
     for ch in s {
@@ -531,7 +531,7 @@ fn Main() -> void {
 }
 ---
 ok
-reveal:4=string
+reveal:4=rune
 ---
 
 === valid: list literal widens to declared element type

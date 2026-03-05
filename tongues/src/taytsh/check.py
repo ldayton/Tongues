@@ -2034,10 +2034,10 @@ class Checker:
                     i += 1
         elif type_eq(iter_type, STRING_T):
             if len(binding) == 1:
-                self.declare(binding[0], STRING_T, pos)
+                self.declare(binding[0], RUNE_T, pos)
             elif len(binding) == 2:
                 self.declare(binding[0], INT_T, pos)
-                self.declare(binding[1], STRING_T, pos)
+                self.declare(binding[1], RUNE_T, pos)
         elif type_eq(iter_type, BYTES_T):
             if len(binding) == 1:
                 self.declare(binding[0], BYTE_T, pos)
@@ -4198,8 +4198,8 @@ class Checker:
                 return None
             elem_types: list[Type] = []
             all_ok = True
-            for i in range(ctx.n):
-                ti = _bctx_arg(ctx, i)
+            for zi in range(ctx.n):
+                ti = _bctx_arg(ctx, zi)
                 if ti is None:
                     all_ok = False
                     continue
@@ -4209,7 +4209,7 @@ class Checker:
                     elem_types.append(INT_T)
                 else:
                     self.error(
-                        "Zip argument " + str(i + 1) + " must be list or bytes",
+                        "Zip argument " + str(zi + 1) + " must be list or bytes",
                         pos,
                     )
                     return None

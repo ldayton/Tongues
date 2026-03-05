@@ -138,5 +138,5 @@ for my $x (reverse @{$xs}) {
 === Zip bytes
 0 .. min(length($a), length($b)) - 1) {
 
-=== for over string yields string
+=== for over string yields rune
 for my $ch (split(//, $s)) {

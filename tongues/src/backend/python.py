@@ -976,9 +976,9 @@ class _PythonEmitter(Emitter):
 
     def _for_iterable(self, iterable: TExpr) -> str:
         """Emit iterable expression in for-loop context (no list() wrapping)."""
-        if self._is_builtin_call(iterable, "Reversed"):
+        if self._is_builtin_call(iterable, "Reversed") and isinstance(iterable, TCall):
             return "reversed(" + self._expr(iterable.args[0].value) + ")"
-        if self._is_builtin_call(iterable, "Zip"):
+        if self._is_builtin_call(iterable, "Zip") and isinstance(iterable, TCall):
             parts = [self._expr(a.value) for a in iterable.args]
             return "zip(" + ", ".join(parts) + ")"
         return self._expr(iterable)

@@ -1326,7 +1326,9 @@ class _RubyEmitter(Emitter):
         binding = stmt.binding
         ann = stmt.annotations
         # Reversed(xs) → xs.reverse_each
-        if self._is_builtin_call(stmt.iterable, "Reversed"):
+        if self._is_builtin_call(stmt.iterable, "Reversed") and isinstance(
+            stmt.iterable, TCall
+        ):
             binders = ", ".join(self._decl_name(b, ann) for b in binding)
             inner = self._expr(stmt.iterable.args[0].value)
             self._line(inner + ".reverse_each do |" + binders + "|")
@@ -1338,7 +1340,9 @@ class _RubyEmitter(Emitter):
             self._line("end")
             return
         # Zip(a, b, ...) → a.zip(b, ...).each
-        if self._is_builtin_call(stmt.iterable, "Zip"):
+        if self._is_builtin_call(stmt.iterable, "Zip") and isinstance(
+            stmt.iterable, TCall
+        ):
             zip_args = stmt.iterable.args
             binders = ", ".join(self._decl_name(b, ann) for b in binding)
             zip_parts: list[str] = []

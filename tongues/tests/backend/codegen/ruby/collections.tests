@@ -128,5 +128,5 @@ a.zip(b, c).each do |x, y, z|
 === Zip bytes
 a.bytes.zip(b.bytes).each do |x, y|
 
-=== for over string yields string
+=== for over string yields rune
 s.each_char do |ch|

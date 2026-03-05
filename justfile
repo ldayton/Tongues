@@ -1,5 +1,26 @@
 set shell := ["bash", "-o", "pipefail", "-cu"]
 
+# Quick check: style --fix, then frontend + middleend + backend + ruby + perl in parallel
+quick-check:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    log=/tmp/tongues-quick-check-$(date +%s).log
+    rc=0
+    {
+        just style --fix || { rc=1; }
+        if [ $rc -eq 0 ]; then
+            pids=()
+            just test-frontend & pids+=($!)
+            just test-middleend & pids+=($!)
+            just test-backend & pids+=($!)
+            just lang-ruby & pids+=($!)
+            just lang-perl & pids+=($!)
+            for pid in "${pids[@]}"; do wait "$pid" || rc=1; done
+        fi
+    } 2>&1 | tee "$log"
+    echo "$log"
+    exit $rc
+
 # Quick pre-push check: style + test (--fix to auto-fix style)
 prep *ARGS:
     #!/usr/bin/env bash

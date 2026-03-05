@@ -115,5 +115,5 @@ for x, y, z in zip(a, b, c):
 === Zip bytes
 for x, y in zip(a, b):
 
-=== for over string yields string
+=== for over string yields rune
 for ch in s:

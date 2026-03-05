@@ -301,10 +301,10 @@ fn Main() -> void {
     }
 }
 
-=== for over string yields string
+=== for over string yields rune
 fn Main() -> void {
     let s: string = "abc"
-    let result: list[string] = []
+    let result: list[rune] = []
     for ch in s {
         Append(result, ch)
     }
