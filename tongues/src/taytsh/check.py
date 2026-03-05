@@ -4226,6 +4226,8 @@ class Checker:
                     return SetT(kind="set", element=tu.element)
                 if isinstance(tu, SetT):
                     return tu
+                if isinstance(tu, MapT):
+                    return SetT(kind="set", element=tu.key)
                 if tu.kind != TY_ERROR:
                     self.error("SetFromList requires list argument", pos)
             return None
@@ -4250,6 +4252,8 @@ class Checker:
                     return ListT(kind="list", element=tu.element)
                 if type_eq(tu, BYTES_T):
                     return ListT(kind="list", element=INT_T)
+                if isinstance(tu, MapT):
+                    return ListT(kind="list", element=tu.key)
                 if tu.kind != TY_ERROR:
                     self.error("ListFrom requires list or set argument", pos)
             return None

@@ -9,7 +9,7 @@ if __name__ == "__main__":
 === list from dict
 def main() -> None:
     d: dict[str, int] = {"a": 1, "b": 2, "c": 3}
-    ks: list[str] = sorted(list(d))
+    ks: list[str] = list(d)
     print(str(len(ks)))
 if __name__ == "__main__":
     main()

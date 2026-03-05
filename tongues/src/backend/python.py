@@ -1476,6 +1476,17 @@ class _PythonEmitter(Emitter):
             and expr.annotations.get("provenance") == "reversed_slice"
         ):
             return self._a(args, 0) + "[::-1]"
+        # list(dict) / set(dict) reconstruction via dict_keys provenance
+        if (
+            isinstance(func, TVar)
+            and func.name in ("ListFrom", "SetFromList")
+            and expr.annotations.get("provenance") == "dict_keys"
+        ):
+            inner = args[0].value
+            if isinstance(inner, TCall):
+                dict_expr = self._expr(inner.args[0].value)
+                wrapper = "list" if func.name == "ListFrom" else "set"
+                return wrapper + "(" + dict_expr + ")"
         # Builtin call
         if isinstance(func, TVar) and func.name in BUILTIN_NAMES:
             return self._builtin_call(func.name, args)

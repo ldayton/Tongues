@@ -2216,6 +2216,11 @@ def _lower_collection_call(
                     return _lower_expr(args[0], env, ctx)
             if isinstance(arg_type, SetType):
                 return _make_call(pos, "Sorted", [_lower_expr(args[0], env, ctx)])
+            if _is_type_dict(arg_type, ["Map"]):
+                keys = _make_call(pos, "Keys", [_lower_expr(args[0], env, ctx)])
+                return _make_call_ann(
+                    pos, "ListFrom", [keys], {"provenance": "dict_keys"}
+                )
             return _make_call(pos, "ListFrom", [_lower_expr(args[0], env, ctx)])
     if fname == "set" or fname == "frozenset":
         if not args:
@@ -2248,6 +2253,11 @@ def _lower_collection_call(
                         [TListLit(pos, lowered_arg.elements, {})],
                     )
                 return _make_call(pos, "SetFromList", [lowered_arg])
+            if _is_type_dict(arg_type, ["Map"]):
+                keys = _make_call(pos, "Keys", [_lower_expr(args[0], env, ctx)])
+                return _make_call_ann(
+                    pos, "SetFromList", [keys], {"provenance": "dict_keys"}
+                )
             return _make_call(pos, "SetFromList", [_lower_expr(args[0], env, ctx)])
     if fname == "tuple":
         if not args:

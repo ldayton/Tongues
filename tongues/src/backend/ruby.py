@@ -1905,6 +1905,19 @@ class _RubyEmitter(Emitter):
             and expr.annotations.get("provenance") == "star_unpack"
         ):
             return self._star_unpack(expr)
+        # list(dict) / set(dict) reconstruction via dict_keys provenance
+        if (
+            isinstance(func, TVar)
+            and func.name in ("ListFrom", "SetFromList")
+            and expr.annotations.get("provenance") == "dict_keys"
+        ):
+            inner = args[0].value
+            if isinstance(inner, TCall):
+                dict_expr = self._expr(inner.args[0].value)
+                if func.name == "ListFrom":
+                    return dict_expr + ".keys"
+                self._needs_set = True
+                return "Set.new(" + dict_expr + ".keys)"
         # Builtin call
         if isinstance(func, TVar) and func.name in BUILTIN_NAMES:
             return self._builtin_call(func.name, args, expr)

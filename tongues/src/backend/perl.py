@@ -2102,6 +2102,22 @@ class _PerlEmitter(Emitter):
             and expr.annotations.get("provenance") == "star_unpack"
         ):
             return self._star_unpack(expr)
+        # list(dict) / set(dict) reconstruction via dict_keys provenance
+        if (
+            isinstance(func, TVar)
+            and func.name in ("ListFrom", "SetFromList")
+            and expr.annotations.get("provenance") == "dict_keys"
+        ):
+            inner = args[0].value
+            if isinstance(inner, TCall):
+                dict_expr = self._a(inner.args, 0)
+                if func.name == "ListFrom":
+                    return "[sort keys %{" + dict_expr + "}]"
+                return (
+                    "do { my $__s = {}; $__s->{$_} = 1 for sort keys %{"
+                    + dict_expr
+                    + "}; $__s }"
+                )
         if isinstance(func, TVar) and func.name in BUILTIN_NAMES:
             return self._builtin_call(func.name, args, expr.annotations)
         if isinstance(func, TVar) and func.name in self._PYTHON_CALL_MAP:
