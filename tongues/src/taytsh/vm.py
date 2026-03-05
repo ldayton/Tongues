@@ -2073,9 +2073,9 @@ class VM:
     def _build_method_cache(self) -> None:
         """Build (type_name, method_name) → code_index cache, including parents."""
         for sd in self.module.struct_defs:
-            for mi in range(len(sd.method_names)):
-                key = (sd.name, sd.method_names[mi])
-                self._method_cache[key] = sd.method_indices[mi]
+            for mname, midx in zip(sd.method_names, sd.method_indices):
+                key = (sd.name, mname)
+                self._method_cache[key] = midx
         # Propagate parent methods to children (child methods take precedence)
         name_to_sd: dict[str, StructDef] = {}
         for sd in self.module.struct_defs:
@@ -2086,10 +2086,10 @@ class VM:
                 psd = name_to_sd.get(parent)
                 if psd is None:
                     break
-                for mi in range(len(psd.method_names)):
-                    key = (sd.name, psd.method_names[mi])
+                for mname, midx in zip(psd.method_names, psd.method_indices):
+                    key = (sd.name, mname)
                     if key not in self._method_cache:
-                        self._method_cache[key] = psd.method_indices[mi]
+                        self._method_cache[key] = midx
                 parent = psd.parent
 
     def _init_globals(self) -> None:

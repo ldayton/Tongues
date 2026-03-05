@@ -2023,7 +2023,7 @@ class _PythonEmitter(Emitter):
         # Replace sequential {} placeholders with markers
         markers: dict[str, int] = {}
         result = template
-        for i in range(len(fmt_args)):
+        for i, _arg in enumerate(fmt_args):
             marker = "\x00PH" + str(i) + "\x00"
             markers[marker] = i
             result = result.replace("{}", marker, 1)

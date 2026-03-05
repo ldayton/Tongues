@@ -39,6 +39,6 @@ def crc32_hex(data: bytes) -> str:
     """Return CRC-32 as 8-char lowercase hex string."""
     val: int = crc32(data)
     out: list[str] = []
-    for i in range(7, -1, -1):
+    for i in reversed(range(8)):
         out.append(_HEX[(val >> (i * 4)) & 0xF])
     return "".join(out)

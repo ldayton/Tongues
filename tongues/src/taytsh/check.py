@@ -801,8 +801,8 @@ def is_assignable(source: Type, target: Type) -> bool:
     if isinstance(source, TupleT) and isinstance(target, TupleT):
         if len(source.elements) == len(target.elements):
             ok = True
-            for i in range(len(source.elements)):
-                if not is_assignable(source.elements[i], target.elements[i]):
+            for src_el, tgt_el in zip(source.elements, target.elements):
+                if not is_assignable(src_el, tgt_el):
                     ok = False
                     break
             if ok:
