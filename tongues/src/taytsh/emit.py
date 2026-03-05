@@ -375,14 +375,11 @@ class _Emitter:
         self._emit_stmt_block(branches[0][1])
 
         # else-if branches
-        i = 1
-        while i < len(branches):
-            cond, body = branches[i]
+        for cond, body in branches[1:]:
             self._emit_line(
                 "} else if " + self._render_expr(cond, _PREC_TERNARY) + " {"
             )
             self._emit_stmt_block(body)
-            i += 1
 
         # final else
         if final_else is not None:
@@ -438,15 +435,12 @@ class _Emitter:
         self._emit_line("try {")
         self._emit_stmt_block(stmt.body)
 
-        idx = 0
-        while idx < len(stmt.catches):
-            c = stmt.catches[idx]
+        for c in stmt.catches:
             catch_hdr = "} catch " + c.name
             if c.types:
                 catch_hdr += ": " + self._render_catch_types(c.types)
             self._emit_line(catch_hdr + " {")
             self._emit_stmt_block(c.body)
-            idx += 1
 
         if stmt.finally_body is not None:
             self._emit_line("} finally {")
@@ -728,11 +722,8 @@ class _Emitter:
                 current = None
 
             out = f"if {self._render_expr(branches[0][0], _PREC_TERNARY)} {self._render_inline_block(branches[0][1])}"
-            i = 1
-            while i < len(branches):
-                cond, body = branches[i]
+            for cond, body in branches[1:]:
                 out += f" else if {self._render_expr(cond, _PREC_TERNARY)} {self._render_inline_block(body)}"
-                i += 1
             if final_else is not None:
                 out += f" else {self._render_inline_block(final_else)}"
             return out

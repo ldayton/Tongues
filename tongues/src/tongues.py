@@ -108,11 +108,9 @@ Options:
 def should_skip_file(source: str) -> bool:
     """Check if file has a tongues: skip directive in first 5 lines."""
     lines = source.split("\n", 5)
-    i = 0
-    while i < len(lines) and i < 5:
-        if "tongues: skip" in lines[i]:
+    for line in lines[:5]:
+        if "tongues: skip" in line:
             return True
-        i += 1
     return False
 
 
@@ -158,9 +156,7 @@ def write_output(output: str, output_file: str | None) -> int:
 def _json_escape(s: str) -> str:
     """Escape a string for JSON output."""
     result: list[str] = []
-    i = 0
-    while i < len(s):
-        c = s[i]
+    for c in s:
         if c == "\\":
             result.append("\\\\")
         elif c == '"':
@@ -173,7 +169,6 @@ def _json_escape(s: str) -> str:
             result.append("\\t")
         else:
             result.append(c)
-        i += 1
     return "".join(result)
 
 
@@ -197,10 +192,8 @@ def _to_json(obj: JsonValue, indent: int, level: int) -> str:
         parts: list[str] = []
         pad = " " * (indent * (level + 1))
         pad_close = " " * (indent * level)
-        i = 0
-        while i < len(obj.items):
-            parts.append(pad + _to_json(obj.items[i], indent, level + 1))
-            i += 1
+        for item in obj.items:
+            parts.append(pad + _to_json(item, indent, level + 1))
         return "[\n" + ",\n".join(parts) + "\n" + pad_close + "]"
     if isinstance(obj, JDict):
         if len(obj.entries) == 0:
@@ -208,15 +201,10 @@ def _to_json(obj: JsonValue, indent: int, level: int) -> str:
         parts: list[str] = []
         pad = " " * (indent * (level + 1))
         pad_close = " " * (indent * level)
-        keys = list(obj.entries.keys())
-        i = 0
-        while i < len(keys):
-            k = keys[i]
-            v = obj.entries[k]
+        for k, v in obj.entries.items():
             key_str = '"' + _json_escape(str(k)) + '"'
             val_str = _to_json(v, indent, level + 1)
             parts.append(pad + key_str + ": " + val_str)
-            i += 1
         return "{\n" + ",\n".join(parts) + "\n" + pad_close + "}"
     return '"<unserializable>"'
 
@@ -243,10 +231,8 @@ def _name_info_to_dict(info: NameInfo) -> JsonValue:
         d["decl_func"] = JStr(info.decl_func)
     if len(info.bases) > 0:
         bases_jv: list[JsonValue] = []
-        bi = 0
-        while bi < len(info.bases):
-            bases_jv.append(JStr(info.bases[bi]))
-            bi += 1
+        for base in info.bases:
+            bases_jv.append(JStr(base))
         d["bases"] = JList(bases_jv)
     return JDict(d)
 
@@ -254,43 +240,23 @@ def _name_info_to_dict(info: NameInfo) -> JsonValue:
 def _name_table_to_dict(table: NameTable) -> JsonValue:
     """Convert a NameTable to spec-compliant format: {"names": {...}, "scopes": [...]}."""
     names: dict[str, JsonValue] = {}
-    keys = list(table.module_names.keys())
-    i = 0
-    while i < len(keys):
-        name = keys[i]
-        names[name] = _name_info_to_dict(table.module_names[name])
-        i += 1
+    for name, info in table.module_names.items():
+        names[name] = _name_info_to_dict(info)
     scopes: list[JsonValue] = []
-    ckeys = list(table.class_names.keys())
-    i = 0
-    while i < len(ckeys):
-        cname = ckeys[i]
+    for cname, cmap in table.class_names.items():
         scope_names: dict[str, JsonValue] = {}
-        mkeys = list(table.class_names[cname].keys())
-        j = 0
-        while j < len(mkeys):
-            mname = mkeys[j]
-            scope_names[mname] = _name_info_to_dict(table.class_names[cname][mname])
-            j += 1
+        for mname, minfo in cmap.items():
+            scope_names[mname] = _name_info_to_dict(minfo)
         scopes.append(JDict({"scope": JStr(cname), "names": JDict(scope_names)}))
-        i += 1
-    lkeys = list(table.local_names.keys())
-    i = 0
-    while i < len(lkeys):
-        lkey = lkeys[i]
+    for lkey, lmap in table.local_names.items():
         if str(lkey[0]) != "":
             scope_key = str(lkey[0]) + ":" + str(lkey[1])
         else:
             scope_key = str(lkey[1])
         scope_names: dict[str, JsonValue] = {}
-        skeys = list(table.local_names[lkey].keys())
-        j = 0
-        while j < len(skeys):
-            sname = skeys[j]
-            scope_names[sname] = _name_info_to_dict(table.local_names[lkey][sname])
-            j += 1
+        for sname, sinfo in lmap.items():
+            scope_names[sname] = _name_info_to_dict(sinfo)
         scopes.append(JDict({"scope": JStr(scope_key), "names": JDict(scope_names)}))
-        i += 1
     result: dict[str, JsonValue] = {"names": JDict(names)}
     if len(scopes) > 0:
         result["scopes"] = JList(scopes)
@@ -322,15 +288,12 @@ def _extract_pragmas(
         if not pragma_body.endswith("]"):
             break
         pragma_body = pragma_body[:-1]
-        pragma_entries = pragma_body.split(",")
-        j = 0
-        while j < len(pragma_entries):
-            entry = pragma_entries[j].strip().strip('"')
+        for entry_raw in pragma_body.split(","):
+            entry = entry_raw.strip().strip('"')
             if entry == "strict_math":
                 strict_math = True
             elif entry == "strict_tostring":
                 strict_tostring = True
-            j += 1
         i += 1
     remaining = "\n".join(lines[i:])
     return (remaining, strict_math, strict_tostring)
@@ -341,10 +304,8 @@ def _extract_pragmas(
 
 def _print_errors(errors: list[str]) -> None:
     """Print error strings to stderr."""
-    i = 0
-    while i < len(errors):
-        print(errors[i], file=sys.stderr)
-        i += 1
+    for error in errors:
+        print(error, file=sys.stderr)
 
 
 # --- Pipeline ---
@@ -408,9 +369,7 @@ def _resolve_project_import(
             return [("", importing_file + ": unresolved import: " + module)]
         else:
             results: list[tuple[str, str]] = []
-            i = 0
-            while i < len(names):
-                name_node = names[i]
+            for name_node in names:
                 name = get_str(name_node, "name")
                 if name != "" and name != "*":
                     if dir_path != "":
@@ -427,7 +386,6 @@ def _resolve_project_import(
                         results.append(
                             ("", importing_file + ": unresolved import: " + name)
                         )
-                i += 1
             return results
     else:
         module_path = module.replace(".", "/")
@@ -443,28 +401,18 @@ def _resolve_project_import(
 def _dependency_order(files: list[str], deps: dict[str, list[str]]) -> list[str]:
     """Topological sort with lexicographic tiebreaker, cycle-tolerant."""
     in_degree: dict[str, int] = {}
-    i = 0
-    while i < len(files):
-        in_degree[files[i]] = 0
-        i += 1
-    i = 0
-    while i < len(files):
-        f = files[i]
+    for f in files:
+        in_degree[f] = 0
+    for f in files:
         dep_list = deps.get(f)
         if dep_list is not None:
-            j = 0
-            while j < len(dep_list):
-                dep = dep_list[j]
+            for dep in dep_list:
                 if dep in in_degree:
                     in_degree[dep] = in_degree[dep] + 1
-                j += 1
-        i += 1
     ready: list[str] = []
-    i = 0
-    while i < len(files):
-        if in_degree[files[i]] == 0:
-            ready.append(files[i])
-        i += 1
+    for f in files:
+        if in_degree[f] == 0:
+            ready.append(f)
     ready.sort()
     result: list[str] = []
     while len(ready) > 0:
@@ -473,9 +421,7 @@ def _dependency_order(files: list[str], deps: dict[str, list[str]]) -> list[str]
         result.append(node)
         dep_list = deps.get(node)
         if dep_list is not None:
-            j = 0
-            while j < len(dep_list):
-                dep = dep_list[j]
+            for dep in dep_list:
                 if dep in in_degree:
                     in_degree[dep] = in_degree[dep] - 1
                     if in_degree[dep] == 0:
@@ -489,26 +435,14 @@ def _dependency_order(files: list[str], deps: dict[str, list[str]]) -> list[str]
                             k += 1
                         if not inserted:
                             ready.append(dep)
-                j += 1
     if len(result) < len(files):
         remaining: list[str] = []
-        i = 0
-        while i < len(files):
-            found = False
-            j = 0
-            while j < len(result):
-                if files[i] == result[j]:
-                    found = True
-                    break
-                j += 1
-            if not found:
-                remaining.append(files[i])
-            i += 1
+        for f in files:
+            if f not in result:
+                remaining.append(f)
         remaining.sort()
-        i = 0
-        while i < len(remaining):
-            result.append(remaining[i])
-            i += 1
+        for f in remaining:
+            result.append(f)
     return result
 
 
@@ -518,9 +452,7 @@ def _collect_module_names(
     """Collect (name, lineno, col, stmt) for module-level definitions."""
     result: list[tuple[str, int, int, ASTNode]] = []
     body = get_nodes(ast_dict, "body")
-    i = 0
-    while i < len(body):
-        stmt = body[i]
+    for stmt in body:
         node_type = get_str(stmt, "_type")
         lineno = get_int(stmt, "lineno")
         col = get_int(stmt, "col_offset")
@@ -533,15 +465,11 @@ def _collect_module_names(
             if name != "":
                 result.append((name, lineno, col, stmt))
         elif node_type == "Assign":
-            targets = get_nodes(stmt, "targets")
-            j = 0
-            while j < len(targets):
-                tgt = targets[j]
-                if get_str(tgt, "_type") == "Name":
-                    tid = get_str(tgt, "id")
+            for assign_tgt in get_nodes(stmt, "targets"):
+                if get_str(assign_tgt, "_type") == "Name":
+                    tid = get_str(assign_tgt, "id")
                     if tid != "":
                         result.append((tid, lineno, col, stmt))
-                j += 1
         elif node_type == "TypeAlias":
             name_node = get_node(stmt, "name")
             tid = get_str(name_node, "id")
@@ -553,7 +481,6 @@ def _collect_module_names(
                 tid = get_str(tgt, "id")
                 if tid != "":
                     result.append((tid, lineno, col, stmt))
-        i += 1
     return result
 
 
