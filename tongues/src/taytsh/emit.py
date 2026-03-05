@@ -787,9 +787,8 @@ class _Emitter:
 
     def _quote_bytes(self, b: bytes) -> str:
         out = 'b"'
-        i = 0
-        while i < len(b):
-            v = int(b[i])
+        for bv in b:
+            v = int(bv)
             if v == 10:
                 out += "\\n"
             elif v == 13:
@@ -809,7 +808,6 @@ class _Emitter:
                 if len(hx) == 1:
                     hx = "0" + hx
                 out += "\\x" + hx
-            i += 1
         out += '"'
         return out
 

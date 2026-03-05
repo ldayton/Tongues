@@ -801,11 +801,8 @@ def _wrap_value(v: str) -> JsonValue:
 def _wrap_ann(ann: Ann) -> JsonValue:
     """Wrap an Ann dict as a JDict."""
     d: dict[str, JsonValue] = {}
-    keys = list(ann.keys())
-    i = 0
-    while i < len(keys):
-        d[keys[i]] = JStr(ann[keys[i]])
-        i += 1
+    for k in ann:
+        d[k] = JStr(ann[k])
     return JDict(d)
 
 
@@ -815,38 +812,29 @@ def _pos_json(p: Pos) -> JsonValue:
 
 def _ann_json(a: Ann) -> JsonValue:
     d: dict[str, JsonValue] = {}
-    keys = list(a.keys())
-    i = 0
-    while i < len(keys):
-        d[keys[i]] = JStr(a[keys[i]])
-        i += 1
+    for k in a:
+        d[k] = JStr(a[k])
     return JDict(d)
 
 
 def _types_json(items: list[TType]) -> JsonValue:
     result: list[JsonValue] = []
-    i = 0
-    while i < len(items):
-        result.append(_type_json(items[i]))
-        i += 1
+    for item in items:
+        result.append(_type_json(item))
     return JList(result)
 
 
 def _exprs_json(items: list[TExpr]) -> JsonValue:
     result: list[JsonValue] = []
-    i = 0
-    while i < len(items):
-        result.append(_expr_json(items[i]))
-        i += 1
+    for item in items:
+        result.append(_expr_json(item))
     return JList(result)
 
 
 def _stmts_json(items: list[TStmt]) -> JsonValue:
     result: list[JsonValue] = []
-    i = 0
-    while i < len(items):
-        result.append(_stmt_json(items[i]))
-        i += 1
+    for item in items:
+        result.append(_stmt_json(item))
     return JList(result)
 
 
@@ -1215,10 +1203,8 @@ def _decl_json(decl: TModuleItem) -> JsonValue:
 def to_dict(module: TModule) -> JsonValue:
     """Serialize a TModule to a JsonValue tree."""
     dlist: list[JsonValue] = []
-    i = 0
-    while i < len(module.decls):
-        dlist.append(_decl_json(module.decls[i]))
-        i += 1
+    for decl in module.decls:
+        dlist.append(_decl_json(decl))
     d: dict[str, JsonValue] = {
         "decls": JList(dlist),
         "strict_math": JBool(module.strict_math),

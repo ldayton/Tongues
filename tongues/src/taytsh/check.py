@@ -192,20 +192,16 @@ def type_eq(a: Type, b: Type) -> bool:
     if isinstance(a, TupleT) and isinstance(b, TupleT):
         if len(a.elements) != len(b.elements):
             return False
-        i = 0
-        while i < len(a.elements):
-            if not type_eq(a.elements[i], b.elements[i]):
+        for ae, be in zip(a.elements, b.elements):
+            if not type_eq(ae, be):
                 return False
-            i += 1
         return True
     if isinstance(a, FnT) and isinstance(b, FnT):
         if len(a.params) != len(b.params):
             return False
-        i = 0
-        while i < len(a.params):
-            if not type_eq(a.params[i], b.params[i]):
+        for ap, bp in zip(a.params, b.params):
+            if not type_eq(ap, bp):
                 return False
-            i += 1
         return type_eq(a.ret, b.ret)
     if isinstance(a, StructT) and isinstance(b, StructT):
         return a.name == b.name
@@ -811,12 +807,10 @@ def is_assignable(source: Type, target: Type) -> bool:
     if isinstance(source, ListT) and isinstance(target, TupleT):
         if len(target.elements) > 0:
             all_ok = True
-            ei = 0
-            while ei < len(target.elements):
-                if not is_assignable(source.element, target.elements[ei]):
+            for te in target.elements:
+                if not is_assignable(source.element, te):
                     all_ok = False
                     break
-                ei += 1
             if all_ok:
                 return True
     return False
@@ -1284,13 +1278,11 @@ class Checker:
                 self.error("fn type must have at least a return type", t.pos)
                 return ERROR_T
             params: list[Type] = []
-            i = 0
-            while i < len(t.params) - 1:
-                p = self.resolve_type(t.params[i])
+            for tp in t.params[:-1]:
+                p = self.resolve_type(tp)
                 if type_eq(p, VOID_T):
-                    self.error("void is not a value type", t.params[i].pos)
+                    self.error("void is not a value type", tp.pos)
                 params.append(p)
-                i += 1
             ret = self.resolve_type(t.params[-1])
             return FnT(kind="fn", params=params, ret=ret)
         if isinstance(t, TIdentType):
@@ -1580,9 +1572,7 @@ class Checker:
     # ── Statement checking ────────────────────────────────────
 
     def check_stmts(self, stmts: list[TStmt]) -> None:
-        i = 0
-        while i < len(stmts):
-            s = stmts[i]
+        for i, s in enumerate(stmts):
             if i > 0 and isinstance(
                 stmts[i - 1], (TReturnStmt, TThrowStmt, TBreakStmt, TContinueStmt)
             ):
@@ -1805,11 +1795,8 @@ class Checker:
                 stmt.pos,
             )
             return
-        i = 0
-        while i < len(stmt.targets):
-            tgt = stmt.targets[i]
+        for i, tgt in enumerate(stmt.targets):
             if isinstance(tgt, TVar) and tgt.name == "_":
-                i += 1
                 continue
             if isinstance(tgt, TVar):
                 self.uninitialized.discard(tgt.name)
@@ -1826,7 +1813,6 @@ class Checker:
                     + type_name(target_type),
                     stmt.pos,
                 )
-            i += 1
 
     def check_return_stmt(self, stmt: TReturnStmt) -> None:
         if self.current_fn_ret is None:
@@ -1869,16 +1855,10 @@ class Checker:
         var_checks = _collect_nil_checks(narrow_cond, True, "&&")
         all_checks = _collect_nil_checks(narrow_cond, False, "&&")
         checks: list[tuple[str, str]] = []
-        fc_i = 0
-        while fc_i < len(var_checks):
-            checks.append(var_checks[fc_i])
-            fc_i += 1
-        fc_i = 0
-        while fc_i < len(all_checks):
-            n, k = all_checks[fc_i]
+        checks.extend(var_checks)
+        for n, k in all_checks:
             if (n, k) not in var_checks:
                 checks.append((n, k))
-            fc_i += 1
         for var_name, check_kind in checks:
             if "." in var_name:
                 var_type = self._lookup_field_type(var_name, stmt.pos)
@@ -2723,16 +2703,10 @@ class Checker:
         var_checks = _collect_nil_checks(expr.cond, True, "&&")
         all_checks = _collect_nil_checks(expr.cond, False, "&&")
         checks: list[tuple[str, str]] = []
-        fc_i = 0
-        while fc_i < len(var_checks):
-            checks.append(var_checks[fc_i])
-            fc_i += 1
-        fc_i = 0
-        while fc_i < len(all_checks):
-            n, k = all_checks[fc_i]
+        checks.extend(var_checks)
+        for n, k in all_checks:
             if (n, k) not in var_checks:
                 checks.append((n, k))
-            fc_i += 1
         for var_name, check_kind in checks:
             if "." in var_name:
                 var_type = self._lookup_field_type(var_name, expr.pos)
@@ -3091,10 +3065,9 @@ class Checker:
             # Named args but no param names available — reject
             self.error("named arguments not supported for fn values", pos)
             # Just check types positionally
-            i = 0
-            while i < len(args):
+            for i, arg in enumerate(args):
                 if i < len(fn.params):
-                    arg_type = self.check_expr(args[i].value, fn.params[i])
+                    arg_type = self.check_expr(arg.value, fn.params[i])
                     if arg_type is not None and not is_assignable(
                         arg_type, fn.params[i]
                     ):
@@ -3105,18 +3078,16 @@ class Checker:
                             + type_name(arg_type)
                             + " as "
                             + type_name(fn.params[i]),
-                            args[i].pos,
+                            arg.pos,
                         )
-                i += 1
         else:
             # Check for positional args mixed with named
-            i = 0
-            while i < len(args):
-                if args[i].name is not None:
-                    self.error("cannot mix positional and named arguments", args[i].pos)
+            for i, arg in enumerate(args):
+                if arg.name is not None:
+                    self.error("cannot mix positional and named arguments", arg.pos)
                     return fn.ret
                 if i < len(fn.params):
-                    arg_type = self.check_expr(args[i].value, fn.params[i])
+                    arg_type = self.check_expr(arg.value, fn.params[i])
                     if arg_type is not None and not is_assignable(
                         arg_type, fn.params[i]
                     ):
@@ -3127,9 +3098,8 @@ class Checker:
                             + type_name(arg_type)
                             + " as "
                             + type_name(fn.params[i]),
-                            args[i].pos,
+                            arg.pos,
                         )
-                i += 1
         return fn.ret
 
     def check_struct_constructor(
@@ -3183,13 +3153,12 @@ class Checker:
                     )
         else:
             # Positional construction
-            i = 0
-            while i < len(args):
-                if args[i].name is not None:
-                    self.error("cannot mix positional and named arguments", args[i].pos)
+            for i, arg in enumerate(args):
+                if arg.name is not None:
+                    self.error("cannot mix positional and named arguments", arg.pos)
                     return st
                 expected_type2 = st.fields[field_names[i]]
-                arg_type2 = self.check_expr(args[i].value, expected_type2)
+                arg_type2 = self.check_expr(arg.value, expected_type2)
                 if arg_type2 is not None and not is_assignable(
                     arg_type2, expected_type2
                 ):
@@ -3200,9 +3169,8 @@ class Checker:
                         + type_name(arg_type2)
                         + " to "
                         + type_name(expected_type2),
-                        args[i].pos,
+                        arg.pos,
                     )
-                i += 1
         return st
 
     def check_method_call(
@@ -3297,18 +3265,16 @@ class Checker:
                 + type_name(check_type),
                 expr.elements[0].pos,
             )
-        i = 1
-        while i < len(expr.elements):
-            elem = self.check_expr(expr.elements[i], check_type)
+        for el in expr.elements[1:]:
+            elem = self.check_expr(el, check_type)
             if elem is not None and not is_assignable(elem, check_type):
                 self.error(
                     "list elements must have same type, got "
                     + type_name(check_type)
                     + " and "
                     + type_name(elem),
-                    expr.elements[i].pos,
+                    el.pos,
                 )
-            i += 1
         return ListT(kind="list", element=check_type)
 
     def check_map_lit(self, expr: TMapLit, expected: Type | None) -> Type | None:
@@ -3333,9 +3299,7 @@ class Checker:
         k0_val = _literal_key_value(expr.entries[0][0])
         if k0_val is not None:
             seen_keys.append(k0_val)
-        i = 1
-        while i < len(expr.entries):
-            ki, vi = expr.entries[i]
+        for ki, vi in expr.entries[1:]:
             ki_val = _literal_key_value(ki)
             if ki_val is not None:
                 if ki_val in seen_keys:
@@ -3355,7 +3319,6 @@ class Checker:
                     check_val = widened
                 else:
                     self.error("map values must have same type", vi.pos)
-            i += 1
         return MapT(kind="map", key=check_key, value=check_val)
 
     def _widen_to_common_interface(self, a: Type, b: Type) -> Type | None:
@@ -3378,18 +3341,15 @@ class Checker:
         first = self.check_expr(expr.elements[0], None)
         if first is None:
             return None
-        i = 1
-        while i < len(expr.elements):
-            elem = self.check_expr(expr.elements[i], first)
+        for el in expr.elements[1:]:
+            elem = self.check_expr(el, first)
             if elem is not None and not type_eq(elem, first):
-                self.error("set elements must have same type", expr.elements[i].pos)
-            i += 1
+                self.error("set elements must have same type", el.pos)
         return SetT(kind="set", element=first)
 
     def check_tuple_lit(self, expr: TTupleLit, expected: Type | None) -> Type | None:
         elem_types: list[Type] = []
-        i = 0
-        while i < len(expr.elements):
+        for i, el in enumerate(expr.elements):
             exp_elem: Type | None = None
             if (
                 expected is not None
@@ -3397,11 +3357,10 @@ class Checker:
                 and i < len(expected.elements)
             ):
                 exp_elem = expected.elements[i]
-            et = self.check_expr(expr.elements[i], exp_elem)
+            et = self.check_expr(el, exp_elem)
             if et is None:
                 return None
             elem_types.append(et)
-            i += 1
         return TupleT(kind="tuple", elements=elem_types)
 
     def check_fn_lit(self, expr: TFnLit, expected: Type | None) -> Type | None:
