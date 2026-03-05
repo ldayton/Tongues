@@ -534,16 +534,13 @@ ok
 reveal:4=string
 ---
 
-=== valid: list of subclass assignable to list of interface
+=== valid: list literal widens to declared element type
 interface Val {}
 struct VInt: Val {
     v: int
 }
-fn make() -> list[VInt] {
-    return [VInt(1), VInt(2)]
-}
 fn Main() -> void {
-    let result: list[Val] = make()
+    let result: list[Val] = [VInt(1), VInt(2)]
 }
 ---
 ok

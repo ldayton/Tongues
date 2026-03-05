@@ -130,13 +130,13 @@ for my $x (@{$xs}) {
 for my $x (reverse @{$xs}) {
 
 === Zip two lists
-for my $__i (0 .. min(scalar(@{$a}), scalar(@{$b})) - 1) {
+0 .. min(scalar(@{$a}), scalar(@{$b})) - 1) {
 
 === Zip three lists
-for my $__i (0 .. min(scalar(@{$a}), scalar(@{$b}), scalar(@{$c})) - 1) {
+0 .. min(scalar(@{$a}), scalar(@{$b}), scalar(@{$c})) - 1) {
 
 === Zip bytes
-for my $__i (0 .. min(length($a), length($b)) - 1) {
+0 .. min(length($a), length($b)) - 1) {
 
 === for over string yields string
 for my $ch (split(//, $s)) {

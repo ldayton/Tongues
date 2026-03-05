@@ -87,7 +87,7 @@ fn Main() -> void {
 === for over string characters
 fn Main() -> void {
     for ch in "hello" {
-        WritelnOut(ToString(RuneToInt(ch)))
+        WritelnOut(ch)
     }
 }
 

@@ -2034,10 +2034,10 @@ class Checker:
                     i += 1
         elif type_eq(iter_type, STRING_T):
             if len(binding) == 1:
-                self.declare(binding[0], RUNE_T, pos)
+                self.declare(binding[0], STRING_T, pos)
             elif len(binding) == 2:
                 self.declare(binding[0], INT_T, pos)
-                self.declare(binding[1], RUNE_T, pos)
+                self.declare(binding[1], STRING_T, pos)
         elif type_eq(iter_type, BYTES_T):
             if len(binding) == 1:
                 self.declare(binding[0], BYTE_T, pos)
@@ -4193,25 +4193,30 @@ class Checker:
 
         # ── Zip ──
         if name == "Zip":
-            if not _bctx_require(ctx, 2):
+            if ctx.n < 2:
+                self.error("Zip requires at least 2 arguments, got " + str(ctx.n), pos)
                 return None
-            t1 = _bctx_arg(ctx, 0)
-            t2 = _bctx_arg(ctx, 1)
-            if t1 is not None and not isinstance(t1, ListT):
-                self.error("Zip requires list as first argument", pos)
-                return None
-            if t2 is not None and not isinstance(t2, ListT):
-                self.error("Zip requires list as second argument", pos)
-                return None
-            if (
-                t1 is not None
-                and t2 is not None
-                and isinstance(t1, ListT)
-                and isinstance(t2, ListT)
-            ):
+            elem_types: list[Type] = []
+            all_ok = True
+            for i in range(ctx.n):
+                ti = _bctx_arg(ctx, i)
+                if ti is None:
+                    all_ok = False
+                    continue
+                if isinstance(ti, ListT):
+                    elem_types.append(ti.element)
+                elif type_eq(ti, BYTES_T):
+                    elem_types.append(INT_T)
+                else:
+                    self.error(
+                        "Zip argument " + str(i + 1) + " must be list or bytes",
+                        pos,
+                    )
+                    return None
+            if all_ok and len(elem_types) == ctx.n:
                 return ListT(
                     kind="list",
-                    element=TupleT(kind="tuple", elements=[t1.element, t2.element]),
+                    element=TupleT(kind="tuple", elements=elem_types),
                 )
             return None
 
@@ -4273,6 +4278,12 @@ class Checker:
                 if type_eq(t1_rp, BYTES_T):
                     return BYTES_T
                 if isinstance(t1_rp, ListT):
+                    if (
+                        expected is not None
+                        and isinstance(expected, ListT)
+                        and is_assignable(t1_rp.element, expected.element)
+                    ):
+                        return expected
                     return t1_rp
                 if isinstance(t1_rp, TupleT) and t1_rp.elements:
                     return ListT(kind="list", element=t1_rp.elements[0])

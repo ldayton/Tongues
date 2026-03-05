@@ -2323,10 +2323,9 @@ def _lower_name_call(
     if coll is not None:
         return coll
     if fname == "zip":
-        if len(args) >= 2 and isinstance(args[0], dict) and isinstance(args[1], dict):
-            zip_a = _lower_expr(args[0], env, ctx)
-            zip_b = _lower_expr(args[1], env, ctx)
-            return _make_call(pos, "Zip", [zip_a, zip_b])
+        if len(args) >= 2 and all(isinstance(a, dict) for a in args):
+            zip_args = [_lower_expr(a, env, ctx) for a in args]
+            return _make_call(pos, "Zip", zip_args)
     if fname == "isinstance":
         if len(args) >= 2 and isinstance(args[0], dict) and isinstance(args[1], dict):
             tnames = _isinstance_types_from_args(args)
@@ -5296,6 +5295,14 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     hoist_names = _scan_hoist_names(body, env)
     pre_stmts: list[TStmt] = []
     _emit_hoisted_placeholders(pos, hoist_names, env, pre_stmts)
+    # reversed(range(...)) → reversed TRange, reversed(xs) → Reversed(xs)
+    if _is_ast(iter_node, "Call"):
+        func = get_node(iter_node, "func")
+        if _is_ast(func, "Name") and get_str(func, "id") == "reversed":
+            result = _lower_for_reversed(target_node, iter_node, body, env, ctx)
+            for r in result:
+                pre_stmts.append(r)
+            return pre_stmts
     # range() → TRange
     if _is_ast(iter_node, "Call"):
         func = get_node(iter_node, "func")
@@ -5359,7 +5366,7 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     elif len(binding) == 1:
         elem_type: TypeNode = VOID_TYPE
         if _is_type_dict(iter_type, ["string"]):
-            elem_type = PrimitiveType("rune")
+            elem_type = PrimitiveType("string")
         elif _is_type_dict(iter_type, ["bytes"]):
             elem_type = PrimitiveType("byte")
         elif isinstance(iter_type, SliceType):
@@ -5414,6 +5421,69 @@ def _lower_for_range(
         range_args.append(_lower_expr(a, env, ctx))
     body_stmts = _lower_stmts(body, env, ctx)
     return [TForStmt(pos, binding, TRange(pos, range_args, {}), body_stmts, b_ann)]
+
+
+def _lower_for_reversed(
+    target_node: ASTNode,
+    iter_node: ASTNode,
+    body: list[ASTNode],
+    env: _Env,
+    ctx: _LowerCtx,
+) -> list[TStmt]:
+    """Lower for x in reversed(...)."""
+    pos = _node_pos(target_node)
+    rev_args = get_nodes(iter_node, "args")
+    if not rev_args or not isinstance(rev_args[0], dict):
+        return []
+    inner = rev_args[0]
+    binding, b_ann = _extract_binding(target_node)
+    # reversed(range(...)) → range with reversed bounds
+    if _is_ast(inner, "Call"):
+        inner_func = get_node(inner, "func")
+        if _is_ast(inner_func, "Name") and get_str(inner_func, "id") == "range":
+            range_args = get_nodes(inner, "args")
+            if len(binding) == 1:
+                env.var_types[binding[0]] = INT_TYPE
+            lowered: list[TExpr] = []
+            for a in range_args:
+                lowered.append(_lower_expr(a, env, ctx))
+            if len(lowered) == 1:
+                # reversed(range(n)) → range(n-1, -1, -1)
+                n = lowered[0]
+                rev_range = TRange(
+                    pos,
+                    [
+                        TBinaryOp(pos, "-", n, TIntLit(pos, 1, "1", {}), {}),
+                        TIntLit(pos, -1, "-1", {}),
+                        TIntLit(pos, -1, "-1", {}),
+                    ],
+                    {},
+                )
+            elif len(lowered) == 2:
+                # reversed(range(a, b)) → range(b-1, a-1, -1)
+                rev_range = TRange(
+                    pos,
+                    [
+                        TBinaryOp(pos, "-", lowered[1], TIntLit(pos, 1, "1", {}), {}),
+                        TBinaryOp(pos, "-", lowered[0], TIntLit(pos, 1, "1", {}), {}),
+                        TIntLit(pos, -1, "-1", {}),
+                    ],
+                    {},
+                )
+            else:
+                # reversed(range(a, b, s)) — not supported, fall through
+                rev_range = TRange(pos, lowered, {})
+            b_ann["provenance"] = "reversed_range"
+            body_stmts = _lower_stmts(body, env, ctx)
+            return [TForStmt(pos, binding, rev_range, body_stmts, b_ann)]
+    # reversed(xs) → for x in Reversed(xs)
+    inner_expr = _lower_expr(inner, env, ctx)
+    inner_type = _infer_expr_type(inner, env, ctx)
+    if len(binding) == 1 and isinstance(inner_type, SliceType):
+        env.var_types[binding[0]] = inner_type.element
+    iter_expr = _make_call(pos, "Reversed", [inner_expr])
+    body_stmts = _lower_stmts(body, env, ctx)
+    return [TForStmt(pos, binding, iter_expr, body_stmts, b_ann)]
 
 
 def _lower_for_enumerate(

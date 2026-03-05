@@ -49,7 +49,7 @@ for my $k (sort keys %{$m}) {
 
 === for over string characters
 for my $ch (split(//, "hello")) {
-    say(("" . ord($ch)));
+    say($ch);
 }
 
 === for over set

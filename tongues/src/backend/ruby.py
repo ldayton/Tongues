@@ -1325,13 +1325,48 @@ class _RubyEmitter(Emitter):
     def _emit_for(self, stmt: TForStmt) -> None:
         binding = stmt.binding
         ann = stmt.annotations
+        # Reversed(xs) → xs.reverse_each
+        if self._is_builtin_call(stmt.iterable, "Reversed"):
+            binders = ", ".join(self._decl_name(b, ann) for b in binding)
+            inner = self._expr(stmt.iterable.args[0].value)
+            self._line(inner + ".reverse_each do |" + binders + "|")
+            self.indent += 1
+            if not stmt.body:
+                self._line("nil")
+            self._emit_stmts(stmt.body)
+            self.indent -= 1
+            self._line("end")
+            return
+        # Zip(a, b, ...) → a.zip(b, ...).each
+        if self._is_builtin_call(stmt.iterable, "Zip"):
+            zip_args = stmt.iterable.args
+            binders = ", ".join(self._decl_name(b, ann) for b in binding)
+            zip_parts: list[str] = []
+            for a in zip_args:
+                s = self._expr(a.value)
+                if self._is_bytes_type(a.value):
+                    s += ".bytes"
+                zip_parts.append(s)
+            first = zip_parts[0]
+            rest = ", ".join(zip_parts[1:])
+            self._line(first + ".zip(" + rest + ").each do |" + binders + "|")
+            self.indent += 1
+            if not stmt.body:
+                self._line("nil")
+            self._emit_stmts(stmt.body)
+            self.indent -= 1
+            self._line("end")
+            return
         if isinstance(stmt.iterable, TRange):
             binder_parts: list[str] = []
             for b in binding:
                 binder_parts.append(self._decl_name(b, ann))
             binders = ", ".join(binder_parts)
             iterable = self._ruby_range(stmt.iterable)
-            self._line(iterable + ".each do |" + binders + "|")
+            if ".downto(" in iterable:
+                self._line(iterable + " do |" + binders + "|")
+            else:
+                self._line(iterable + ".each do |" + binders + "|")
         elif len(binding) == 1:
             iter_str = self._expr(stmt.iterable)
             if self._is_map_type(stmt.iterable):
@@ -1393,16 +1428,39 @@ class _RubyEmitter(Emitter):
             return "(0..." + self._expr(r.args[0]) + ")"
         if len(r.args) == 2:
             return "(" + self._expr(r.args[0]) + "..." + self._expr(r.args[1]) + ")"
-        start = self._expr(r.args[0])
+        start_val = self._static_int(r.args[0])
+        start = str(start_val) if start_val is not None else self._expr(r.args[0])
         end_expr = r.args[1]
         step = r.args[2]
-        if isinstance(step, TUnaryOp) and step.op == "-":
-            if isinstance(end_expr, TIntLit):
-                adjusted = str(end_expr.value + 1)
+        is_neg_step = (isinstance(step, TUnaryOp) and step.op == "-") or (
+            isinstance(step, TIntLit) and step.value < 0
+        )
+        if is_neg_step:
+            end_val = self._static_int(end_expr)
+            if end_val is not None:
+                adjusted = str(end_val + 1)
             else:
                 adjusted = self._expr(end_expr) + " + 1"
             return start + ".downto(" + adjusted + ")"
         return "(0..." + self._expr(r.args[0]) + ")"
+
+    def _static_int(self, expr: TExpr) -> int | None:
+        if isinstance(expr, TIntLit):
+            return expr.value
+        if (
+            isinstance(expr, TUnaryOp)
+            and expr.op == "-"
+            and isinstance(expr.operand, TIntLit)
+        ):
+            return -expr.operand.value
+        if (
+            isinstance(expr, TBinaryOp)
+            and expr.op == "-"
+            and isinstance(expr.left, TIntLit)
+            and isinstance(expr.right, TIntLit)
+        ):
+            return expr.left.value - expr.right.value
+        return None
 
     def _is_map_type(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
@@ -1428,6 +1486,13 @@ class _RubyEmitter(Emitter):
             if isinstance(typ, TIdentType):
                 return typ.name
         return None
+
+    def _is_builtin_call(self, expr: TExpr, name: str) -> bool:
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == name
+        )
 
     def _is_map_for(self, stmt: TForStmt) -> bool:
         if stmt.annotations.get("for.items") == "true":

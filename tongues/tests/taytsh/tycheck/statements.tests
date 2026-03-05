@@ -188,7 +188,7 @@ fn Main() -> void {
 }
 ---
 ok
-reveal:4=rune
+reveal:4=string
 ---
 
 === for over string with index
@@ -196,7 +196,7 @@ fn Main() -> void {
     let s: string = "hello"
     for i, ch in s {
         let idx: int = i
-        let c: rune = ch
+        let c: string = ch
     }
 }
 ---
