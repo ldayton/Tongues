@@ -1824,10 +1824,10 @@ class _PythonEmitter(Emitter):
                 return self._a(args, 0)
             inner = args[0].value
             if isinstance(inner, TCall) and isinstance(inner.func, TVar):
-                method = {"Keys": "keys", "Values": "values", "Items": "items"}.get(
-                    inner.func.name
-                )
-                if method:
+                if inner.func.name in ("Keys", "Values", "Items"):
+                    method = {"Keys": "keys", "Values": "values", "Items": "items"}[
+                        inner.func.name
+                    ]
                     return "set(" + self._expr(inner.args[0].value) + "." + method + "())"
             return "set(" + self._a(args, 0) + ")"
         if name == "ToString":

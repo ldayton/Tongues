@@ -2309,8 +2309,8 @@ class _RubyEmitter(Emitter):
                 return self._a(args, 0)
             inner = args[0].value
             if isinstance(inner, TCall) and isinstance(inner.func, TVar):
-                method = {"Keys": "keys", "Values": "values"}.get(inner.func.name)
-                if method:
+                if inner.func.name in ("Keys", "Values"):
+                    method = {"Keys": "keys", "Values": "values"}[inner.func.name]
                     return "Set.new(" + self._expr(inner.args[0].value) + "." + method + ")"
             return "Set.new(" + self._a(args, 0) + ".to_a)"
         if name in ("ToString", "ToRepr"):

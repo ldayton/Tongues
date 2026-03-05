@@ -2837,10 +2837,10 @@ class _PerlEmitter(Emitter):
         if name == "SetFromList":
             if isinstance(args[0].value, TSetLit):
                 return self._a(args, 0)
-            inner = args[0].value
-            if isinstance(inner, TCall) and isinstance(inner.func, TVar):
-                if inner.func.name == "Keys":
-                    d = self._a(inner.args, 0)
+            sfl_inner = args[0].value
+            if isinstance(sfl_inner, TCall) and isinstance(sfl_inner.func, TVar):
+                if sfl_inner.func.name == "Keys":
+                    d = self._a(sfl_inner.args, 0)
                     return (
                         "do { my $__s = {}; $__s->{$_} = 1 for sort keys %{"
                         + d
