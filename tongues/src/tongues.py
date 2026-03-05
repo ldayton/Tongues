@@ -313,7 +313,7 @@ def _extract_pragmas(
     i = 0
     while i < len(lines):
         stripped = lines[i].strip()
-        if stripped == "":
+        if not stripped:
             i += 1
             continue
         if not stripped.startswith("@@["):
@@ -743,7 +743,7 @@ def _compute_module_stems(paths: list[str]) -> dict[str, str]:
                 stem = parent[parent_slash + 1 :]
             else:
                 stem = parent
-            if stem == "":
+            if not stem:
                 stem = "__init__"
         else:
             if filename.endswith(".py"):
@@ -1232,7 +1232,7 @@ def merge_project(
             stmt, module, resolved = import_entries[ei]
             names_list = get_nodes(stmt, "names")
             level = get_int(stmt, "level")
-            if module == "" and level > 0:
+            if not module and level > 0:
                 ni = 0
                 while ni < len(names_list):
                     alias = names_list[ni]

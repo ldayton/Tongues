@@ -137,7 +137,7 @@ class _Emitter:
             first = False
             self._emit_decl(decl)
         text = "\n".join(self._lines)
-        if text == "":
+        if not text:
             return ""
         if not text.endswith("\n"):
             text += "\n"
@@ -159,7 +159,7 @@ class _Emitter:
             first = False
             self._emit_decl(decl)
         text = "\n".join(self._lines)
-        if text == "":
+        if not text:
             return ""
         if not text.endswith("\n"):
             text += "\n"

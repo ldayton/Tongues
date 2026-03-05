@@ -1235,7 +1235,7 @@ class _RubyEmitter(Emitter):
             if (
                 cond.op == "!="
                 and isinstance(cond.right, TStringLit)
-                and cond.right.value == ""
+                and not cond.right.value
             ):
                 return "!" + self._expr(cond.left) + ".empty?"
         return None

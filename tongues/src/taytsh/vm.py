@@ -871,7 +871,7 @@ class _BuiltinDispatch:
 
     def _split(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr) and isinstance(args[1], VStr):
-            if args[1].value == "":
+            if not args[1].value:
                 raise _VMThrow(_make_error_struct("ValueError", "empty separator"))
             parts = args[0].value.split(args[1].value)
             items: list[Val] = []

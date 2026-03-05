@@ -3361,7 +3361,7 @@ def _bi_split(rt: Runtime, args: list[Value]) -> Value:
         return VList(elems_b, ListT(kind="list", element=BYTES_T))
     if not isinstance(s, VString) or not isinstance(sep, VString):
         raise TaytshRuntimeFault("Split expects string/string or bytes/bytes", None)
-    if sep.value == "":
+    if not sep.value:
         rt._throw_err("ValueError", "Split separator must not be empty")
     parts = s.value.split(sep.value)
     elems: list[Value] = []
