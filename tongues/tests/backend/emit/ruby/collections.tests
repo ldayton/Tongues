@@ -1,6 +1,18 @@
 === set from dict items
 s = Set.new(d.to_a
 
+=== list from dict
+ks = d.keys
+
+=== set from dict
+s = Set.new(d.keys)
+
+=== list from dict keys method
+ks = d.keys
+
+=== set from dict keys method
+s = Set.new(d.keys)
+
 === star unpack two lists
 [*a, *b]
 

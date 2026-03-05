@@ -1,6 +1,18 @@
 === set from dict items
 s: set[tuple[str, int]] = set(d.items())
 
+=== list from dict
+ks: list[str] = list(d)
+
+=== set from dict
+s: set[str] = set(d)
+
+=== list from dict keys method
+ks: list[str] = list(d.keys())
+
+=== set from dict keys method
+s: set[str] = set(d.keys())
+
 === star unpack two lists
 [*a, *b]
 

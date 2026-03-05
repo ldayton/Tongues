@@ -393,6 +393,26 @@ fn TestMapIteration() -> void {
     Assert(total == 3)
 }
 
+-- list from map keys
+fn TestListFromMap() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2, "c": 3}
+    let ks: list[string] = Sorted(ListFrom(Keys(m)))
+    Assert(Len(ks) == 3)
+    Assert(ks[0] == "a")
+    Assert(ks[1] == "b")
+    Assert(ks[2] == "c")
+}
+
+-- set from map keys
+fn TestSetFromMap() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2, "c": 3}
+    let s: set[string] = SetFromList(Keys(m))
+    Assert(Len(s) == 3)
+    Assert(Contains(s, "a"))
+    Assert(Contains(s, "b"))
+    Assert(Contains(s, "c"))
+}
+
 -- set literal and zero value
 fn TestSetLiterals() -> void {
     let s: set[int] = {1, 2, 3}
@@ -522,6 +542,8 @@ fn Main() -> void {
     TestMapEquality()
     TestMapAliasing()
     TestMapIteration()
+    TestListFromMap()
+    TestSetFromMap()
     TestSetLiterals()
     TestSetDedup()
     TestSetAdd()

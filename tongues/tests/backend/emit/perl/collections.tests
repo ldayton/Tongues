@@ -1,6 +1,18 @@
 === set from dict items
 for @{(do {
 
+=== list from dict
+my $ks = [sort keys %{$d}];
+
+=== set from dict
+my $s = do { my $__s = {}; $__s->{$_} = 1 for sort keys %{$d}; $__s };
+
+=== list from dict keys method
+my $ks = [sort keys %{$d}];
+
+=== set from dict keys method
+my $s = do { my $__s = {}; $__s->{$_} = 1 for sort keys %{$d}; $__s };
+
 === star unpack two lists
 [ @{$a}, @{$b} ]
 

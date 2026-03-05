@@ -1974,6 +1974,19 @@ class _RubyEmitter(Emitter):
             and expr.annotations.get("provenance") == "star_unpack"
         ):
             return self._star_unpack(expr)
+        # list(dict) / set(dict) reconstruction via dict_keys provenance
+        if (
+            isinstance(func, TVar)
+            and func.name in ("ListFrom", "SetFromList")
+            and expr.annotations.get("provenance") == "dict_keys"
+        ):
+            inner = args[0].value
+            if isinstance(inner, TCall):
+                dict_expr = self._expr(inner.args[0].value)
+                if func.name == "ListFrom":
+                    return dict_expr + ".keys"
+                self._needs_set = True
+                return "Set.new(" + dict_expr + ".keys)"
         # Builtin call
         if isinstance(func, TVar) and func.name in BUILTIN_NAMES:
             return self._builtin_call(func.name, args, expr)
@@ -2363,6 +2376,17 @@ class _RubyEmitter(Emitter):
             self._needs_set = True
             if isinstance(args[0].value, TSetLit):
                 return self._a(args, 0)
+            inner = args[0].value
+            if isinstance(inner, TCall) and isinstance(inner.func, TVar):
+                if inner.func.name in ("Keys", "Values"):
+                    method = {"Keys": "keys", "Values": "values"}[inner.func.name]
+                    return (
+                        "Set.new("
+                        + self._expr(inner.args[0].value)
+                        + "."
+                        + method
+                        + ")"
+                    )
             return "Set.new(" + self._a(args, 0) + ".to_a)"
         if name in ("ToString", "ToRepr"):
             a = self._a(args, 0)

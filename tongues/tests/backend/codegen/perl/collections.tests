@@ -15,6 +15,12 @@ my $ks = [sort keys %{$m}];
 my $vs = [values %{$m}];
 my $ps = do { my $__m = $m; [map { [$_, $__m->{$_}] } sort keys %{$__m}] };
 
+=== ListFrom map keys
+my $ks = [sort keys %{$m}];
+
+=== SetFromList map keys
+my $s = do { my $__s = {}; $__s->{$_} = 1 for sort keys %{$m}; $__s };
+
 === Contains on map
 if (exists($m->{"a"})) {
     say("found");

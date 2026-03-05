@@ -34,6 +34,20 @@ fn Main() -> void {
     WritelnOut(ToString(Len(ks)))
 }
 
+=== ListFrom map keys
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2, "c": 3}
+    let ks: list[string] = @["provenance" = "dict_keys"] ListFrom(Keys(m))
+    WritelnOut(ToString(Len(ks)))
+}
+
+=== SetFromList map keys
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2, "c": 3}
+    let s: set[string] = @["provenance" = "dict_keys"] SetFromList(Keys(m))
+    WritelnOut(ToString(Len(s)))
+}
+
 === Contains on map
 fn Main() -> void {
     let m: map[string, int] = {"a": 1}
