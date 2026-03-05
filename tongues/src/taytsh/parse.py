@@ -423,7 +423,7 @@ class Parser:
         variants: list[str] = []
         while self.at_ident():
             variants.append(self.advance().value)
-        if len(variants) == 0:
+        if not variants:
             raise self.error("enum must have at least one variant")
         self.expect("}")
         return TEnumDecl(pos, name_tok.value, variants, {})
@@ -625,7 +625,7 @@ class Parser:
                     "default must be last", self._pos().line, self._pos().col
                 )
         self.expect("}")
-        if len(cases) == 0 and default is None:
+        if not cases and default is None:
             raise ParseError(
                 "match must have at least one case or default", pos.line, pos.col
             )
@@ -675,7 +675,7 @@ class Parser:
         if self.at("finally"):
             self.advance()
             finally_body = self.parse_block()
-        if len(catches) == 0 and finally_body is None:
+        if not catches and finally_body is None:
             raise ParseError("try must have catch or finally", pos.line, pos.col)
         return TTryStmt(pos, body, catches, finally_body, {})
 

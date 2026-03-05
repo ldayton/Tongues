@@ -940,7 +940,7 @@ class _PythonEmitter(Emitter):
         return None
 
     def _emit_else_body(self, else_body: list[TStmt] | None) -> None:
-        if else_body is None or len(else_body) == 0:
+        if not else_body:
             return
         elif_stmt: TStmt | None = None
         if len(else_body) == 1:

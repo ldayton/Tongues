@@ -226,7 +226,7 @@ def _ancestor_chain_hier(name: str) -> list[str]:
     cur = name
     while True:
         parents = _LOWER_ANCESTORS.get(cur)
-        if parents is None or len(parents) == 0:
+        if not parents:
             break
         parent = parents[0]
         if parent in visited:

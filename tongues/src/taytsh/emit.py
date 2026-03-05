@@ -674,7 +674,7 @@ class _Emitter:
         raise TypeError("unhandled expr type")
 
     def _render_inline_block(self, stmts: list[TStmt]) -> str:
-        if len(stmts) == 0:
+        if not stmts:
             return "{ }"
         parts: list[str] = []
         for s in stmts:
