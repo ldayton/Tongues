@@ -1628,7 +1628,7 @@ class Compiler:
             for a in expr.args:
                 self._compile_expr(a.value, fc)
             # Fill remaining with zero values
-            for ft in sd.field_types[len(expr.args):]:
+            for ft in sd.field_types[len(expr.args) :]:
                 self._emit_zero_value(ft, fc, expr.pos.line)
         fc.emit(OP_BUILD_STRUCT, sidx, expr.pos.line)
 
