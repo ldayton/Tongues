@@ -647,6 +647,22 @@ for i in range(10, 0, -1) {
 
 `range(end)` iterates from `0` to `end - 1`. `range(start, end)` iterates from `start` to `end - 1`. `range(start, end, step)` iterates from `start` toward `end` (exclusive) by `step`. `step` must be nonzero; negative `step` counts downward. All arguments must be `int`. The loop variable binds the current value. The two-variable form is not supported — the value is the index.
 
+### Zip
+
+`Zip` is loop syntax — it can only appear as the iterable of a `for` loop.
+
+```
+for a, b in Zip(xs, ys) {
+    WritelnOut(Concat(ToString(a), Concat(" ", ToString(b))))
+}
+
+for a, b, c in Zip(xs, ys, zs) {
+    WritelnOut(ToString(a + b + c))
+}
+```
+
+`Zip(a, b, ...)` iterates over two or more sequences in parallel, stopping at the shortest. Each argument must be `list[T]` or `bytes`. The loop binds one variable per argument — `Zip` of N arguments requires exactly N loop variables. The element type of each variable matches the argument's element type (`T` for `list[T]`, `int` for `bytes`). The two-variable index form is not supported.
+
 ## Break and Continue
 
 ```
