@@ -22,6 +22,22 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== list from dict keys method
+def main() -> None:
+    d: dict[str, int] = {"a": 1, "b": 2, "c": 3}
+    ks: list[str] = list(d.keys())
+    print(str(len(ks)))
+if __name__ == "__main__":
+    main()
+
+=== set from dict keys method
+def main() -> None:
+    d: dict[str, int] = {"a": 1, "b": 2, "c": 3}
+    s: set[str] = set(d.keys())
+    print(str(len(s)))
+if __name__ == "__main__":
+    main()
+
 === star unpack two lists
 def main() -> None:
     a: list[int] = [1, 2]

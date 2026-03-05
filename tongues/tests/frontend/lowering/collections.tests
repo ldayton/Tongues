@@ -228,14 +228,21 @@ Contains(d, k)
 def f(d: dict[str, int]) -> list[str]:
     return list(d.keys())
 ---
-Keys(d)
+return Keys(d)
 ---
 
 === dict values
 def f(d: dict[str, int]) -> list[int]:
     return list(d.values())
 ---
-Values(d)
+return Values(d)
+---
+
+=== set from dict keys method
+def f(d: dict[str, int]) -> set[str]:
+    return set(d.keys())
+---
+return SetFromList(Keys(d))
 ---
 
 === dict items
