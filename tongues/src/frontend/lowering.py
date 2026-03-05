@@ -1379,12 +1379,9 @@ def _lower_boolop(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         if not isinstance(first, dict):
             return TBoolLit(pos, True, {})
         result: TExpr = _lower_as_bool(first, env, ctx)
-        i = 1
-        while i < len(values):
-            v = values[i]
+        for v in values[1:]:
             right = _lower_as_bool(v, env, ctx)
             result = TBinaryOp(pos, op_str, result, right, {})
-            i += 1
         return result
     # Non-bool operands: use ternaries for Python short-circuit semantics
     # a and b → truthy(a) ? b : a
@@ -1412,25 +1409,18 @@ def _lower_compare(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     left = _lower_expr(left_node, env, ctx)
     parts: list[TExpr] = []
     prev_expr = left
-    i = 0
-    while i < len(ops):
-        op_n = ops[i]
-        comp_n = comparators[i]
+    for op_n, comp_n in zip(ops, comparators):
         if not isinstance(op_n, dict) or not isinstance(comp_n, dict):
-            i += 1
             continue
         right = _lower_expr(comp_n, env, ctx)
         cmp = _make_compare_expr(pos, prev_expr, op_n, right)
         parts.append(cmp)
         prev_expr = right
-        i += 1
     if not parts:
         return TBoolLit(pos, True, {})
     result = parts[0]
-    i = 1
-    while i < len(parts):
-        result = TBinaryOp(pos, "&&", result, parts[i], {})
-        i += 1
+    for part in parts[1:]:
+        result = TBinaryOp(pos, "&&", result, part, {})
     return result
 
 
@@ -3597,8 +3587,8 @@ def _lower_list_literal(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         parts.append(TListLit(pos, plain, {}))
     result = parts[0]
     ann: Ann = {"provenance": "star_unpack"}
-    for i in range(1, len(parts)):
-        call = _make_call(pos, "Concat", [result, parts[i]])
+    for part in parts[1:]:
+        call = _make_call(pos, "Concat", [result, part])
         call.annotations = ann
         result = call
     return result
