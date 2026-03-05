@@ -1,5 +1,5 @@
 === set from dict items
-s: set[tuple[str, int]] = set(list(d.items()))
+s: set[tuple[str, int]] = set(d.items())
 
 === star unpack two lists
 [*a, *b]
