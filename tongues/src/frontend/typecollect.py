@@ -341,6 +341,7 @@ def _split_union_members(s: str) -> list[str]:
 
 # Type alias expansions, populated by collect_signatures()
 _TYPE_ALIASES: dict[str, str] = {}
+_EXPANDING_ALIASES: dict[str, bool] = {}
 
 # Class base mappings, populated by collect_signatures()
 _CLASS_BASES: dict[str, list[str]] = {}
@@ -384,11 +385,19 @@ def py_type_to_type_dict(
     s = py_type.strip()
     if not s:
         return InterfaceRef("any")
-    # Expand type aliases
+    # Expand type aliases (with recursion guard)
     if s in _TYPE_ALIASES:
-        return py_type_to_type_dict(
+        if s in _EXPANDING_ALIASES:
+            errors.append(
+                TypeCollectError(lineno, col, "recursive type alias '" + s + "'")
+            )
+            return InterfaceRef("any")
+        _EXPANDING_ALIASES[s] = True
+        result = py_type_to_type_dict(
             _TYPE_ALIASES[s], known_classes, errors, lineno, col
         )
+        _EXPANDING_ALIASES.pop(s)
+        return result
     # Check for union (A | B) — only if the split produces multiple top-level members
     if " | " in s:
         members = _split_union_members(s)
@@ -941,6 +950,8 @@ def collect_signatures(
     """Collect function and method signatures from the module AST."""
     while _TYPE_ALIASES:
         _TYPE_ALIASES.pop(list(_TYPE_ALIASES.keys())[0])
+    while _EXPANDING_ALIASES:
+        _EXPANDING_ALIASES.pop(list(_EXPANDING_ALIASES.keys())[0])
     while _CLASS_BASES:
         _CLASS_BASES.pop(list(_CLASS_BASES.keys())[0])
     if class_bases is not None:
