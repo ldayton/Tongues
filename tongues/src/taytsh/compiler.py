@@ -294,10 +294,8 @@ BUILTIN_TABLE: list[str] = [
     "Zip",
 ]
 _BUILTIN_INDEX: dict[str, int] = {}
-_bi = 0
-while _bi < len(BUILTIN_TABLE):
-    _BUILTIN_INDEX[BUILTIN_TABLE[_bi]] = _bi
-    _bi += 1
+for _bi, _bname in enumerate(BUILTIN_TABLE):
+    _BUILTIN_INDEX[_bname] = _bi
 
 
 # ============================================================
@@ -489,10 +487,8 @@ class Compiler:
         checker = result[1]
         if errors:
             msgs: list[str] = []
-            i = 0
-            while i < len(errors):
-                msgs.append(repr(errors[i]))
-                i += 1
+            for err in errors:
+                msgs.append(repr(err))
             raise CompileError("\n".join(msgs))
         self.checker_types = checker.types
         self.checker_functions = checker.functions
@@ -857,10 +853,8 @@ class Compiler:
             if sidx is not None and typ.name not in self._zero_value_building:
                 self._zero_value_building.add(typ.name)
                 sd = self.struct_defs[sidx]
-                i = 0
-                while i < len(sd.field_types):
-                    self._emit_zero_value(sd.field_types[i], fc, line)
-                    i += 1
+                for ft in sd.field_types:
+                    self._emit_zero_value(ft, fc, line)
                 fc.emit(OP_BUILD_STRUCT, sidx, line)
                 self._zero_value_building.discard(typ.name)
             else:
@@ -1154,9 +1148,7 @@ class Compiler:
             end_patches.append(body_end)
             fc.patch_jump(catch_jump)
             # Compile catch clauses
-            ci = 0
-            while ci < len(stmt.catches):
-                catch = stmt.catches[ci]
+            for ci, catch in enumerate(stmt.catches):
                 local = fc.scope.lookup(catch.name)
                 # If not last catch, check type and skip if no match
                 if ci < len(stmt.catches) - 1 or catch.types:
@@ -1181,7 +1173,6 @@ class Compiler:
                     self._compile_block(catch.body, fc)
                     catch_end = fc.emit_jump(OP_JUMP, catch.pos.line)
                     end_patches.append(catch_end)
-                ci += 1
             # If no catch matched, rethrow
             fc.emit(OP_THROW, 0, stmt.pos.line)
         else:
@@ -1222,9 +1213,8 @@ class Compiler:
         # If true → pop value, push true, jump to end
         # If false → pop false, try next type
         end_patches: list[int] = []
-        ti = 0
-        while ti < len(types) - 1:
-            tname = self._type_name_str(types[ti])
+        for typ_item in types[:-1]:
+            tname = self._type_name_str(typ_item)
             idx = len(fc.constants)
             fc.constants.append(VStr(tname))
             fc.emit(OP_DUP, 0, line)
@@ -1237,9 +1227,8 @@ class Compiler:
             # We need true on stack and value gone. So jump to success block.
             # Let's defer: collect the match jumps, patch them all to one place.
             end_patches.append(match_jump)
-            ti += 1
         # Last type: IS_TYPE consumes the value
-        tname = self._type_name_str(types[ti])
+        tname = self._type_name_str(types[-1])
         idx = len(fc.constants)
         fc.constants.append(VStr(tname))
         fc.emit(OP_IS_TYPE, idx, line)
@@ -1639,10 +1628,8 @@ class Compiler:
             for a in expr.args:
                 self._compile_expr(a.value, fc)
             # Fill remaining with zero values
-            i = len(expr.args)
-            while i < len(sd.field_names):
-                self._emit_zero_value(sd.field_types[i], fc, expr.pos.line)
-                i += 1
+            for ft in sd.field_types[len(expr.args) :]:
+                self._emit_zero_value(ft, fc, expr.pos.line)
         fc.emit(OP_BUILD_STRUCT, sidx, expr.pos.line)
 
     def _compile_error_struct_constructor(

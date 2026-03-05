@@ -967,22 +967,63 @@ class _PythonEmitter(Emitter):
         self._emit_stmts(stmt.body)
         self.indent -= 1
 
+    def _is_builtin_call(self, expr: TExpr, name: str) -> bool:
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == name
+        )
+
+    def _for_iterable(self, iterable: TExpr) -> str:
+        """Emit iterable expression in for-loop context (no list() wrapping)."""
+        if self._is_builtin_call(iterable, "Reversed") and isinstance(iterable, TCall):
+            return "reversed(" + self._expr(iterable.args[0].value) + ")"
+        if self._is_builtin_call(iterable, "Zip") and isinstance(iterable, TCall):
+            parts = [self._expr(a.value) for a in iterable.args]
+            return "zip(" + ", ".join(parts) + ")"
+        return self._expr(iterable)
+
     def _emit_for(self, stmt: TForStmt) -> None:
         binding = stmt.binding
         ann = stmt.annotations
         if isinstance(stmt.iterable, TRange):
-            args = self._join_exprs(stmt.iterable.args, ", ")
             binder_parts: list[str] = []
             for b in binding:
                 binder_parts.append(_restore_name(b, ann))
             binders = ", ".join(binder_parts)
-            self._line("for " + binders + " in range(" + args + "):")
+            prov = ann.get("provenance", "")
+            if prov == "reversed_range" and len(stmt.iterable.args) == 3:
+                # Reconstruct reversed(range(n)) from range(n-1, -1, -1)
+                rargs = stmt.iterable.args
+                end_val = self._static_int(rargs[1])
+                start_val = self._static_int(rargs[0])
+                if end_val is not None and start_val is not None:
+                    n = str(start_val + 1)
+                    low = str(end_val + 1)
+                    if low == "0":
+                        self._line("for " + binders + " in reversed(range(" + n + ")):")
+                    else:
+                        self._line(
+                            "for "
+                            + binders
+                            + " in reversed(range("
+                            + low
+                            + ", "
+                            + n
+                            + ")):"
+                        )
+                else:
+                    args = self._join_exprs(stmt.iterable.args, ", ")
+                    self._line("for " + binders + " in range(" + args + "):")
+            else:
+                args = self._join_exprs(stmt.iterable.args, ", ")
+                self._line("for " + binders + " in range(" + args + "):")
         elif len(binding) == 1:
             self._line(
                 "for "
                 + _restore_name(binding[0], ann)
                 + " in "
-                + self._expr(stmt.iterable)
+                + self._for_iterable(stmt.iterable)
                 + ":"
             )
         elif len(binding) == 2:
@@ -1007,7 +1048,7 @@ class _PythonEmitter(Emitter):
                 + _restore_name(binding[1], ann)
                 + " in "
                 + wrapper
-                + self._expr(stmt.iterable)
+                + self._for_iterable(stmt.iterable)
                 + method
                 + suffix
                 + ":"
@@ -1017,12 +1058,32 @@ class _PythonEmitter(Emitter):
             for b in binding:
                 binder_parts3.append(_restore_name(b, ann))
             binders = ", ".join(binder_parts3)
-            self._line("for " + binders + " in " + self._expr(stmt.iterable) + ":")
+            self._line(
+                "for " + binders + " in " + self._for_iterable(stmt.iterable) + ":"
+            )
         self.indent += 1
         if not stmt.body:
             self._line("pass")
         self._emit_stmts(stmt.body)
         self.indent -= 1
+
+    def _static_int(self, expr: TExpr) -> int | None:
+        if isinstance(expr, TIntLit):
+            return expr.value
+        if (
+            isinstance(expr, TUnaryOp)
+            and expr.op == "-"
+            and isinstance(expr.operand, TIntLit)
+        ):
+            return -expr.operand.value
+        if (
+            isinstance(expr, TBinaryOp)
+            and expr.op == "-"
+            and isinstance(expr.left, TIntLit)
+            and isinstance(expr.right, TIntLit)
+        ):
+            return expr.left.value - expr.right.value
+        return None
 
     def _is_map_type(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
@@ -1982,7 +2043,7 @@ class _PythonEmitter(Emitter):
         # Replace sequential {} placeholders with markers
         markers: dict[str, int] = {}
         result = template
-        for i in range(len(fmt_args)):
+        for i, _arg in enumerate(fmt_args):
             marker = "\x00PH" + str(i) + "\x00"
             markers[marker] = i
             result = result.replace("{}", marker, 1)

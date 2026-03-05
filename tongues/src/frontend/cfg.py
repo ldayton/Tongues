@@ -789,11 +789,10 @@ def _walk_loop_head(
         variants: list[TypeNode] = []
         if cur is not None:
             variants.append(cur)
-        bi = 1
-        while bi < len(node.prev):
+        for prev_id in node.prev[1:]:
             bt = _walk_back(
                 graph,
-                node.prev[bi],
+                prev_id,
                 variable,
                 initial_types,
                 assigned_types,
@@ -804,14 +803,11 @@ def _walk_loop_head(
             )
             if bt is not None:
                 dup = False
-                vi = 0
-                while vi < len(variants):
-                    if type_eq(variants[vi], bt):
+                for v in variants:
+                    if type_eq(v, bt):
                         dup = True
-                    vi += 1
                 if not dup:
                     variants.append(bt)
-            bi += 1
         if not variants:
             new_t: TypeNode | None = None
         elif len(variants) == 1:

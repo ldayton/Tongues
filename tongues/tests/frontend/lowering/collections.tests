@@ -354,6 +354,30 @@ def f(b: bytes, sub: bytes) -> int:
 Count(b, sub)
 ---
 
+=== zip two lists
+def f(xs: list[int], ys: list[str]) -> None:
+    for x, y in zip(xs, ys):
+        print(str(x))
+---
+for x, y in Zip(xs, ys) {
+---
+
+=== zip bytes
+def f(a: bytes, b: bytes) -> None:
+    for x, y in zip(a, b):
+        print(str(x))
+---
+for x, y in Zip(a, b) {
+---
+
+=== zip three lists
+def f(a: list[int], b: list[str], c: list[float]) -> None:
+    for x, y, z in zip(a, b, c):
+        print(str(x))
+---
+for x, y, z in Zip(a, b, c) {
+---
+
 === enumerate lowers to indexed for
 def f(xs: list[str]) -> None:
     for i, x in enumerate(xs):

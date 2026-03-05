@@ -235,12 +235,10 @@ def _val_to_string(v: Val) -> str:
         map_vals: list[Val] = list(v.values)
         _sort_key_pairs(map_keys, map_vals)
         parts2: list[str] = []
-        mi = 0
-        while mi < len(map_keys):
-            ks = _val_to_string_quoted(map_keys[mi])
+        for mi, mk in enumerate(map_keys):
+            ks = _val_to_string_quoted(mk)
             vs2 = _val_to_string_quoted(map_vals[mi])
             parts2.append(ks + ": " + vs2)
-            mi += 1
         return "{" + ", ".join(parts2) + "}"
     if isinstance(v, VSet):
         sorted_items = list(v.items)
@@ -258,10 +256,8 @@ def _val_to_string(v: Val) -> str:
         return v.enum_name + "." + v.variant
     if isinstance(v, VStruct):
         parts5: list[str] = []
-        i2 = 0
-        while i2 < len(v.field_names):
-            parts5.append(v.field_names[i2] + ": " + _val_to_string(v.field_values[i2]))
-            i2 += 1
+        for i2, fn in enumerate(v.field_names):
+            parts5.append(fn + ": " + _val_to_string(v.field_values[i2]))
         return v.type_name + "{" + ", ".join(parts5) + "}"
     if isinstance(v, VFunc):
         return "fn" + v.type_sig if v.type_sig else "<fn>"
@@ -404,62 +400,48 @@ def _val_eq(a: Val, b: Val) -> bool:
     if isinstance(a, VList) and isinstance(b, VList):
         if len(a.items) != len(b.items):
             return False
-        i = 0
-        while i < len(a.items):
-            if not _val_eq(a.items[i], b.items[i]):
+        for i, ai in enumerate(a.items):
+            if not _val_eq(ai, b.items[i]):
                 return False
-            i += 1
         return True
     if isinstance(a, VTuple) and isinstance(b, VTuple):
         if len(a.items) != len(b.items):
             return False
-        i = 0
-        while i < len(a.items):
-            if not _val_eq(a.items[i], b.items[i]):
+        for i, ai in enumerate(a.items):
+            if not _val_eq(ai, b.items[i]):
                 return False
-            i += 1
         return True
     if isinstance(a, VMap) and isinstance(b, VMap):
         if len(a.keys) != len(b.keys):
             return False
-        i = 0
-        while i < len(a.keys):
+        for i, ak in enumerate(a.keys):
             found = False
-            j = 0
-            while j < len(b.keys):
-                if _val_eq(a.keys[i], b.keys[j]):
+            for j, bk in enumerate(b.keys):
+                if _val_eq(ak, bk):
                     if _val_eq(a.values[i], b.values[j]):
                         found = True
                     break
-                j += 1
             if not found:
                 return False
-            i += 1
         return True
     if isinstance(a, VSet) and isinstance(b, VSet):
         if len(a.items) != len(b.items):
             return False
-        i = 0
-        while i < len(a.items):
+        for a_item in a.items:
             found = False
-            j = 0
-            while j < len(b.items):
-                if _val_eq(a.items[i], b.items[j]):
+            for b_item in b.items:
+                if _val_eq(a_item, b_item):
                     found = True
                     break
-                j += 1
             if not found:
                 return False
-            i += 1
         return True
     if isinstance(a, VStruct) and isinstance(b, VStruct):
         if a.type_name != b.type_name:
             return False
-        i = 0
-        while i < len(a.field_values):
-            if not _val_eq(a.field_values[i], b.field_values[i]):
+        for i, afv in enumerate(a.field_values):
+            if not _val_eq(afv, b.field_values[i]):
                 return False
-            i += 1
         return True
     if isinstance(a, VNil) or isinstance(b, VNil):
         return False
@@ -533,10 +515,8 @@ class _BuiltinDispatch:
     def __init__(self, vm: VM) -> None:
         self.vm: VM = vm
         self._table: dict[str, int] = {}
-        i = 0
-        while i < len(BUILTIN_TABLE):
-            self._table[BUILTIN_TABLE[i]] = i
-            i += 1
+        for i, name in enumerate(BUILTIN_TABLE):
+            self._table[name] = i
 
     def call(self, idx: int, args: list[Val]) -> Val:
         name = BUILTIN_TABLE[idx]
@@ -875,10 +855,8 @@ class _BuiltinDispatch:
                 raise _VMThrow(_make_error_struct("ValueError", "empty separator"))
             parts = args[0].value.split(args[1].value)
             items: list[Val] = []
-            pi = 0
-            while pi < len(parts):
-                items.append(VStr(parts[pi]))
-                pi += 1
+            for part in parts:
+                items.append(VStr(part))
             return VList(items)
         return VList([])
 
@@ -895,10 +873,8 @@ class _BuiltinDispatch:
                 )
             parts = args[0].value.split(args[1].value, n - 1)
             items2: list[Val] = []
-            pi2 = 0
-            while pi2 < len(parts):
-                items2.append(VStr(parts[pi2]))
-                pi2 += 1
+            for part in parts:
+                items2.append(VStr(part))
             return VList(items2)
         return VList([])
 
@@ -906,10 +882,8 @@ class _BuiltinDispatch:
         if isinstance(args[0], VStr):
             parts = args[0].value.split()
             items3: list[Val] = []
-            pi3 = 0
-            while pi3 < len(parts):
-                items3.append(VStr(parts[pi3]))
-                pi3 += 1
+            for part in parts:
+                items3.append(VStr(part))
             return VList(items3)
         return VList([])
 
@@ -952,11 +926,9 @@ class _BuiltinDispatch:
                 set_shadow = args[0]._shadow
                 if set_shadow is not None:
                     return _TRUE_VAL if hk in set_shadow else _FALSE_VAL
-            i = 0
-            while i < len(args[0].items):
-                if _val_eq(args[0].items[i], args[1]):
+            for set_item in args[0].items:
+                if _val_eq(set_item, args[1]):
                     return _TRUE_VAL
-                i += 1
             return _FALSE_VAL
         if isinstance(args[0], VMap):
             hk = _hash_key(args[1])
@@ -966,11 +938,9 @@ class _BuiltinDispatch:
                 shadow = args[0]._shadow
                 if shadow is not None:
                     return _TRUE_VAL if hk in shadow else _FALSE_VAL
-            i = 0
-            while i < len(args[0].keys):
-                if _val_eq(args[0].keys[i], args[1]):
+            for map_key in args[0].keys:
+                if _val_eq(map_key, args[1]):
                     return _TRUE_VAL
-                i += 1
             return _FALSE_VAL
         return _FALSE_VAL
 
@@ -1102,11 +1072,9 @@ class _BuiltinDispatch:
                         )
                     )
                 best = items[0]
-                i = 1
-                while i < len(items):
-                    if _val_compare(items[i], best) < 0:
-                        best = items[i]
-                    i += 1
+                for item in items[1:]:
+                    if _val_compare(item, best) < 0:
+                        best = item
                 return best
         b = args[1]
         if isinstance(a, VInt) and isinstance(b, VInt):
@@ -1133,11 +1101,9 @@ class _BuiltinDispatch:
                         )
                     )
                 best = items[0]
-                i = 1
-                while i < len(items):
-                    if _val_compare(items[i], best) > 0:
-                        best = items[i]
-                    i += 1
+                for item in items[1:]:
+                    if _val_compare(item, best) > 0:
+                        best = item
                 return best
         b = args[1]
         if isinstance(a, VInt) and isinstance(b, VInt):
@@ -1377,11 +1343,9 @@ class _BuiltinDispatch:
 
     def _index_of(self, args: list[Val]) -> Val:
         if isinstance(args[0], VList):
-            i = 0
-            while i < len(args[0].items):
-                if _val_eq(args[0].items[i], args[1]):
+            for i, item in enumerate(args[0].items):
+                if _val_eq(item, args[1]):
                     return VInt(i)
-                i += 1
         return VInt(-1)
 
     def _reversed(self, args: list[Val]) -> Val:
@@ -1422,11 +1386,9 @@ class _BuiltinDispatch:
                     if found_idx is not None:
                         return args[0].values[found_idx]
             else:
-                i = 0
-                while i < len(args[0].keys):
-                    if _val_eq(args[0].keys[i], key):
+                for i, k in enumerate(args[0].keys):
+                    if _val_eq(k, key):
                         return args[0].values[i]
-                    i += 1
             if len(args) > 2:
                 return args[2]
             return _NONE_VAL
@@ -1447,14 +1409,12 @@ class _BuiltinDispatch:
                     _shadow_build_map(args[0])
                     return _NONE_VAL
             else:
-                i = 0
-                while i < len(args[0].keys):
-                    if _val_eq(args[0].keys[i], key):
+                for i, k in enumerate(args[0].keys):
+                    if _val_eq(k, key):
                         args[0].keys.pop(i)
                         args[0].values.pop(i)
                         args[0]._shadow = None
                         return _NONE_VAL
-                    i += 1
         return _NONE_VAL
 
     def _map_keys(self, args: list[Val]) -> Val:
@@ -1470,10 +1430,8 @@ class _BuiltinDispatch:
     def _map_items(self, args: list[Val]) -> Val:
         if isinstance(args[0], VMap):
             result: list[Val] = []
-            i = 0
-            while i < len(args[0].keys):
-                result.append(VTuple([args[0].keys[i], args[0].values[i]]))
-                i += 1
+            for i, k in enumerate(args[0].keys):
+                result.append(VTuple([k, args[0].values[i]]))
             return VList(result)
         return VList([])
 
@@ -1486,9 +1444,7 @@ class _BuiltinDispatch:
                 hk = _hash_key(k)
                 if hk is not None:
                     shadow[hk] = idx
-            i = 0
-            while i < len(args[1].keys):
-                k2 = args[1].keys[i]
+            for i, k2 in enumerate(args[1].keys):
                 hk = _hash_key(k2)
                 if hk is not None:
                     found_idx = shadow.get(hk)
@@ -1500,17 +1456,14 @@ class _BuiltinDispatch:
                         values.append(args[1].values[i])
                 else:
                     found = False
-                    j = 0
-                    while j < len(keys):
-                        if _val_eq(keys[j], k2):
+                    for j, kj in enumerate(keys):
+                        if _val_eq(kj, k2):
                             values[j] = args[1].values[i]
                             found = True
                             break
-                        j += 1
                     if not found:
                         keys.append(k2)
                         values.append(args[1].values[i])
-                i += 1
             return VMap(keys, values)
         return _NONE_VAL
 
@@ -1565,11 +1518,9 @@ class _BuiltinDispatch:
                     shadow.add(hk)
                     args[0].items.append(val)
                     return _NONE_VAL
-            i = 0
-            while i < len(args[0].items):
-                if _val_eq(args[0].items[i], val):
+            for set_item in args[0].items:
+                if _val_eq(set_item, val):
                     return _NONE_VAL
-                i += 1
             args[0].items.append(val)
         return _NONE_VAL
 
@@ -1583,20 +1534,16 @@ class _BuiltinDispatch:
                 shadow = args[0]._shadow
                 if shadow is not None and hk in shadow:
                     shadow.discard(hk)
-                    i = 0
-                    while i < len(args[0].items):
-                        if _val_eq(args[0].items[i], val):
+                    for i, item in enumerate(args[0].items):
+                        if _val_eq(item, val):
                             args[0].items.pop(i)
                             return _NONE_VAL
-                        i += 1
                 return _NONE_VAL
-            i = 0
-            while i < len(args[0].items):
-                if _val_eq(args[0].items[i], val):
+            for i, item in enumerate(args[0].items):
+                if _val_eq(item, val):
                     args[0].items.pop(i)
                     args[0]._shadow = None
                     return _NONE_VAL
-                i += 1
         return _NONE_VAL
 
     def _set_union(self, args: list[Val]) -> Val:
@@ -1809,12 +1756,10 @@ class _BuiltinDispatch:
         if isinstance(args[0], VList) and isinstance(args[1], VList):
             a = args[0].items
             b = args[1].items
-            i = 0
-            while i < len(a) and i < len(b):
+            for i in range(min(len(a), len(b))):
                 c = _val_compare(a[i], b[i])
                 if c != 0:
                     return VInt(c)
-                i += 1
             if len(a) < len(b):
                 return VInt(-1)
             if len(a) > len(b):
@@ -1828,10 +1773,8 @@ class _BuiltinDispatch:
             b = args[1].items
             n = min(len(a), len(b))
             result: list[Val] = []
-            i = 0
-            while i < n:
+            for i in range(n):
                 result.append(VTuple([a[i], b[i]]))
-                i += 1
             return VList(result)
         return VList([])
 
@@ -1840,7 +1783,7 @@ class _BuiltinDispatch:
             cv: list[Val] = []
             ci = 0
             while ci < len(args[0].value):
-                cv.append(VRune(args[0].value[ci : ci + 1]))
+                cv.append(VRune(args[0].value[ci]))
                 ci += 1
             return VList(cv)
         return VList([])
@@ -1946,10 +1889,8 @@ class _BuiltinDispatch:
 
     def _args(self, args: list[Val]) -> Val:
         items_a: list[Val] = []
-        ai = 1
-        while ai < len(self.vm.program_args):
-            items_a.append(VStr(self.vm.program_args[ai]))
-            ai += 1
+        for arg in self.vm.program_args[1:]:
+            items_a.append(VStr(arg))
         return VList(items_a)
 
     def _get_env(self, args: list[Val]) -> Val:
@@ -2073,9 +2014,9 @@ class VM:
     def _build_method_cache(self) -> None:
         """Build (type_name, method_name) → code_index cache, including parents."""
         for sd in self.module.struct_defs:
-            for mi in range(len(sd.method_names)):
-                key = (sd.name, sd.method_names[mi])
-                self._method_cache[key] = sd.method_indices[mi]
+            for mname, midx in zip(sd.method_names, sd.method_indices):
+                key = (sd.name, mname)
+                self._method_cache[key] = midx
         # Propagate parent methods to children (child methods take precedence)
         name_to_sd: dict[str, StructDef] = {}
         for sd in self.module.struct_defs:
@@ -2086,31 +2027,25 @@ class VM:
                 psd = name_to_sd.get(parent)
                 if psd is None:
                     break
-                for mi in range(len(psd.method_names)):
-                    key = (sd.name, psd.method_names[mi])
+                for mname, midx in zip(psd.method_names, psd.method_indices):
+                    key = (sd.name, mname)
                     if key not in self._method_cache:
-                        self._method_cache[key] = psd.method_indices[mi]
+                        self._method_cache[key] = midx
                 parent = psd.parent
 
     def _init_globals(self) -> None:
         # Build name→index map for code objects, then look up globals in O(1)
         co_index: dict[str, int] = {}
-        j = 0
-        while j < len(self.module.code_objects):
-            co = self.module.code_objects[j]
+        for j, co in enumerate(self.module.code_objects):
             if co.name not in co_index:
                 co_index[co.name] = j
-            j += 1
         self.globals = []
-        i = 0
-        while i < len(self.module.global_names):
-            name = self.module.global_names[i]
-            idx = co_index.get(name)
+        for gname in self.module.global_names:
+            idx = co_index.get(gname)
             if idx is not None:
                 self.globals.append(VFunc(idx, self.module.code_objects[idx].type_sig))
             else:
                 self.globals.append(_NONE_VAL)
-            i += 1
 
     def invoke(
         self,
@@ -2606,11 +2541,9 @@ class VM:
                     k = self.stack.pop()
                     pairs[i] = (k, v)
                     i -= 1
-                pi = 0
-                while pi < len(pairs):
-                    ks.append(pairs[pi][0])
-                    vs.append(pairs[pi][1])
-                    pi += 1
+                for pair in pairs:
+                    ks.append(pair[0])
+                    vs.append(pair[1])
                 self.stack.append(VMap(ks, vs))
             elif op == OP_BUILD_SET:
                 raw: list[Val] = []
@@ -2863,14 +2796,12 @@ class VM:
                     else:
                         self.stack.append(_NONE_VAL)
                 else:
-                    i = 0
                     found = False
-                    while i < len(obj.keys):
-                        if _val_eq(obj.keys[i], key):
-                            self.stack.append(obj.values[i])
+                    for ki, ok in enumerate(obj.keys):
+                        if _val_eq(ok, key):
+                            self.stack.append(obj.values[ki])
                             found = True
                             break
-                        i += 1
                     if not found:
                         if len(args) >= 2:
                             self.stack.append(args[1])
@@ -2972,12 +2903,10 @@ class VM:
                         self.stack.append(obj.values[found_idx])
                         return
             else:
-                i = 0
-                while i < len(obj.keys):
-                    if _val_eq(obj.keys[i], idx):
-                        self.stack.append(obj.values[i])
+                for ki, ok in enumerate(obj.keys):
+                    if _val_eq(ok, idx):
+                        self.stack.append(obj.values[ki])
                         return
-                    i += 1
             self._throw(
                 _make_error_struct("KeyError", "key not found: " + _val_to_string(idx))
             )
@@ -3041,12 +2970,10 @@ class VM:
                     obj.keys.append(idx)
                     obj.values.append(val)
                     return
-            i = 0
-            while i < len(obj.keys):
-                if _val_eq(obj.keys[i], idx):
-                    obj.values[i] = val
+            for ki, ok in enumerate(obj.keys):
+                if _val_eq(ok, idx):
+                    obj.values[ki] = val
                     return
-                i += 1
             obj.keys.append(idx)
             obj.values.append(val)
 
@@ -3127,12 +3054,10 @@ class VM:
         obj = self.stack.pop()
         if isinstance(obj, VStruct) and isinstance(field_name_val, VStr):
             fname = field_name_val.value
-            i = 0
-            while i < len(obj.field_names):
-                if obj.field_names[i] == fname:
+            for i, fn in enumerate(obj.field_names):
+                if fn == fname:
                     self.stack.append(obj.field_values[i])
                     return
-                i += 1
         self.stack.append(_NONE_VAL)
 
     def _do_set_field(self, frame: Frame, const_idx: int) -> None:
@@ -3141,12 +3066,10 @@ class VM:
         obj = self.stack.pop()
         if isinstance(obj, VStruct) and isinstance(field_name_val, VStr):
             fname = field_name_val.value
-            i = 0
-            while i < len(obj.field_names):
-                if obj.field_names[i] == fname:
+            for i, fn in enumerate(obj.field_names):
+                if fn == fname:
                     obj.field_values[i] = val
                     return
-                i += 1
 
     def _do_get_iter(self, argc: int) -> None:
         """Set up range iteration. Stack has range args (1-3)."""

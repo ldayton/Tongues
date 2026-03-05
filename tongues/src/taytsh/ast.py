@@ -801,11 +801,8 @@ def _wrap_value(v: str) -> JsonValue:
 def _wrap_ann(ann: Ann) -> JsonValue:
     """Wrap an Ann dict as a JDict."""
     d: dict[str, JsonValue] = {}
-    keys = list(ann.keys())
-    i = 0
-    while i < len(keys):
-        d[keys[i]] = JStr(ann[keys[i]])
-        i += 1
+    for k in ann:
+        d[k] = JStr(ann[k])
     return JDict(d)
 
 
@@ -815,38 +812,29 @@ def _pos_json(p: Pos) -> JsonValue:
 
 def _ann_json(a: Ann) -> JsonValue:
     d: dict[str, JsonValue] = {}
-    keys = list(a.keys())
-    i = 0
-    while i < len(keys):
-        d[keys[i]] = JStr(a[keys[i]])
-        i += 1
+    for k in a:
+        d[k] = JStr(a[k])
     return JDict(d)
 
 
 def _types_json(items: list[TType]) -> JsonValue:
     result: list[JsonValue] = []
-    i = 0
-    while i < len(items):
-        result.append(_type_json(items[i]))
-        i += 1
+    for item in items:
+        result.append(_type_json(item))
     return JList(result)
 
 
 def _exprs_json(items: list[TExpr]) -> JsonValue:
     result: list[JsonValue] = []
-    i = 0
-    while i < len(items):
-        result.append(_expr_json(items[i]))
-        i += 1
+    for item in items:
+        result.append(_expr_json(item))
     return JList(result)
 
 
 def _stmts_json(items: list[TStmt]) -> JsonValue:
     result: list[JsonValue] = []
-    i = 0
-    while i < len(items):
-        result.append(_stmt_json(items[i]))
-        i += 1
+    for item in items:
+        result.append(_stmt_json(item))
     return JList(result)
 
 
@@ -1025,10 +1013,8 @@ def _expr_json(e: TExpr) -> JsonValue:
     elif isinstance(e, TCall):
         d["func"] = _expr_json(e.func)
         alist: list[JsonValue] = []
-        ai = 0
-        while ai < len(e.args):
-            alist.append(_arg_json(e.args[ai]))
-            ai += 1
+        for arg in e.args:
+            alist.append(_arg_json(arg))
         d["args"] = JList(alist)
         d["annotations"] = _ann_json(e.annotations)
     elif isinstance(e, TListLit):
@@ -1036,11 +1022,8 @@ def _expr_json(e: TExpr) -> JsonValue:
         d["annotations"] = _ann_json(e.annotations)
     elif isinstance(e, TMapLit):
         elist: list[JsonValue] = []
-        ei = 0
-        while ei < len(e.entries):
-            k, v = e.entries[ei]
-            elist.append(JList([_expr_json(k), _expr_json(v)]))
-            ei += 1
+        for ek, ev in e.entries:
+            elist.append(JList([_expr_json(ek), _expr_json(ev)]))
         d["entries"] = JList(elist)
         d["annotations"] = _ann_json(e.annotations)
     elif isinstance(e, TSetLit):
@@ -1051,10 +1034,8 @@ def _expr_json(e: TExpr) -> JsonValue:
         d["annotations"] = _ann_json(e.annotations)
     elif isinstance(e, TFnLit):
         plist: list[JsonValue] = []
-        pi = 0
-        while pi < len(e.params):
-            plist.append(_param_json(e.params[pi]))
-            pi += 1
+        for par in e.params:
+            plist.append(_param_json(par))
         d["params"] = JList(plist)
         d["ret"] = _type_json(e.ret)
         d["body"] = _stmts_json(e.body)
@@ -1108,10 +1089,8 @@ def _stmt_json(s: TStmt) -> JsonValue:
         d["annotations"] = _ann_json(s.annotations)
     elif isinstance(s, TForStmt):
         blist: list[JsonValue] = []
-        bi = 0
-        while bi < len(s.binding):
-            blist.append(JStr(s.binding[bi]))
-            bi += 1
+        for bnd in s.binding:
+            blist.append(JStr(bnd))
         d["binding"] = JList(blist)
         d["iterable"] = _expr_json(s.iterable)
         d["body"] = _stmts_json(s.body)
@@ -1119,20 +1098,16 @@ def _stmt_json(s: TStmt) -> JsonValue:
     elif isinstance(s, TMatchStmt):
         d["expr"] = _expr_json(s.expr)
         clist: list[JsonValue] = []
-        ci = 0
-        while ci < len(s.cases):
-            clist.append(_match_case_json(s.cases[ci]))
-            ci += 1
+        for mc in s.cases:
+            clist.append(_match_case_json(mc))
         d["cases"] = JList(clist)
         d["default"] = _default_json(s.default) if s.default is not None else JNull()
         d["annotations"] = _ann_json(s.annotations)
     elif isinstance(s, TTryStmt):
         d["body"] = _stmts_json(s.body)
         calist: list[JsonValue] = []
-        cai = 0
-        while cai < len(s.catches):
-            calist.append(_catch_json(s.catches[cai]))
-            cai += 1
+        for ct in s.catches:
+            calist.append(_catch_json(ct))
         d["catches"] = JList(calist)
         d["finally_body"] = (
             _stmts_json(s.finally_body) if s.finally_body is not None else JNull()
@@ -1144,10 +1119,8 @@ def _stmt_json(s: TStmt) -> JsonValue:
 def _decl_json(decl: TModuleItem) -> JsonValue:
     if isinstance(decl, TFnDecl):
         plist: list[JsonValue] = []
-        pi = 0
-        while pi < len(decl.params):
-            plist.append(_param_json(decl.params[pi]))
-            pi += 1
+        for par in decl.params:
+            plist.append(_param_json(par))
         return JDict(
             {
                 "pos": _pos_json(decl.pos),
@@ -1160,15 +1133,11 @@ def _decl_json(decl: TModuleItem) -> JsonValue:
         )
     if isinstance(decl, TStructDecl):
         flist: list[JsonValue] = []
-        fi = 0
-        while fi < len(decl.fields):
-            flist.append(_field_decl_json(decl.fields[fi]))
-            fi += 1
+        for fld in decl.fields:
+            flist.append(_field_decl_json(fld))
         mlist: list[JsonValue] = []
-        mi = 0
-        while mi < len(decl.methods):
-            mlist.append(_decl_json(decl.methods[mi]))
-            mi += 1
+        for meth in decl.methods:
+            mlist.append(_decl_json(meth))
         return JDict(
             {
                 "pos": _pos_json(decl.pos),
@@ -1181,10 +1150,8 @@ def _decl_json(decl: TModuleItem) -> JsonValue:
         )
     if isinstance(decl, TInterfaceDecl):
         flist: list[JsonValue] = []
-        fi = 0
-        while fi < len(decl.fields):
-            flist.append(_field_decl_json(decl.fields[fi]))
-            fi += 1
+        for fld in decl.fields:
+            flist.append(_field_decl_json(fld))
         return JDict(
             {
                 "pos": _pos_json(decl.pos),
@@ -1195,10 +1162,8 @@ def _decl_json(decl: TModuleItem) -> JsonValue:
         )
     if isinstance(decl, TEnumDecl):
         vlist: list[JsonValue] = []
-        vi = 0
-        while vi < len(decl.variants):
-            vlist.append(JStr(decl.variants[vi]))
-            vi += 1
+        for vnt in decl.variants:
+            vlist.append(JStr(vnt))
         return JDict(
             {
                 "pos": _pos_json(decl.pos),
@@ -1215,10 +1180,8 @@ def _decl_json(decl: TModuleItem) -> JsonValue:
 def to_dict(module: TModule) -> JsonValue:
     """Serialize a TModule to a JsonValue tree."""
     dlist: list[JsonValue] = []
-    i = 0
-    while i < len(module.decls):
-        dlist.append(_decl_json(module.decls[i]))
-        i += 1
+    for decl in module.decls:
+        dlist.append(_decl_json(decl))
     d: dict[str, JsonValue] = {
         "decls": JList(dlist),
         "strict_math": JBool(module.strict_math),

@@ -637,14 +637,11 @@ class Verifier:
             all_args.append(a)
         old_annotated = self.annotated_params
         self.annotated_params = set()
-        j = 0
-        while j < len(all_args):
-            arg = all_args[j]
+        for j, arg in enumerate(all_args):
             arg_name = get_str(arg, "arg")
             has_annotation = _has_present(arg, "annotation")
             # Skip self/cls first param
             if j == 0 and arg_name in ("self", "cls"):
-                j += 1
                 continue
             if not has_annotation:
                 self.error(
@@ -666,7 +663,6 @@ class Verifier:
                         + arg_name
                         + " needs type parameter",
                     )
-            j += 1
         # Check mutable defaults
         defaults = get_nodes(args_node, "defaults")
         kw_defaults = get_jlist(args_node, "kw_defaults")
@@ -858,12 +854,10 @@ class Verifier:
         left = get_node(node, "left")
         i = 0
         while i < len(ops):
-            op = ops[i]
-            comparator = comparators[i]
-            op_type = get_str(op, "_type")
+            op_type = get_str(ops[i], "_type")
             if op_type in ("Is", "IsNot"):
                 if not is_singleton_constant(left) and not is_singleton_constant(
-                    comparator
+                    comparators[i]
                 ):
                     if not _is_type_call(left):
                         self.error(
@@ -871,7 +865,7 @@ class Verifier:
                             "reflection",
                             "is/is not only allowed with None/True/False",
                         )
-            left = comparator
+            left = comparators[i]
             i += 1
         # Visit children — allow type() in comparisons
         has_type_call = _is_type_call(get_node(node, "left"))
@@ -1992,9 +1986,7 @@ class NameResolver:
         # Collect parameters
         args_node = get_node(func_node, "args")
         args_list = get_nodes(args_node, "args")
-        i = 0
-        while i < len(args_list):
-            arg = args_list[i]
+        for i, arg in enumerate(args_list):
             arg_name = get_str(arg, "arg")
             lineno = get_int(arg, "lineno")
             col = get_int(arg, "col_offset")
@@ -2004,7 +1996,6 @@ class NameResolver:
                     arg_name, "parameter", "local", lineno, col, class_name, func_name
                 )
                 self.result.table.add_local(class_name, func_name, info)
-                i += 1
                 continue
             # Warn if parameter shadows a builtin
             if arg_name in ALLOWED_BUILTINS:
@@ -2015,7 +2006,6 @@ class NameResolver:
                 arg_name, "parameter", "local", lineno, col, class_name, func_name
             )
             self.result.table.add_local(class_name, func_name, info)
-            i += 1
         # Collect keyword-only parameters
         kw_list = get_nodes(args_node, "kwonlyargs")
         for kw_arg in kw_list:

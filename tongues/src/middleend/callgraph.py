@@ -624,8 +624,8 @@ def _collect_fn_throws_try(stmt: TTryStmt, ctx: _ThrowCtx) -> None:
     for i, catch in enumerate(stmt.catches):
         if not catch.types:
             preceding_caught: set[str] = set()
-            for j in range(i):
-                for ct in stmt.catches[j].types:
+            for preceding in stmt.catches[:i]:
+                for ct in preceding.types:
                     resolved = ctx.checker.resolve_type(ct)
                     if isinstance(resolved, StructT):
                         preceding_caught.add(resolved.name)

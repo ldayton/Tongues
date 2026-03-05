@@ -23,7 +23,7 @@ while true
 (5...10).each do |i|
 
 === for range three args
-10.downto(1).each do |i|
+10.downto(1) do |i|
 
 === for over list single var
 xs.each do |x|

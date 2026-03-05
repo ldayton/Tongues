@@ -413,6 +413,80 @@ def f() -> list[Decl | Stmt]:
 ok
 ---
 
+=== reversed list for loop var type
+def f(xs: list[int]) -> None:
+    for x in reversed(xs):
+        reveal_type(x)
+---
+ok
+reveal:3 = int
+---
+
+=== reversed range for loop var type
+def f(n: int) -> None:
+    for i in reversed(range(n)):
+        reveal_type(i)
+---
+ok
+reveal:3 = int
+---
+
+=== list repetition widens to annotation type
+class Val:
+    pass
+class VNil(Val):
+    pass
+def f(n: int) -> list[Val]:
+    slots: list[Val] = [VNil()] * n
+    return slots
+---
+ok
+---
+
+=== list comprehension widens to annotation type
+class Val:
+    pass
+class VInt(Val):
+    def __init__(self, v: int) -> None:
+        self.v = v
+def f(n: int) -> list[Val]:
+    result: list[Val] = [VInt(x) for x in range(n)]
+    return result
+---
+ok
+---
+
+=== string iteration yields str not rune
+def f(s: str) -> None:
+    for ch in s:
+        reveal_type(ch)
+---
+ok
+reveal:3 = str
+---
+
+=== zip bytes for loop var types
+def f(a: bytes, b: bytes) -> None:
+    for x, y in zip(a, b):
+        reveal_type(x)
+---
+ok
+reveal:3 = byte
+---
+
+=== zip three arguments for loop var types
+def f(a: list[int], b: list[str], c: list[float]) -> None:
+    for x, y, z in zip(a, b, c):
+        reveal_type(x)
+        reveal_type(y)
+        reveal_type(z)
+---
+ok
+reveal:3 = int
+reveal:4 = str
+reveal:5 = float
+---
+
 === mutated list param passable to non-mutating function
 class Item:
     pass

@@ -718,6 +718,76 @@ def test_list_concatenation_creates_new() -> None:
     assert c == [1, 2, 3, 4, 5]
 
 
+def test_reversed_list() -> None:
+    """reversed() iterates in reverse order."""
+    items: list[int] = [1, 2, 3, 4, 5]
+    result: list[int] = []
+    for x in reversed(items):
+        result.append(x)
+    assert result == [5, 4, 3, 2, 1]
+
+
+def test_reversed_range() -> None:
+    """reversed(range()) iterates range in reverse."""
+    result: list[int] = []
+    for i in reversed(range(5)):
+        result.append(i)
+    assert result == [4, 3, 2, 1, 0]
+
+
+def test_reversed_range_start_stop() -> None:
+    """reversed(range(a, b)) iterates in reverse."""
+    result: list[int] = []
+    for i in reversed(range(2, 7)):
+        result.append(i)
+    assert result == [6, 5, 4, 3, 2]
+
+
+def test_string_iteration_yields_str() -> None:
+    """for ch in string yields str elements."""
+    s: str = "abc"
+    result: list[str] = []
+    for ch in s:
+        result.append(ch)
+    assert result == ["a", "b", "c"]
+
+
+def test_zip_bytes() -> None:
+    """zip() over bytes sequences."""
+    a: bytes = b"\x01\x02\x03"
+    b: bytes = b"\x04\x05\x06"
+    sums: list[int] = []
+    for x, y in zip(a, b):
+        sums.append(x + y)
+    assert sums == [5, 7, 9]
+
+
+def test_zip_three_lists() -> None:
+    """zip() with three arguments."""
+    a: list[int] = [1, 2, 3]
+    b: list[str] = ["a", "b", "c"]
+    c: list[int] = [10, 20, 30]
+    result: list[str] = []
+    for x, y, z in zip(a, b, c):
+        result.append(str(x) + y + str(z))
+    assert result == ["1a10", "2b20", "3c30"]
+
+
+def test_list_repetition_with_annotation() -> None:
+    """[expr] * n respects annotation type."""
+    slots: list[int] = [0] * 5
+    assert len(slots) == 5
+    assert slots == [0, 0, 0, 0, 0]
+    slots[2] = 42
+    assert slots == [0, 0, 42, 0, 0]
+
+
+def test_list_comprehension_with_annotation() -> None:
+    """Comprehension result respects annotation type."""
+    squares: list[int] = [x * x for x in range(5)]
+    assert squares == [0, 1, 4, 9, 16]
+
+
 def main() -> int:
     passed: int = 0
     failed: int = 0
@@ -797,6 +867,17 @@ def main() -> int:
         ("test_list_equality_different_types", test_list_equality_different_types),
         ("test_list_multiply_zero", test_list_multiply_zero),
         ("test_list_concatenation_creates_new", test_list_concatenation_creates_new),
+        ("test_reversed_list", test_reversed_list),
+        ("test_reversed_range", test_reversed_range),
+        ("test_reversed_range_start_stop", test_reversed_range_start_stop),
+        ("test_string_iteration_yields_str", test_string_iteration_yields_str),
+        ("test_zip_bytes", test_zip_bytes),
+        ("test_zip_three_lists", test_zip_three_lists),
+        ("test_list_repetition_with_annotation", test_list_repetition_with_annotation),
+        (
+            "test_list_comprehension_with_annotation",
+            test_list_comprehension_with_annotation,
+        ),
     ]
     for name, fn in tests:
         try:

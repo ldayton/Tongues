@@ -108,3 +108,18 @@ min(xs, key=lambda s: len(s))
 
 === max with key lambda
 max(xs, key=lambda s: len(s))
+
+=== for over Reversed list
+for x in reversed(xs):
+
+=== Zip two lists
+for x, y in zip(a, b):
+
+=== Zip three lists
+for x, y, z in zip(a, b, c):
+
+=== Zip bytes
+for x, y in zip(a, b):
+
+=== for over string yields rune
+for ch in s:

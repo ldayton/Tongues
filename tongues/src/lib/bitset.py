@@ -45,8 +45,8 @@ def bitset_toggle(bs: list[int], i: int) -> None:
 def bitset_popcount(bs: list[int]) -> int:
     """Count the number of set bits."""
     count: int = 0
-    for i in range(1, len(bs)):
-        count += _popcount_word(bs[i])
+    for word in bs[1:]:
+        count += _popcount_word(word)
     return count
 
 
