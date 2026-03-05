@@ -495,12 +495,13 @@ class Compiler:
         self.fn_param_names = checker.fn_param_names
         # Collect struct/enum/interface defs
         for decl in module.decls:
-            if isinstance(decl, TStructDecl):
-                self._register_struct(decl)
-            elif isinstance(decl, TEnumDecl):
-                self._register_enum(decl)
-            elif isinstance(decl, TInterfaceDecl):
-                self._register_interface(decl)
+            match decl:
+                case TStructDecl():
+                    self._register_struct(decl)
+                case TEnumDecl():
+                    self._register_enum(decl)
+                case TInterfaceDecl():
+                    self._register_interface(decl)
         # Register all top-level function and let names as globals
         for decl in module.decls:
             if isinstance(decl, TFnDecl):
