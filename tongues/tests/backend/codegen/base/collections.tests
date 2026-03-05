@@ -264,3 +264,49 @@ fn Main() -> void {
     let m: string = Max(xs, (s: string) -> int => Len(s))
     WritelnOut(m)
 }
+
+=== for over Reversed list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for x in Reversed(xs) {
+        WritelnOut(ToString(x))
+    }
+}
+
+=== Zip two lists
+fn Main() -> void {
+    let a: list[int] = [1, 2, 3]
+    let b: list[string] = ["a", "b", "c"]
+    for x, y in Zip(a, b) {
+        WritelnOut(Format("{} {}", ToString(x), y))
+    }
+}
+
+=== Zip three lists
+fn Main() -> void {
+    let a: list[int] = [1, 2]
+    let b: list[string] = ["a", "b"]
+    let c: list[float] = [1.0, 2.0]
+    for x, y, z in Zip(a, b, c) {
+        WritelnOut(Format("{} {} {}", ToString(x), y, ToString(z)))
+    }
+}
+
+=== Zip bytes
+fn Main() -> void {
+    let a: bytes = b"\x01\x02\x03"
+    let b: bytes = b"\x04\x05\x06"
+    for x, y in Zip(a, b) {
+        WritelnOut(ToString(x + y))
+    }
+}
+
+=== for over string yields string
+fn Main() -> void {
+    let s: string = "abc"
+    let result: list[string] = []
+    for ch in s {
+        Append(result, ch)
+    }
+    WritelnOut(ToString(Len(result)))
+}

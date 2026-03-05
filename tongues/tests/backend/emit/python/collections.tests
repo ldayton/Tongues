@@ -12,3 +12,24 @@ s: set[tuple[str, int]] = set(list(d.items()))
 
 === star unpack element starred element
 [x, *middle, y]
+
+=== reversed list for loop
+for x in reversed(xs):
+
+=== reversed range for loop
+for i in reversed(range(5)):
+
+=== zip two lists for loop
+for x, y in zip(a, b):
+
+=== zip three lists for loop
+for x, y, z in zip(a, b, c):
+
+=== zip bytes for loop
+for x, y in zip(a, b):
+
+=== string iteration for loop
+for ch in s:
+
+=== list repetition with annotation
+[0] * 5

@@ -12,3 +12,24 @@ for @{(do {
 
 === star unpack element starred element
 [ $x, @{$middle}, $y ]
+
+=== reversed list for loop
+for my $x (reverse @{$xs}) {
+
+=== reversed range for loop
+for my $i (reverse 0 .. 4) {
+
+=== zip two lists for loop
+for my $__i (0 .. min(scalar(@{$a}), scalar(@{$b})) - 1) {
+
+=== zip three lists for loop
+for my $__i (0 .. min(scalar(@{$a}), scalar(@{$b}), scalar(@{$c})) - 1) {
+
+=== zip bytes for loop
+for my $__i (0 .. min(length($a), length($b)) - 1) {
+
+=== string iteration for loop
+for my $ch (split(//, $s)) {
+
+=== list repetition with annotation
+[(0) x 5]

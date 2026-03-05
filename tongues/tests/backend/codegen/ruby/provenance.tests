@@ -100,5 +100,23 @@ r = s.chars.each_slice(2).map(&:first).join
 === reversed slice on string (raised)
 r = s.reverse
 
+=== reversed for loop (raised)
+xs.reverse_each do |x|
+
+=== reversed range for loop (raised)
+9.downto(0) do |i|
+
+=== zip two lists for loop (raised)
+a.zip(b).each do |x, y|
+
+=== zip three lists for loop (raised)
+a.zip(b, c).each do |x, y, z|
+
+=== string iteration for loop (raised)
+s.each_char do |ch|
+
+=== list repetition (raised)
+xs = [0] * 5
+
 === isinstance with tuple of types (raised)
 return v.is_a?(A) || v.is_a?(B)

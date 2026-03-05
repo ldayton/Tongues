@@ -458,3 +458,103 @@ fn Main() -> void {
 ---
 error: cannot use int as string
 ---
+
+=== valid: Reversed preserves element type
+fn Main() -> void {
+    let xs: list[int] = [3, 1, 2]
+    reveal_type(Reversed(xs))
+}
+---
+ok
+reveal:3=list[int]
+---
+
+=== valid: for over Reversed list
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for x in Reversed(xs) {
+        reveal_type(x)
+    }
+}
+---
+ok
+reveal:4=int
+---
+
+=== valid: Zip with bytes arguments
+fn Main() -> void {
+    let a: bytes = b"\x01\x02"
+    let b: bytes = b"\x03\x04"
+    reveal_type(Zip(a, b))
+}
+---
+ok
+reveal:4=list[(int, int)]
+---
+
+=== valid: Zip three arguments
+fn Main() -> void {
+    let a: list[int] = [1, 2]
+    let b: list[string] = ["a", "b"]
+    let c: list[float] = [1.0, 2.0]
+    reveal_type(Zip(a, b, c))
+}
+---
+ok
+reveal:5=list[(int, string, float)]
+---
+
+=== valid: for over Zip three lists
+fn Main() -> void {
+    let a: list[int] = [1, 2]
+    let b: list[string] = ["a", "b"]
+    let c: list[float] = [1.0, 2.0]
+    for x, y, z in Zip(a, b, c) {
+        reveal_type(x)
+        reveal_type(y)
+        reveal_type(z)
+    }
+}
+---
+ok
+reveal:6=int
+reveal:7=string
+reveal:8=float
+---
+
+=== valid: string iteration yields string
+fn Main() -> void {
+    let s: string = "hello"
+    for ch in s {
+        reveal_type(ch)
+    }
+}
+---
+ok
+reveal:4=string
+---
+
+=== valid: list of subclass assignable to list of interface
+interface Val {}
+struct VInt: Val {
+    v: int
+}
+fn make() -> list[VInt] {
+    return [VInt(1), VInt(2)]
+}
+fn Main() -> void {
+    let result: list[Val] = make()
+}
+---
+ok
+---
+
+=== valid: Repeat widens to declared element type
+interface Val {}
+struct VNil: Val {}
+fn Main() -> void {
+    let xs: list[Val] = Repeat([VNil()], 3)
+}
+---
+ok
+---

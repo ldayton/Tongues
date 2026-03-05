@@ -120,6 +120,36 @@ def f(pairs: list[tuple[str, int]]) -> None:
 for name, val in pairs {
 ---
 
+=== for reversed range single arg
+def f() -> int:
+    s = 0
+    for i in reversed(range(10)):
+        s += i
+    return s
+---
+for i in range(9, -1, -1) {
+---
+
+=== for reversed range two args
+def f() -> int:
+    s = 0
+    for i in reversed(range(1, 10)):
+        s += i
+    return s
+---
+for i in range(9, 0, -1) {
+---
+
+=== for reversed list
+def f(xs: list[int]) -> int:
+    s = 0
+    for x in reversed(xs):
+        s += x
+    return s
+---
+for x in Reversed(xs) {
+---
+
 === break and continue
 def f() -> None:
     while True:

@@ -42,3 +42,63 @@ def main() -> None:
     print(str(len(c)))
 if __name__ == "__main__":
     main()
+
+=== reversed list for loop
+def main() -> None:
+    xs: list[int] = [1, 2, 3]
+    for x in reversed(xs):
+        print(str(x))
+if __name__ == "__main__":
+    main()
+
+=== reversed range for loop
+def main() -> None:
+    for i in reversed(range(5)):
+        print(str(i))
+if __name__ == "__main__":
+    main()
+
+=== zip two lists for loop
+def main() -> None:
+    a: list[int] = [1, 2, 3]
+    b: list[str] = ["a", "b", "c"]
+    for x, y in zip(a, b):
+        print(str(x) + y)
+if __name__ == "__main__":
+    main()
+
+=== zip three lists for loop
+def main() -> None:
+    a: list[int] = [1, 2]
+    b: list[str] = ["a", "b"]
+    c: list[float] = [1.0, 2.0]
+    for x, y, z in zip(a, b, c):
+        print(str(x) + y)
+if __name__ == "__main__":
+    main()
+
+=== zip bytes for loop
+def main() -> None:
+    a: bytes = b"\x01\x02\x03"
+    b: bytes = b"\x04\x05\x06"
+    for x, y in zip(a, b):
+        print(str(x + y))
+if __name__ == "__main__":
+    main()
+
+=== string iteration for loop
+def main() -> None:
+    s: str = "abc"
+    result: list[str] = []
+    for ch in s:
+        result.append(ch)
+    print(str(len(result)))
+if __name__ == "__main__":
+    main()
+
+=== list repetition with annotation
+def main() -> None:
+    slots: list[int] = [0] * 5
+    print(str(len(slots)))
+if __name__ == "__main__":
+    main()

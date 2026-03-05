@@ -12,3 +12,24 @@ s = Set.new(d.to_a
 
 === star unpack element starred element
 [x, *middle, y]
+
+=== reversed list for loop
+xs.reverse_each do |x|
+
+=== reversed range for loop
+4.downto(0) do |i|
+
+=== zip two lists for loop
+a.zip(b).each do |x, y|
+
+=== zip three lists for loop
+a.zip(b, c).each do |x, y, z|
+
+=== zip bytes for loop
+a.bytes.zip(b.bytes).each do |x, y|
+
+=== string iteration for loop
+s.each_char do |ch|
+
+=== list repetition with annotation
+[0] * 5
