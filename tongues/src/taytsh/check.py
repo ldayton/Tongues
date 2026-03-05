@@ -488,7 +488,7 @@ def _block_is_complete(stmts: list[TStmt]) -> bool:
             return False
         return _block_is_complete(last.then_body) and _block_is_complete(last.else_body)
     if isinstance(last, TWhileStmt):
-        if isinstance(last.cond, TBoolLit) and last.cond.value is True:
+        if isinstance(last.cond, TBoolLit) and last.cond.value:
             return not _stmts_contain_break(last.body)
         return False
     if isinstance(last, TMatchStmt):
@@ -529,7 +529,7 @@ def _block_always_exits(stmts: list[TStmt]) -> bool:
             last.else_body
         )
     if isinstance(last, TWhileStmt):
-        if isinstance(last.cond, TBoolLit) and last.cond.value is True:
+        if isinstance(last.cond, TBoolLit) and last.cond.value:
             return not _stmts_contain_break(last.body)
         return False
     if isinstance(last, TMatchStmt):
