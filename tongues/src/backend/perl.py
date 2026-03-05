@@ -1840,7 +1840,11 @@ class _PerlEmitter(Emitter):
         if prov == "open_start" and self._is_zero(expr.low):
             low = "0"
         if self._is_string_expr(expr.obj) or self._is_bytes_expr(expr.obj):
-            if self._is_len_call(expr.high):
+            if self._is_len_call(expr.high) and self._len_matches_obj(
+                expr.high, expr.obj
+            ):
+                return "substr(" + obj + ", " + low + ")"
+            if prov == "open_end" and self._is_len_call(expr.high):
                 return "substr(" + obj + ", " + low + ")"
             if self._is_negative_literal(expr.high):
                 return (
@@ -3034,7 +3038,7 @@ class _PerlEmitter(Emitter):
                 return "looks_like_number(" + a0 + ")"
             if type_name in ("bool", "Bool"):
                 return "!ref(" + a0 + ")"
-            return "defined(" + a0 + ") && " + a0 + "->isa('" + type_name + "')"
+            return "(defined(" + a0 + ") && " + a0 + "->isa('" + type_name + "'))"
         if name == "Assert":
             cond = self._a(args, 0)
             if len(args) > 1:
@@ -3319,6 +3323,15 @@ class _PerlEmitter(Emitter):
         var = "$" + _safe_name(cond.left.name)
         default = self._expr(expr.else_expr)
         return "(" + var + " // " + default + ")"
+
+    def _len_matches_obj(self, len_expr: TExpr, obj: TExpr) -> bool:
+        """Check if Len(x) refers to the same variable as obj."""
+        if not isinstance(len_expr, TCall) or not len_expr.args:
+            return False
+        inner = len_expr.args[0].value
+        return (
+            isinstance(inner, TVar) and isinstance(obj, TVar) and inner.name == obj.name
+        )
 
     def _removefix_args(self, expr: TTernary, func_name: str) -> tuple[str | None, str]:
         """Extract (s, p) from a removeprefix/removesuffix ternary."""

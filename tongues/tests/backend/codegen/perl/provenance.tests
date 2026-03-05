@@ -143,4 +143,4 @@ for my $ch (split(//, $s)) {
 my $xs = [(0) x 5];
 
 === isinstance with tuple of types (raised)
-return defined($v) && $v->isa('A') || defined($v) && $v->isa('B');
+return (defined($v) && $v->isa('A')) || (defined($v) && $v->isa('B'));
