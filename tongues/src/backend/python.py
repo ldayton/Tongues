@@ -1828,7 +1828,9 @@ class _PythonEmitter(Emitter):
                     method = {"Keys": "keys", "Values": "values", "Items": "items"}[
                         inner.func.name
                     ]
-                    return "set(" + self._expr(inner.args[0].value) + "." + method + "())"
+                    return (
+                        "set(" + self._expr(inner.args[0].value) + "." + method + "())"
+                    )
             return "set(" + self._a(args, 0) + ")"
         if name == "ToString":
             return "str(" + self._a(args, 0) + ")"
