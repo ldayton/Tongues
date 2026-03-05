@@ -104,6 +104,37 @@ def test_dict_keys() -> None:
     assert "c" in keys
 
 
+def test_dict_list_from_dict() -> None:
+    """list(d) returns list of keys."""
+    d: dict[str, int] = {"a": 1, "b": 2, "c": 3}
+    ks: list[str] = list(d)
+    assert len(ks) == 3
+    assert "a" in ks
+    assert "b" in ks
+    assert "c" in ks
+
+
+def test_dict_set_from_dict() -> None:
+    """set(d) returns set of keys."""
+    d: dict[str, int] = {"a": 1, "b": 2, "c": 3}
+    s: set[str] = set(d)
+    assert s == {"a", "b", "c"}
+
+
+def test_dict_list_from_empty_dict() -> None:
+    """list(d) on empty dict returns empty list."""
+    d: dict[str, int] = {}
+    ks: list[str] = list(d)
+    assert ks == []
+
+
+def test_dict_set_from_empty_dict() -> None:
+    """set(d) on empty dict returns empty set."""
+    d: dict[str, int] = {}
+    s: set[str] = set(d)
+    assert s == set()
+
+
 def test_dict_values() -> None:
     """values() returns value view."""
     d: dict[str, int] = {"a": 1, "b": 2, "c": 3}
@@ -633,6 +664,10 @@ def main() -> int:
         ("test_dict_get", test_dict_get),
         ("test_dict_get_none_value", test_dict_get_none_value),
         ("test_dict_keys", test_dict_keys),
+        ("test_dict_list_from_dict", test_dict_list_from_dict),
+        ("test_dict_set_from_dict", test_dict_set_from_dict),
+        ("test_dict_list_from_empty_dict", test_dict_list_from_empty_dict),
+        ("test_dict_set_from_empty_dict", test_dict_set_from_empty_dict),
         ("test_dict_values", test_dict_values),
         ("test_dict_items", test_dict_items),
         ("test_dict_pop", test_dict_pop),

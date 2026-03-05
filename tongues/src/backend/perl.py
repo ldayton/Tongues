@@ -2102,6 +2102,22 @@ class _PerlEmitter(Emitter):
             and expr.annotations.get("provenance") == "star_unpack"
         ):
             return self._star_unpack(expr)
+        # list(dict) / set(dict) reconstruction via dict_keys provenance
+        if (
+            isinstance(func, TVar)
+            and func.name in ("ListFrom", "SetFromList")
+            and expr.annotations.get("provenance") == "dict_keys"
+        ):
+            inner = args[0].value
+            if isinstance(inner, TCall):
+                dict_expr = self._a(inner.args, 0)
+                if func.name == "ListFrom":
+                    return "[sort keys %{" + dict_expr + "}]"
+                return (
+                    "do { my $__s = {}; $__s->{$_} = 1 for sort keys %{"
+                    + dict_expr
+                    + "}; $__s }"
+                )
         if isinstance(func, TVar) and func.name in BUILTIN_NAMES:
             return self._builtin_call(func.name, args, expr.annotations)
         if isinstance(func, TVar) and func.name in self._PYTHON_CALL_MAP:
@@ -2821,6 +2837,15 @@ class _PerlEmitter(Emitter):
         if name == "SetFromList":
             if isinstance(args[0].value, TSetLit):
                 return self._a(args, 0)
+            sfl_inner = args[0].value
+            if isinstance(sfl_inner, TCall) and isinstance(sfl_inner.func, TVar):
+                if sfl_inner.func.name == "Keys":
+                    d = self._a(sfl_inner.args, 0)
+                    return (
+                        "do { my $__s = {}; $__s->{$_} = 1 for sort keys %{"
+                        + d
+                        + "}; $__s }"
+                    )
             a = self._deref_safe(self._a(args, 0))
             if self._is_set_expr(args[0].value):
                 return (

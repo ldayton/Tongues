@@ -276,6 +276,34 @@ def f(s: set[int]) -> set[int]:
 ok
 ---
 
+=== list from dict returns key type
+def f(d: dict[str, int]) -> list[str]:
+    return list(d)
+---
+ok
+---
+
+=== set from dict returns key type
+def f(d: dict[str, int]) -> set[str]:
+    return set(d)
+---
+ok
+---
+
+=== list from dict wrong return type rejected
+def f(d: dict[str, int]) -> list[int]:
+    return list(d)
+---
+error: type
+---
+
+=== set from dict wrong return type rejected
+def f(d: dict[str, int]) -> set[int]:
+    return set(d)
+---
+error: type
+---
+
 === sorted returns list of element type
 def f(xs: list[int]) -> list[int]:
     return sorted(xs)

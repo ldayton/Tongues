@@ -1476,6 +1476,17 @@ class _PythonEmitter(Emitter):
             and expr.annotations.get("provenance") == "reversed_slice"
         ):
             return self._a(args, 0) + "[::-1]"
+        # list(dict) / set(dict) reconstruction via dict_keys provenance
+        if (
+            isinstance(func, TVar)
+            and func.name in ("ListFrom", "SetFromList")
+            and expr.annotations.get("provenance") == "dict_keys"
+        ):
+            inner = args[0].value
+            if isinstance(inner, TCall):
+                dict_expr = self._expr(inner.args[0].value)
+                wrapper = "list" if func.name == "ListFrom" else "set"
+                return wrapper + "(" + dict_expr + ")"
         # Builtin call
         if isinstance(func, TVar) and func.name in BUILTIN_NAMES:
             return self._builtin_call(func.name, args)
@@ -1811,6 +1822,15 @@ class _PythonEmitter(Emitter):
         if name == "SetFromList":
             if isinstance(args[0].value, TSetLit):
                 return self._a(args, 0)
+            inner = args[0].value
+            if isinstance(inner, TCall) and isinstance(inner.func, TVar):
+                if inner.func.name in ("Keys", "Values", "Items"):
+                    method = {"Keys": "keys", "Values": "values", "Items": "items"}[
+                        inner.func.name
+                    ]
+                    return (
+                        "set(" + self._expr(inner.args[0].value) + "." + method + "())"
+                    )
             return "set(" + self._a(args, 0) + ")"
         if name == "ToString":
             return "str(" + self._a(args, 0) + ")"
