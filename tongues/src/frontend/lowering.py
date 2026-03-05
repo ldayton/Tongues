@@ -2214,6 +2214,11 @@ def _lower_collection_call(
                 rfunc = get_node(args[0], "func")
                 if _is_ast(rfunc, "Name") and get_str(rfunc, "id") == "zip":
                     return _lower_expr(args[0], env, ctx)
+                if (
+                    _is_ast(rfunc, "Attribute")
+                    and get_str(rfunc, "attr") in ("keys", "values", "items")
+                ):
+                    return _lower_expr(args[0], env, ctx)
             if isinstance(arg_type, SetType):
                 return _make_call(pos, "Sorted", [_lower_expr(args[0], env, ctx)])
             if _is_type_dict(arg_type, ["Map"]):
@@ -2233,6 +2238,13 @@ def _lower_collection_call(
                 if _is_ast(rfunc, "Name") and get_str(rfunc, "id") == "range":
                     range_list = _lower_extend_arg(args[0], env, ctx)
                     return _make_call(pos, "SetFromList", [range_list])
+                if (
+                    _is_ast(rfunc, "Attribute")
+                    and get_str(rfunc, "attr") in ("keys", "values", "items")
+                ):
+                    return _make_call(
+                        pos, "SetFromList", [_lower_expr(args[0], env, ctx)]
+                    )
             arg_type = _infer_expr_type(args[0], env, ctx)
             if _is_type_dict(arg_type, ["string"]) and _is_ast(args[0], "Constant"):
                 s_jv = args[0].get("value")

@@ -1822,6 +1822,13 @@ class _PythonEmitter(Emitter):
         if name == "SetFromList":
             if isinstance(args[0].value, TSetLit):
                 return self._a(args, 0)
+            inner = args[0].value
+            if isinstance(inner, TCall) and isinstance(inner.func, TVar):
+                method = {"Keys": "keys", "Values": "values", "Items": "items"}.get(
+                    inner.func.name
+                )
+                if method:
+                    return "set(" + self._expr(inner.args[0].value) + "." + method + "())"
             return "set(" + self._a(args, 0) + ")"
         if name == "ToString":
             return "str(" + self._a(args, 0) + ")"
