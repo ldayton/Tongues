@@ -32,30 +32,23 @@ def cli_main(argv: list[str] | None = None) -> int:
     strict_math = False
     strict_tostring = False
     use_vm = False
-    i = 0
-    while i < len(args):
-        arg = args[i]
+    for arg in args:
         if arg == "--help" or arg == "-h":
             print(USAGE, end="")
             return 0
         elif arg == "--vm":
             use_vm = True
-            i += 1
         elif arg == "--strict":
             strict = True
-            i += 1
         elif arg == "--strict-math":
             strict_math = True
-            i += 1
         elif arg == "--strict-tostring":
             strict_tostring = True
-            i += 1
         elif arg.startswith("-"):
             print("taytsh: unknown flag '" + arg + "'", file=sys.stderr)
             return 2
         elif filepath == "":
             filepath = arg
-            i += 1
         else:
             print("taytsh: unexpected argument '" + arg + "'", file=sys.stderr)
             return 2

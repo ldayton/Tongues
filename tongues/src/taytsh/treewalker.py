@@ -337,12 +337,8 @@ class VMap(Value):
 
     def to_string(self) -> str:
         parts: list[str] = []
-        i = 0
-        while i < len(self.map_keys):
-            parts.append(
-                self.map_keys[i].to_string() + ": " + self.map_vals[i].to_string()
-            )
-            i += 1
+        for mi, mk in enumerate(self.map_keys):
+            parts.append(mk.to_string() + ": " + self.map_vals[mi].to_string())
         return "{" + ", ".join(parts) + "}"
 
 
@@ -960,22 +956,18 @@ def _value_eq(a: Value, b: Value) -> bool:
             return False
         if len(a.elements) != len(b.elements):
             return False
-        i = 0
-        while i < len(a.elements):
-            if not _value_eq(a.elements[i], b.elements[i]):
+        for ei, ae in enumerate(a.elements):
+            if not _value_eq(ae, b.elements[ei]):
                 return False
-            i += 1
         return True
     if isinstance(a, VList) and isinstance(b, VList):
         if not type_eq(a.typ, b.typ):
             return False
         if len(a.elements) != len(b.elements):
             return False
-        i = 0
-        while i < len(a.elements):
-            if not _value_eq(a.elements[i], b.elements[i]):
+        for li, le in enumerate(a.elements):
+            if not _value_eq(le, b.elements[li]):
                 return False
-            i += 1
         return True
     if isinstance(a, VMap):
         if not isinstance(b, VMap):
@@ -984,13 +976,11 @@ def _value_eq(a: Value, b: Value) -> bool:
             return False
         if len(a.map_keys) != len(b.map_keys):
             return False
-        i = 0
-        while i < len(a.map_keys):
-            if not _map_has(b, a.map_keys[i]):
+        for mi, mk in enumerate(a.map_keys):
+            if not _map_has(b, mk):
                 return False
-            if not _value_eq(a.map_vals[i], _map_get(b, a.map_keys[i])):
+            if not _value_eq(a.map_vals[mi], _map_get(b, mk)):
                 return False
-            i += 1
         return True
     if isinstance(a, VSet):
         if not isinstance(b, VSet):
@@ -1115,11 +1105,9 @@ def _map_find(m: VMap, key: Value) -> int:
             if idx is not None:
                 return idx
         return -1
-    i = 0
-    while i < len(m.map_keys):
-        if _value_eq(m.map_keys[i], key):
-            return i
-        i += 1
+    for mi, mk in enumerate(m.map_keys):
+        if _value_eq(mk, key):
+            return mi
     return -1
 
 
@@ -1506,7 +1494,7 @@ class Runtime:
             # Uncaught exception: best-effort message to stderr.
             msg: str = t.value.to_string()
             err_line: str = msg + "\n"
-            self.stderr = self.stderr + err_line.encode("utf-8")
+            self.stderr += err_line.encode("utf-8")
             return RunResult(1, self.stdout, self.stderr)
 
     def _init_top_level_lets(self) -> None:
@@ -1642,10 +1630,8 @@ class Runtime:
     ) -> None:
         trefs = [self._eval_lvalue_ref(t, env) for t in st.targets]
         tref_types: list[Type] = []
-        _tti = 0
-        while _tti < len(trefs):
-            tref_types.append(trefs[_tti].typ)
-            _tti += 1
+        for tref in trefs:
+            tref_types.append(tref.typ)
         rhs = self._eval_expr(
             st.value,
             env,
@@ -1655,10 +1641,8 @@ class Runtime:
             raise TaytshRuntimeFault("tuple assignment rhs not a tuple", st.pos)
         if len(rhs.elements) != len(st.targets):
             raise TaytshRuntimeFault("tuple arity mismatch", st.pos)
-        ti = 0
-        while ti < len(trefs):
-            trefs[ti].set(rhs.elements[ti])
-            ti += 1
+        for ti, tr in enumerate(trefs):
+            tr.set(rhs.elements[ti])
 
     def _stmt_return(self, st: TReturnStmt, env: _RuntimeEnv, fn_ret: Type) -> None:
         if st.value is None:
@@ -1828,9 +1812,7 @@ class Runtime:
 
         if isinstance(it, VList):
             list_snap: list[Value] = list(it.elements)
-            li = 0
-            while li < len(list_snap):
-                lval: Value = list_snap[li]
+            for li, lval in enumerate(list_snap):
                 env.push_scope()
                 try:
                     if len(st.binding) == 1:
@@ -1854,7 +1836,6 @@ class Runtime:
                     return
                 finally:
                     env.pop_scope()
-                li += 1
             return
 
         if isinstance(it, VString):
@@ -2262,14 +2243,10 @@ class Runtime:
         if isinstance(expected, TupleT) and len(expected.elements) >= len(
             expr.elements
         ):
-            ti = 0
-            while ti < len(expr.elements):
+            for ti, te in enumerate(expr.elements):
                 tup_elems.append(
-                    self._eval_expr(
-                        expr.elements[ti], env, expected=expected.elements[ti]
-                    )
+                    self._eval_expr(te, env, expected=expected.elements[ti])
                 )
-                ti += 1
             tup_typ: TupleT = expected
         else:
             for e in expr.elements:
@@ -2762,39 +2739,30 @@ def _strict_tostring(v: Value, rt: Runtime, *, in_composite: bool = False) -> st
     if isinstance(v, VMap):
         map_keys_sk: list[tuple[int, float, str]] = []
         map_indices: list[int] = []
-        map_di = 0
-        while map_di < len(v.map_keys):
-            map_keys_sk.append(_sort_key(v.map_keys[map_di]))
+        for map_di, mk in enumerate(v.map_keys):
+            map_keys_sk.append(_sort_key(mk))
             map_indices.append(map_di)
-            map_di += 1
         _sort_decorated(map_keys_sk, map_indices)
         map_parts: list[str] = []
-        map_dj = 0
-        while map_dj < len(map_indices):
-            map_idx = map_indices[map_dj]
+        for map_idx in map_indices:
             map_parts.append(
                 _strict_tostring(v.map_keys[map_idx], rt, in_composite=True)
                 + ": "
                 + _strict_tostring(v.map_vals[map_idx], rt, in_composite=True)
             )
-            map_dj += 1
         return "{" + ", ".join(map_parts) + "}"
     if isinstance(v, VSet):
         set_keys_sk: list[tuple[int, float, str]] = []
         set_indices: list[int] = []
-        set_di = 0
-        while set_di < len(v.elements):
-            set_keys_sk.append(_sort_key(v.elements[set_di]))
+        for set_di, se in enumerate(v.elements):
+            set_keys_sk.append(_sort_key(se))
             set_indices.append(set_di)
-            set_di += 1
         _sort_decorated(set_keys_sk, set_indices)
         set_parts: list[str] = []
-        set_dj = 0
-        while set_dj < len(set_indices):
+        for set_idx in set_indices:
             set_parts.append(
-                _strict_tostring(v.elements[set_indices[set_dj]], rt, in_composite=True)
+                _strict_tostring(v.elements[set_idx], rt, in_composite=True)
             )
-            set_dj += 1
         set_inner = ", ".join(set_parts)
         return "{" + set_inner + "}"
     if isinstance(v, VEnum):
@@ -3088,11 +3056,9 @@ def _bi_min(rt: Runtime, args: list[Value]) -> Value:
             if len(items) == 0:
                 rt._throw_err("ValueError", "min() arg is an empty sequence")
             best = items[0]
-            i = 1
-            while i < len(items):
-                if _value_lt(items[i], best):
-                    best = items[i]
-                i += 1
+            for item in items[1:]:
+                if _value_lt(item, best):
+                    best = item
             return best
     b = args[1]
     if isinstance(a, VInt) and isinstance(b, VInt):
@@ -3118,11 +3084,9 @@ def _bi_max(rt: Runtime, args: list[Value]) -> Value:
             if len(items) == 0:
                 rt._throw_err("ValueError", "max() arg is an empty sequence")
             best = items[0]
-            i = 1
-            while i < len(items):
-                if _value_lt(best, items[i]):
-                    best = items[i]
-                i += 1
+            for item in items[1:]:
+                if _value_lt(best, item):
+                    best = item
             return best
     b = args[1]
     if isinstance(a, VInt) and isinstance(b, VInt):
@@ -3585,14 +3549,11 @@ def _bi_format(rt: Runtime, args: list[Value]) -> Value:
     if len(parts) - 1 != len(args) - 1:
         raise TaytshRuntimeFault("Format: placeholder count mismatch", None)
     result: list[str] = [parts[0]]
-    i = 1
-    while i < len(args):
-        arg = args[i]
+    for fi, arg in enumerate(args[1:], 1):
         if not isinstance(arg, VString):
             raise TaytshRuntimeFault("Format arguments must be string", None)
         result.append(arg.value)
-        result.append(parts[i])
-        i += 1
+        result.append(parts[fi])
     return VString("".join(result))
 
 
@@ -3848,34 +3809,26 @@ def _bi_sorted(rt: Runtime, args: list[Value]) -> Value:
     if isinstance(xs, VSet):
         s_keys: list[tuple[int, float, str]] = []
         s_idx: list[int] = []
-        sort_si = 0
-        while sort_si < len(xs.elements):
-            s_keys.append(_sort_key(xs.elements[sort_si]))
+        for sort_si, se in enumerate(xs.elements):
+            s_keys.append(_sort_key(se))
             s_idx.append(sort_si)
-            sort_si += 1
         _sort_decorated(s_keys, s_idx)
         sresult: list[Value] = []
-        sort_sj = 0
-        while sort_sj < len(s_idx):
-            sresult.append(xs.elements[s_idx[sort_sj]])
-            sort_sj += 1
+        for si in s_idx:
+            sresult.append(xs.elements[si])
         return VList(sresult, ListT(kind="list", element=xs.typ.element))
     if isinstance(xs, VTuple):
         if len(xs.elements) == 0:
             return VList([], ListT(kind="list", element=INT_T))
         t_keys: list[tuple[int, float, str]] = []
         t_idx: list[int] = []
-        sort_ti = 0
-        while sort_ti < len(xs.elements):
-            t_keys.append(_sort_key(xs.elements[sort_ti]))
+        for sort_ti, te in enumerate(xs.elements):
+            t_keys.append(_sort_key(te))
             t_idx.append(sort_ti)
-            sort_ti += 1
         _sort_decorated(t_keys, t_idx)
         tresult: list[Value] = []
-        sort_tj = 0
-        while sort_tj < len(t_idx):
-            tresult.append(xs.elements[t_idx[sort_tj]])
-            sort_tj += 1
+        for ti in t_idx:
+            tresult.append(xs.elements[ti])
         elem_t = xs.typ.elements[0] if len(xs.typ.elements) > 0 else INT_T
         return VList(tresult, ListT(kind="list", element=elem_t))
     if not isinstance(xs, VList):
@@ -3886,17 +3839,13 @@ def _bi_sorted(rt: Runtime, args: list[Value]) -> Value:
                 rt._throw_err("ValueError", "Sorted: list contains NaN")
     l_keys: list[tuple[int, float, str]] = []
     l_idx: list[int] = []
-    sort_li = 0
-    while sort_li < len(xs.elements):
-        l_keys.append(_sort_key(xs.elements[sort_li]))
+    for sort_li, le in enumerate(xs.elements):
+        l_keys.append(_sort_key(le))
         l_idx.append(sort_li)
-        sort_li += 1
     _sort_decorated(l_keys, l_idx)
     lresult: list[Value] = []
-    sort_lj = 0
-    while sort_lj < len(l_idx):
-        lresult.append(xs.elements[l_idx[sort_lj]])
-        sort_lj += 1
+    for li in l_idx:
+        lresult.append(xs.elements[li])
     return VList(lresult, xs.typ)
 
 
@@ -3935,10 +3884,8 @@ def _bi_items(rt: Runtime, args: list[Value]) -> Value:
         raise TaytshRuntimeFault("Items expects map", None)
     pair_ty = TupleT(kind="tuple", elements=[m.typ.key, m.typ.value])
     elems: list[Value] = []
-    i = 0
-    while i < len(m.map_keys):
-        elems.append(VTuple([m.map_keys[i], m.map_vals[i]], pair_ty))
-        i += 1
+    for mi, mk in enumerate(m.map_keys):
+        elems.append(VTuple([mk, m.map_vals[mi]], pair_ty))
     return VList(elems, ListT(kind="list", element=pair_ty))
 
 
@@ -3977,10 +3924,8 @@ def _bi_merge(rt: Runtime, args: list[Value]) -> Value:
     mk = list(m1.map_keys)
     mv = list(m1.map_vals)
     result = VMap(mk, mv, m1.typ)
-    i = 0
-    while i < len(m2.map_keys):
-        _map_set(result, m2.map_keys[i], m2.map_vals[i])
-        i += 1
+    for mi, mk2 in enumerate(m2.map_keys):
+        _map_set(result, mk2, m2.map_vals[mi])
     return result
 
 
