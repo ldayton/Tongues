@@ -11,6 +11,7 @@ class JsonError(Exception):
 
 _HEX: str = "0123456789abcdef"
 
+type JsonValue = JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject
 
 # -- JSON value types (discriminated union via isinstance) --
 
@@ -37,16 +38,12 @@ class JsonString:
 
 @dataclass
 class JsonArray:
-    items: list[JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject]
+    items: list[JsonValue]
 
 
 @dataclass
 class JsonObject:
-    entries: list[
-        tuple[
-            str, JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject
-        ]
-    ]
+    entries: list[tuple[str, JsonValue]]
 
 
 # -- Parser state --
@@ -54,7 +51,7 @@ class JsonObject:
 
 @dataclass
 class ParseResult:
-    value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject
+    value: JsonValue
     pos: int
 
 
@@ -234,9 +231,7 @@ def _parse_string_raw(s: str, pos: int) -> tuple[str, int]:
 def _parse_array(s: str, pos: int) -> ParseResult:
     pos = _expect(s, pos, "[")
     pos = _skip_ws(s, pos)
-    items: list[
-        JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject
-    ] = []
+    items: list[JsonValue] = []
     if pos < len(s) and s[pos] == "]":
         return ParseResult(JsonArray(items), pos + 1)
     result: ParseResult = _parse_value(s, pos)
@@ -254,11 +249,7 @@ def _parse_array(s: str, pos: int) -> ParseResult:
 def _parse_object(s: str, pos: int) -> ParseResult:
     pos = _expect(s, pos, "{")
     pos = _skip_ws(s, pos)
-    entries: list[
-        tuple[
-            str, JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject
-        ]
-    ] = []
+    entries: list[tuple[str, JsonValue]] = []
     if pos < len(s) and s[pos] == "}":
         return ParseResult(JsonObject(entries), pos + 1)
     key, pos = _parse_string_raw(s, _skip_ws(s, pos))
@@ -307,8 +298,8 @@ def _parse_value(s: str, pos: int) -> ParseResult:
 
 def json_parse(
     s: str,
-) -> JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject:
-    """Parse a JSON string into a JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject."""
+) -> JsonValue:
+    """Parse a JSON string into a JsonValue."""
     result: ParseResult = _parse_value(s, 0)
     pos: int = _skip_ws(s, result.pos)
     if pos < len(s):
@@ -320,9 +311,9 @@ def json_parse(
 
 
 def json_stringify(
-    value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
+    value: JsonValue,
 ) -> str:
-    """Serialize a JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject to a JSON string."""
+    """Serialize a JsonValue to a JSON string."""
     if isinstance(value, JsonNull):
         return "null"
     elif isinstance(value, JsonBool):
@@ -385,7 +376,7 @@ def _escape_string(s: str) -> str:
 
 
 def json_get_string(
-    value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
+    value: JsonValue,
 ) -> str:
     if isinstance(value, JsonString):
         return value.value
@@ -393,7 +384,7 @@ def json_get_string(
 
 
 def json_get_number(
-    value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
+    value: JsonValue,
 ) -> float:
     if isinstance(value, JsonNumber):
         return value.value
@@ -401,7 +392,7 @@ def json_get_number(
 
 
 def json_get_bool(
-    value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
+    value: JsonValue,
 ) -> bool:
     if isinstance(value, JsonBool):
         return value.value
@@ -409,17 +400,17 @@ def json_get_bool(
 
 
 def json_get_items(
-    value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
-) -> list[JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject]:
+    value: JsonValue,
+) -> list[JsonValue]:
     if isinstance(value, JsonArray):
         return value.items
     raise JsonError("expected JsonArray")
 
 
 def json_get_field(
-    value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
+    value: JsonValue,
     key: str,
-) -> JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject:
+) -> JsonValue:
     if isinstance(value, JsonObject):
         for k, v in value.entries:
             if k == key:
@@ -429,6 +420,6 @@ def json_get_field(
 
 
 def json_is_null(
-    value: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject,
+    value: JsonValue,
 ) -> bool:
     return isinstance(value, JsonNull)
