@@ -150,6 +150,32 @@ def test_bytes_iteration() -> None:
     assert len(result) == 2
 
 
+def test_bytes_iteration_arithmetic() -> None:
+    """Byte iteration values work in int arithmetic."""
+    total: int = 0
+    for b in b"\x01\x02\x03":
+        total += b
+    assert total == 6
+
+
+def test_bytes_iteration_bitwise() -> None:
+    """Byte iteration values work in bitwise operations."""
+    result: list[int] = []
+    for b in b"\x0f\xf0":
+        result.append(b ^ 0xFF)
+    assert result[0] == 240
+    assert result[1] == 15
+
+
+def test_bytes_iteration_comparison() -> None:
+    """Byte iteration values comparable to int."""
+    count: int = 0
+    for b in b"\x00\x01\x00\x02\x00":
+        if b == 0:
+            count += 1
+    assert count == 3
+
+
 def test_bytes_count() -> None:
     """count() method."""
     assert b"hello".count(b"l") == 2
@@ -240,6 +266,9 @@ def main() -> int:
         ("test_bytes_index_vs_slice", test_bytes_index_vs_slice),
         ("test_bytes_bool", test_bytes_bool),
         ("test_bytes_iteration", test_bytes_iteration),
+        ("test_bytes_iteration_arithmetic", test_bytes_iteration_arithmetic),
+        ("test_bytes_iteration_bitwise", test_bytes_iteration_bitwise),
+        ("test_bytes_iteration_comparison", test_bytes_iteration_comparison),
         ("test_bytes_count", test_bytes_count),
         ("test_bytes_find", test_bytes_find),
         ("test_bytes_startswith_endswith", test_bytes_startswith_endswith),

@@ -369,6 +369,26 @@ def f(xs: list[int]) -> None:
 let chunk: list[int] = []
 ---
 
+=== for over bytes widens to int
+def f(data: bytes) -> int:
+    total: int = 0
+    for b in data:
+        total += b
+    return total
+---
+ByteToInt(b)
+---
+
+=== for over bytes with enumerate widens to int
+def f(data: bytes) -> int:
+    for i, b in enumerate(data):
+        if b == 0:
+            return i
+    return -1
+---
+ByteToInt(b)
+---
+
 === hoisted bytes variable in for loop gets correct zero value
 def process_byte(b: int) -> bytes:
     return b""
