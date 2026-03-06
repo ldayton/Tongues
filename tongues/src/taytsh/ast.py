@@ -747,6 +747,10 @@ def _sa_collect_vars_stmt(
                 _sa_collect_vars_stmts(catch.body, result, pfx, plen)
             if stmt.finally_body is not None:
                 _sa_collect_vars_stmts(stmt.finally_body, result, pfx, plen)
+        case TBreakStmt() | TContinueStmt():
+            pass
+        case _:
+            raise ValueError("unhandled statement type: " + str(stmt))
 
 
 def _sa_collect_vars_stmts(
@@ -1008,6 +1012,8 @@ def _expr_json(e: TExpr) -> JsonValue:
             d["params"] = JList(plist)
             d["ret"] = _type_json(e.ret)
             d["body"] = _stmts_json(e.body)
+        case _:
+            raise ValueError("unhandled expression type: " + str(e))
     d["annotations"] = _ann_json(e.annotations)
     return JDict(d)
 
@@ -1071,6 +1077,8 @@ def _stmt_json(s: TStmt) -> JsonValue:
             d["finally_body"] = (
                 _stmts_json(s.finally_body) if s.finally_body is not None else JNull()
             )
+        case _:
+            raise ValueError("unhandled statement type: " + str(s))
     d["annotations"] = _ann_json(s.annotations)
     return JDict(d)
 

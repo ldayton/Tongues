@@ -11,7 +11,9 @@ from dataclasses import dataclass
 from ..taytsh.ast import (
     TAssignStmt,
     TBinaryOp,
+    TBreakStmt,
     TCall,
+    TContinueStmt,
     TExpr,
     TExprStmt,
     TFieldAccess,
@@ -304,6 +306,10 @@ def _walk_stmt(stmt: TStmt, ctx: _OwnershipCtx) -> None:
             _walk_try_stmt(stmt, ctx)
         case TMatchStmt():
             _walk_match_stmt(stmt, ctx)
+        case TBreakStmt() | TContinueStmt():
+            pass
+        case _:
+            raise ValueError("unhandled statement type: " + str(stmt))
 
 
 # ============================================================

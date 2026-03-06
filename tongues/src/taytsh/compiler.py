@@ -814,6 +814,8 @@ class Compiler:
                 fc.emit(OP_THROW, 0, stmt.pos.line)
             case TMatchStmt():
                 self._compile_match(stmt, fc)
+            case _:
+                raise ValueError("unhandled statement type: " + str(stmt))
 
     def _compile_let(self, stmt: TLetStmt, fc: _FnCompiler) -> None:
         local = fc.scope.lookup(stmt.name)
@@ -1384,6 +1386,8 @@ class Compiler:
                 for a in expr.args:
                     self._compile_expr(a, fc)
                 fc.emit(OP_GET_ITER, len(expr.args), expr.pos.line)
+            case _:
+                raise ValueError("unhandled expression type: " + str(expr))
 
     def _compile_var(self, expr: TVar, fc: _FnCompiler) -> None:
         local = fc.scope.lookup(expr.name)

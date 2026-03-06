@@ -14,7 +14,9 @@ from ..taytsh.ast import (
     Ann,
     TAssignStmt,
     TBinaryOp,
+    TBreakStmt,
     TCall,
+    TContinueStmt,
     TExpr,
     TExprStmt,
     TFieldAccess,
@@ -346,6 +348,10 @@ def _walk_stmt(stmt: TStmt, ctx: _ScopeCtx) -> None:
             _walk_match_stmt(stmt, ctx)
         case TTryStmt():
             _walk_try_stmt(stmt, ctx)
+        case TBreakStmt() | TContinueStmt():
+            pass
+        case _:
+            raise ValueError("unhandled statement type: " + str(stmt))
 
 
 def _walk_assign_target_uses(target: TExpr, ctx: _ScopeCtx) -> None:

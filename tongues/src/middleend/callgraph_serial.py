@@ -6,7 +6,9 @@ from ..frontend.types import JDict, JStr, JsonValue
 from ..taytsh.ast import (
     TAssignStmt,
     TBinaryOp,
+    TBreakStmt,
     TCall,
+    TContinueStmt,
     TExpr,
     TExprStmt,
     TFieldAccess,
@@ -101,6 +103,10 @@ def _sc_collect_calls_stmt(
                 _sc_collect_calls_stmts(catch.body, calls, checker)
             if stmt.finally_body is not None:
                 _sc_collect_calls_stmts(stmt.finally_body, calls, checker)
+        case TBreakStmt() | TContinueStmt():
+            pass
+        case _:
+            raise ValueError("unhandled statement type: " + str(stmt))
 
 
 def _sc_collect_calls_expr(

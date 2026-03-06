@@ -2193,6 +2193,8 @@ class Checker:
                         self.narrow(scrutinee_expr.name, case_type)
                 self.check_stmts(case.body)
                 self.exit_scope()
+            case _:
+                raise ValueError("unhandled pattern type: " + str(pat))
 
     def _get_scrutinee_enum(self, scrutinee: Type) -> EnumT | None:
         """Get the enum type from the scrutinee (direct or optional)."""
