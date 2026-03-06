@@ -29,7 +29,7 @@ let s = "  hello  ".replace(/^ +| +$/g, "");
 let c = "abcabc".split("abc").length - 1;
 
 === SplitN and SplitWhitespace
-let parts = "a,b,c,d".split(",", 2);
+let words = "  hello   world  ".trim().split(/\s+/);
 
 === Concat strings
 let s = "hello" + " world";

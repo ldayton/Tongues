@@ -42,8 +42,7 @@ for (const v of s) {
 continue;
 
 === enumerate over list
-for (let i = 0; i < xs.length; i++) {
-    const v = xs[i];
+for (const [i, v] of xs.entries()) {
 
 === negated condition
 if (!done) {

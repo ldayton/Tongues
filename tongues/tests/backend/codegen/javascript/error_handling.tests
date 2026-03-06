@@ -1,5 +1,5 @@
 === unused catch variable is omitted
-} catch (_) {
+} catch {
 
 === used catch variable is kept
 } catch (e) {
