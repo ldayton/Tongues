@@ -357,6 +357,20 @@ def remove_nil(t: Type) -> Type:
     return t
 
 
+def _remove_type(t: Type, removed: Type) -> Type:
+    """Remove a specific type from a union (for isinstance complement narrowing)."""
+    if isinstance(t, UnionT):
+        remaining = [m for m in t.members if not type_eq(m, removed)]
+        if not remaining:
+            return t
+        if len(remaining) == 1:
+            return remaining[0]
+        if len(remaining) == len(t.members):
+            return t
+        return UnionT(kind="union", members=remaining)
+    return t
+
+
 def _unwrap_nil_union(t: Type) -> Type:
     """If t is a union containing nil, return t with nil removed. Otherwise return t."""
     if isinstance(t, UnionT):
@@ -1525,7 +1539,7 @@ class Checker:
         if isinstance(target, TVar) and target.name == "this":
             return "cannot assign to this"
         if isinstance(target, TVar) and target.name in self.loop_vars:
-            return "cannot assign to loop variable"
+            self.loop_vars.discard(target.name)
         if isinstance(target, TTupleAccess):
             return "cannot assign to tuple element"
         if isinstance(target, TIndex):
@@ -1721,6 +1735,16 @@ class Checker:
                     + type_name(target_type),
                     stmt.pos,
                 )
+            if (
+                isinstance(stmt.target, TVar)
+                and val_type is not None
+                and isinstance(stmt.value, TCall)
+                and isinstance(target_type, UnionT)
+                and not type_eq(val_type, target_type)
+                and not type_eq(val_type, NIL_T)
+                and self.scopes
+            ):
+                self.scopes[-1][stmt.target.name] = val_type
 
     def check_op_assign_stmt(self, stmt: TOpAssignStmt) -> None:
         target_type = self.check_expr(stmt.target, None)
@@ -1837,7 +1861,8 @@ class Checker:
                     narrowings.append((var_name, remove_nil(var_type), NIL_T))
                 elif check_kind == "is_nil":
                     narrowings.append((var_name, NIL_T, remove_nil(var_type)))
-        # IsType narrowing: isinstance(x, T) → narrow x to T in then, keep original in else
+        # IsType narrowing: isinstance(x, T) → narrow x to T in then, complement in else
+        isinstance_indices: set[int] = set()
         type_checks = _collect_type_checks(narrow_cond)
         for tc_var, tc_type_name, tc_positive in type_checks:
             if "." in tc_var:
@@ -1849,26 +1874,39 @@ class Checker:
             resolved = self._narrow_to_type(current, tc_type_name)
             if resolved is None:
                 continue
+            complement = _remove_type(current, resolved)
+            isinstance_indices.add(len(narrowings))
             if tc_positive:
-                narrowings.append((tc_var, resolved, current))
+                narrowings.append((tc_var, resolved, complement))
             else:
-                narrowings.append((tc_var, current, resolved))
+                narrowings.append((tc_var, complement, resolved))
         # Check then-body with narrowing
         saved_uninit = set(self.uninitialized)
         self.enter_scope()
         for name, then_type, _else_type in narrowings:
             self.scopes[-1][name] = then_type
         self.check_stmts(stmt.then_body)
+        then_exit_types: dict[str, Type] = {}
+        for name, _then_type, _else_type in narrowings:
+            if name in self.scopes[-1]:
+                then_exit_types[name] = self.scopes[-1][name]
         self.exit_scope()
         then_uninit = set(self.uninitialized)
         # Check else-body with reverse narrowing
         self.uninitialized = set(saved_uninit)
+        else_exit_types: dict[str, Type] = {}
         if stmt.else_body is not None:
             self.enter_scope()
             for name, _then_type, else_type in narrowings:
                 self.scopes[-1][name] = else_type
             self.check_stmts(stmt.else_body)
+            for name, _then_type, _else_type in narrowings:
+                if name in self.scopes[-1]:
+                    else_exit_types[name] = self.scopes[-1][name]
             self.exit_scope()
+        else:
+            for name, _then_type, else_type in narrowings:
+                else_exit_types[name] = else_type
         else_uninit = set(self.uninitialized)
         # Merge: initialized only if initialized in BOTH branches
         then_exits = _block_always_exits(stmt.then_body)
@@ -1881,6 +1919,33 @@ class Checker:
             self.uninitialized = then_uninit
         else:
             self.uninitialized = then_uninit | else_uninit
+        # Merge isinstance-narrowed variable types after if block
+        # Only merge when the variable was reassigned in the then body
+        # (otherwise the narrowing is temporary and the original type should be restored)
+        for ni in range(len(narrowings)):
+            if ni not in isinstance_indices:
+                continue
+            name = narrowings[ni][0]
+            then_type = narrowings[ni][1]
+            if "." in name:
+                continue
+            t_type = then_exit_types.get(name)
+            e_type = else_exit_types.get(name)
+            if t_type is None or e_type is None:
+                continue
+            if type_eq(t_type, then_type):
+                continue
+            merged: Type
+            if then_exits:
+                merged = e_type
+            elif else_exits:
+                merged = t_type
+            elif type_eq(t_type, e_type):
+                merged = t_type
+            else:
+                merged = UnionT(kind="union", members=[t_type, e_type])
+            if self.scopes:
+                self.scopes[-1][name] = merged
 
     def check_while_stmt(self, stmt: TWhileStmt) -> None:
         cond_type = self.check_expr(stmt.cond, BOOL_T)

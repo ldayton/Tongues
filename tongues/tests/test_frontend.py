@@ -218,6 +218,67 @@ def test_tuple_full_slice() -> None:
     assert not out.errors, f"unexpected errors: {out.errors}"
 
 
+def test_isinstance_loop_var_reassignment() -> None:
+    """Loop variable reassigned after isinstance narrowing should lower correctly (#217)."""
+    source = (
+        "from dataclasses import dataclass\n"
+        "@dataclass\n"
+        "class A:\n"
+        "    x: int\n"
+        "@dataclass\n"
+        "class B:\n"
+        "    y: int\n"
+        "def convert(b: B) -> A:\n"
+        "    return A(b.y)\n"
+        "def f(items: list[A | B]) -> int:\n"
+        "    total: int = 0\n"
+        "    for item in items:\n"
+        "        if isinstance(item, B):\n"
+        "            item = convert(item)\n"
+        "        total += item.x\n"
+        "    return total\n"
+        "def main() -> None:\n"
+        "    print(f([A(1), B(2)]))\n"
+        "if __name__ == '__main__':\n"
+        "    main()\n"
+    )
+    output, err = emit_from_python(source, "python")
+    assert err is None, f"emit error: {err}"
+    assert output is not None
+
+
+def test_isinstance_loop_var_reassignment_with_accumulator() -> None:
+    """Loop var reassignment + accumulator list used after loop should work (#217)."""
+    source = (
+        "from dataclasses import dataclass\n"
+        "@dataclass\n"
+        "class VList:\n"
+        "    elements: list[int]\n"
+        "@dataclass\n"
+        "class VBytes:\n"
+        "    data: bytes\n"
+        "def coerce(a: VBytes) -> VList:\n"
+        "    return VList([])\n"
+        "def f(args: list[VList | VBytes]) -> int:\n"
+        "    lists: list[VList] = []\n"
+        "    for a in args:\n"
+        "        if isinstance(a, VBytes):\n"
+        "            a = coerce(a)\n"
+        "        lists.append(a)\n"
+        "    total: int = 0\n"
+        "    for l in lists:\n"
+        "        total += len(l.elements)\n"
+        "    return total\n"
+        "def main() -> None:\n"
+        "    pass\n"
+        "if __name__ == '__main__':\n"
+        "    main()\n"
+    )
+    output, err = emit_from_python(source, "python")
+    assert err is None, f"emit error: {err}"
+    assert output is not None
+
+
 def test_emit_stamp_uids() -> None:
     """emit_from_python must stamp UIDs so pycheck types are available to lowering."""
     source = (

@@ -773,6 +773,7 @@ class _Env:
     def __init__(self) -> None:
         self.var_types: dict[str, TypeNode] = {}
         self.declared: set[str] = set()
+        self.loop_bindings: set[str] = set()
         self.return_type: TypeNode = VOID_TYPE
         self.hoisted_stmts: dict[str, TLetStmt] = {}
         self.isinstance_subs: dict[str, str] = {}
@@ -786,6 +787,8 @@ class _Env:
         dkeys = list(self.declared)
         for dkey in dkeys:
             env.declared.add(dkey)
+        for lb in self.loop_bindings:
+            env.loop_bindings.add(lb)
         env.return_type = self.return_type
         env.hoisted_stmts = self.hoisted_stmts
         skeys = list(self.isinstance_subs.keys())
@@ -4405,7 +4408,7 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             val_type = PrimitiveType("error")
         safe = _safe_name(name)
         ann = _name_ann(safe, name)
-        if name not in env.declared:
+        if name not in env.declared and name not in env.loop_bindings:
             env.declared.add(name)
             env.var_types[name] = val_type
             ttype = _typenode_to_ttype(pos, val_type)
@@ -4756,7 +4759,12 @@ def _scan_hoist_names(nodes: list[ASTNode], env: _Env) -> list[str]:
                 tgt = targets[0]
                 if _is_ast(tgt, "Name"):
                     name = get_str(tgt, "id")
-                    if name not in env.declared and name not in seen and name != "_":
+                    if (
+                        name not in env.declared
+                        and name not in env.loop_bindings
+                        and name not in seen
+                        and name != "_"
+                    ):
                         result.append(name)
                         seen.add(name)
                 elif _is_ast(tgt, "Tuple"):
@@ -4766,6 +4774,7 @@ def _scan_hoist_names(nodes: list[ASTNode], env: _Env) -> list[str]:
                             ename = get_str(e, "id")
                             if (
                                 ename not in env.declared
+                                and ename not in env.loop_bindings
                                 and ename not in seen
                                 and ename != "_"
                             ):
@@ -5076,9 +5085,10 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     orelse = get_nodes(node, "orelse")
     isinstance_result = _extract_isinstance_chain(node)
     if isinstance_result is not None:
-        return _lower_isinstance_chain(
-            pos, isinstance_result.cases, isinstance_result.else_body, env, ctx
-        )
+        if not _body_reassigns_var(body, isinstance_result.cases[0].var_name):
+            return _lower_isinstance_chain(
+                pos, isinstance_result.cases, isinstance_result.else_body, env, ctx
+            )
     split_result = _try_split_guards(node, test, body, orelse, env, ctx)
     if split_result is not None:
         return split_result
@@ -5203,6 +5213,42 @@ def _extract_isinstance_chain(node: ASTNode) -> _IsinstanceChainResult | None:
     if orelse:
         else_body = orelse
     return _IsinstanceChainResult(cases=result, else_body=else_body)
+
+
+def _body_reassigns_var(body: list[ASTNode], var_name: str) -> bool:
+    """Check if body contains an assignment to var_name (no recursion into functions)."""
+    for node in body:
+        if _assigns_var(node, var_name):
+            return True
+    return False
+
+
+def _assigns_var(node: ASTNode, var_name: str) -> bool:
+    """Recursively check if an AST node contains an assignment to var_name."""
+    t = get_str(node, "_type")
+    if t == "Assign":
+        targets = get_nodes(node, "targets")
+        if (
+            targets
+            and _is_ast(targets[0], "Name")
+            and get_str(targets[0], "id") == var_name
+        ):
+            return True
+    if t in ("FunctionDef", "AsyncFunctionDef", "ClassDef"):
+        return False
+    for child in get_nodes(node, "body"):
+        if _assigns_var(child, var_name):
+            return True
+    for child in get_nodes(node, "orelse"):
+        if _assigns_var(child, var_name):
+            return True
+    for child in get_nodes(node, "handlers"):
+        if _assigns_var(child, var_name):
+            return True
+    for child in get_nodes(node, "finalbody"):
+        if _assigns_var(child, var_name):
+            return True
+    return False
 
 
 def _is_isinstance_call(node: ASTNode) -> bool:
@@ -5435,6 +5481,11 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     target_node = get_node(node, "target")
     iter_node = get_node(node, "iter")
     body = get_nodes(node, "body")
+    early_binding, _ = _extract_binding(target_node)
+    saved_loop_bindings = set(env.loop_bindings)
+    for bname in early_binding:
+        if bname != "_":
+            env.loop_bindings.add(bname)
     hoist_names = _scan_hoist_names(body, env)
     pre_stmts: list[TStmt] = []
     _emit_hoisted_placeholders(pos, hoist_names, env, pre_stmts)
@@ -5445,6 +5496,7 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             result = _lower_for_reversed(target_node, iter_node, body, env, ctx)
             for r in result:
                 pre_stmts.append(r)
+            env.loop_bindings = saved_loop_bindings
             return pre_stmts
     # range() → TRange
     if _is_ast(iter_node, "Call"):
@@ -5453,6 +5505,7 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             result = _lower_for_range(target_node, iter_node, body, env, ctx)
             for r in result:
                 pre_stmts.append(r)
+            env.loop_bindings = saved_loop_bindings
             return pre_stmts
     # enumerate() → indexed for
     if _is_ast(iter_node, "Call"):
@@ -5461,6 +5514,7 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             result = _lower_for_enumerate(target_node, iter_node, body, env, ctx)
             for r in result:
                 pre_stmts.append(r)
+            env.loop_bindings = saved_loop_bindings
             return pre_stmts
     # dict.items() → for k, v in d
     if _is_ast(iter_node, "Call"):
@@ -5478,6 +5532,7 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             for_ann.update(b_ann)
             for_ann["for.items"] = "true"
             pre_stmts.append(TForStmt(pos, binding, iter_expr, body_stmts, for_ann))
+            env.loop_bindings = saved_loop_bindings
             return pre_stmts
     # Tuple iteration: for x in t → for x in [t.0, t.1, ...]
     iter_type = _infer_expr_type(iter_node, env, ctx)
@@ -5492,6 +5547,7 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             body_stmts = _lower_stmts(body, env, ctx)
             list_expr = TListLit(pos, items, {})
             pre_stmts.append(TForStmt(pos, binding, list_expr, body_stmts, b_ann))
+            env.loop_bindings = saved_loop_bindings
             return pre_stmts
     # Regular iteration: for x in xs
     binding, b_ann = _extract_binding(target_node)
@@ -5512,6 +5568,7 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             pre_stmts.append(
                 _bytes_for_stmt(pos, binding, iter_expr, body_stmts, b_ann)
             )
+            env.loop_bindings = saved_loop_bindings
             return pre_stmts
         elif isinstance(iter_type, SliceType):
             elem_type = iter_type.element
@@ -5523,6 +5580,7 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             env.var_types[binding[0]] = elem_type
     body_stmts = _lower_stmts(body, env, ctx)
     pre_stmts.append(TForStmt(pos, binding, iter_expr, body_stmts, b_ann))
+    env.loop_bindings = saved_loop_bindings
     return pre_stmts
 
 
