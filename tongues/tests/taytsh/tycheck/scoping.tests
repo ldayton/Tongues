@@ -253,6 +253,139 @@ fn Main() -> void {
 error: shadows outer binding
 ---
 
+=== valid: reuse name in sequential for loops
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for i in xs {
+        WritelnOut(ToString(i))
+    }
+    for i in xs {
+        WritelnOut(ToString(i))
+    }
+}
+---
+ok
+---
+
+=== valid: reuse name in sibling if branches
+fn Main() -> void {
+    if true {
+        let x: int = 1
+        WritelnOut(ToString(x))
+    } else {
+        let x: int = 2
+        WritelnOut(ToString(x))
+    }
+}
+---
+ok
+---
+
+=== valid: reuse name in sequential if blocks
+fn Main() -> void {
+    if true {
+        let x: int = 1
+        WritelnOut(ToString(x))
+    }
+    if true {
+        let x: int = 2
+        WritelnOut(ToString(x))
+    }
+}
+---
+ok
+---
+
+=== valid: reuse name after block exits
+fn Main() -> void {
+    if true {
+        let x: int = 1
+        WritelnOut(ToString(x))
+    }
+    let x: int = 2
+    WritelnOut(ToString(x))
+}
+---
+ok
+---
+
+=== valid: reuse loop var as let after loop
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for i in xs {
+        WritelnOut(ToString(i))
+    }
+    let i: int = 99
+    WritelnOut(ToString(i))
+}
+---
+ok
+---
+
+=== valid: reuse catch binding name in sibling catch
+fn Main() -> void {
+    try {
+        let n: int = ParseInt("abc", 10)
+    } catch e: ValueError {
+        WritelnErr(e.message)
+    } catch e: Exception {
+        WritelnErr(e.message)
+    }
+}
+---
+ok
+---
+
+=== valid: reuse match binding name across cases
+interface Node {}
+struct Lit : Node {
+    value: int
+}
+struct Bin : Node {
+    op: string
+}
+fn Main() -> void {
+    let n: Node = Lit(1)
+    match n {
+        case x: Lit {
+            WritelnOut(ToString(x.value))
+        }
+        case x: Bin {
+            WritelnOut(x.op)
+        }
+    }
+}
+---
+ok
+---
+
+=== error: shadowing outer variable from nested block
+fn Main() -> void {
+    let x: int = 1
+    if true {
+        if true {
+            let x: int = 3
+        }
+    }
+}
+---
+error: shadows outer binding
+---
+
+=== error: for loop variable shadows outer let
+fn Main() -> void {
+    let i: int = 0
+    let xs: list[int] = [1]
+    if true {
+        for i in xs {
+            WritelnOut(ToString(i))
+        }
+    }
+}
+---
+error: shadows outer binding
+---
+
 === error: reading discard variable
 fn Main() -> void {
     let xs: list[int] = [1, 2, 3]

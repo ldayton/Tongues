@@ -478,22 +478,43 @@ for i, v in items {
 
 ### No shadowing
 
-A name may be bound at most once within a function. Declaring a variable with the same name as an outer binding — including parameters, loop variables, and case/catch bindings — is a compile error. `_` is the exception — it may appear multiple times in bindings (e.g. `for _, _ in m`) and is never accessible as a variable.
+A binding cannot shadow a name that is currently in scope. Declaring a variable with the same name as a visible binding — including parameters, enclosing block variables, loop variables, and case/catch bindings — is a compile error. `_` is the exception — it may appear multiple times in bindings (e.g. `for _, _ in m`) and is never accessible as a variable.
+
+A name may be reused when all prior bindings of that name have gone out of scope — i.e., their enclosing `{}` block has closed. This includes sibling `if`/`else` branches, sequential loops, and code after an early return.
 
 ```
 fn Bad(x: int) -> void {
-    let x: int = 10              -- error: x already bound (parameter)
+    let x: int = 10              -- error: x is a visible parameter
 }
 
 fn AlsoBad() -> void {
     let x: int = 1
     if true {
-        let x: int = 2          -- error: x already bound (outer block)
+        let x: int = 2          -- error: x is visible from outer block
+    }
+}
+
+fn Ok() -> void {
+    for i in xs {
+        WritelnOut(ToString(i))
+    }
+    for i in ys {               -- ok: prior i is out of scope
+        WritelnOut(ToString(i))
+    }
+}
+
+fn AlsoOk() -> void {
+    if cond {
+        let x: int = 1
+        WritelnOut(ToString(x))
+    } else {
+        let x: int = 2          -- ok: sibling branch, prior x is out of scope
+        WritelnOut(ToString(x))
     }
 }
 ```
 
-Every name in a function body resolves to exactly one binding. Backends never need to rename variables to avoid scope collisions.
+At every program point, each name resolves to at most one binding. Backends never need to rename variables to avoid scope collisions.
 
 ### Reserved names
 

@@ -195,6 +195,86 @@ fn Main() -> void {
 error: undefined name
 ---
 
+=== reuse name in sequential for loops
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for i in xs {
+    }
+    for i in xs {
+    }
+}
+---
+ok
+---
+
+=== reuse name in sibling if branches
+fn Main() -> void {
+    if true {
+        let x: int = 1
+    } else {
+        let x: int = 2
+    }
+}
+---
+ok
+---
+
+=== reuse name after block exits
+fn Main() -> void {
+    if true {
+        let x: int = 1
+    }
+    let x: int = 2
+}
+---
+ok
+---
+
+=== reuse loop var as let after loop
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    for i in xs {
+    }
+    let i: int = 99
+}
+---
+ok
+---
+
+=== reuse match binding name across cases
+interface Node {}
+struct Literal : Node {
+    value: int
+}
+struct BinOp : Node {
+    op: string
+}
+fn Main() -> void {
+    let n: Node = Literal(42)
+    match n {
+        case x: Literal {
+        }
+        case x: BinOp {
+        }
+    }
+}
+---
+ok
+---
+
+=== nested shadowing still rejected
+fn Main() -> void {
+    let x: int = 1
+    if true {
+        if true {
+            let x: int = 3
+        }
+    }
+}
+---
+error: shadows
+---
+
 === Add is not reserved
 fn Main() -> void {
     let Add: int = 42
