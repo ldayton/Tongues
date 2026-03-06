@@ -1235,6 +1235,70 @@ def _sa_serialize_fn(fn: TFnDecl, pfx: str, plen: int) -> dict[str, JsonValue]:
     return d
 
 
+# ============================================================
+# Concrete union type aliases (closed unions for exhaustiveness checking)
+# ============================================================
+
+type ConcreteStmt = (
+    TLetStmt
+    | TAssignStmt
+    | TOpAssignStmt
+    | TTupleAssignStmt
+    | TReturnStmt
+    | TBreakStmt
+    | TContinueStmt
+    | TThrowStmt
+    | TExprStmt
+    | TIfStmt
+    | TWhileStmt
+    | TForStmt
+    | TMatchStmt
+    | TTryStmt
+)
+
+type ConcreteExpr = (
+    TRange
+    | TIntLit
+    | TFloatLit
+    | TByteLit
+    | TStringLit
+    | TRuneLit
+    | TBytesLit
+    | TBoolLit
+    | TNilLit
+    | TVar
+    | TBinaryOp
+    | TUnaryOp
+    | TTernary
+    | TFieldAccess
+    | TTupleAccess
+    | TIndex
+    | TSlice
+    | TCall
+    | TListLit
+    | TMapLit
+    | TSetLit
+    | TTupleLit
+    | TFnLit
+)
+
+type ConcreteDecl = TFnDecl | TStructDecl | TInterfaceDecl | TEnumDecl
+
+type ConcreteType = (
+    TPrimitive
+    | TListType
+    | TMapType
+    | TSetType
+    | TTupleType
+    | TFuncType
+    | TIdentType
+    | TUnionType
+    | TOptionalType
+)
+
+type ConcretePattern = TPatternType | TPatternEnum | TPatternNil
+
+
 def serialize_annotations(module: TModule, prefix: str) -> dict[str, JsonValue]:
     """Serialize all annotations matching prefix from every function into nested dicts."""
     pfx = prefix + "."

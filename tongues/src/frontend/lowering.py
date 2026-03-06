@@ -4335,6 +4335,12 @@ def _lower_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         return _lower_delete(node, env, ctx)
     if t == "Import" or t == "ImportFrom":
         return []
+    low_sf = get_str(node, "_source_file")
+    ctx.errors.append(
+        LoweringError(
+            pos.line, pos.col, "unsupported statement type '" + str(t) + "'", low_sf
+        )
+    )
     return []
 
 

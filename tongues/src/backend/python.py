@@ -402,6 +402,8 @@ class _PythonEmitter(Emitter):
                     self._emit_let(decl)
                 case TFnDecl():
                     self._emit_fn(decl)
+                case TInterfaceDecl():
+                    pass  # handled above via isinstance check
             need_blank = True
 
     # ── Enum ──────────────────────────────────────────────────
@@ -922,6 +924,8 @@ class _PythonEmitter(Emitter):
                 self._emit_try(stmt)
             case TMatchStmt():
                 self._emit_match(stmt)
+            case _:
+                raise ValueError("unhandled statement type: " + str(stmt))
 
     def _emit_let(self, stmt: TLetStmt) -> None:
         safe = _restore_name(stmt.name, stmt.annotations)
