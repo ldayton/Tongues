@@ -374,11 +374,32 @@ def _restore_fn_name(name: str, annotations: Ann) -> str:
 _LIST_UTIL_BUILTINS = frozenset({"Min", "Max", "Sum"})
 
 
+def _has_any_all_provenance(stmts: list[TStmt]) -> bool:
+    """Check if any for-loop in stmts has any_call/all_call provenance."""
+    for stmt in stmts:
+        if isinstance(stmt, TForStmt):
+            if stmt.annotations.get("provenance") in ("any_call", "all_call"):
+                return True
+            if _has_any_all_provenance(stmt.body):
+                return True
+        elif isinstance(stmt, TIfStmt):
+            if _has_any_all_provenance(stmt.then_body):
+                return True
+            if stmt.else_body is not None and _has_any_all_provenance(stmt.else_body):
+                return True
+        elif isinstance(stmt, TWhileStmt):
+            if _has_any_all_provenance(stmt.body):
+                return True
+    return False
+
+
 def _struct_needs_list_util(decl: TStructDecl) -> bool:
-    """Check if any method in a struct uses Min/Max/Sum builtins."""
+    """Check if any method in a struct uses Min/Max/Sum/any/all."""
     for method in decl.methods:
         names = collect_builtin_calls(method.body)
         if not names.isdisjoint(_LIST_UTIL_BUILTINS):
+            return True
+        if _has_any_all_provenance(method.body):
             return True
     return False
 
@@ -1021,9 +1042,15 @@ class _PerlEmitter(Emitter):
         self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
     ) -> str | None:
         """Try to reconstruct any/all from a let + for pair."""
+        if len(for_stmt.binding) > 1:
+            return None
         acc = "$" + _restore_name(let_stmt.name, let_stmt.annotations)
         iterable = self._expr(for_stmt.iterable)
         binding_name = for_stmt.binding[0] if for_stmt.binding else None
+        if self._is_set_expr(for_stmt.iterable):
+            iter_spread = "keys %{" + iterable + "}"
+        else:
+            iter_spread = "@{" + iterable + "}"
         func = "any" if prov == "any_call" else "all"
         body = for_stmt.body
         if len(body) != 1:
@@ -1045,7 +1072,7 @@ class _PerlEmitter(Emitter):
             if binding_name is not None:
                 self.var_alias.pop(binding_name)
             return (
-                "my " + acc + " = " + func + " { " + cond_s + " } @{" + iterable + "};"
+                "my " + acc + " = " + func + " { " + cond_s + " } " + iter_spread + ";"
             )
         if len(outer_if.then_body) == 1:
             inner_if = outer_if.then_body[0]
@@ -1075,9 +1102,9 @@ class _PerlEmitter(Emitter):
                     + filter_s
                     + " && "
                     + cond_s
-                    + " } @{"
-                    + iterable
-                    + "};"
+                    + " } "
+                    + iter_spread
+                    + ";"
                 )
         return None
 
