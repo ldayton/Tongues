@@ -2,7 +2,7 @@
 
 from typing import Callable
 
-from .cfg import build_cfg, FlowGraph
+from .flowgraph import build_cfg, FlowGraph
 from .typecollect import annotation_to_str
 from .types import (
     JStr,
