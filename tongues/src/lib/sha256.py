@@ -155,8 +155,8 @@ def _pad(data: bytes) -> bytes:
     n: int = len(data)
     bit_len: int = n * 8
     buf: list[int] = []
-    for i in range(n):
-        buf.append(data[i])
+    for b in data:
+        buf.append(b)
     buf.append(0x80)
     while len(buf) % 64 != 56:
         buf.append(0)
@@ -184,8 +184,7 @@ def sha256(data: bytes) -> str:
     """Return the SHA-256 hex digest of data."""
     raw: bytes = sha256_bytes(data)
     parts: list[str] = []
-    for i in range(len(raw)):
-        b: int = raw[i]
+    for b in raw:
         parts.append(_HEX[b >> 4])
         parts.append(_HEX[b & 0x0F])
     return "".join(parts)

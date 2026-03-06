@@ -39,8 +39,8 @@ def utf8_encode(codepoints: list[int]) -> bytes:
     out: list[int] = []
     for cp in codepoints:
         chunk: bytes = utf8_encode_codepoint(cp)
-        for j in range(len(chunk)):
-            out.append(chunk[j])
+        for b in chunk:
+            out.append(b)
     return bytes(out)
 
 

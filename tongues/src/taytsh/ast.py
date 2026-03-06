@@ -956,7 +956,7 @@ def _expr_json(e: TExpr) -> JsonValue:
         case TBytesLit():
             blist: list[JsonValue] = []
             for b in e.value:
-                blist.append(JInt(int(b)))
+                blist.append(JInt(b))
             d["value"] = JList(blist)
         case TBoolLit():
             d["value"] = JBool(e.value)
