@@ -2432,13 +2432,8 @@ def _compute_derived(
             for base in info.bases:
                 if base == "Node" or base.endswith("Node"):
                     result.node_classes.add(mname)
-    for mname in mkeys:
-        info = table.module_names[mname]
-        if info.kind == "class":
             result.class_bases[mname] = list(info.bases)
-    for mname in mkeys:
-        info = table.module_names[mname]
-        if info.kind == "function" or info.kind == "import":
+        elif info.kind == "function" or info.kind == "import":
             result.known_funcs.add(mname)
     for bname in ALLOWED_BUILTINS:
         result.known_funcs.add(bname)
