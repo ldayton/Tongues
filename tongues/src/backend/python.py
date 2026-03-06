@@ -747,60 +747,61 @@ class _PythonEmitter(Emitter):
         return isinstance(arg, TVar) and isinstance(obj, TVar) and arg.name == obj.name
 
     def _emit_stmt(self, stmt: TStmt) -> None:
-        if isinstance(stmt, TLetStmt):
-            self._emit_let(stmt)
-        elif isinstance(stmt, TAssignStmt):
-            self._line(self._expr(stmt.target) + " = " + self._expr(stmt.value))
-        elif isinstance(stmt, TTupleAssignStmt):
-            self._emit_tuple_assign(stmt)
-        elif isinstance(stmt, TOpAssignStmt):
-            if (
-                self.strict_math
-                and stmt.op in STRICT_INT_COMPOUND
-                and self._is_int_expr(stmt.target)
-            ):
-                fn = STRICT_INT_COMPOUND[stmt.op]
-                self._line(
-                    self._expr(stmt.target)
-                    + " = "
-                    + fn
-                    + "("
-                    + self._expr(stmt.target)
-                    + ", "
-                    + self._expr(stmt.value)
-                    + ")"
-                )
-            else:
-                self._line(
-                    self._expr(stmt.target)
-                    + " "
-                    + stmt.op
-                    + " "
-                    + self._expr(stmt.value)
-                )
-        elif isinstance(stmt, TExprStmt):
-            self._emit_expr_stmt(stmt)
-        elif isinstance(stmt, TReturnStmt):
-            if stmt.value is not None:
-                self._line("return " + self._expr(stmt.value))
-            else:
-                self._line("return")
-        elif isinstance(stmt, TThrowStmt):
-            self._line("raise " + self._expr(stmt.expr))
-        elif isinstance(stmt, TBreakStmt):
-            self._line("break")
-        elif isinstance(stmt, TContinueStmt):
-            self._line("continue")
-        elif isinstance(stmt, TIfStmt):
-            self._emit_if(stmt)
-        elif isinstance(stmt, TWhileStmt):
-            self._emit_while(stmt)
-        elif isinstance(stmt, TForStmt):
-            self._emit_for(stmt)
-        elif isinstance(stmt, TTryStmt):
-            self._emit_try(stmt)
-        elif isinstance(stmt, TMatchStmt):
-            self._emit_match(stmt)
+        match stmt:
+            case TLetStmt():
+                self._emit_let(stmt)
+            case TAssignStmt():
+                self._line(self._expr(stmt.target) + " = " + self._expr(stmt.value))
+            case TTupleAssignStmt():
+                self._emit_tuple_assign(stmt)
+            case TOpAssignStmt():
+                if (
+                    self.strict_math
+                    and stmt.op in STRICT_INT_COMPOUND
+                    and self._is_int_expr(stmt.target)
+                ):
+                    fn = STRICT_INT_COMPOUND[stmt.op]
+                    self._line(
+                        self._expr(stmt.target)
+                        + " = "
+                        + fn
+                        + "("
+                        + self._expr(stmt.target)
+                        + ", "
+                        + self._expr(stmt.value)
+                        + ")"
+                    )
+                else:
+                    self._line(
+                        self._expr(stmt.target)
+                        + " "
+                        + stmt.op
+                        + " "
+                        + self._expr(stmt.value)
+                    )
+            case TExprStmt():
+                self._emit_expr_stmt(stmt)
+            case TReturnStmt():
+                if stmt.value is not None:
+                    self._line("return " + self._expr(stmt.value))
+                else:
+                    self._line("return")
+            case TThrowStmt():
+                self._line("raise " + self._expr(stmt.expr))
+            case TBreakStmt():
+                self._line("break")
+            case TContinueStmt():
+                self._line("continue")
+            case TIfStmt():
+                self._emit_if(stmt)
+            case TWhileStmt():
+                self._emit_while(stmt)
+            case TForStmt():
+                self._emit_for(stmt)
+            case TTryStmt():
+                self._emit_try(stmt)
+            case TMatchStmt():
+                self._emit_match(stmt)
 
     def _emit_let(self, stmt: TLetStmt) -> None:
         safe = _restore_name(stmt.name, stmt.annotations)

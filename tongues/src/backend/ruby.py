@@ -497,62 +497,61 @@ def _scan_stmts_for_needs(stmts: list[TStmt], flags: list[bool]) -> None:
 
 
 def _scan_stmt_for_needs(stmt: TStmt, flags: list[bool]) -> None:
-    if isinstance(stmt, TLetStmt):
-        if stmt.value is not None:
+    match stmt:
+        case TLetStmt():
+            if stmt.value is not None:
+                _scan_expr_for_needs(stmt.value, flags)
+        case TAssignStmt():
             _scan_expr_for_needs(stmt.value, flags)
-    elif isinstance(stmt, TAssignStmt):
-        _scan_expr_for_needs(stmt.value, flags)
-    elif isinstance(stmt, TExprStmt):
-        _scan_expr_for_needs(stmt.expr, flags)
-    elif isinstance(stmt, TReturnStmt):
-        if stmt.value is not None:
-            _scan_expr_for_needs(stmt.value, flags)
-    elif isinstance(stmt, TIfStmt):
-        _scan_stmts_for_needs(stmt.then_body, flags)
-        if stmt.else_body is not None and stmt.else_body:
-            _scan_stmts_for_needs(stmt.else_body, flags)
-    elif isinstance(stmt, TWhileStmt):
-        _scan_stmts_for_needs(stmt.body, flags)
-    elif isinstance(stmt, TForStmt):
-        _scan_stmts_for_needs(stmt.body, flags)
-    elif isinstance(stmt, TTryStmt):
-        _scan_stmts_for_needs(stmt.body, flags)
-        for catch in stmt.catches:
-            _scan_stmts_for_needs(catch.body, flags)
-    elif isinstance(stmt, TMatchStmt):
-        for case in stmt.cases:
-            _scan_stmts_for_needs(case.body, flags)
-        if stmt.default:
-            _scan_stmts_for_needs(stmt.default.body, flags)
+        case TExprStmt():
+            _scan_expr_for_needs(stmt.expr, flags)
+        case TReturnStmt():
+            if stmt.value is not None:
+                _scan_expr_for_needs(stmt.value, flags)
+        case TIfStmt():
+            _scan_stmts_for_needs(stmt.then_body, flags)
+            if stmt.else_body is not None and stmt.else_body:
+                _scan_stmts_for_needs(stmt.else_body, flags)
+        case TWhileStmt():
+            _scan_stmts_for_needs(stmt.body, flags)
+        case TForStmt():
+            _scan_stmts_for_needs(stmt.body, flags)
+        case TTryStmt():
+            _scan_stmts_for_needs(stmt.body, flags)
+            for catch in stmt.catches:
+                _scan_stmts_for_needs(catch.body, flags)
+        case TMatchStmt():
+            for case in stmt.cases:
+                _scan_stmts_for_needs(case.body, flags)
+            if stmt.default:
+                _scan_stmts_for_needs(stmt.default.body, flags)
 
 
 def _scan_expr_for_needs(expr: TExpr, flags: list[bool]) -> None:
-    if isinstance(expr, TSetLit):
-        flags[0] = True
-    elif isinstance(expr, TCall):
-        if isinstance(expr.func, TVar) and expr.func.name == "Set":
+    match expr:
+        case TSetLit():
             flags[0] = True
-        for a in expr.args:
-            _scan_expr_for_needs(a.value, flags)
-    elif isinstance(expr, TListLit):
-        for e in expr.elements:
-            _scan_expr_for_needs(e, flags)
-    elif isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            _scan_expr_for_needs(k, flags)
-            _scan_expr_for_needs(v, flags)
-    elif isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            _scan_expr_for_needs(e, flags)
-    elif isinstance(expr, TBinaryOp):
-        _scan_expr_for_needs(expr.left, flags)
-        _scan_expr_for_needs(expr.right, flags)
-    elif isinstance(expr, TUnaryOp):
-        _scan_expr_for_needs(expr.operand, flags)
-    elif isinstance(expr, TTernary):
-        _scan_expr_for_needs(expr.cond, flags)
-        _scan_expr_for_needs(expr.then_expr, flags)
-        _scan_expr_for_needs(expr.else_expr, flags)
+        case TCall():
+            if isinstance(expr.func, TVar) and expr.func.name == "Set":
+                flags[0] = True
+            for a in expr.args:
+                _scan_expr_for_needs(a.value, flags)
+        case TListLit() | TTupleLit():
+            for e in expr.elements:
+                _scan_expr_for_needs(e, flags)
+        case TMapLit():
+            for k, v in expr.entries:
+                _scan_expr_for_needs(k, flags)
+                _scan_expr_for_needs(v, flags)
+        case TBinaryOp():
+            _scan_expr_for_needs(expr.left, flags)
+            _scan_expr_for_needs(expr.right, flags)
+        case TUnaryOp():
+            _scan_expr_for_needs(expr.operand, flags)
+        case TTernary():
+            _scan_expr_for_needs(expr.cond, flags)
+            _scan_expr_for_needs(expr.then_expr, flags)
+            _scan_expr_for_needs(expr.else_expr, flags)
 
 
 # ============================================================
@@ -643,18 +642,16 @@ class _RubyEmitter(Emitter):
                 continue
             if need_blank:
                 self._line()
-            if isinstance(decl, TEnumDecl):
-                self._emit_enum(decl)
-                need_blank = True
-            elif isinstance(decl, TStructDecl):
-                self._emit_struct(decl)
-                need_blank = True
-            elif isinstance(decl, TLetStmt):
-                self._emit_let(decl)
-                need_blank = True
-            elif isinstance(decl, TFnDecl):
-                self._emit_fn(decl)
-                need_blank = True
+            match decl:
+                case TEnumDecl():
+                    self._emit_enum(decl)
+                case TStructDecl():
+                    self._emit_struct(decl)
+                case TLetStmt():
+                    self._emit_let(decl)
+                case TFnDecl():
+                    self._emit_fn(decl)
+            need_blank = True
         # Insert require 'set' at top if needed
         if self._needs_set:
             self.lines.insert(import_insert_pos, "require 'set'")
@@ -1063,54 +1060,62 @@ class _RubyEmitter(Emitter):
         return False, None
 
     def _emit_stmt(self, stmt: TStmt) -> None:
-        if isinstance(stmt, TLetStmt):
-            self._emit_let(stmt)
-        elif isinstance(stmt, TAssignStmt):
-            self._line(self._expr(stmt.target) + " = " + self._expr(stmt.value))
-        elif isinstance(stmt, TTupleAssignStmt):
-            self._emit_tuple_assign(stmt)
-        elif isinstance(stmt, TOpAssignStmt):
-            if (
-                self.strict_math
-                and stmt.op in STRICT_INT_COMPOUND
-                and self._is_int_expr(stmt.target)
-            ):
-                fn = STRICT_INT_COMPOUND[stmt.op]
-                tgt = self._expr(stmt.target)
-                self._line(
-                    tgt + " = " + fn + "(" + tgt + ", " + self._expr(stmt.value) + ")"
-                )
-            else:
-                self._line(
-                    self._expr(stmt.target)
-                    + " "
-                    + stmt.op
-                    + " "
-                    + self._expr(stmt.value)
-                )
-        elif isinstance(stmt, TExprStmt):
-            self._emit_expr_stmt(stmt)
-        elif isinstance(stmt, TReturnStmt):
-            if stmt.value is not None:
-                self._line("return " + self._expr(stmt.value))
-            else:
-                self._line("return")
-        elif isinstance(stmt, TThrowStmt):
-            self._line("raise " + self._expr(stmt.expr))
-        elif isinstance(stmt, TBreakStmt):
-            self._line("break")
-        elif isinstance(stmt, TContinueStmt):
-            self._line("next")
-        elif isinstance(stmt, TIfStmt):
-            self._emit_if(stmt)
-        elif isinstance(stmt, TWhileStmt):
-            self._emit_while(stmt)
-        elif isinstance(stmt, TForStmt):
-            self._emit_for(stmt)
-        elif isinstance(stmt, TTryStmt):
-            self._emit_try(stmt)
-        elif isinstance(stmt, TMatchStmt):
-            self._emit_match(stmt)
+        match stmt:
+            case TLetStmt():
+                self._emit_let(stmt)
+            case TAssignStmt():
+                self._line(self._expr(stmt.target) + " = " + self._expr(stmt.value))
+            case TTupleAssignStmt():
+                self._emit_tuple_assign(stmt)
+            case TOpAssignStmt():
+                if (
+                    self.strict_math
+                    and stmt.op in STRICT_INT_COMPOUND
+                    and self._is_int_expr(stmt.target)
+                ):
+                    fn = STRICT_INT_COMPOUND[stmt.op]
+                    tgt = self._expr(stmt.target)
+                    self._line(
+                        tgt
+                        + " = "
+                        + fn
+                        + "("
+                        + tgt
+                        + ", "
+                        + self._expr(stmt.value)
+                        + ")"
+                    )
+                else:
+                    self._line(
+                        self._expr(stmt.target)
+                        + " "
+                        + stmt.op
+                        + " "
+                        + self._expr(stmt.value)
+                    )
+            case TExprStmt():
+                self._emit_expr_stmt(stmt)
+            case TReturnStmt():
+                if stmt.value is not None:
+                    self._line("return " + self._expr(stmt.value))
+                else:
+                    self._line("return")
+            case TThrowStmt():
+                self._line("raise " + self._expr(stmt.expr))
+            case TBreakStmt():
+                self._line("break")
+            case TContinueStmt():
+                self._line("next")
+            case TIfStmt():
+                self._emit_if(stmt)
+            case TWhileStmt():
+                self._emit_while(stmt)
+            case TForStmt():
+                self._emit_for(stmt)
+            case TTryStmt():
+                self._emit_try(stmt)
+            case TMatchStmt():
+                self._emit_match(stmt)
 
     def _emit_let(self, stmt: TLetStmt) -> None:
         safe = self._decl_name(stmt.name, stmt.annotations)
