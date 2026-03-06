@@ -632,126 +632,121 @@ def _sa_collect_lets(
             a = _sa_strip(stmt.annotations, pfx, plen)
             if a:
                 lets[stmt.name] = a
-        if isinstance(stmt, TIfStmt):
-            _sa_collect_lets(stmt.then_body, lets, pfx, plen)
-            if stmt.else_body is not None:
-                _sa_collect_lets(stmt.else_body, lets, pfx, plen)
-        elif isinstance(stmt, TWhileStmt):
-            _sa_collect_lets(stmt.body, lets, pfx, plen)
-        elif isinstance(stmt, TForStmt):
-            _sa_collect_lets(stmt.body, lets, pfx, plen)
-        elif isinstance(stmt, TMatchStmt):
-            for case in stmt.cases:
-                _sa_collect_lets(case.body, lets, pfx, plen)
-            if stmt.default is not None:
-                _sa_collect_lets(stmt.default.body, lets, pfx, plen)
-        elif isinstance(stmt, TTryStmt):
-            _sa_collect_lets(stmt.body, lets, pfx, plen)
-            for catch in stmt.catches:
-                _sa_collect_lets(catch.body, lets, pfx, plen)
-            if stmt.finally_body is not None:
-                _sa_collect_lets(stmt.finally_body, lets, pfx, plen)
+        match stmt:
+            case TIfStmt():
+                _sa_collect_lets(stmt.then_body, lets, pfx, plen)
+                if stmt.else_body is not None:
+                    _sa_collect_lets(stmt.else_body, lets, pfx, plen)
+            case TWhileStmt() | TForStmt():
+                _sa_collect_lets(stmt.body, lets, pfx, plen)
+            case TMatchStmt():
+                for case in stmt.cases:
+                    _sa_collect_lets(case.body, lets, pfx, plen)
+                if stmt.default is not None:
+                    _sa_collect_lets(stmt.default.body, lets, pfx, plen)
+            case TTryStmt():
+                _sa_collect_lets(stmt.body, lets, pfx, plen)
+                for catch in stmt.catches:
+                    _sa_collect_lets(catch.body, lets, pfx, plen)
+                if stmt.finally_body is not None:
+                    _sa_collect_lets(stmt.finally_body, lets, pfx, plen)
 
 
 def _sa_collect_vars_expr(
     expr: TExpr, result: dict[str, Ann], pfx: str, plen: int
 ) -> None:
-    if isinstance(expr, TVar):
-        a = _sa_strip(expr.annotations, pfx, plen)
-        if a:
-            if expr.name not in result:
-                result[expr.name] = {}
-            for ak in a:
-                result[expr.name][ak] = a[ak]
-    elif isinstance(expr, TBinaryOp):
-        _sa_collect_vars_expr(expr.left, result, pfx, plen)
-        _sa_collect_vars_expr(expr.right, result, pfx, plen)
-    elif isinstance(expr, TUnaryOp):
-        _sa_collect_vars_expr(expr.operand, result, pfx, plen)
-    elif isinstance(expr, TCall):
-        _sa_collect_vars_expr(expr.func, result, pfx, plen)
-        for arg in expr.args:
-            _sa_collect_vars_expr(arg.value, result, pfx, plen)
-    elif isinstance(expr, TFieldAccess):
-        _sa_collect_vars_expr(expr.obj, result, pfx, plen)
-    elif isinstance(expr, TTupleAccess):
-        _sa_collect_vars_expr(expr.obj, result, pfx, plen)
-    elif isinstance(expr, TIndex):
-        _sa_collect_vars_expr(expr.obj, result, pfx, plen)
-        _sa_collect_vars_expr(expr.index, result, pfx, plen)
-    elif isinstance(expr, TTernary):
-        _sa_collect_vars_expr(expr.cond, result, pfx, plen)
-        _sa_collect_vars_expr(expr.then_expr, result, pfx, plen)
-        _sa_collect_vars_expr(expr.else_expr, result, pfx, plen)
-    elif isinstance(expr, TSlice):
-        _sa_collect_vars_expr(expr.obj, result, pfx, plen)
-        _sa_collect_vars_expr(expr.low, result, pfx, plen)
-        _sa_collect_vars_expr(expr.high, result, pfx, plen)
-    elif isinstance(expr, TListLit):
-        for e in expr.elements:
-            _sa_collect_vars_expr(e, result, pfx, plen)
-    elif isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            _sa_collect_vars_expr(k, result, pfx, plen)
-            _sa_collect_vars_expr(v, result, pfx, plen)
-    elif isinstance(expr, TSetLit):
-        for e in expr.elements:
-            _sa_collect_vars_expr(e, result, pfx, plen)
-    elif isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            _sa_collect_vars_expr(e, result, pfx, plen)
-    elif isinstance(expr, TFnLit):
-        _sa_collect_vars_stmts(expr.body, result, pfx, plen)
+    match expr:
+        case TVar():
+            a = _sa_strip(expr.annotations, pfx, plen)
+            if a:
+                if expr.name not in result:
+                    result[expr.name] = {}
+                for ak in a:
+                    result[expr.name][ak] = a[ak]
+        case TBinaryOp():
+            _sa_collect_vars_expr(expr.left, result, pfx, plen)
+            _sa_collect_vars_expr(expr.right, result, pfx, plen)
+        case TUnaryOp():
+            _sa_collect_vars_expr(expr.operand, result, pfx, plen)
+        case TCall():
+            _sa_collect_vars_expr(expr.func, result, pfx, plen)
+            for arg in expr.args:
+                _sa_collect_vars_expr(arg.value, result, pfx, plen)
+        case TFieldAccess() | TTupleAccess():
+            _sa_collect_vars_expr(expr.obj, result, pfx, plen)
+        case TIndex():
+            _sa_collect_vars_expr(expr.obj, result, pfx, plen)
+            _sa_collect_vars_expr(expr.index, result, pfx, plen)
+        case TTernary():
+            _sa_collect_vars_expr(expr.cond, result, pfx, plen)
+            _sa_collect_vars_expr(expr.then_expr, result, pfx, plen)
+            _sa_collect_vars_expr(expr.else_expr, result, pfx, plen)
+        case TSlice():
+            _sa_collect_vars_expr(expr.obj, result, pfx, plen)
+            _sa_collect_vars_expr(expr.low, result, pfx, plen)
+            _sa_collect_vars_expr(expr.high, result, pfx, plen)
+        case TListLit() | TSetLit() | TTupleLit():
+            for e in expr.elements:
+                _sa_collect_vars_expr(e, result, pfx, plen)
+        case TMapLit():
+            for k, v in expr.entries:
+                _sa_collect_vars_expr(k, result, pfx, plen)
+                _sa_collect_vars_expr(v, result, pfx, plen)
+        case TFnLit():
+            _sa_collect_vars_stmts(expr.body, result, pfx, plen)
 
 
 def _sa_collect_vars_stmt(
     stmt: TStmt, result: dict[str, Ann], pfx: str, plen: int
 ) -> None:
-    if isinstance(stmt, TExprStmt):
-        _sa_collect_vars_expr(stmt.expr, result, pfx, plen)
-    elif isinstance(stmt, TReturnStmt) and stmt.value is not None:
-        _sa_collect_vars_expr(stmt.value, result, pfx, plen)
-    elif isinstance(stmt, TThrowStmt):
-        _sa_collect_vars_expr(stmt.expr, result, pfx, plen)
-    elif isinstance(stmt, TLetStmt) and stmt.value is not None:
-        _sa_collect_vars_expr(stmt.value, result, pfx, plen)
-    elif isinstance(stmt, TAssignStmt):
-        _sa_collect_vars_expr(stmt.target, result, pfx, plen)
-        _sa_collect_vars_expr(stmt.value, result, pfx, plen)
-    elif isinstance(stmt, TOpAssignStmt):
-        _sa_collect_vars_expr(stmt.target, result, pfx, plen)
-        _sa_collect_vars_expr(stmt.value, result, pfx, plen)
-    elif isinstance(stmt, TTupleAssignStmt):
-        for t in stmt.targets:
-            _sa_collect_vars_expr(t, result, pfx, plen)
-        _sa_collect_vars_expr(stmt.value, result, pfx, plen)
-    elif isinstance(stmt, TIfStmt):
-        _sa_collect_vars_expr(stmt.cond, result, pfx, plen)
-        _sa_collect_vars_stmts(stmt.then_body, result, pfx, plen)
-        if stmt.else_body is not None:
-            _sa_collect_vars_stmts(stmt.else_body, result, pfx, plen)
-    elif isinstance(stmt, TWhileStmt):
-        _sa_collect_vars_expr(stmt.cond, result, pfx, plen)
-        _sa_collect_vars_stmts(stmt.body, result, pfx, plen)
-    elif isinstance(stmt, TForStmt):
-        if isinstance(stmt.iterable, TRange):
-            for a in stmt.iterable.args:
-                _sa_collect_vars_expr(a, result, pfx, plen)
-        else:
-            _sa_collect_vars_expr(stmt.iterable, result, pfx, plen)
-        _sa_collect_vars_stmts(stmt.body, result, pfx, plen)
-    elif isinstance(stmt, TMatchStmt):
-        _sa_collect_vars_expr(stmt.expr, result, pfx, plen)
-        for case in stmt.cases:
-            _sa_collect_vars_stmts(case.body, result, pfx, plen)
-        if stmt.default is not None:
-            _sa_collect_vars_stmts(stmt.default.body, result, pfx, plen)
-    elif isinstance(stmt, TTryStmt):
-        _sa_collect_vars_stmts(stmt.body, result, pfx, plen)
-        for catch in stmt.catches:
-            _sa_collect_vars_stmts(catch.body, result, pfx, plen)
-        if stmt.finally_body is not None:
-            _sa_collect_vars_stmts(stmt.finally_body, result, pfx, plen)
+    match stmt:
+        case TExprStmt():
+            _sa_collect_vars_expr(stmt.expr, result, pfx, plen)
+        case TReturnStmt():
+            if stmt.value is not None:
+                _sa_collect_vars_expr(stmt.value, result, pfx, plen)
+        case TThrowStmt():
+            _sa_collect_vars_expr(stmt.expr, result, pfx, plen)
+        case TLetStmt():
+            if stmt.value is not None:
+                _sa_collect_vars_expr(stmt.value, result, pfx, plen)
+        case TAssignStmt():
+            _sa_collect_vars_expr(stmt.target, result, pfx, plen)
+            _sa_collect_vars_expr(stmt.value, result, pfx, plen)
+        case TOpAssignStmt():
+            _sa_collect_vars_expr(stmt.target, result, pfx, plen)
+            _sa_collect_vars_expr(stmt.value, result, pfx, plen)
+        case TTupleAssignStmt():
+            for t in stmt.targets:
+                _sa_collect_vars_expr(t, result, pfx, plen)
+            _sa_collect_vars_expr(stmt.value, result, pfx, plen)
+        case TIfStmt():
+            _sa_collect_vars_expr(stmt.cond, result, pfx, plen)
+            _sa_collect_vars_stmts(stmt.then_body, result, pfx, plen)
+            if stmt.else_body is not None:
+                _sa_collect_vars_stmts(stmt.else_body, result, pfx, plen)
+        case TWhileStmt():
+            _sa_collect_vars_expr(stmt.cond, result, pfx, plen)
+            _sa_collect_vars_stmts(stmt.body, result, pfx, plen)
+        case TForStmt():
+            if isinstance(stmt.iterable, TRange):
+                for a in stmt.iterable.args:
+                    _sa_collect_vars_expr(a, result, pfx, plen)
+            else:
+                _sa_collect_vars_expr(stmt.iterable, result, pfx, plen)
+            _sa_collect_vars_stmts(stmt.body, result, pfx, plen)
+        case TMatchStmt():
+            _sa_collect_vars_expr(stmt.expr, result, pfx, plen)
+            for case in stmt.cases:
+                _sa_collect_vars_stmts(case.body, result, pfx, plen)
+            if stmt.default is not None:
+                _sa_collect_vars_stmts(stmt.default.body, result, pfx, plen)
+        case TTryStmt():
+            _sa_collect_vars_stmts(stmt.body, result, pfx, plen)
+            for catch in stmt.catches:
+                _sa_collect_vars_stmts(catch.body, result, pfx, plen)
+            if stmt.finally_body is not None:
+                _sa_collect_vars_stmts(stmt.finally_body, result, pfx, plen)
 
 
 def _sa_collect_vars_stmts(
@@ -840,25 +835,24 @@ def _stmts_json(items: list[TStmt]) -> JsonValue:
 
 def _type_json(t: TType) -> JsonValue:
     d: dict[str, JsonValue] = {"pos": _pos_json(t.pos)}
-    if isinstance(t, TPrimitive):
-        d["kind"] = JStr(t.kind)
-    elif isinstance(t, TListType):
-        d["element"] = _type_json(t.element)
-    elif isinstance(t, TMapType):
-        d["key"] = _type_json(t.key)
-        d["value"] = _type_json(t.value)
-    elif isinstance(t, TSetType):
-        d["element"] = _type_json(t.element)
-    elif isinstance(t, TTupleType):
-        d["elements"] = _types_json(t.elements)
-    elif isinstance(t, TFuncType):
-        d["params"] = _types_json(t.params)
-    elif isinstance(t, TIdentType):
-        d["name"] = JStr(t.name)
-    elif isinstance(t, TUnionType):
-        d["members"] = _types_json(t.members)
-    elif isinstance(t, TOptionalType):
-        d["inner"] = _type_json(t.inner)
+    match t:
+        case TPrimitive():
+            d["kind"] = JStr(t.kind)
+        case TListType() | TSetType():
+            d["element"] = _type_json(t.element)
+        case TMapType():
+            d["key"] = _type_json(t.key)
+            d["value"] = _type_json(t.value)
+        case TTupleType():
+            d["elements"] = _types_json(t.elements)
+        case TFuncType():
+            d["params"] = _types_json(t.params)
+        case TIdentType():
+            d["name"] = JStr(t.name)
+        case TUnionType():
+            d["members"] = _types_json(t.members)
+        case TOptionalType():
+            d["inner"] = _type_json(t.inner)
     return JDict(d)
 
 
@@ -896,13 +890,14 @@ def _arg_json(a: TArg) -> JsonValue:
 
 def _pattern_json(p: TPattern) -> JsonValue:
     d: dict[str, JsonValue] = {"pos": _pos_json(p.pos)}
-    if isinstance(p, TPatternType):
-        d["name"] = JStr(p.name)
-        d["type_name"] = _type_json(p.type_name)
-        d["annotations"] = _ann_json(p.annotations)
-    elif isinstance(p, TPatternEnum):
-        d["enum_name"] = JStr(p.enum_name)
-        d["variant"] = JStr(p.variant)
+    match p:
+        case TPatternType():
+            d["name"] = JStr(p.name)
+            d["type_name"] = _type_json(p.type_name)
+            d["annotations"] = _ann_json(p.annotations)
+        case TPatternEnum():
+            d["enum_name"] = JStr(p.enum_name)
+            d["variant"] = JStr(p.variant)
     return JDict(d)
 
 
@@ -942,177 +937,141 @@ def _catch_json(c: TCatch) -> JsonValue:
 
 def _expr_json(e: TExpr) -> JsonValue:
     d: dict[str, JsonValue] = {"pos": _pos_json(e.pos)}
-    if isinstance(e, TRange):
-        d["args"] = _exprs_json(e.args)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TIntLit):
-        d["value"] = JInt(e.value)
-        d["raw"] = JStr(e.raw)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TFloatLit):
-        d["value"] = JFloat(e.value)
-        d["raw"] = JStr(e.raw)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TByteLit):
-        d["value"] = JInt(e.value)
-        d["raw"] = JStr(e.raw)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TStringLit):
-        d["value"] = JStr(e.value)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TRuneLit):
-        d["value"] = JStr(e.value)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TBytesLit):
-        blist: list[JsonValue] = []
-        bi = 0
-        while bi < len(e.value):
-            blist.append(JInt(int(e.value[bi])))
-            bi += 1
-        d["value"] = JList(blist)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TBoolLit):
-        d["value"] = JBool(e.value)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TNilLit):
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TVar):
-        d["name"] = JStr(e.name)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TBinaryOp):
-        d["op"] = JStr(e.op)
-        d["left"] = _expr_json(e.left)
-        d["right"] = _expr_json(e.right)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TUnaryOp):
-        d["op"] = JStr(e.op)
-        d["operand"] = _expr_json(e.operand)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TTernary):
-        d["cond"] = _expr_json(e.cond)
-        d["then_expr"] = _expr_json(e.then_expr)
-        d["else_expr"] = _expr_json(e.else_expr)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TFieldAccess):
-        d["obj"] = _expr_json(e.obj)
-        d["field"] = JStr(e.field)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TTupleAccess):
-        d["obj"] = _expr_json(e.obj)
-        d["index"] = JInt(e.index)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TIndex):
-        d["obj"] = _expr_json(e.obj)
-        d["index"] = _expr_json(e.index)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TSlice):
-        d["obj"] = _expr_json(e.obj)
-        d["low"] = _expr_json(e.low)
-        d["high"] = _expr_json(e.high)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TCall):
-        d["func"] = _expr_json(e.func)
-        alist: list[JsonValue] = []
-        for arg in e.args:
-            alist.append(_arg_json(arg))
-        d["args"] = JList(alist)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TListLit):
-        d["elements"] = _exprs_json(e.elements)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TMapLit):
-        elist: list[JsonValue] = []
-        for ek, ev in e.entries:
-            elist.append(JList([_expr_json(ek), _expr_json(ev)]))
-        d["entries"] = JList(elist)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TSetLit):
-        d["elements"] = _exprs_json(e.elements)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TTupleLit):
-        d["elements"] = _exprs_json(e.elements)
-        d["annotations"] = _ann_json(e.annotations)
-    elif isinstance(e, TFnLit):
-        plist: list[JsonValue] = []
-        for par in e.params:
-            plist.append(_param_json(par))
-        d["params"] = JList(plist)
-        d["ret"] = _type_json(e.ret)
-        d["body"] = _stmts_json(e.body)
-        d["annotations"] = _ann_json(e.annotations)
+    match e:
+        case TRange():
+            d["args"] = _exprs_json(e.args)
+        case TIntLit():
+            d["value"] = JInt(e.value)
+            d["raw"] = JStr(e.raw)
+        case TFloatLit():
+            d["value"] = JFloat(e.value)
+            d["raw"] = JStr(e.raw)
+        case TByteLit():
+            d["value"] = JInt(e.value)
+            d["raw"] = JStr(e.raw)
+        case TStringLit():
+            d["value"] = JStr(e.value)
+        case TRuneLit():
+            d["value"] = JStr(e.value)
+        case TBytesLit():
+            blist: list[JsonValue] = []
+            for b in e.value:
+                blist.append(JInt(int(b)))
+            d["value"] = JList(blist)
+        case TBoolLit():
+            d["value"] = JBool(e.value)
+        case TNilLit():
+            pass
+        case TVar():
+            d["name"] = JStr(e.name)
+        case TBinaryOp():
+            d["op"] = JStr(e.op)
+            d["left"] = _expr_json(e.left)
+            d["right"] = _expr_json(e.right)
+        case TUnaryOp():
+            d["op"] = JStr(e.op)
+            d["operand"] = _expr_json(e.operand)
+        case TTernary():
+            d["cond"] = _expr_json(e.cond)
+            d["then_expr"] = _expr_json(e.then_expr)
+            d["else_expr"] = _expr_json(e.else_expr)
+        case TFieldAccess():
+            d["obj"] = _expr_json(e.obj)
+            d["field"] = JStr(e.field)
+        case TTupleAccess():
+            d["obj"] = _expr_json(e.obj)
+            d["index"] = JInt(e.index)
+        case TIndex():
+            d["obj"] = _expr_json(e.obj)
+            d["index"] = _expr_json(e.index)
+        case TSlice():
+            d["obj"] = _expr_json(e.obj)
+            d["low"] = _expr_json(e.low)
+            d["high"] = _expr_json(e.high)
+        case TCall():
+            d["func"] = _expr_json(e.func)
+            alist: list[JsonValue] = []
+            for arg in e.args:
+                alist.append(_arg_json(arg))
+            d["args"] = JList(alist)
+        case TListLit() | TSetLit() | TTupleLit():
+            d["elements"] = _exprs_json(e.elements)
+        case TMapLit():
+            elist: list[JsonValue] = []
+            for ek, ev in e.entries:
+                elist.append(JList([_expr_json(ek), _expr_json(ev)]))
+            d["entries"] = JList(elist)
+        case TFnLit():
+            plist: list[JsonValue] = []
+            for par in e.params:
+                plist.append(_param_json(par))
+            d["params"] = JList(plist)
+            d["ret"] = _type_json(e.ret)
+            d["body"] = _stmts_json(e.body)
+    d["annotations"] = _ann_json(e.annotations)
     return JDict(d)
 
 
 def _stmt_json(s: TStmt) -> JsonValue:
     d: dict[str, JsonValue] = {"pos": _pos_json(s.pos)}
-    if isinstance(s, TLetStmt):
-        d["name"] = JStr(s.name)
-        d["typ"] = _type_json(s.typ)
-        d["value"] = _expr_json(s.value) if s.value is not None else JNull()
-        d["annotations"] = _ann_json(s.annotations)
-    elif isinstance(s, TAssignStmt):
-        d["target"] = _expr_json(s.target)
-        d["value"] = _expr_json(s.value)
-        d["annotations"] = _ann_json(s.annotations)
-    elif isinstance(s, TOpAssignStmt):
-        d["target"] = _expr_json(s.target)
-        d["op"] = JStr(s.op)
-        d["value"] = _expr_json(s.value)
-        d["annotations"] = _ann_json(s.annotations)
-    elif isinstance(s, TTupleAssignStmt):
-        d["targets"] = _exprs_json(s.targets)
-        d["value"] = _expr_json(s.value)
-        d["annotations"] = _ann_json(s.annotations)
-    elif isinstance(s, TReturnStmt):
-        d["value"] = _expr_json(s.value) if s.value is not None else JNull()
-        d["annotations"] = _ann_json(s.annotations)
-    elif isinstance(s, TBreakStmt):
-        d["annotations"] = _ann_json(s.annotations)
-    elif isinstance(s, TContinueStmt):
-        d["annotations"] = _ann_json(s.annotations)
-    elif isinstance(s, TThrowStmt):
-        d["expr"] = _expr_json(s.expr)
-        d["annotations"] = _ann_json(s.annotations)
-    elif isinstance(s, TExprStmt):
-        d["expr"] = _expr_json(s.expr)
-        d["annotations"] = _ann_json(s.annotations)
-    elif isinstance(s, TIfStmt):
-        d["cond"] = _expr_json(s.cond)
-        d["then_body"] = _stmts_json(s.then_body)
-        d["else_body"] = (
-            _stmts_json(s.else_body) if s.else_body is not None else JNull()
-        )
-        d["annotations"] = _ann_json(s.annotations)
-    elif isinstance(s, TWhileStmt):
-        d["cond"] = _expr_json(s.cond)
-        d["body"] = _stmts_json(s.body)
-        d["annotations"] = _ann_json(s.annotations)
-    elif isinstance(s, TForStmt):
-        blist: list[JsonValue] = []
-        for bnd in s.binding:
-            blist.append(JStr(bnd))
-        d["binding"] = JList(blist)
-        d["iterable"] = _expr_json(s.iterable)
-        d["body"] = _stmts_json(s.body)
-        d["annotations"] = _ann_json(s.annotations)
-    elif isinstance(s, TMatchStmt):
-        d["expr"] = _expr_json(s.expr)
-        clist: list[JsonValue] = []
-        for mc in s.cases:
-            clist.append(_match_case_json(mc))
-        d["cases"] = JList(clist)
-        d["default"] = _default_json(s.default) if s.default is not None else JNull()
-        d["annotations"] = _ann_json(s.annotations)
-    elif isinstance(s, TTryStmt):
-        d["body"] = _stmts_json(s.body)
-        calist: list[JsonValue] = []
-        for ct in s.catches:
-            calist.append(_catch_json(ct))
-        d["catches"] = JList(calist)
-        d["finally_body"] = (
-            _stmts_json(s.finally_body) if s.finally_body is not None else JNull()
-        )
-        d["annotations"] = _ann_json(s.annotations)
+    match s:
+        case TLetStmt():
+            d["name"] = JStr(s.name)
+            d["typ"] = _type_json(s.typ)
+            d["value"] = _expr_json(s.value) if s.value is not None else JNull()
+        case TAssignStmt():
+            d["target"] = _expr_json(s.target)
+            d["value"] = _expr_json(s.value)
+        case TOpAssignStmt():
+            d["target"] = _expr_json(s.target)
+            d["op"] = JStr(s.op)
+            d["value"] = _expr_json(s.value)
+        case TTupleAssignStmt():
+            d["targets"] = _exprs_json(s.targets)
+            d["value"] = _expr_json(s.value)
+        case TReturnStmt():
+            d["value"] = _expr_json(s.value) if s.value is not None else JNull()
+        case TBreakStmt() | TContinueStmt():
+            pass
+        case TThrowStmt():
+            d["expr"] = _expr_json(s.expr)
+        case TExprStmt():
+            d["expr"] = _expr_json(s.expr)
+        case TIfStmt():
+            d["cond"] = _expr_json(s.cond)
+            d["then_body"] = _stmts_json(s.then_body)
+            d["else_body"] = (
+                _stmts_json(s.else_body) if s.else_body is not None else JNull()
+            )
+        case TWhileStmt():
+            d["cond"] = _expr_json(s.cond)
+            d["body"] = _stmts_json(s.body)
+        case TForStmt():
+            blist: list[JsonValue] = []
+            for bnd in s.binding:
+                blist.append(JStr(bnd))
+            d["binding"] = JList(blist)
+            d["iterable"] = _expr_json(s.iterable)
+            d["body"] = _stmts_json(s.body)
+        case TMatchStmt():
+            d["expr"] = _expr_json(s.expr)
+            clist: list[JsonValue] = []
+            for mc in s.cases:
+                clist.append(_match_case_json(mc))
+            d["cases"] = JList(clist)
+            d["default"] = (
+                _default_json(s.default) if s.default is not None else JNull()
+            )
+        case TTryStmt():
+            d["body"] = _stmts_json(s.body)
+            calist: list[JsonValue] = []
+            for ct in s.catches:
+                calist.append(_catch_json(ct))
+            d["catches"] = JList(calist)
+            d["finally_body"] = (
+                _stmts_json(s.finally_body) if s.finally_body is not None else JNull()
+            )
+    d["annotations"] = _ann_json(s.annotations)
     return JDict(d)
 
 
@@ -1212,24 +1171,25 @@ def _sa_serialize_stmt(stmt: TStmt, pfx: str, plen: int) -> dict[str, JsonValue]
         for bk, bv in binder.items():
             bd[bk] = JDict(bv)
         d["binder"] = JDict(bd)
-    if isinstance(stmt, TMatchStmt):
-        cases: list[JsonValue] = []
-        for case in stmt.cases:
-            cd: Ann = _sa_strip(case.annotations, pfx, plen)
-            if isinstance(case.pattern, TPatternType):
-                pat = _sa_strip(case.pattern.annotations, pfx, plen)
-                cd.update(pat)
-                for ka, va in pat.items():
-                    cd["pattern." + ka] = va
-            cases.append(_wrap_ann(cd))
-        d["cases"] = JList(cases)
-        if stmt.default is not None:
-            d["default"] = _wrap_ann(_sa_strip(stmt.default.annotations, pfx, plen))
-    elif isinstance(stmt, TTryStmt):
-        catches: list[JsonValue] = [
-            _wrap_ann(_sa_strip(c.annotations, pfx, plen)) for c in stmt.catches
-        ]
-        d["catches"] = JList(catches)
+    match stmt:
+        case TMatchStmt():
+            cases: list[JsonValue] = []
+            for case in stmt.cases:
+                cd: Ann = _sa_strip(case.annotations, pfx, plen)
+                if isinstance(case.pattern, TPatternType):
+                    pat = _sa_strip(case.pattern.annotations, pfx, plen)
+                    cd.update(pat)
+                    for ka, va in pat.items():
+                        cd["pattern." + ka] = va
+                cases.append(_wrap_ann(cd))
+            d["cases"] = JList(cases)
+            if stmt.default is not None:
+                d["default"] = _wrap_ann(_sa_strip(stmt.default.annotations, pfx, plen))
+        case TTryStmt():
+            catches: list[JsonValue] = [
+                _wrap_ann(_sa_strip(c.annotations, pfx, plen)) for c in stmt.catches
+            ]
+            d["catches"] = JList(catches)
     return d
 
 
@@ -1281,11 +1241,12 @@ def serialize_annotations(module: TModule, prefix: str) -> dict[str, JsonValue]:
     plen = len(pfx)
     result: dict[str, JsonValue] = {}
     for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            result[decl.name] = JDict(_sa_serialize_fn(decl, pfx, plen))
-        elif isinstance(decl, TStructDecl):
-            for method in decl.methods:
-                result[f"{decl.name}.{method.name}"] = JDict(
-                    _sa_serialize_fn(method, pfx, plen)
-                )
+        match decl:
+            case TFnDecl():
+                result[decl.name] = JDict(_sa_serialize_fn(decl, pfx, plen))
+            case TStructDecl():
+                for method in decl.methods:
+                    result[f"{decl.name}.{method.name}"] = JDict(
+                        _sa_serialize_fn(method, pfx, plen)
+                    )
     return result

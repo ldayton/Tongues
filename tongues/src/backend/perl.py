@@ -648,36 +648,34 @@ class _PerlEmitter(Emitter):
                 continue
             if need_blank:
                 self._line()
-            if isinstance(decl, TStructDecl):
-                if current_package != decl.name:
-                    self._line("package " + decl.name + ";")
-                    if _struct_needs_list_util(decl):
-                        self._line("use List::Util qw(min max sum);")
-                    current_package = decl.name
-                    self._line()
-                self._emit_struct(decl)
-                need_blank = True
-            elif isinstance(decl, TEnumDecl):
-                if current_package != decl.name:
-                    self._line("package " + decl.name + ";")
-                    current_package = decl.name
-                    self._line()
-                self._emit_enum(decl)
-                need_blank = True
-            elif isinstance(decl, TLetStmt):
-                if current_package != "main":
-                    self._line("package main;")
-                    self._line()
-                    current_package = "main"
-                self._emit_stmt(decl)
-                need_blank = True
-            elif isinstance(decl, TFnDecl):
-                if current_package != "main":
-                    self._line("package main;")
-                    self._line()
-                    current_package = "main"
-                self._emit_fn(decl)
-                need_blank = True
+            match decl:
+                case TStructDecl():
+                    if current_package != decl.name:
+                        self._line("package " + decl.name + ";")
+                        if _struct_needs_list_util(decl):
+                            self._line("use List::Util qw(min max sum);")
+                        current_package = decl.name
+                        self._line()
+                    self._emit_struct(decl)
+                case TEnumDecl():
+                    if current_package != decl.name:
+                        self._line("package " + decl.name + ";")
+                        current_package = decl.name
+                        self._line()
+                    self._emit_enum(decl)
+                case TLetStmt():
+                    if current_package != "main":
+                        self._line("package main;")
+                        self._line()
+                        current_package = "main"
+                    self._emit_stmt(decl)
+                case TFnDecl():
+                    if current_package != "main":
+                        self._line("package main;")
+                        self._line()
+                        current_package = "main"
+                    self._emit_fn(decl)
+            need_blank = True
 
     def _emit_enum(self, decl: TEnumDecl) -> None:
         for i, variant in enumerate(decl.variants):
@@ -3411,10 +3409,9 @@ class _PerlEmitter(Emitter):
 def emit_perl(module: TModule) -> str:
     struct_names: set[str] = set()
     for decl in module.decls:
-        if isinstance(decl, TStructDecl):
-            struct_names.add(decl.name)
-        elif isinstance(decl, TInterfaceDecl):
-            struct_names.add(decl.name)
+        match decl:
+            case TStructDecl() | TInterfaceDecl():
+                struct_names.add(decl.name)
     for _bk in BUILTIN_STRUCTS:
         struct_names.add(_bk)
     enum_names: set[str] = set()
@@ -3425,21 +3422,23 @@ def emit_perl(module: TModule) -> str:
     struct_fields: dict[str, list[str]] = {}
     struct_field_types: dict[str, dict[str, TType]] = {}
     for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            function_names.add(decl.name)
-        elif isinstance(decl, TStructDecl):
-            fnames: list[str] = []
-            ftypes: dict[str, TType] = {}
-            for f in decl.fields:
-                fnames.append(f.name)
-                ftypes[f.name] = f.typ
-            struct_fields[decl.name] = fnames
-            struct_field_types[decl.name] = ftypes
-            for method in decl.methods:
-                function_names.add(method.name)
-        elif isinstance(decl, TInterfaceDecl) and decl.fields:
-            struct_fields[decl.name] = [f.name for f in decl.fields]
-            struct_field_types[decl.name] = {f.name: f.typ for f in decl.fields}
+        match decl:
+            case TFnDecl():
+                function_names.add(decl.name)
+            case TStructDecl():
+                fnames: list[str] = []
+                ftypes: dict[str, TType] = {}
+                for f in decl.fields:
+                    fnames.append(f.name)
+                    ftypes[f.name] = f.typ
+                struct_fields[decl.name] = fnames
+                struct_field_types[decl.name] = ftypes
+                for method in decl.methods:
+                    function_names.add(method.name)
+            case TInterfaceDecl():
+                if decl.fields:
+                    struct_fields[decl.name] = [f.name for f in decl.fields]
+                    struct_field_types[decl.name] = {f.name: f.typ for f in decl.fields}
     emitter = _PerlEmitter(
         struct_names,
         enum_names,

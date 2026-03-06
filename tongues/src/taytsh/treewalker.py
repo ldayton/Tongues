@@ -734,23 +734,14 @@ def _build_index(module: TModule) -> ModuleIndex:
     for d in module.decls:
         name: str = ""
         d_pos: Pos = Pos(0, 0)
-        if isinstance(d, TFnDecl):
-            name = d.name
-            d_pos = d.pos
-        elif isinstance(d, TStructDecl):
-            name = d.name
-            d_pos = d.pos
-        elif isinstance(d, TInterfaceDecl):
-            name = d.name
-            d_pos = d.pos
-        elif isinstance(d, TEnumDecl):
-            name = d.name
-            d_pos = d.pos
-        elif isinstance(d, TLetStmt):
-            name = d.name
-            d_pos = d.pos
-        else:
-            continue
+        match d:
+            case (
+                TFnDecl() | TStructDecl() | TInterfaceDecl() | TEnumDecl() | TLetStmt()
+            ):
+                name = d.name
+                d_pos = d.pos
+            case _:
+                continue
         _ensure_not_reserved(name, pos=d_pos)
         if name in seen_top or name in structs:
             raise TaytshTypeError("duplicate top-level name '" + name + "'", d_pos)
@@ -758,18 +749,21 @@ def _build_index(module: TModule) -> ModuleIndex:
 
     # Populate structs / interfaces / enums first so type resolution can refer to them.
     for sname, sd in seen_top.items():
-        if isinstance(sd, TInterfaceDecl):
-            interfaces[sname] = InterfaceInfo(name=sname, decl=sd, implementors=set())
-        elif isinstance(sd, TEnumDecl):
-            enums[sname] = EnumInfo(name=sname, variants=set(sd.variants), decl=sd)
-        elif isinstance(sd, TStructDecl):
-            structs[sname] = StructInfo(
-                name=sname,
-                fields=[],
-                field_map={},
-                methods={},
-                decl=sd,
-            )
+        match sd:
+            case TInterfaceDecl():
+                interfaces[sname] = InterfaceInfo(
+                    name=sname, decl=sd, implementors=set()
+                )
+            case TEnumDecl():
+                enums[sname] = EnumInfo(name=sname, variants=set(sd.variants), decl=sd)
+            case TStructDecl():
+                structs[sname] = StructInfo(
+                    name=sname,
+                    fields=[],
+                    field_map={},
+                    methods={},
+                    decl=sd,
+                )
 
     # Second pass: resolve struct implements + field/method names (types later).
     _BUILTIN_ERR_NAMES = {

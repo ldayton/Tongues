@@ -207,23 +207,22 @@ def _analyze_initial_value_in_stmts(stmts: list[TStmt]) -> None:
                 if _is_written_before_read(stmt.name, stmts[i + 1 :])
                 else "false"
             )
-        if isinstance(stmt, TIfStmt):
-            _analyze_initial_value_in_stmts(stmt.then_body)
-            if stmt.else_body is not None:
-                _analyze_initial_value_in_stmts(stmt.else_body)
-        elif isinstance(stmt, TWhileStmt):
-            _analyze_initial_value_in_stmts(stmt.body)
-        elif isinstance(stmt, TForStmt):
-            _analyze_initial_value_in_stmts(stmt.body)
-        elif isinstance(stmt, TTryStmt):
-            _analyze_initial_value_in_stmts(stmt.body)
-            for catch in stmt.catches:
-                _analyze_initial_value_in_stmts(catch.body)
-        elif isinstance(stmt, TMatchStmt):
-            for case in stmt.cases:
-                _analyze_initial_value_in_stmts(case.body)
-            if stmt.default is not None:
-                _analyze_initial_value_in_stmts(stmt.default.body)
+        match stmt:
+            case TIfStmt():
+                _analyze_initial_value_in_stmts(stmt.then_body)
+                if stmt.else_body is not None:
+                    _analyze_initial_value_in_stmts(stmt.else_body)
+            case TWhileStmt() | TForStmt():
+                _analyze_initial_value_in_stmts(stmt.body)
+            case TTryStmt():
+                _analyze_initial_value_in_stmts(stmt.body)
+                for catch in stmt.catches:
+                    _analyze_initial_value_in_stmts(catch.body)
+            case TMatchStmt():
+                for case in stmt.cases:
+                    _analyze_initial_value_in_stmts(case.body)
+                if stmt.default is not None:
+                    _analyze_initial_value_in_stmts(stmt.default.body)
 
 
 # ============================================================
@@ -234,44 +233,45 @@ def _analyze_initial_value_in_stmts(stmts: list[TStmt]) -> None:
 def _analyze_catch_and_match_bindings(stmts: list[TStmt]) -> None:
     """Analyze catch and match bindings for unused variables."""
     for stmt in stmts:
-        if isinstance(stmt, TTryStmt):
-            for catch in stmt.catches:
-                catch.annotations["liveness.catch_var_unused"] = (
-                    "false"
-                    if _binding_used_in_stmts(catch.name, catch.body)
-                    else "true"
-                )
-            _analyze_catch_and_match_bindings(stmt.body)
-            for catch in stmt.catches:
-                _analyze_catch_and_match_bindings(catch.body)
-            if stmt.finally_body is not None:
-                _analyze_catch_and_match_bindings(stmt.finally_body)
-        elif isinstance(stmt, TMatchStmt):
-            for case in stmt.cases:
-                pat = case.pattern
-                if isinstance(pat, TPatternType):
-                    pat.annotations["liveness.match_var_unused"] = (
+        match stmt:
+            case TTryStmt():
+                for catch in stmt.catches:
+                    catch.annotations["liveness.catch_var_unused"] = (
                         "false"
-                        if _binding_used_in_stmts(pat.name, case.body)
+                        if _binding_used_in_stmts(catch.name, catch.body)
                         else "true"
                     )
-                _analyze_catch_and_match_bindings(case.body)
-            if stmt.default is not None:
-                if stmt.default.name is not None:
-                    stmt.default.annotations["liveness.match_var_unused"] = (
-                        "false"
-                        if _binding_used_in_stmts(stmt.default.name, stmt.default.body)
-                        else "true"
-                    )
-                _analyze_catch_and_match_bindings(stmt.default.body)
-        elif isinstance(stmt, TIfStmt):
-            _analyze_catch_and_match_bindings(stmt.then_body)
-            if stmt.else_body is not None:
-                _analyze_catch_and_match_bindings(stmt.else_body)
-        elif isinstance(stmt, TWhileStmt):
-            _analyze_catch_and_match_bindings(stmt.body)
-        elif isinstance(stmt, TForStmt):
-            _analyze_catch_and_match_bindings(stmt.body)
+                _analyze_catch_and_match_bindings(stmt.body)
+                for catch in stmt.catches:
+                    _analyze_catch_and_match_bindings(catch.body)
+                if stmt.finally_body is not None:
+                    _analyze_catch_and_match_bindings(stmt.finally_body)
+            case TMatchStmt():
+                for case in stmt.cases:
+                    pat = case.pattern
+                    if isinstance(pat, TPatternType):
+                        pat.annotations["liveness.match_var_unused"] = (
+                            "false"
+                            if _binding_used_in_stmts(pat.name, case.body)
+                            else "true"
+                        )
+                    _analyze_catch_and_match_bindings(case.body)
+                if stmt.default is not None:
+                    if stmt.default.name is not None:
+                        stmt.default.annotations["liveness.match_var_unused"] = (
+                            "false"
+                            if _binding_used_in_stmts(
+                                stmt.default.name, stmt.default.body
+                            )
+                            else "true"
+                        )
+                    _analyze_catch_and_match_bindings(stmt.default.body)
+            case TIfStmt():
+                _analyze_catch_and_match_bindings(stmt.then_body)
+                if stmt.else_body is not None:
+                    _analyze_catch_and_match_bindings(stmt.else_body)
+            case TWhileStmt() | TForStmt():
+                _analyze_catch_and_match_bindings(stmt.body)
 
 
 def _binding_read_in_expr(name: str, expr: TExpr, shadowed: bool) -> bool:
@@ -454,25 +454,24 @@ def _analyze_tuple_targets_in_stmts(
         outer: list[TStmt] = stmts[i + 1 :]
         for cs in continuation:
             outer.append(cs)
-        if isinstance(stmt, TIfStmt):
-            _analyze_tuple_targets_in_stmts(stmt.then_body, outer)
-            if stmt.else_body is not None:
-                _analyze_tuple_targets_in_stmts(stmt.else_body, outer)
-        elif isinstance(stmt, TWhileStmt):
-            _analyze_tuple_targets_in_stmts(stmt.body, outer)
-        elif isinstance(stmt, TForStmt):
-            _analyze_tuple_targets_in_stmts(stmt.body, outer)
-        elif isinstance(stmt, TTryStmt):
-            _analyze_tuple_targets_in_stmts(stmt.body, outer)
-            for catch in stmt.catches:
-                _analyze_tuple_targets_in_stmts(catch.body, outer)
-            if stmt.finally_body is not None:
-                _analyze_tuple_targets_in_stmts(stmt.finally_body, outer)
-        elif isinstance(stmt, TMatchStmt):
-            for case in stmt.cases:
-                _analyze_tuple_targets_in_stmts(case.body, outer)
-            if stmt.default is not None:
-                _analyze_tuple_targets_in_stmts(stmt.default.body, outer)
+        match stmt:
+            case TIfStmt():
+                _analyze_tuple_targets_in_stmts(stmt.then_body, outer)
+                if stmt.else_body is not None:
+                    _analyze_tuple_targets_in_stmts(stmt.else_body, outer)
+            case TWhileStmt() | TForStmt():
+                _analyze_tuple_targets_in_stmts(stmt.body, outer)
+            case TTryStmt():
+                _analyze_tuple_targets_in_stmts(stmt.body, outer)
+                for catch in stmt.catches:
+                    _analyze_tuple_targets_in_stmts(catch.body, outer)
+                if stmt.finally_body is not None:
+                    _analyze_tuple_targets_in_stmts(stmt.finally_body, outer)
+            case TMatchStmt():
+                for case in stmt.cases:
+                    _analyze_tuple_targets_in_stmts(case.body, outer)
+                if stmt.default is not None:
+                    _analyze_tuple_targets_in_stmts(stmt.default.body, outer)
 
 
 # ============================================================
@@ -495,8 +494,9 @@ def _analyze_fn(decl: TFnDecl) -> None:
 def analyze_liveness(module: TModule, checker: Checker) -> None:
     """Run liveness analysis on all functions in the module."""
     for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            _analyze_fn(decl)
-        elif isinstance(decl, TStructDecl):
-            for method in decl.methods:
-                _analyze_fn(method)
+        match decl:
+            case TFnDecl():
+                _analyze_fn(decl)
+            case TStructDecl():
+                for method in decl.methods:
+                    _analyze_fn(method)

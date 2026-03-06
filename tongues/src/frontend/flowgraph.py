@@ -847,12 +847,25 @@ def _walk_back(
         visiting[cache_key] = False
         return None
     result: TypeNode | None = None
-    if isinstance(node, FlowStart):
-        result = initial_types.get(variable)
-    elif isinstance(node, FlowAssign):
-        if node.name == variable:
-            result = assigned_types.get(node.id)
-        else:
+    match node:
+        case FlowStart():
+            result = initial_types.get(variable)
+        case FlowAssign():
+            if node.name == variable:
+                result = assigned_types.get(node.id)
+            else:
+                result = _walk_prevs(
+                    graph,
+                    node.prev,
+                    variable,
+                    initial_types,
+                    assigned_types,
+                    known_classes,
+                    cache,
+                    visiting,
+                    depth + 1,
+                )
+        case FlowCondAlias() | FlowJoin() | FlowUnreachable():
             result = _walk_prevs(
                 graph,
                 node.prev,
@@ -864,92 +877,56 @@ def _walk_back(
                 visiting,
                 depth + 1,
             )
-    elif isinstance(node, FlowCondAlias):
-        result = _walk_prevs(
-            graph,
-            node.prev,
-            variable,
-            initial_types,
-            assigned_types,
-            known_classes,
-            cache,
-            visiting,
-            depth + 1,
-        )
-    elif isinstance(node, FlowNarrow):
-        prev_t = _walk_prevs(
-            graph,
-            node.prev,
-            variable,
-            initial_types,
-            assigned_types,
-            known_classes,
-            cache,
-            visiting,
-            depth + 1,
-        )
-        if node.target == variable and prev_t is not None:
-            result = _apply_narrow_type(prev_t, node, known_classes)
-        else:
-            result = prev_t
-    elif isinstance(node, FlowWiden):
-        narrow_node = graph.node_at(node.narrow_id)
-        prev_t = _walk_prevs(
-            graph,
-            node.prev,
-            variable,
-            initial_types,
-            assigned_types,
-            known_classes,
-            cache,
-            visiting,
-            depth + 1,
-        )
-        if (
-            narrow_node is not None
-            and isinstance(narrow_node, FlowNarrow)
-            and narrow_node.target == variable
-            and prev_t is not None
-        ):
-            result = _apply_widen_type(prev_t, narrow_node, known_classes)
-        else:
-            result = prev_t
-    elif isinstance(node, FlowJoin):
-        result = _walk_prevs(
-            graph,
-            node.prev,
-            variable,
-            initial_types,
-            assigned_types,
-            known_classes,
-            cache,
-            visiting,
-            depth + 1,
-        )
-    elif isinstance(node, FlowLoopHead):
-        result = _walk_loop_head(
-            graph,
-            node,
-            variable,
-            initial_types,
-            assigned_types,
-            known_classes,
-            cache,
-            visiting,
-            depth + 1,
-        )
-    elif isinstance(node, FlowUnreachable):
-        result = _walk_prevs(
-            graph,
-            node.prev,
-            variable,
-            initial_types,
-            assigned_types,
-            known_classes,
-            cache,
-            visiting,
-            depth + 1,
-        )
+        case FlowNarrow():
+            prev_t = _walk_prevs(
+                graph,
+                node.prev,
+                variable,
+                initial_types,
+                assigned_types,
+                known_classes,
+                cache,
+                visiting,
+                depth + 1,
+            )
+            if node.target == variable and prev_t is not None:
+                result = _apply_narrow_type(prev_t, node, known_classes)
+            else:
+                result = prev_t
+        case FlowWiden():
+            narrow_node = graph.node_at(node.narrow_id)
+            prev_t = _walk_prevs(
+                graph,
+                node.prev,
+                variable,
+                initial_types,
+                assigned_types,
+                known_classes,
+                cache,
+                visiting,
+                depth + 1,
+            )
+            if (
+                narrow_node is not None
+                and isinstance(narrow_node, FlowNarrow)
+                and narrow_node.target == variable
+                and prev_t is not None
+            ):
+                result = _apply_widen_type(prev_t, narrow_node, known_classes)
+            else:
+                result = prev_t
+        case FlowLoopHead():
+            result = _walk_loop_head(
+                graph,
+                node,
+                variable,
+                initial_types,
+                assigned_types,
+                known_classes,
+                cache,
+                visiting,
+                depth + 1,
+            )
     visiting[cache_key] = False
     if result is not None:
         cache[cache_key] = result

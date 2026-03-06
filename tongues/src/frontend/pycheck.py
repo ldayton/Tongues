@@ -24,7 +24,7 @@ from .stubs import (
     lookup_stub_attr,
     lookup_stub_method,
 )
-from .cfg import (
+from .flowgraph import (
     FlowAssign,
     FlowCondAlias,
     FlowGraph,

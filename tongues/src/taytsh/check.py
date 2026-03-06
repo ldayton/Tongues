@@ -1324,48 +1324,57 @@ class Checker:
         # First pass: register all type names (structs, interfaces, enums)
         # so they can reference each other
         for decl in module.decls:
-            if isinstance(decl, TStructDecl):
-                if decl.name in self.types:
-                    self.error("duplicate type name '" + decl.name + "'", decl.pos)
-                    continue
-                if decl.name in RESERVED_NAMES:
-                    self.error("cannot use reserved name '" + decl.name + "'", decl.pos)
-                    continue
-                # Placeholder — fields/methods filled in next loop
-                st = StructT(
-                    kind="struct",
-                    name=decl.name,
-                    fields={},
-                    methods={},
-                    parent=decl.parent,
-                    field_order=[],
-                )
-                self.types[decl.name] = st
-            elif isinstance(decl, TInterfaceDecl):
-                if decl.name in self.types:
-                    self.error("duplicate type name '" + decl.name + "'", decl.pos)
-                    continue
-                if decl.name in RESERVED_NAMES:
-                    self.error("cannot use reserved name '" + decl.name + "'", decl.pos)
-                    continue
-                it = InterfaceT(kind="interface", name=decl.name, variants=[])
-                self.types[decl.name] = it
-            elif isinstance(decl, TEnumDecl):
-                if decl.name in self.types:
-                    self.error("duplicate type name '" + decl.name + "'", decl.pos)
-                    continue
-                if decl.name in RESERVED_NAMES:
-                    self.error("cannot use reserved name '" + decl.name + "'", decl.pos)
-                    continue
-                seen_variants: set[str] = set()
-                for v in decl.variants:
-                    if v in seen_variants:
+            match decl:
+                case TStructDecl():
+                    if decl.name in self.types:
+                        self.error("duplicate type name '" + decl.name + "'", decl.pos)
+                        continue
+                    if decl.name in RESERVED_NAMES:
                         self.error(
-                            "duplicate variant '" + v + "' in " + decl.name, decl.pos
+                            "cannot use reserved name '" + decl.name + "'", decl.pos
                         )
-                    seen_variants.add(v)
-                et = EnumT(kind="enum", name=decl.name, variants=list(decl.variants))
-                self.types[decl.name] = et
+                        continue
+                    st = StructT(
+                        kind="struct",
+                        name=decl.name,
+                        fields={},
+                        methods={},
+                        parent=decl.parent,
+                        field_order=[],
+                    )
+                    self.types[decl.name] = st
+                case TInterfaceDecl():
+                    if decl.name in self.types:
+                        self.error("duplicate type name '" + decl.name + "'", decl.pos)
+                        continue
+                    if decl.name in RESERVED_NAMES:
+                        self.error(
+                            "cannot use reserved name '" + decl.name + "'", decl.pos
+                        )
+                        continue
+                    it = InterfaceT(kind="interface", name=decl.name, variants=[])
+                    self.types[decl.name] = it
+                case TEnumDecl():
+                    if decl.name in self.types:
+                        self.error("duplicate type name '" + decl.name + "'", decl.pos)
+                        continue
+                    if decl.name in RESERVED_NAMES:
+                        self.error(
+                            "cannot use reserved name '" + decl.name + "'", decl.pos
+                        )
+                        continue
+                    seen_variants: set[str] = set()
+                    for v in decl.variants:
+                        if v in seen_variants:
+                            self.error(
+                                "duplicate variant '" + v + "' in " + decl.name,
+                                decl.pos,
+                            )
+                        seen_variants.add(v)
+                    et = EnumT(
+                        kind="enum", name=decl.name, variants=list(decl.variants)
+                    )
+                    self.types[decl.name] = et
 
         # Second pass: resolve struct fields, methods, and interface parents
         for decl in module.decls:
@@ -1477,10 +1486,11 @@ class Checker:
 
     def check_bodies(self, module: TModule) -> None:
         for decl in module.decls:
-            if isinstance(decl, TFnDecl):
-                self.check_fn_decl(decl)
-            elif isinstance(decl, TStructDecl):
-                self.check_struct_methods(decl)
+            match decl:
+                case TFnDecl():
+                    self.check_fn_decl(decl)
+                case TStructDecl():
+                    self.check_struct_methods(decl)
 
     def check_fn_decl(self, decl: TFnDecl) -> None:
         ret = self.resolve_type(decl.ret)
@@ -1639,70 +1649,71 @@ class Checker:
             i += 1
 
     def check_stmt(self, stmt: TStmt) -> None:
-        if isinstance(stmt, TLetStmt):
-            self.check_let_stmt(stmt)
-        elif isinstance(stmt, TAssignStmt):
-            self.check_assign_stmt(stmt)
-        elif isinstance(stmt, TOpAssignStmt):
-            self.check_op_assign_stmt(stmt)
-        elif isinstance(stmt, TTupleAssignStmt):
-            self.check_tuple_assign_stmt(stmt)
-        elif isinstance(stmt, TReturnStmt):
-            if self.in_finally:
-                self.error("control flow in finally", stmt.pos)
-            else:
-                self.check_return_stmt(stmt)
-        elif isinstance(stmt, TBreakStmt):
-            if self.in_finally:
-                self.error("control flow in finally", stmt.pos)
-            elif not self.in_loop:
-                self.error("break outside of loop", stmt.pos)
-        elif isinstance(stmt, TContinueStmt):
-            if self.in_finally:
-                self.error("control flow in finally", stmt.pos)
-            elif not self.in_loop:
-                self.error("continue outside of loop", stmt.pos)
-        elif isinstance(stmt, TThrowStmt):
-            if self.in_finally:
-                self.error("control flow in finally", stmt.pos)
-                return
-            throw_type = self.check_expr(stmt.expr, None)
-            if throw_type is not None and throw_type.kind != TY_ERROR:
-                if not isinstance(throw_type, (StructT, InterfaceT)):
-                    if isinstance(throw_type, UnionT):
-                        all_throwable = True
-                        for m in throw_type.members:
-                            if not isinstance(m, (StructT, InterfaceT)):
-                                all_throwable = False
-                                break
-                        if not all_throwable:
+        match stmt:
+            case TLetStmt():
+                self.check_let_stmt(stmt)
+            case TAssignStmt():
+                self.check_assign_stmt(stmt)
+            case TOpAssignStmt():
+                self.check_op_assign_stmt(stmt)
+            case TTupleAssignStmt():
+                self.check_tuple_assign_stmt(stmt)
+            case TReturnStmt():
+                if self.in_finally:
+                    self.error("control flow in finally", stmt.pos)
+                else:
+                    self.check_return_stmt(stmt)
+            case TBreakStmt():
+                if self.in_finally:
+                    self.error("control flow in finally", stmt.pos)
+                elif not self.in_loop:
+                    self.error("break outside of loop", stmt.pos)
+            case TContinueStmt():
+                if self.in_finally:
+                    self.error("control flow in finally", stmt.pos)
+                elif not self.in_loop:
+                    self.error("continue outside of loop", stmt.pos)
+            case TThrowStmt():
+                if self.in_finally:
+                    self.error("control flow in finally", stmt.pos)
+                    return
+                throw_type = self.check_expr(stmt.expr, None)
+                if throw_type is not None and throw_type.kind != TY_ERROR:
+                    if not isinstance(throw_type, (StructT, InterfaceT)):
+                        if isinstance(throw_type, UnionT):
+                            all_throwable = True
+                            for m in throw_type.members:
+                                if not isinstance(m, (StructT, InterfaceT)):
+                                    all_throwable = False
+                                    break
+                            if not all_throwable:
+                                self.error(
+                                    "cannot throw " + type_name(throw_type),
+                                    stmt.pos,
+                                )
+                        else:
                             self.error(
                                 "cannot throw " + type_name(throw_type),
                                 stmt.pos,
                             )
-                    else:
-                        self.error(
-                            "cannot throw " + type_name(throw_type),
-                            stmt.pos,
-                        )
-        elif isinstance(stmt, TExprStmt):
-            # TODO: TStringLit/TNilLit exemption is too broad — should only allow docstrings/noop
-            if not isinstance(stmt.expr, (TCall, TStringLit, TNilLit)):
-                self.error("expression has no effect", stmt.pos)
-            else:
-                self.check_expr(stmt.expr, None)
-        elif isinstance(stmt, TIfStmt):
-            self.check_if_stmt(stmt)
-        elif isinstance(stmt, TWhileStmt):
-            self.check_while_stmt(stmt)
-        elif isinstance(stmt, TForStmt):
-            self.check_for_stmt(stmt)
-        elif isinstance(stmt, TMatchStmt):
-            self.check_match_stmt(stmt)
-        elif isinstance(stmt, TTryStmt):
-            self.check_try_stmt(stmt)
-        else:
-            self.error("unhandled statement type", stmt.pos)
+            case TExprStmt():
+                # TODO: TStringLit/TNilLit exemption is too broad — should only allow docstrings/noop
+                if not isinstance(stmt.expr, (TCall, TStringLit, TNilLit)):
+                    self.error("expression has no effect", stmt.pos)
+                else:
+                    self.check_expr(stmt.expr, None)
+            case TIfStmt():
+                self.check_if_stmt(stmt)
+            case TWhileStmt():
+                self.check_while_stmt(stmt)
+            case TForStmt():
+                self.check_for_stmt(stmt)
+            case TMatchStmt():
+                self.check_match_stmt(stmt)
+            case TTryStmt():
+                self.check_try_stmt(stmt)
+            case _:
+                self.error("unhandled statement type", stmt.pos)
 
     def check_let_stmt(self, stmt: TLetStmt) -> None:
         declared_type = self.resolve_type(stmt.typ)
@@ -2142,88 +2153,86 @@ class Checker:
         scrutinee_expr: TExpr | None = None,
     ) -> None:
         pat = case.pattern
-        if isinstance(pat, TPatternNil):
-            if not contains_nil(scrutinee):
-                self.error(
-                    "nil is not a variant of " + type_name(scrutinee),
-                    pat.pos,
-                )
-            key = "nil"
-            if key in covered:
-                self.error("duplicate case: nil", pat.pos)
-            covered.append(key)
-            self.enter_scope()
-            self.check_stmts(case.body)
-            self.exit_scope()
-        elif isinstance(pat, TPatternEnum):
-            # Validate enum — check that this enum is valid for the scrutinee
-            if pat.enum_name in self.types:
-                enum_type = self.types[pat.enum_name]
-                if isinstance(enum_type, EnumT):
-                    # Check that this enum is the right one for the scrutinee
-                    scrutinee_enum = self._get_scrutinee_enum(scrutinee)
-                    if scrutinee_enum is not None and not type_eq(
-                        enum_type, scrutinee_enum
-                    ):
-                        self.error(
-                            "'"
-                            + pat.enum_name
-                            + "."
-                            + pat.variant
-                            + "' is not a variant of "
-                            + scrutinee_enum.name,
-                            pat.pos,
-                        )
-                    elif pat.variant not in enum_type.variants:
-                        self.error(
-                            "'"
-                            + pat.variant
-                            + "' is not a variant of "
-                            + pat.enum_name,
-                            pat.pos,
-                        )
+        match pat:
+            case TPatternNil():
+                if not contains_nil(scrutinee):
+                    self.error(
+                        "nil is not a variant of " + type_name(scrutinee),
+                        pat.pos,
+                    )
+                key = "nil"
+                if key in covered:
+                    self.error("duplicate case: nil", pat.pos)
+                covered.append(key)
+                self.enter_scope()
+                self.check_stmts(case.body)
+                self.exit_scope()
+            case TPatternEnum():
+                if pat.enum_name in self.types:
+                    enum_type = self.types[pat.enum_name]
+                    if isinstance(enum_type, EnumT):
+                        scrutinee_enum = self._get_scrutinee_enum(scrutinee)
+                        if scrutinee_enum is not None and not type_eq(
+                            enum_type, scrutinee_enum
+                        ):
+                            self.error(
+                                "'"
+                                + pat.enum_name
+                                + "."
+                                + pat.variant
+                                + "' is not a variant of "
+                                + scrutinee_enum.name,
+                                pat.pos,
+                            )
+                        elif pat.variant not in enum_type.variants:
+                            self.error(
+                                "'"
+                                + pat.variant
+                                + "' is not a variant of "
+                                + pat.enum_name,
+                                pat.pos,
+                            )
+                        else:
+                            key = pat.enum_name + "." + pat.variant
+                            if key in covered:
+                                self.error("duplicate case", pat.pos)
+                            covered.append(key)
                     else:
-                        key = pat.enum_name + "." + pat.variant
-                        if key in covered:
-                            self.error("duplicate case", pat.pos)
-                        covered.append(key)
+                        self.error("'" + pat.enum_name + "' is not an enum", pat.pos)
                 else:
-                    self.error("'" + pat.enum_name + "' is not an enum", pat.pos)
-            else:
-                self.error("unknown type '" + pat.enum_name + "'", pat.pos)
-            self.enter_scope()
-            self.check_stmts(case.body)
-            self.exit_scope()
-        elif isinstance(pat, TPatternType):
-            case_type = self.resolve_type(pat.type_name)
-            if (
-                case_type.kind != TY_ERROR
-                and scrutinee.kind != TY_ERROR
-                and not self._allowed_in_match(case_type, scrutinee)
-            ):
-                self.error(
-                    type_name(case_type)
-                    + " is not a variant of "
-                    + type_name(scrutinee),
-                    pat.pos,
-                )
-            key2 = _type_key(case_type)
-            if key2 in covered:
-                self.error("duplicate case", pat.pos)
-            covered.append(key2)
-            # For interface cases in a union, also mark all struct variants covered
-            if isinstance(case_type, InterfaceT):
-                for v in case_type.variants:
-                    vkey = _type_key(self.types[v])
-                    if vkey not in covered:
-                        covered.append(vkey)
-            self.enter_scope()
-            self.declare(pat.name, case_type, pat.pos)
-            if scrutinee_expr is not None and isinstance(scrutinee_expr, TVar):
-                if scrutinee_expr.name != pat.name:
-                    self.narrow(scrutinee_expr.name, case_type)
-            self.check_stmts(case.body)
-            self.exit_scope()
+                    self.error("unknown type '" + pat.enum_name + "'", pat.pos)
+                self.enter_scope()
+                self.check_stmts(case.body)
+                self.exit_scope()
+            case TPatternType():
+                case_type = self.resolve_type(pat.type_name)
+                if (
+                    case_type.kind != TY_ERROR
+                    and scrutinee.kind != TY_ERROR
+                    and not self._allowed_in_match(case_type, scrutinee)
+                ):
+                    self.error(
+                        type_name(case_type)
+                        + " is not a variant of "
+                        + type_name(scrutinee),
+                        pat.pos,
+                    )
+                key2 = _type_key(case_type)
+                if key2 in covered:
+                    self.error("duplicate case", pat.pos)
+                covered.append(key2)
+                if isinstance(case_type, InterfaceT):
+                    for v in case_type.variants:
+                        vkey = _type_key(self.types[v])
+                        if vkey not in covered:
+                            covered.append(vkey)
+                self.enter_scope()
+                self.declare(pat.name, case_type, pat.pos)
+                if scrutinee_expr is not None and isinstance(scrutinee_expr, TVar):
+                    if scrutinee_expr.name != pat.name:
+                        self.narrow(scrutinee_expr.name, case_type)
+                self.check_stmts(case.body)
+                self.exit_scope()
 
     def _get_scrutinee_enum(self, scrutinee: Type) -> EnumT | None:
         """Get the enum type from the scrutinee (direct or optional)."""
@@ -3420,136 +3429,126 @@ class Checker:
     def _scan_expr_for_captures(
         self, expr: TExpr, param_names: set[str], pos: Pos
     ) -> None:
-        if isinstance(expr, TVar):
-            name = expr.name
-            if name in param_names:
-                return
-            if name in self.functions:
-                return
-            if name in self.types:
-                return
-            if name in BUILTIN_NAMES:
-                return
-            # This is a capture
-            self.error("cannot capture '" + name + "' in fn literal", expr.pos)
-            return
-        if isinstance(expr, TBinaryOp):
-            self._scan_expr_for_captures(expr.left, param_names, pos)
-            self._scan_expr_for_captures(expr.right, param_names, pos)
-        elif isinstance(expr, TUnaryOp):
-            self._scan_expr_for_captures(expr.operand, param_names, pos)
-        elif isinstance(expr, TTernary):
-            self._scan_expr_for_captures(expr.cond, param_names, pos)
-            self._scan_expr_for_captures(expr.then_expr, param_names, pos)
-            self._scan_expr_for_captures(expr.else_expr, param_names, pos)
-        elif isinstance(expr, TFieldAccess):
-            self._scan_expr_for_captures(expr.obj, param_names, pos)
-        elif isinstance(expr, TTupleAccess):
-            self._scan_expr_for_captures(expr.obj, param_names, pos)
-        elif isinstance(expr, TIndex):
-            self._scan_expr_for_captures(expr.obj, param_names, pos)
-            self._scan_expr_for_captures(expr.index, param_names, pos)
-        elif isinstance(expr, TSlice):
-            self._scan_expr_for_captures(expr.obj, param_names, pos)
-            self._scan_expr_for_captures(expr.low, param_names, pos)
-            self._scan_expr_for_captures(expr.high, param_names, pos)
-        elif isinstance(expr, TCall):
-            self._scan_expr_for_captures(expr.func, param_names, pos)
-            for a in expr.args:
-                self._scan_expr_for_captures(a.value, param_names, pos)
-        elif isinstance(expr, TListLit):
-            for e in expr.elements:
-                self._scan_expr_for_captures(e, param_names, pos)
-        elif isinstance(expr, TMapLit):
-            for k, v in expr.entries:
-                self._scan_expr_for_captures(k, param_names, pos)
-                self._scan_expr_for_captures(v, param_names, pos)
-        elif isinstance(expr, TSetLit):
-            for e in expr.elements:
-                self._scan_expr_for_captures(e, param_names, pos)
-        elif isinstance(expr, TTupleLit):
-            for e in expr.elements:
-                self._scan_expr_for_captures(e, param_names, pos)
-        elif isinstance(expr, TFnLit):
-            # Nested fn lits — the inner one can reference the outer's params
-            inner_params: set[str] = set(param_names)
-            for p in expr.params:
-                inner_params.add(p.name)
-            for s in expr.body:
-                self._scan_stmt_for_captures(s, inner_params, pos)
+        match expr:
+            case TVar():
+                name = expr.name
+                if name in param_names:
+                    return
+                if name in self.functions:
+                    return
+                if name in self.types:
+                    return
+                if name in BUILTIN_NAMES:
+                    return
+                self.error("cannot capture '" + name + "' in fn literal", expr.pos)
+            case TBinaryOp():
+                self._scan_expr_for_captures(expr.left, param_names, pos)
+                self._scan_expr_for_captures(expr.right, param_names, pos)
+            case TUnaryOp():
+                self._scan_expr_for_captures(expr.operand, param_names, pos)
+            case TTernary():
+                self._scan_expr_for_captures(expr.cond, param_names, pos)
+                self._scan_expr_for_captures(expr.then_expr, param_names, pos)
+                self._scan_expr_for_captures(expr.else_expr, param_names, pos)
+            case TFieldAccess() | TTupleAccess():
+                self._scan_expr_for_captures(expr.obj, param_names, pos)
+            case TIndex():
+                self._scan_expr_for_captures(expr.obj, param_names, pos)
+                self._scan_expr_for_captures(expr.index, param_names, pos)
+            case TSlice():
+                self._scan_expr_for_captures(expr.obj, param_names, pos)
+                self._scan_expr_for_captures(expr.low, param_names, pos)
+                self._scan_expr_for_captures(expr.high, param_names, pos)
+            case TCall():
+                self._scan_expr_for_captures(expr.func, param_names, pos)
+                for a in expr.args:
+                    self._scan_expr_for_captures(a.value, param_names, pos)
+            case TListLit() | TSetLit() | TTupleLit():
+                for e in expr.elements:
+                    self._scan_expr_for_captures(e, param_names, pos)
+            case TMapLit():
+                for k, v in expr.entries:
+                    self._scan_expr_for_captures(k, param_names, pos)
+                    self._scan_expr_for_captures(v, param_names, pos)
+            case TFnLit():
+                inner_params: set[str] = set(param_names)
+                for p in expr.params:
+                    inner_params.add(p.name)
+                for s in expr.body:
+                    self._scan_stmt_for_captures(s, inner_params, pos)
 
     def _scan_stmt_for_captures(
         self, stmt: TStmt, param_names: set[str], pos: Pos
     ) -> None:
-        if isinstance(stmt, TLetStmt):
-            if stmt.value is not None:
+        match stmt:
+            case TLetStmt():
+                if stmt.value is not None:
+                    self._scan_expr_for_captures(stmt.value, param_names, pos)
+                param_names.add(stmt.name)
+            case TAssignStmt():
+                self._scan_expr_for_captures(stmt.target, param_names, pos)
                 self._scan_expr_for_captures(stmt.value, param_names, pos)
-            # The declared name becomes a local, not a capture
-            param_names.add(stmt.name)
-        elif isinstance(stmt, TAssignStmt):
-            self._scan_expr_for_captures(stmt.target, param_names, pos)
-            self._scan_expr_for_captures(stmt.value, param_names, pos)
-        elif isinstance(stmt, TOpAssignStmt):
-            self._scan_expr_for_captures(stmt.target, param_names, pos)
-            self._scan_expr_for_captures(stmt.value, param_names, pos)
-        elif isinstance(stmt, TTupleAssignStmt):
-            for t in stmt.targets:
-                self._scan_expr_for_captures(t, param_names, pos)
-            self._scan_expr_for_captures(stmt.value, param_names, pos)
-        elif isinstance(stmt, TReturnStmt):
-            if stmt.value is not None:
+            case TOpAssignStmt():
+                self._scan_expr_for_captures(stmt.target, param_names, pos)
                 self._scan_expr_for_captures(stmt.value, param_names, pos)
-        elif isinstance(stmt, TThrowStmt):
-            self._scan_expr_for_captures(stmt.expr, param_names, pos)
-        elif isinstance(stmt, TExprStmt):
-            self._scan_expr_for_captures(stmt.expr, param_names, pos)
-        elif isinstance(stmt, TIfStmt):
-            self._scan_expr_for_captures(stmt.cond, param_names, pos)
-            for s in stmt.then_body:
-                self._scan_stmt_for_captures(s, param_names, pos)
-            if stmt.else_body is not None:
-                for s in stmt.else_body:
+            case TTupleAssignStmt():
+                for t in stmt.targets:
+                    self._scan_expr_for_captures(t, param_names, pos)
+                self._scan_expr_for_captures(stmt.value, param_names, pos)
+            case TReturnStmt():
+                if stmt.value is not None:
+                    self._scan_expr_for_captures(stmt.value, param_names, pos)
+            case TThrowStmt():
+                self._scan_expr_for_captures(stmt.expr, param_names, pos)
+            case TExprStmt():
+                self._scan_expr_for_captures(stmt.expr, param_names, pos)
+            case TIfStmt():
+                self._scan_expr_for_captures(stmt.cond, param_names, pos)
+                for s in stmt.then_body:
                     self._scan_stmt_for_captures(s, param_names, pos)
-        elif isinstance(stmt, TWhileStmt):
-            self._scan_expr_for_captures(stmt.cond, param_names, pos)
-            for s in stmt.body:
-                self._scan_stmt_for_captures(s, param_names, pos)
-        elif isinstance(stmt, TForStmt):
-            param_names = set(param_names)
-            for b in stmt.binding:
-                param_names.add(b)
-            if isinstance(stmt.iterable, TRange):
-                for a in stmt.iterable.args:
-                    self._scan_expr_for_captures(a, param_names, pos)
-            else:
-                self._scan_expr_for_captures(stmt.iterable, param_names, pos)
-            for s in stmt.body:
-                self._scan_stmt_for_captures(s, param_names, pos)
-        elif isinstance(stmt, TMatchStmt):
-            self._scan_expr_for_captures(stmt.expr, param_names, pos)
-            for case in stmt.cases:
-                inner = set(param_names)
-                if isinstance(case.pattern, TPatternType):
-                    inner.add(case.pattern.name)
-                for s in case.body:
-                    self._scan_stmt_for_captures(s, inner, pos)
-            if stmt.default is not None:
-                inner2 = set(param_names)
-                if stmt.default.name is not None:
-                    inner2.add(stmt.default.name)
-                for s in stmt.default.body:
-                    self._scan_stmt_for_captures(s, inner2, pos)
-        elif isinstance(stmt, TTryStmt):
-            for s in stmt.body:
-                self._scan_stmt_for_captures(s, param_names, pos)
-            for catch in stmt.catches:
-                inner3 = set(param_names)
-                inner3.add(catch.name)
-                for s in catch.body:
-                    self._scan_stmt_for_captures(s, inner3, pos)
-            if stmt.finally_body is not None:
-                for s in stmt.finally_body:
+                if stmt.else_body is not None:
+                    for s in stmt.else_body:
+                        self._scan_stmt_for_captures(s, param_names, pos)
+            case TWhileStmt():
+                self._scan_expr_for_captures(stmt.cond, param_names, pos)
+                for s in stmt.body:
                     self._scan_stmt_for_captures(s, param_names, pos)
+            case TForStmt():
+                param_names = set(param_names)
+                for b in stmt.binding:
+                    param_names.add(b)
+                if isinstance(stmt.iterable, TRange):
+                    for a in stmt.iterable.args:
+                        self._scan_expr_for_captures(a, param_names, pos)
+                else:
+                    self._scan_expr_for_captures(stmt.iterable, param_names, pos)
+                for s in stmt.body:
+                    self._scan_stmt_for_captures(s, param_names, pos)
+            case TMatchStmt():
+                self._scan_expr_for_captures(stmt.expr, param_names, pos)
+                for case in stmt.cases:
+                    inner = set(param_names)
+                    if isinstance(case.pattern, TPatternType):
+                        inner.add(case.pattern.name)
+                    for s in case.body:
+                        self._scan_stmt_for_captures(s, inner, pos)
+                if stmt.default is not None:
+                    inner2 = set(param_names)
+                    if stmt.default.name is not None:
+                        inner2.add(stmt.default.name)
+                    for s in stmt.default.body:
+                        self._scan_stmt_for_captures(s, inner2, pos)
+            case TTryStmt():
+                for s in stmt.body:
+                    self._scan_stmt_for_captures(s, param_names, pos)
+                for catch in stmt.catches:
+                    inner3 = set(param_names)
+                    inner3.add(catch.name)
+                    for s in catch.body:
+                        self._scan_stmt_for_captures(s, inner3, pos)
+                if stmt.finally_body is not None:
+                    for s in stmt.finally_body:
+                        self._scan_stmt_for_captures(s, param_names, pos)
 
     # ── Built-in function checking ────────────────────────────
 

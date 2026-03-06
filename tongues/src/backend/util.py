@@ -234,102 +234,92 @@ def collect_builtin_calls(stmts: list[TStmt]) -> set[str]:
 def _collect_builtin_calls_stmt(
     stmt: TStmt, out: set[str], builtin_names: frozenset[str]
 ) -> None:
-    if isinstance(stmt, TExprStmt):
-        _collect_builtin_calls_expr(stmt.expr, out, builtin_names)
-    elif isinstance(stmt, TLetStmt):
-        if stmt.value is not None:
+    match stmt:
+        case TExprStmt():
+            _collect_builtin_calls_expr(stmt.expr, out, builtin_names)
+        case TLetStmt():
+            if stmt.value is not None:
+                _collect_builtin_calls_expr(stmt.value, out, builtin_names)
+        case TAssignStmt() | TOpAssignStmt() | TTupleAssignStmt():
             _collect_builtin_calls_expr(stmt.value, out, builtin_names)
-    elif isinstance(stmt, TAssignStmt):
-        _collect_builtin_calls_expr(stmt.value, out, builtin_names)
-    elif isinstance(stmt, TOpAssignStmt):
-        _collect_builtin_calls_expr(stmt.value, out, builtin_names)
-    elif isinstance(stmt, TTupleAssignStmt):
-        _collect_builtin_calls_expr(stmt.value, out, builtin_names)
-    elif isinstance(stmt, TReturnStmt):
-        if stmt.value is not None:
-            _collect_builtin_calls_expr(stmt.value, out, builtin_names)
-    elif isinstance(stmt, TThrowStmt):
-        _collect_builtin_calls_expr(stmt.expr, out, builtin_names)
-    elif isinstance(stmt, TIfStmt):
-        _collect_builtin_calls_expr(stmt.cond, out, builtin_names)
-        for s in stmt.then_body:
-            _collect_builtin_calls_stmt(s, out, builtin_names)
-        if stmt.else_body is not None:
-            for s in stmt.else_body:
+        case TReturnStmt():
+            if stmt.value is not None:
+                _collect_builtin_calls_expr(stmt.value, out, builtin_names)
+        case TThrowStmt():
+            _collect_builtin_calls_expr(stmt.expr, out, builtin_names)
+        case TIfStmt():
+            _collect_builtin_calls_expr(stmt.cond, out, builtin_names)
+            for s in stmt.then_body:
                 _collect_builtin_calls_stmt(s, out, builtin_names)
-    elif isinstance(stmt, TWhileStmt):
-        _collect_builtin_calls_expr(stmt.cond, out, builtin_names)
-        for s in stmt.body:
-            _collect_builtin_calls_stmt(s, out, builtin_names)
-    elif isinstance(stmt, TForStmt):
-        if isinstance(stmt.iterable, TRange):
-            for a in stmt.iterable.args:
-                _collect_builtin_calls_expr(a, out, builtin_names)
-        else:
-            _collect_builtin_calls_expr(stmt.iterable, out, builtin_names)
-        for s in stmt.body:
-            _collect_builtin_calls_stmt(s, out, builtin_names)
-    elif isinstance(stmt, TTryStmt):
-        for s in stmt.body:
-            _collect_builtin_calls_stmt(s, out, builtin_names)
-        for catch in stmt.catches:
-            for s in catch.body:
+            if stmt.else_body is not None:
+                for s in stmt.else_body:
+                    _collect_builtin_calls_stmt(s, out, builtin_names)
+        case TWhileStmt():
+            _collect_builtin_calls_expr(stmt.cond, out, builtin_names)
+            for s in stmt.body:
                 _collect_builtin_calls_stmt(s, out, builtin_names)
-        if stmt.finally_body is not None:
-            for s in stmt.finally_body:
+        case TForStmt():
+            if isinstance(stmt.iterable, TRange):
+                for a in stmt.iterable.args:
+                    _collect_builtin_calls_expr(a, out, builtin_names)
+            else:
+                _collect_builtin_calls_expr(stmt.iterable, out, builtin_names)
+            for s in stmt.body:
                 _collect_builtin_calls_stmt(s, out, builtin_names)
-    elif isinstance(stmt, TMatchStmt):
-        _collect_builtin_calls_expr(stmt.expr, out, builtin_names)
-        for case in stmt.cases:
-            for s in case.body:
+        case TTryStmt():
+            for s in stmt.body:
                 _collect_builtin_calls_stmt(s, out, builtin_names)
-        if stmt.default is not None:
-            for s in stmt.default.body:
-                _collect_builtin_calls_stmt(s, out, builtin_names)
+            for catch in stmt.catches:
+                for s in catch.body:
+                    _collect_builtin_calls_stmt(s, out, builtin_names)
+            if stmt.finally_body is not None:
+                for s in stmt.finally_body:
+                    _collect_builtin_calls_stmt(s, out, builtin_names)
+        case TMatchStmt():
+            _collect_builtin_calls_expr(stmt.expr, out, builtin_names)
+            for case in stmt.cases:
+                for s in case.body:
+                    _collect_builtin_calls_stmt(s, out, builtin_names)
+            if stmt.default is not None:
+                for s in stmt.default.body:
+                    _collect_builtin_calls_stmt(s, out, builtin_names)
 
 
 def _collect_builtin_calls_expr(
     expr: TExpr, out: set[str], builtin_names: frozenset[str]
 ) -> None:
-    if isinstance(expr, TCall):
-        if isinstance(expr.func, TVar) and expr.func.name in builtin_names:
-            out.add(expr.func.name)
-        _collect_builtin_calls_expr(expr.func, out, builtin_names)
-        for a in expr.args:
-            _collect_builtin_calls_expr(a.value, out, builtin_names)
-    elif isinstance(expr, TBinaryOp):
-        _collect_builtin_calls_expr(expr.left, out, builtin_names)
-        _collect_builtin_calls_expr(expr.right, out, builtin_names)
-    elif isinstance(expr, TUnaryOp):
-        _collect_builtin_calls_expr(expr.operand, out, builtin_names)
-    elif isinstance(expr, TTernary):
-        _collect_builtin_calls_expr(expr.cond, out, builtin_names)
-        _collect_builtin_calls_expr(expr.then_expr, out, builtin_names)
-        _collect_builtin_calls_expr(expr.else_expr, out, builtin_names)
-    elif isinstance(expr, TFieldAccess):
-        _collect_builtin_calls_expr(expr.obj, out, builtin_names)
-    elif isinstance(expr, TTupleAccess):
-        _collect_builtin_calls_expr(expr.obj, out, builtin_names)
-    elif isinstance(expr, TIndex):
-        _collect_builtin_calls_expr(expr.obj, out, builtin_names)
-        _collect_builtin_calls_expr(expr.index, out, builtin_names)
-    elif isinstance(expr, TSlice):
-        _collect_builtin_calls_expr(expr.obj, out, builtin_names)
-        _collect_builtin_calls_expr(expr.low, out, builtin_names)
-        _collect_builtin_calls_expr(expr.high, out, builtin_names)
-    elif isinstance(expr, TListLit):
-        for e in expr.elements:
-            _collect_builtin_calls_expr(e, out, builtin_names)
-    elif isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            _collect_builtin_calls_expr(e, out, builtin_names)
-    elif isinstance(expr, TSetLit):
-        for e in expr.elements:
-            _collect_builtin_calls_expr(e, out, builtin_names)
-    elif isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            _collect_builtin_calls_expr(k, out, builtin_names)
-            _collect_builtin_calls_expr(v, out, builtin_names)
-    elif isinstance(expr, TFnLit):
-        for s in expr.body:
-            _collect_builtin_calls_stmt(s, out, builtin_names)
+    match expr:
+        case TCall():
+            if isinstance(expr.func, TVar) and expr.func.name in builtin_names:
+                out.add(expr.func.name)
+            _collect_builtin_calls_expr(expr.func, out, builtin_names)
+            for a in expr.args:
+                _collect_builtin_calls_expr(a.value, out, builtin_names)
+        case TBinaryOp():
+            _collect_builtin_calls_expr(expr.left, out, builtin_names)
+            _collect_builtin_calls_expr(expr.right, out, builtin_names)
+        case TUnaryOp():
+            _collect_builtin_calls_expr(expr.operand, out, builtin_names)
+        case TTernary():
+            _collect_builtin_calls_expr(expr.cond, out, builtin_names)
+            _collect_builtin_calls_expr(expr.then_expr, out, builtin_names)
+            _collect_builtin_calls_expr(expr.else_expr, out, builtin_names)
+        case TFieldAccess() | TTupleAccess():
+            _collect_builtin_calls_expr(expr.obj, out, builtin_names)
+        case TIndex():
+            _collect_builtin_calls_expr(expr.obj, out, builtin_names)
+            _collect_builtin_calls_expr(expr.index, out, builtin_names)
+        case TSlice():
+            _collect_builtin_calls_expr(expr.obj, out, builtin_names)
+            _collect_builtin_calls_expr(expr.low, out, builtin_names)
+            _collect_builtin_calls_expr(expr.high, out, builtin_names)
+        case TListLit() | TTupleLit() | TSetLit():
+            for e in expr.elements:
+                _collect_builtin_calls_expr(e, out, builtin_names)
+        case TMapLit():
+            for k, v in expr.entries:
+                _collect_builtin_calls_expr(k, out, builtin_names)
+                _collect_builtin_calls_expr(v, out, builtin_names)
+        case TFnLit():
+            for s in expr.body:
+                _collect_builtin_calls_stmt(s, out, builtin_names)
