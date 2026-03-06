@@ -1324,48 +1324,57 @@ class Checker:
         # First pass: register all type names (structs, interfaces, enums)
         # so they can reference each other
         for decl in module.decls:
-            if isinstance(decl, TStructDecl):
-                if decl.name in self.types:
-                    self.error("duplicate type name '" + decl.name + "'", decl.pos)
-                    continue
-                if decl.name in RESERVED_NAMES:
-                    self.error("cannot use reserved name '" + decl.name + "'", decl.pos)
-                    continue
-                # Placeholder — fields/methods filled in next loop
-                st = StructT(
-                    kind="struct",
-                    name=decl.name,
-                    fields={},
-                    methods={},
-                    parent=decl.parent,
-                    field_order=[],
-                )
-                self.types[decl.name] = st
-            elif isinstance(decl, TInterfaceDecl):
-                if decl.name in self.types:
-                    self.error("duplicate type name '" + decl.name + "'", decl.pos)
-                    continue
-                if decl.name in RESERVED_NAMES:
-                    self.error("cannot use reserved name '" + decl.name + "'", decl.pos)
-                    continue
-                it = InterfaceT(kind="interface", name=decl.name, variants=[])
-                self.types[decl.name] = it
-            elif isinstance(decl, TEnumDecl):
-                if decl.name in self.types:
-                    self.error("duplicate type name '" + decl.name + "'", decl.pos)
-                    continue
-                if decl.name in RESERVED_NAMES:
-                    self.error("cannot use reserved name '" + decl.name + "'", decl.pos)
-                    continue
-                seen_variants: set[str] = set()
-                for v in decl.variants:
-                    if v in seen_variants:
+            match decl:
+                case TStructDecl():
+                    if decl.name in self.types:
+                        self.error("duplicate type name '" + decl.name + "'", decl.pos)
+                        continue
+                    if decl.name in RESERVED_NAMES:
                         self.error(
-                            "duplicate variant '" + v + "' in " + decl.name, decl.pos
+                            "cannot use reserved name '" + decl.name + "'", decl.pos
                         )
-                    seen_variants.add(v)
-                et = EnumT(kind="enum", name=decl.name, variants=list(decl.variants))
-                self.types[decl.name] = et
+                        continue
+                    st = StructT(
+                        kind="struct",
+                        name=decl.name,
+                        fields={},
+                        methods={},
+                        parent=decl.parent,
+                        field_order=[],
+                    )
+                    self.types[decl.name] = st
+                case TInterfaceDecl():
+                    if decl.name in self.types:
+                        self.error("duplicate type name '" + decl.name + "'", decl.pos)
+                        continue
+                    if decl.name in RESERVED_NAMES:
+                        self.error(
+                            "cannot use reserved name '" + decl.name + "'", decl.pos
+                        )
+                        continue
+                    it = InterfaceT(kind="interface", name=decl.name, variants=[])
+                    self.types[decl.name] = it
+                case TEnumDecl():
+                    if decl.name in self.types:
+                        self.error("duplicate type name '" + decl.name + "'", decl.pos)
+                        continue
+                    if decl.name in RESERVED_NAMES:
+                        self.error(
+                            "cannot use reserved name '" + decl.name + "'", decl.pos
+                        )
+                        continue
+                    seen_variants: set[str] = set()
+                    for v in decl.variants:
+                        if v in seen_variants:
+                            self.error(
+                                "duplicate variant '" + v + "' in " + decl.name,
+                                decl.pos,
+                            )
+                        seen_variants.add(v)
+                    et = EnumT(
+                        kind="enum", name=decl.name, variants=list(decl.variants)
+                    )
+                    self.types[decl.name] = et
 
         # Second pass: resolve struct fields, methods, and interface parents
         for decl in module.decls:
@@ -2142,88 +2151,86 @@ class Checker:
         scrutinee_expr: TExpr | None = None,
     ) -> None:
         pat = case.pattern
-        if isinstance(pat, TPatternNil):
-            if not contains_nil(scrutinee):
-                self.error(
-                    "nil is not a variant of " + type_name(scrutinee),
-                    pat.pos,
-                )
-            key = "nil"
-            if key in covered:
-                self.error("duplicate case: nil", pat.pos)
-            covered.append(key)
-            self.enter_scope()
-            self.check_stmts(case.body)
-            self.exit_scope()
-        elif isinstance(pat, TPatternEnum):
-            # Validate enum — check that this enum is valid for the scrutinee
-            if pat.enum_name in self.types:
-                enum_type = self.types[pat.enum_name]
-                if isinstance(enum_type, EnumT):
-                    # Check that this enum is the right one for the scrutinee
-                    scrutinee_enum = self._get_scrutinee_enum(scrutinee)
-                    if scrutinee_enum is not None and not type_eq(
-                        enum_type, scrutinee_enum
-                    ):
-                        self.error(
-                            "'"
-                            + pat.enum_name
-                            + "."
-                            + pat.variant
-                            + "' is not a variant of "
-                            + scrutinee_enum.name,
-                            pat.pos,
-                        )
-                    elif pat.variant not in enum_type.variants:
-                        self.error(
-                            "'"
-                            + pat.variant
-                            + "' is not a variant of "
-                            + pat.enum_name,
-                            pat.pos,
-                        )
+        match pat:
+            case TPatternNil():
+                if not contains_nil(scrutinee):
+                    self.error(
+                        "nil is not a variant of " + type_name(scrutinee),
+                        pat.pos,
+                    )
+                key = "nil"
+                if key in covered:
+                    self.error("duplicate case: nil", pat.pos)
+                covered.append(key)
+                self.enter_scope()
+                self.check_stmts(case.body)
+                self.exit_scope()
+            case TPatternEnum():
+                if pat.enum_name in self.types:
+                    enum_type = self.types[pat.enum_name]
+                    if isinstance(enum_type, EnumT):
+                        scrutinee_enum = self._get_scrutinee_enum(scrutinee)
+                        if scrutinee_enum is not None and not type_eq(
+                            enum_type, scrutinee_enum
+                        ):
+                            self.error(
+                                "'"
+                                + pat.enum_name
+                                + "."
+                                + pat.variant
+                                + "' is not a variant of "
+                                + scrutinee_enum.name,
+                                pat.pos,
+                            )
+                        elif pat.variant not in enum_type.variants:
+                            self.error(
+                                "'"
+                                + pat.variant
+                                + "' is not a variant of "
+                                + pat.enum_name,
+                                pat.pos,
+                            )
+                        else:
+                            key = pat.enum_name + "." + pat.variant
+                            if key in covered:
+                                self.error("duplicate case", pat.pos)
+                            covered.append(key)
                     else:
-                        key = pat.enum_name + "." + pat.variant
-                        if key in covered:
-                            self.error("duplicate case", pat.pos)
-                        covered.append(key)
+                        self.error("'" + pat.enum_name + "' is not an enum", pat.pos)
                 else:
-                    self.error("'" + pat.enum_name + "' is not an enum", pat.pos)
-            else:
-                self.error("unknown type '" + pat.enum_name + "'", pat.pos)
-            self.enter_scope()
-            self.check_stmts(case.body)
-            self.exit_scope()
-        elif isinstance(pat, TPatternType):
-            case_type = self.resolve_type(pat.type_name)
-            if (
-                case_type.kind != TY_ERROR
-                and scrutinee.kind != TY_ERROR
-                and not self._allowed_in_match(case_type, scrutinee)
-            ):
-                self.error(
-                    type_name(case_type)
-                    + " is not a variant of "
-                    + type_name(scrutinee),
-                    pat.pos,
-                )
-            key2 = _type_key(case_type)
-            if key2 in covered:
-                self.error("duplicate case", pat.pos)
-            covered.append(key2)
-            # For interface cases in a union, also mark all struct variants covered
-            if isinstance(case_type, InterfaceT):
-                for v in case_type.variants:
-                    vkey = _type_key(self.types[v])
-                    if vkey not in covered:
-                        covered.append(vkey)
-            self.enter_scope()
-            self.declare(pat.name, case_type, pat.pos)
-            if scrutinee_expr is not None and isinstance(scrutinee_expr, TVar):
-                if scrutinee_expr.name != pat.name:
-                    self.narrow(scrutinee_expr.name, case_type)
-            self.check_stmts(case.body)
-            self.exit_scope()
+                    self.error("unknown type '" + pat.enum_name + "'", pat.pos)
+                self.enter_scope()
+                self.check_stmts(case.body)
+                self.exit_scope()
+            case TPatternType():
+                case_type = self.resolve_type(pat.type_name)
+                if (
+                    case_type.kind != TY_ERROR
+                    and scrutinee.kind != TY_ERROR
+                    and not self._allowed_in_match(case_type, scrutinee)
+                ):
+                    self.error(
+                        type_name(case_type)
+                        + " is not a variant of "
+                        + type_name(scrutinee),
+                        pat.pos,
+                    )
+                key2 = _type_key(case_type)
+                if key2 in covered:
+                    self.error("duplicate case", pat.pos)
+                covered.append(key2)
+                if isinstance(case_type, InterfaceT):
+                    for v in case_type.variants:
+                        vkey = _type_key(self.types[v])
+                        if vkey not in covered:
+                            covered.append(vkey)
+                self.enter_scope()
+                self.declare(pat.name, case_type, pat.pos)
+                if scrutinee_expr is not None and isinstance(scrutinee_expr, TVar):
+                    if scrutinee_expr.name != pat.name:
+                        self.narrow(scrutinee_expr.name, case_type)
+                self.check_stmts(case.body)
+                self.exit_scope()
 
     def _get_scrutinee_enum(self, scrutinee: Type) -> EnumT | None:
         """Get the enum type from the scrutinee (direct or optional)."""
