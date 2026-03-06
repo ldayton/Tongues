@@ -744,6 +744,16 @@ class LoweringError:
         )
 
 
+def _collect_enum_classes(class_bases: dict[str, list[str]]) -> set[str]:
+    """Return the set of class names whose bases include StrEnum or IntEnum."""
+    result: set[str] = set()
+    for ec_name, ec_bases in class_bases.items():
+        for ec_base in ec_bases:
+            if ec_base == "StrEnum" or ec_base == "IntEnum":
+                result.add(ec_name)
+    return result
+
+
 class _LowerCtx:
     """Module-level context for lowering."""
 
@@ -755,6 +765,7 @@ class _LowerCtx:
         class_bases: dict[str, list[str]],
         pycheck_result: PycheckResult,
         known_funcs: set[str],
+        enum_classes: set[str],
     ) -> None:
         self.tc_result: TypeCollectResult = tc_result
         self.hier_result: HierarchyResult = hier_result
@@ -767,11 +778,7 @@ class _LowerCtx:
         self.class_nodes: dict[str, ASTNode] = {}
         self.func_nodes: dict[str, ASTNode] = {}
         self.known_funcs: set[str] = known_funcs
-        self.enum_classes: set[str] = set()
-        for ec_name, ec_bases in class_bases.items():
-            for ec_base in ec_bases:
-                if ec_base == "StrEnum" or ec_base == "IntEnum":
-                    self.enum_classes.add(ec_name)
+        self.enum_classes: set[str] = enum_classes
 
 
 class _Env:
@@ -6571,6 +6578,7 @@ def lower(
     akeys = list(hier_result.ancestors.keys())
     for ak in akeys:
         _LOWER_ANCESTORS[ak] = hier_result.ancestors[ak]
+    enum_classes = _collect_enum_classes(class_bases)
     ctx = _LowerCtx(
         tc_result,
         hier_result,
@@ -6578,6 +6586,7 @@ def lower(
         class_bases,
         pycheck_result,
         known_funcs if known_funcs is not None else set(),
+        enum_classes,
     )
     module = _build_module(tree, ctx)
     while _LOWER_ANCESTORS:

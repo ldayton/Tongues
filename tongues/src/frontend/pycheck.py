@@ -3187,7 +3187,7 @@ def _validate_match(
         for v in enum_cls_info.enum_variants:
             all_variants.add(v)
         missing = all_variants - enum_matched_variants
-        if missing:
+        if len(missing) > 0:
             lineno = get_int(stmt, "lineno")
             ctx.result.add_error(lineno, 0, "non-exhaustive enum match")
 
