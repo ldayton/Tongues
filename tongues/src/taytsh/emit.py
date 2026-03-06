@@ -491,10 +491,10 @@ class _Emitter:
                 parts.append(self._render_type(e))
             return f"({', '.join(parts)})"
         if isinstance(typ, TFuncType):
-            parts2: list[str] = []
+            parts: list[str] = []
             for p in typ.params:
-                parts2.append(self._render_type(p))
-            return f"fn[{', '.join(parts2)}]"
+                parts.append(self._render_type(p))
+            return f"fn[{', '.join(parts)}]"
         if isinstance(typ, TIdentType):
             return typ.name
         if isinstance(typ, TUnionType):
@@ -631,10 +631,10 @@ class _Emitter:
                     args.append(f"{a.name}: {val}")
             return f"{func}({', '.join(args)})"
         if isinstance(expr, TListLit):
-            parts3: list[str] = []
+            parts: list[str] = []
             for e2 in expr.elements:
-                parts3.append(self._render_expr(e2, _PREC_TERNARY))
-            return f"[{', '.join(parts3)}]"
+                parts.append(self._render_expr(e2, _PREC_TERNARY))
+            return f"[{', '.join(parts)}]"
         if isinstance(expr, TMapLit):
             entries: list[str] = []
             for k, v in expr.entries:

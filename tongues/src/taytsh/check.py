@@ -255,8 +255,8 @@ def _type_key(t: Type) -> str:
         parts = [_type_key(e) for e in t.elements]
         return "(" + ",".join(parts) + ")"
     if isinstance(t, FnT):
-        parts2 = [_type_key(p) for p in t.params]
-        return "fn[" + ",".join(parts2) + "->" + _type_key(t.ret) + "]"
+        parts = [_type_key(p) for p in t.params]
+        return "fn[" + ",".join(parts) + "->" + _type_key(t.ret) + "]"
     if isinstance(t, StructT):
         return "struct:" + t.name
     if isinstance(t, InterfaceT):
@@ -282,8 +282,8 @@ def type_name(t: Type) -> str:
         parts = [type_name(e) for e in t.elements]
         return "(" + ", ".join(parts) + ")"
     if isinstance(t, FnT):
-        parts2 = [type_name(p) for p in t.params] + [type_name(t.ret)]
-        return "fn[" + ", ".join(parts2) + "]"
+        parts = [type_name(p) for p in t.params] + [type_name(t.ret)]
+        return "fn[" + ", ".join(parts) + "]"
     if isinstance(t, StructT):
         return t.name
     if isinstance(t, InterfaceT):
@@ -292,8 +292,8 @@ def type_name(t: Type) -> str:
         return t.name
     if isinstance(t, UnionT):
         members_by_key: dict[str, Type] = {_type_key(m): m for m in t.members}
-        parts3 = [type_name(members_by_key[k]) for k in sorted(members_by_key)]
-        return " | ".join(parts3)
+        parts = [type_name(members_by_key[k]) for k in sorted(members_by_key)]
+        return " | ".join(parts)
     return t.kind
 
 
