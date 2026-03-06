@@ -1486,10 +1486,11 @@ class Checker:
 
     def check_bodies(self, module: TModule) -> None:
         for decl in module.decls:
-            if isinstance(decl, TFnDecl):
-                self.check_fn_decl(decl)
-            elif isinstance(decl, TStructDecl):
-                self.check_struct_methods(decl)
+            match decl:
+                case TFnDecl():
+                    self.check_fn_decl(decl)
+                case TStructDecl():
+                    self.check_struct_methods(decl)
 
     def check_fn_decl(self, decl: TFnDecl) -> None:
         ret = self.resolve_type(decl.ret)

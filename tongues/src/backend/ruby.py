@@ -2584,10 +2584,9 @@ class _RubyEmitter(Emitter):
 def emit_ruby(module: TModule) -> str:
     struct_names: set[str] = set()
     for decl in module.decls:
-        if isinstance(decl, TStructDecl):
-            struct_names.add(decl.name)
-        elif isinstance(decl, TInterfaceDecl):
-            struct_names.add(decl.name)
+        match decl:
+            case TStructDecl() | TInterfaceDecl():
+                struct_names.add(decl.name)
     for _bk in BUILTIN_STRUCTS:
         struct_names.add(_bk)
     struct_fields: dict[str, list[str]] = {}
@@ -2595,28 +2594,30 @@ def emit_ruby(module: TModule) -> str:
     enum_names: set[str] = set()
     fn_names: set[str] = set()
     for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            fn_names.add(decl.name)
-        elif isinstance(decl, TStructDecl):
-            fnames: list[str] = []
-            ftypes: dict[str, TType] = {}
-            for f in decl.fields:
-                fnames.append(f.name)
-                if f.typ is not None:
-                    ftypes[f.name] = f.typ
-            struct_fields[decl.name] = fnames
-            field_types[decl.name] = ftypes
-            for m in decl.methods:
-                fn_names.add(m.name)
-        elif isinstance(decl, TInterfaceDecl) and decl.fields:
-            struct_fields[decl.name] = [f.name for f in decl.fields]
-            iftypes: dict[str, TType] = {}
-            for f in decl.fields:
-                if f.typ is not None:
-                    iftypes[f.name] = f.typ
-            field_types[decl.name] = iftypes
-        elif isinstance(decl, TEnumDecl):
-            enum_names.add(decl.name)
+        match decl:
+            case TFnDecl():
+                fn_names.add(decl.name)
+            case TStructDecl():
+                fnames: list[str] = []
+                ftypes: dict[str, TType] = {}
+                for f in decl.fields:
+                    fnames.append(f.name)
+                    if f.typ is not None:
+                        ftypes[f.name] = f.typ
+                struct_fields[decl.name] = fnames
+                field_types[decl.name] = ftypes
+                for m in decl.methods:
+                    fn_names.add(m.name)
+            case TInterfaceDecl():
+                if decl.fields:
+                    struct_fields[decl.name] = [f.name for f in decl.fields]
+                    iftypes: dict[str, TType] = {}
+                    for f in decl.fields:
+                        if f.typ is not None:
+                            iftypes[f.name] = f.typ
+                    field_types[decl.name] = iftypes
+            case TEnumDecl():
+                enum_names.add(decl.name)
     emitter = _RubyEmitter(
         struct_names,
         fn_names,

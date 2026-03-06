@@ -198,18 +198,19 @@ def _build_call_graph(
     fn_structs: dict[str, StructT | None] = {}
 
     for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            key = decl.name
-            fn_decls[key] = decl
-            fn_structs[key] = None
-            edges[key] = set()
-        elif isinstance(decl, TStructDecl):
-            st = checker.types.get(decl.name)
-            for method in decl.methods:
-                key = f"{decl.name}.{method.name}"
-                fn_decls[key] = method
-                fn_structs[key] = st if isinstance(st, StructT) else None
+        match decl:
+            case TFnDecl():
+                key = decl.name
+                fn_decls[key] = decl
+                fn_structs[key] = None
                 edges[key] = set()
+            case TStructDecl():
+                st = checker.types.get(decl.name)
+                for method in decl.methods:
+                    key = f"{decl.name}.{method.name}"
+                    fn_decls[key] = method
+                    fn_structs[key] = st if isinstance(st, StructT) else None
+                    edges[key] = set()
 
     for fn_key, decl in fn_decls.items():
         resolver = _TypeResolver(checker)

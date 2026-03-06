@@ -2108,19 +2108,20 @@ def emit_python(module: TModule) -> str:
     struct_names: set[str] = set(BUILTIN_STRUCTS.keys())
     struct_fields: dict[str, list[str]] = {}
     for decl in module.decls:
-        if isinstance(decl, TStructDecl):
-            struct_names.add(decl.name)
-            fnames: list[str] = []
-            for f in decl.fields:
-                fnames.append(_safe_name(f.name))
-            struct_fields[decl.name] = fnames
-        elif isinstance(decl, TInterfaceDecl):
-            struct_names.add(decl.name)
-            if decl.fields:
-                ifnames: list[str] = []
+        match decl:
+            case TStructDecl():
+                struct_names.add(decl.name)
+                fnames: list[str] = []
                 for f in decl.fields:
-                    ifnames.append(_safe_name(f.name))
-                struct_fields[decl.name] = ifnames
+                    fnames.append(_safe_name(f.name))
+                struct_fields[decl.name] = fnames
+            case TInterfaceDecl():
+                struct_names.add(decl.name)
+                if decl.fields:
+                    ifnames: list[str] = []
+                    for f in decl.fields:
+                        ifnames.append(_safe_name(f.name))
+                    struct_fields[decl.name] = ifnames
     emitter = _PythonEmitter(
         struct_names, struct_fields, module.strict_math, module.strict_tostring
     )

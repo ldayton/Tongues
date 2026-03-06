@@ -188,10 +188,11 @@ def serialize_callgraph(module: TModule, checker: Checker) -> dict[str, JsonValu
     """Serialize callgraph annotations and call info for all functions."""
     result: dict[str, JsonValue] = {}
     for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            result[decl.name] = JDict(_sc_serialize_fn(decl, checker))
-        elif isinstance(decl, TStructDecl):
-            for method in decl.methods:
-                key = decl.name + "." + method.name
-                result[key] = JDict(_sc_serialize_fn(method, checker))
+        match decl:
+            case TFnDecl():
+                result[decl.name] = JDict(_sc_serialize_fn(decl, checker))
+            case TStructDecl():
+                for method in decl.methods:
+                    key = decl.name + "." + method.name
+                    result[key] = JDict(_sc_serialize_fn(method, checker))
     return result

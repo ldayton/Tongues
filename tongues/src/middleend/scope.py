@@ -812,9 +812,10 @@ def analyze_scope(module: TModule, checker: Checker) -> None:
     )
 
     for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            _analyze_fn(decl, base_ctx)
-        elif isinstance(decl, TStructDecl):
-            st = checker.types.get(decl.name)
-            for method in decl.methods:
-                _analyze_fn(method, base_ctx, self_type=st)
+        match decl:
+            case TFnDecl():
+                _analyze_fn(decl, base_ctx)
+            case TStructDecl():
+                st = checker.types.get(decl.name)
+                for method in decl.methods:
+                    _analyze_fn(method, base_ctx, self_type=st)

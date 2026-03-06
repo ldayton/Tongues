@@ -413,9 +413,10 @@ def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) 
 def analyze_returns(module: TModule, checker: Checker) -> None:
     """Run returns analysis on all functions in the module."""
     for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            _analyze_fn(decl, checker)
-        elif isinstance(decl, TStructDecl):
-            st = checker.types.get(decl.name)
-            for method in decl.methods:
-                _analyze_fn(method, checker, self_type=st)
+        match decl:
+            case TFnDecl():
+                _analyze_fn(decl, checker)
+            case TStructDecl():
+                st = checker.types.get(decl.name)
+                for method in decl.methods:
+                    _analyze_fn(method, checker, self_type=st)

@@ -426,8 +426,9 @@ def _analyze_fn(decl: TFnDecl, checker: Checker) -> None:
 def analyze_ownership(module: TModule, checker: Checker) -> None:
     """Run ownership analysis on all functions in the module."""
     for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            _analyze_fn(decl, checker)
-        elif isinstance(decl, TStructDecl):
-            for method in decl.methods:
-                _analyze_fn(method, checker)
+        match decl:
+            case TFnDecl():
+                _analyze_fn(decl, checker)
+            case TStructDecl():
+                for method in decl.methods:
+                    _analyze_fn(method, checker)

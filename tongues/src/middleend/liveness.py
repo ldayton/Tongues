@@ -494,8 +494,9 @@ def _analyze_fn(decl: TFnDecl) -> None:
 def analyze_liveness(module: TModule, checker: Checker) -> None:
     """Run liveness analysis on all functions in the module."""
     for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            _analyze_fn(decl)
-        elif isinstance(decl, TStructDecl):
-            for method in decl.methods:
-                _analyze_fn(method)
+        match decl:
+            case TFnDecl():
+                _analyze_fn(decl)
+            case TStructDecl():
+                for method in decl.methods:
+                    _analyze_fn(method)
