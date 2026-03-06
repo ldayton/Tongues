@@ -6264,6 +6264,97 @@ def f(x: A | B | C) -> None:
 error: argument 1 has type B | C, expected never
 ---
 
+=== isinstance narrows else to remainder on base class
+class Node:
+    pass
+class Add(Node):
+    def __init__(self) -> None:
+        self.result: int = 0
+class Sub(Node):
+    def __init__(self) -> None:
+        self.result: int = 0
+def f(n: Node) -> int:
+    if isinstance(n, Add):
+        return n.result
+    else:
+        reveal_type(n)
+    return 0
+---
+reveal:13 = Sub
+---
+
+=== isinstance elif narrows else across base class subclasses
+class Stmt:
+    pass
+class LetStmt(Stmt):
+    def __init__(self) -> None:
+        self.name: str = ""
+class ReturnStmt(Stmt):
+    def __init__(self) -> None:
+        self.value: int = 0
+class ExprStmt(Stmt):
+    def __init__(self) -> None:
+        self.expr: str = ""
+def f(s: Stmt) -> str:
+    if isinstance(s, LetStmt):
+        return s.name
+    elif isinstance(s, ReturnStmt):
+        return str(s.value)
+    else:
+        reveal_type(s)
+    return ""
+---
+reveal:18 = ExprStmt
+---
+
+=== assert_never succeeds after exhaustive isinstance elif on base class
+from typing import assert_never
+class Stmt:
+    pass
+class LetStmt(Stmt):
+    def __init__(self) -> None:
+        self.name: str = ""
+class ReturnStmt(Stmt):
+    def __init__(self) -> None:
+        self.value: int = 0
+class ExprStmt(Stmt):
+    def __init__(self) -> None:
+        self.expr: str = ""
+def f(s: Stmt) -> str:
+    if isinstance(s, LetStmt):
+        return s.name
+    elif isinstance(s, ReturnStmt):
+        return str(s.value)
+    elif isinstance(s, ExprStmt):
+        return s.expr
+    else:
+        assert_never(s)
+---
+ok
+---
+
+=== assert_never errors after non-exhaustive isinstance elif on base class
+from typing import assert_never
+class Stmt:
+    pass
+class LetStmt(Stmt):
+    def __init__(self) -> None:
+        self.name: str = ""
+class ReturnStmt(Stmt):
+    def __init__(self) -> None:
+        self.value: int = 0
+class ExprStmt(Stmt):
+    def __init__(self) -> None:
+        self.expr: str = ""
+def f(s: Stmt) -> str:
+    if isinstance(s, LetStmt):
+        return s.name
+    else:
+        assert_never(s)
+---
+error: argument 1 has type ReturnStmt | ExprStmt, expected never
+---
+
 === TypeGuard narrows in if branch
 from typing import TypeGuard
 class Animal:
