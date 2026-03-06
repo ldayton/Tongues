@@ -1857,7 +1857,7 @@ class Runtime:
         if isinstance(it, VBytes):
             bi = 0
             while bi < len(it.value):
-                bv = int(it.value[bi])
+                bv = it.value[bi]
                 env.push_scope()
                 try:
                     if len(st.binding) == 1:
@@ -2421,7 +2421,7 @@ class Runtime:
         if isinstance(obj, VBytes) and isinstance(idx, VInt):
             if idx.value < 0 or idx.value >= len(obj.value):
                 self._throw_err("IndexError", "index out of bounds")
-            bval = int(obj.value[idx.value])
+            bval = obj.value[idx.value]
             return VByte(bval)
         if isinstance(obj, VMap):
             key = _as_hashable(idx)
@@ -2715,7 +2715,7 @@ def _strict_tostring(v: Value, rt: Runtime, *, in_composite: bool = False) -> st
         hex_list: list[str] = []
         bi = 0
         while bi < len(v.value):
-            bvi = int(v.value[bi])
+            bvi = v.value[bi]
             hex_list.append("\\x" + hex_chars[bvi >> 4] + hex_chars[bvi & 0x0F])
             bi += 1
         hex_parts = "".join(hex_list)

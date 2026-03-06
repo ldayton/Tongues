@@ -2935,7 +2935,7 @@ class VM:
                         _make_error_struct("IndexError", "bytes index out of range")
                     )
                     return
-                self.stack.append(VByte(int(obj.value[i])))
+                self.stack.append(VByte(obj.value[i]))
                 return
         if isinstance(obj, VTuple):
             if isinstance(idx, VInt):
@@ -3183,7 +3183,7 @@ class VM:
                         frame.ip += jump_offset
                         return
                     self.stack.append(VInt(idx.value))
-                    self.stack.append(VByte(int(collection.value[idx.value])))
+                    self.stack.append(VByte(collection.value[idx.value]))
                     self.stack[sp - 1] = VInt(idx.value + 1)
                 else:
                     frame.ip += jump_offset
