@@ -225,46 +225,39 @@ def _walk_expr(expr: TExpr, ctx: _ScopeCtx) -> None:
         elif name in ctx.top_level_fns and name not in BUILTIN_NAMES:
             expr.annotations["scope.is_function_ref"] = "true"
         return
-    if isinstance(expr, TBinaryOp):
-        _walk_expr(expr.left, ctx)
-        _walk_expr(expr.right, ctx)
-    elif isinstance(expr, TUnaryOp):
-        _walk_expr(expr.operand, ctx)
-    elif isinstance(expr, TTernary):
-        _walk_expr(expr.cond, ctx)
-        _walk_expr(expr.then_expr, ctx)
-        _walk_expr(expr.else_expr, ctx)
-    elif isinstance(expr, TFieldAccess):
-        _walk_expr(expr.obj, ctx)
-    elif isinstance(expr, TTupleAccess):
-        _walk_expr(expr.obj, ctx)
-    elif isinstance(expr, TIndex):
-        _walk_expr(expr.obj, ctx)
-        _walk_expr(expr.index, ctx)
-    elif isinstance(expr, TSlice):
-        _walk_expr(expr.obj, ctx)
-        _walk_expr(expr.low, ctx)
-        _walk_expr(expr.high, ctx)
-    elif isinstance(expr, TCall):
-        _check_call_mutation(expr, ctx)
-        _walk_expr(expr.func, ctx)
-        for a in expr.args:
-            _walk_expr(a.value, ctx)
-    elif isinstance(expr, TListLit):
-        for e in expr.elements:
-            _walk_expr(e, ctx)
-    elif isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            _walk_expr(k, ctx)
-            _walk_expr(v, ctx)
-    elif isinstance(expr, TSetLit):
-        for e in expr.elements:
-            _walk_expr(e, ctx)
-    elif isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            _walk_expr(e, ctx)
-    elif isinstance(expr, TFnLit):
-        _analyze_fn_lit(expr, ctx)
+    match expr:
+        case TBinaryOp():
+            _walk_expr(expr.left, ctx)
+            _walk_expr(expr.right, ctx)
+        case TUnaryOp():
+            _walk_expr(expr.operand, ctx)
+        case TTernary():
+            _walk_expr(expr.cond, ctx)
+            _walk_expr(expr.then_expr, ctx)
+            _walk_expr(expr.else_expr, ctx)
+        case TFieldAccess() | TTupleAccess():
+            _walk_expr(expr.obj, ctx)
+        case TIndex():
+            _walk_expr(expr.obj, ctx)
+            _walk_expr(expr.index, ctx)
+        case TSlice():
+            _walk_expr(expr.obj, ctx)
+            _walk_expr(expr.low, ctx)
+            _walk_expr(expr.high, ctx)
+        case TCall():
+            _check_call_mutation(expr, ctx)
+            _walk_expr(expr.func, ctx)
+            for a in expr.args:
+                _walk_expr(a.value, ctx)
+        case TListLit() | TSetLit() | TTupleLit():
+            for e in expr.elements:
+                _walk_expr(e, ctx)
+        case TMapLit():
+            for k, v in expr.entries:
+                _walk_expr(k, ctx)
+                _walk_expr(v, ctx)
+        case TFnLit():
+            _analyze_fn_lit(expr, ctx)
 
 
 def _analyze_fn_lit(expr: TFnLit, parent_ctx: _ScopeCtx) -> None:
@@ -296,88 +289,74 @@ def _walk_stmts(stmts: list[TStmt], ctx: _ScopeCtx) -> None:
 
 
 def _walk_stmt(stmt: TStmt, ctx: _ScopeCtx) -> None:
-    if isinstance(stmt, TLetStmt):
-        if stmt.value is not None:
+    match stmt:
+        case TLetStmt():
+            if stmt.value is not None:
+                _walk_expr(stmt.value, ctx)
+            declared_type = ctx.checker.resolve_type(stmt.typ)
+            ctx.bindings[stmt.name] = _BindingInfo(
+                annotations=stmt.annotations,
+                declared_type=declared_type,
+                is_param=False,
+            )
+        case TAssignStmt():
             _walk_expr(stmt.value, ctx)
-        declared_type = ctx.checker.resolve_type(stmt.typ)
-        ctx.bindings[stmt.name] = _BindingInfo(
-            annotations=stmt.annotations, declared_type=declared_type, is_param=False
-        )
-
-    elif isinstance(stmt, TAssignStmt):
-        _walk_expr(stmt.value, ctx)
-        _check_assign_target(stmt.target, ctx)
-        # Walk the target for variable uses (field/index chains)
-        _walk_assign_target_uses(stmt.target, ctx)
-        # Map index assignment: m[k] = v mutates m if it's a param
-        if isinstance(stmt.target, TIndex):
-            base = _get_base_var(stmt.target.obj)
-            if base is not None and base in ctx.bindings:
-                info = ctx.bindings[base]
-                if info.is_param:
-                    info.modified = True
-
-    elif isinstance(stmt, TOpAssignStmt):
-        _walk_expr(stmt.value, ctx)
-        if isinstance(stmt.target, TVar):
-            name = stmt.target.name
-            if name in ctx.bindings:
-                info = ctx.bindings[name]
-                info.reassigned = True
-                if info.is_param:
-                    info.modified = True
-        else:
-            # For field/index op-assign, it's mutation not reassignment
-            base = _get_base_var(stmt.target)
-            if base is not None and base in ctx.bindings:
-                info = ctx.bindings[base]
-                if info.is_param:
-                    info.modified = True
-        _walk_assign_target_uses(stmt.target, ctx)
-
-    elif isinstance(stmt, TTupleAssignStmt):
-        _walk_expr(stmt.value, ctx)
-        for t in stmt.targets:
-            _check_assign_target(t, ctx)
-
-    elif isinstance(stmt, TReturnStmt):
-        if stmt.value is not None:
+            _check_assign_target(stmt.target, ctx)
+            _walk_assign_target_uses(stmt.target, ctx)
+            if isinstance(stmt.target, TIndex):
+                base = _get_base_var(stmt.target.obj)
+                if base is not None and base in ctx.bindings:
+                    info = ctx.bindings[base]
+                    if info.is_param:
+                        info.modified = True
+        case TOpAssignStmt():
             _walk_expr(stmt.value, ctx)
-
-    elif isinstance(stmt, TThrowStmt):
-        _walk_expr(stmt.expr, ctx)
-
-    elif isinstance(stmt, TExprStmt):
-        _walk_expr(stmt.expr, ctx)
-
-    elif isinstance(stmt, TIfStmt):
-        _walk_expr(stmt.cond, ctx)
-        _walk_if_stmt(stmt, ctx)
-
-    elif isinstance(stmt, TWhileStmt):
-        _walk_expr(stmt.cond, ctx)
-        _walk_stmts(stmt.body, ctx)
-
-    elif isinstance(stmt, TForStmt):
-        _walk_for_stmt(stmt, ctx)
-
-    elif isinstance(stmt, TMatchStmt):
-        _walk_match_stmt(stmt, ctx)
-
-    elif isinstance(stmt, TTryStmt):
-        _walk_try_stmt(stmt, ctx)
+            if isinstance(stmt.target, TVar):
+                name = stmt.target.name
+                if name in ctx.bindings:
+                    info = ctx.bindings[name]
+                    info.reassigned = True
+                    if info.is_param:
+                        info.modified = True
+            else:
+                base = _get_base_var(stmt.target)
+                if base is not None and base in ctx.bindings:
+                    info = ctx.bindings[base]
+                    if info.is_param:
+                        info.modified = True
+            _walk_assign_target_uses(stmt.target, ctx)
+        case TTupleAssignStmt():
+            _walk_expr(stmt.value, ctx)
+            for t in stmt.targets:
+                _check_assign_target(t, ctx)
+        case TReturnStmt():
+            if stmt.value is not None:
+                _walk_expr(stmt.value, ctx)
+        case TThrowStmt() | TExprStmt():
+            _walk_expr(stmt.expr, ctx)
+        case TIfStmt():
+            _walk_expr(stmt.cond, ctx)
+            _walk_if_stmt(stmt, ctx)
+        case TWhileStmt():
+            _walk_expr(stmt.cond, ctx)
+            _walk_stmts(stmt.body, ctx)
+        case TForStmt():
+            _walk_for_stmt(stmt, ctx)
+        case TMatchStmt():
+            _walk_match_stmt(stmt, ctx)
+        case TTryStmt():
+            _walk_try_stmt(stmt, ctx)
 
 
 def _walk_assign_target_uses(target: TExpr, ctx: _ScopeCtx) -> None:
     """Walk assignment target sub-expressions for use tracking (not the top-level var)."""
-    if isinstance(target, TFieldAccess):
-        _walk_expr(target.obj, ctx)
-    elif isinstance(target, TIndex):
-        _walk_expr(target.obj, ctx)
-        _walk_expr(target.index, ctx)
-    elif isinstance(target, TTupleAccess):
-        _walk_expr(target.obj, ctx)
-    # TVar targets: don't count the target itself as a "use" for unused tracking
+    match target:
+        case TFieldAccess() | TTupleAccess():
+            _walk_expr(target.obj, ctx)
+        case TIndex():
+            _walk_expr(target.obj, ctx)
+            _walk_expr(target.index, ctx)
+        # TVar targets: don't count the target itself as a "use" for unused tracking
 
 
 # ============================================================

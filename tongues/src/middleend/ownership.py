@@ -111,45 +111,46 @@ def _walk_expr(expr: TExpr, ctx: _OwnershipCtx, escaping: bool) -> None:
         if ownership == "borrowed":
             expr.annotations["ownership.escapes"] = "true"
             ctx.escaping.add(expr.name)
-    if isinstance(expr, TVar):
-        return
-    if isinstance(expr, TFieldAccess):
-        _walk_expr(expr.obj, ctx, False)
-    elif isinstance(expr, TTupleAccess):
-        _walk_expr(expr.obj, ctx, False)
-    elif isinstance(expr, TIndex):
-        _walk_expr(expr.obj, ctx, False)
-        _walk_expr(expr.index, ctx, False)
-    elif isinstance(expr, TSlice):
-        _walk_expr(expr.obj, ctx, False)
-        _walk_expr(expr.low, ctx, False)
-        _walk_expr(expr.high, ctx, False)
-    elif isinstance(expr, TBinaryOp):
-        _walk_expr(expr.left, ctx, False)
-        _walk_expr(expr.right, ctx, False)
-    elif isinstance(expr, TUnaryOp):
-        _walk_expr(expr.operand, ctx, False)
-    elif isinstance(expr, TTernary):
-        _walk_expr(expr.cond, ctx, False)
-        _walk_expr(expr.then_expr, ctx, escaping)
-        _walk_expr(expr.else_expr, ctx, escaping)
-    elif isinstance(expr, TCall):
-        _walk_call(expr, ctx)
-    elif isinstance(expr, TListLit):
-        for e in expr.elements:
-            _walk_expr(e, ctx, True)
-    elif isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            _walk_expr(k, ctx, True)
-            _walk_expr(v, ctx, True)
-    elif isinstance(expr, TSetLit):
-        for e in expr.elements:
-            _walk_expr(e, ctx, True)
-    elif isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            _walk_expr(e, ctx, True)
-    elif isinstance(expr, TFnLit):
-        _analyze_fn_lit(expr, ctx)
+    match expr:
+        case TVar():
+            return
+        case TFieldAccess():
+            _walk_expr(expr.obj, ctx, False)
+        case TTupleAccess():
+            _walk_expr(expr.obj, ctx, False)
+        case TIndex():
+            _walk_expr(expr.obj, ctx, False)
+            _walk_expr(expr.index, ctx, False)
+        case TSlice():
+            _walk_expr(expr.obj, ctx, False)
+            _walk_expr(expr.low, ctx, False)
+            _walk_expr(expr.high, ctx, False)
+        case TBinaryOp():
+            _walk_expr(expr.left, ctx, False)
+            _walk_expr(expr.right, ctx, False)
+        case TUnaryOp():
+            _walk_expr(expr.operand, ctx, False)
+        case TTernary():
+            _walk_expr(expr.cond, ctx, False)
+            _walk_expr(expr.then_expr, ctx, escaping)
+            _walk_expr(expr.else_expr, ctx, escaping)
+        case TCall():
+            _walk_call(expr, ctx)
+        case TListLit():
+            for e in expr.elements:
+                _walk_expr(e, ctx, True)
+        case TMapLit():
+            for k, v in expr.entries:
+                _walk_expr(k, ctx, True)
+                _walk_expr(v, ctx, True)
+        case TSetLit():
+            for e in expr.elements:
+                _walk_expr(e, ctx, True)
+        case TTupleLit():
+            for e in expr.elements:
+                _walk_expr(e, ctx, True)
+        case TFnLit():
+            _analyze_fn_lit(expr, ctx)
 
 
 def _walk_call(expr: TCall, ctx: _OwnershipCtx) -> None:
@@ -235,71 +236,74 @@ def _walk_stmts(stmts: list[TStmt], ctx: _OwnershipCtx) -> None:
 
 
 def _walk_stmt(stmt: TStmt, ctx: _OwnershipCtx) -> None:
-    if isinstance(stmt, TLetStmt):
-        dead = stmt.annotations.get("liveness.initial_value_unused") == "true"
-        if stmt.value is not None:
-            if not dead:
-                _walk_expr(stmt.value, ctx, False)
-            ownership = _infer_ownership(stmt.value, ctx)
-        else:
-            ownership = "owned"
-        stmt.annotations["ownership.kind"] = ownership
-        stmt.annotations["ownership.region"] = ctx.region
-        ctx.var_ownership[stmt.name] = ownership
-        ctx.let_stmts[stmt.name] = stmt
-    elif isinstance(stmt, TAssignStmt):
-        _walk_expr(stmt.value, ctx, False)
-        if isinstance(stmt.target, TVar):
-            ownership = _infer_ownership(stmt.value, ctx)
-            prev = ctx.var_ownership.get(stmt.target.name)
-            if prev is not None and prev != ownership:
-                ctx.var_ownership[stmt.target.name] = _join_ownership(prev, ownership)
+    match stmt:
+        case TLetStmt():
+            dead = stmt.annotations.get("liveness.initial_value_unused") == "true"
+            if stmt.value is not None:
+                if not dead:
+                    _walk_expr(stmt.value, ctx, False)
+                ownership = _infer_ownership(stmt.value, ctx)
             else:
-                ctx.var_ownership[stmt.target.name] = ownership
-        elif isinstance(stmt.target, TFieldAccess):
-            _walk_expr(stmt.target.obj, ctx, False)
-            _check_field_escape(stmt.value, ctx)
-        elif isinstance(stmt.target, TIndex):
-            _walk_expr(stmt.target.obj, ctx, False)
-            _walk_expr(stmt.target.index, ctx, True)
-            _check_collection_escape(stmt.value, ctx)
-        elif isinstance(stmt.target, TTupleAccess):
-            _walk_expr(stmt.target.obj, ctx, False)
-    elif isinstance(stmt, TTupleAssignStmt):
-        _walk_expr(stmt.value, ctx, False)
-        for t in stmt.targets:
-            if isinstance(t, TVar):
-                ctx.var_ownership[t.name] = "owned"
-    elif isinstance(stmt, TOpAssignStmt):
-        _walk_expr(stmt.value, ctx, False)
-        if isinstance(stmt.target, TFieldAccess):
-            _walk_expr(stmt.target.obj, ctx, False)
-        elif isinstance(stmt.target, TIndex):
-            _walk_expr(stmt.target.obj, ctx, False)
-            _walk_expr(stmt.target.index, ctx, False)
-    elif isinstance(stmt, TExprStmt):
-        _walk_expr(stmt.expr, ctx, False)
-    elif isinstance(stmt, TReturnStmt):
-        if stmt.value is not None:
+                ownership = "owned"
+            stmt.annotations["ownership.kind"] = ownership
+            stmt.annotations["ownership.region"] = ctx.region
+            ctx.var_ownership[stmt.name] = ownership
+            ctx.let_stmts[stmt.name] = stmt
+        case TAssignStmt():
             _walk_expr(stmt.value, ctx, False)
-            _check_return_escape(stmt.value, ctx)
-    elif isinstance(stmt, TThrowStmt):
-        _walk_expr(stmt.expr, ctx, False)
-        _check_throw_escape(stmt.expr, ctx)
-    elif isinstance(stmt, TIfStmt):
-        _walk_expr(stmt.cond, ctx, False)
-        _walk_stmts(stmt.then_body, ctx)
-        if stmt.else_body is not None:
-            _walk_stmts(stmt.else_body, ctx)
-    elif isinstance(stmt, TWhileStmt):
-        _walk_expr(stmt.cond, ctx, False)
-        _walk_stmts(stmt.body, ctx)
-    elif isinstance(stmt, TForStmt):
-        _walk_for_stmt(stmt, ctx)
-    elif isinstance(stmt, TTryStmt):
-        _walk_try_stmt(stmt, ctx)
-    elif isinstance(stmt, TMatchStmt):
-        _walk_match_stmt(stmt, ctx)
+            if isinstance(stmt.target, TVar):
+                ownership = _infer_ownership(stmt.value, ctx)
+                prev = ctx.var_ownership.get(stmt.target.name)
+                if prev is not None and prev != ownership:
+                    ctx.var_ownership[stmt.target.name] = _join_ownership(
+                        prev, ownership
+                    )
+                else:
+                    ctx.var_ownership[stmt.target.name] = ownership
+            elif isinstance(stmt.target, TFieldAccess):
+                _walk_expr(stmt.target.obj, ctx, False)
+                _check_field_escape(stmt.value, ctx)
+            elif isinstance(stmt.target, TIndex):
+                _walk_expr(stmt.target.obj, ctx, False)
+                _walk_expr(stmt.target.index, ctx, True)
+                _check_collection_escape(stmt.value, ctx)
+            elif isinstance(stmt.target, TTupleAccess):
+                _walk_expr(stmt.target.obj, ctx, False)
+        case TTupleAssignStmt():
+            _walk_expr(stmt.value, ctx, False)
+            for t in stmt.targets:
+                if isinstance(t, TVar):
+                    ctx.var_ownership[t.name] = "owned"
+        case TOpAssignStmt():
+            _walk_expr(stmt.value, ctx, False)
+            if isinstance(stmt.target, TFieldAccess):
+                _walk_expr(stmt.target.obj, ctx, False)
+            elif isinstance(stmt.target, TIndex):
+                _walk_expr(stmt.target.obj, ctx, False)
+                _walk_expr(stmt.target.index, ctx, False)
+        case TExprStmt():
+            _walk_expr(stmt.expr, ctx, False)
+        case TReturnStmt():
+            if stmt.value is not None:
+                _walk_expr(stmt.value, ctx, False)
+                _check_return_escape(stmt.value, ctx)
+        case TThrowStmt():
+            _walk_expr(stmt.expr, ctx, False)
+            _check_throw_escape(stmt.expr, ctx)
+        case TIfStmt():
+            _walk_expr(stmt.cond, ctx, False)
+            _walk_stmts(stmt.then_body, ctx)
+            if stmt.else_body is not None:
+                _walk_stmts(stmt.else_body, ctx)
+        case TWhileStmt():
+            _walk_expr(stmt.cond, ctx, False)
+            _walk_stmts(stmt.body, ctx)
+        case TForStmt():
+            _walk_for_stmt(stmt, ctx)
+        case TTryStmt():
+            _walk_try_stmt(stmt, ctx)
+        case TMatchStmt():
+            _walk_match_stmt(stmt, ctx)
 
 
 # ============================================================
