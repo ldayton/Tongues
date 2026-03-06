@@ -109,6 +109,7 @@ from .types import (
     BOOL_TYPE,
     STR_TYPE,  # noqa: F401 — used by _collection_element_type (added on main)
     VOID_TYPE,
+    ANY_TYPE,
     contains_any,
     JsonValue,
     JStr,
@@ -1072,6 +1073,8 @@ def _lower_expr(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         return _lower_setcomp(node, env, ctx)
     if t == "DictComp":
         return _lower_dictcomp(node, env, ctx)
+    if t == "Lambda":
+        return _lower_lambda(node, env, ctx)
     low_sf = get_str(node, "_source_file")
     ctx.errors.append(
         LoweringError(0, 0, "unsupported expression type '" + str(t) + "'", low_sf)
@@ -2524,6 +2527,52 @@ def _infer_key_lambda_body_type(
         if vt is not None:
             return vt
     return elem_type
+
+
+def _lower_lambda(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TFnLit:
+    """Lower a Lambda node to a TFnLit."""
+    pos = _node_pos(node)
+    uid_jv = node.get("_uid") if isinstance(node, dict) else None
+    func_t: TypeNode | None = None
+    if isinstance(uid_jv, JInt):
+        func_t = ctx.pycheck_result.expr_types.get(uid_jv.value)
+    if not isinstance(func_t, FuncType):
+        ctx.errors.append(
+            LoweringError(
+                pos.line, pos.col, "lambda missing type info", pos.source_file
+            )
+        )
+        return TFnLit(
+            pos, [], _typenode_to_ttype(pos, ANY_TYPE), [], {"fn_lit.arrow": "true"}
+        )
+    args_node = get_node(node, "args")
+    param_names: list[str] = []
+    if args_node:
+        for arg in get_nodes(args_node, "args"):
+            if isinstance(arg, dict):
+                pname = get_str(arg, "arg")
+                if pname:
+                    param_names.append(pname)
+    params: list[TParam] = []
+    inner_env = env.copy()
+    for i, p_name in enumerate(param_names):
+        if i < len(func_t.params):
+            pt = func_t.params[i]
+        else:
+            pt = ANY_TYPE
+        params.append(TParam(pos, p_name, _typenode_to_ttype(pos, pt), {}))
+        inner_env.var_types[p_name] = pt
+        inner_env.declared.add(p_name)
+    body_node = get_node(node, "body")
+    body_expr = _lower_expr(body_node, inner_env, ctx)
+    ret_ttype = _typenode_to_ttype(pos, func_t.ret)
+    return TFnLit(
+        pos,
+        params,
+        ret_ttype,
+        [TExprStmt(pos, body_expr, {})],
+        {"fn_lit.arrow": "true"},
+    )
 
 
 def _lower_key_func(

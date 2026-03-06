@@ -1561,11 +1561,44 @@ def _synth_ifexp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     return body_t
 
 
+def _scan_lambda_captures(
+    node: ASTNode, param_names: set[str], ctx: _InferCtx, lineno: int
+) -> None:
+    """Check that a lambda body doesn't capture variables from enclosing scope."""
+    if not isinstance(node, dict):
+        return
+    t = get_str(node, "_type")
+    if t == "Name":
+        name = get_str(node, "id")
+        if name and name not in param_names:
+            if name not in _BUILTIN_FUNCS and name not in ctx.tc_result.functions:
+                if name not in ctx.tc_result.classes:
+                    ctx.result.add_error(
+                        lineno, 0, "lambda cannot capture variable '" + name + "'"
+                    )
+        return
+    for key in node:
+        val = node[key]
+        if isinstance(val, JDict):
+            _scan_lambda_captures(val.entries, param_names, ctx, lineno)
+        elif isinstance(val, JList):
+            for item in val.items:
+                if isinstance(item, JDict):
+                    _scan_lambda_captures(item.entries, param_names, ctx, lineno)
+
+
 def _synth_lambda(
     node: ASTNode, env: TypeEnv, ctx: _InferCtx, expected: TypeNode | None
 ) -> TypeNode:
     """Synthesize type of a lambda expression using bidirectional expected type."""
     if not isinstance(expected, FuncType):
+        if expected is not None and not is_any(expected):
+            lineno = get_int(node, "lineno")
+            ctx.result.add_error(
+                lineno,
+                0,
+                "lambda requires Callable type, got " + _type_name(expected),
+            )
         return ANY_TYPE
     args_node = get_node(node, "args")
     lambda_params: list[str] = []
@@ -1592,6 +1625,8 @@ def _synth_lambda(
     lamb_env = env.copy()
     for i, param_name in enumerate(lambda_params):
         lamb_env.set(param_name, expected.params[i])
+    param_set = set(lambda_params)
+    _scan_lambda_captures(body, param_set, ctx, lineno)
     _validate_expr_access(body, lamb_env, ctx, lineno)
     body_type = _synth_expr(body, lamb_env, ctx)
     if not is_any(expected.ret) and not _is_assignable(
@@ -2142,7 +2177,7 @@ def _validate_return(
     _validate_return_value(value, func_info.return_type, env, ctx, lineno)
     if _has_new_errors(ctx, err_snap):
         return
-    actual = _synth_expr(value, env, ctx)
+    actual = _synth_expr(value, env, ctx, expected=func_info.return_type)
     expected = func_info.return_type
     if not _is_assignable(actual, expected, ctx.hier_result):
         ctx.result.add_error(
@@ -2381,7 +2416,7 @@ def _validate_ann_assign(
                 _validate_expr_calls(value, env, ctx, lineno)
                 if _has_new_errors(ctx, err_snap):
                     return
-                val_type = _synth_expr(value, env, ctx)
+                val_type = _synth_expr(value, env, ctx, expected=ann_type)
                 if contains_any(val_type) and not contains_any(ann_type):
                     uid_jv = value.get("_uid") if isinstance(value, dict) else None
                     if isinstance(uid_jv, JInt):

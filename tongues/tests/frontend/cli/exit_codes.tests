@@ -16,7 +16,8 @@ exit: 1
 
 === compilation error subset violation
 args: --target python
-f = lambda x: x + 1
+def f() -> None:
+    global x
 ---
 exit: 1
 ---

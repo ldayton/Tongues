@@ -117,6 +117,53 @@ def f(xs: list[str]) -> str:
 Max(xs, (s: string) -> int => Len(s))
 ---
 
+=== lambda in callable param
+from typing import Callable
+def apply(f: Callable[[int], int], x: int) -> int:
+    return f(x)
+def g() -> int:
+    return apply(lambda x: x + 1, 5)
+---
+apply((x: int) -> int => x + 1, 5)
+---
+
+=== lambda in return position
+from typing import Callable
+def g() -> Callable[[int], int]:
+    return lambda x: x + 1
+---
+return (x: int) -> int => x + 1
+---
+
+=== lambda assigned to variable
+from typing import Callable
+def g() -> int:
+    f: Callable[[int], int] = lambda x: x + 1
+    return f(5)
+---
+(x: int) -> int => x + 1
+---
+
+=== nullary lambda
+from typing import Callable
+def apply(f: Callable[[], int]) -> int:
+    return f()
+def g() -> int:
+    return apply(lambda: 42)
+---
+apply(() -> int => 42)
+---
+
+=== multi-param lambda
+from typing import Callable
+def apply(f: Callable[[int, str], bool]) -> bool:
+    return f(1, "a")
+def g() -> bool:
+    return apply(lambda x, s: len(s) > x)
+---
+apply((x: int, s: string) -> bool => Len(s) > x)
+---
+
 === sorted with key named function
 def get_len(s: str) -> int:
     return len(s)

@@ -94,3 +94,162 @@ def g() -> str:
 ---
 error: cannot access 'missing' on Item
 ---
+
+=== lambda assigned to typed variable
+from typing import Callable
+def g() -> int:
+    f: Callable[[int], int] = lambda x: x + 1
+    return f(5)
+---
+ok
+---
+
+=== lambda assigned to variable with wrong return type
+from typing import Callable
+def g() -> int:
+    f: Callable[[int], str] = lambda x: x + 1
+    return f(5)
+---
+error: lambda return type int not assignable to str
+---
+
+=== lambda assigned to non-callable type
+def g() -> int:
+    f: int = lambda x: x + 1
+    return f
+---
+error: lambda
+---
+
+=== lambda in return position
+from typing import Callable
+def g() -> Callable[[int], int]:
+    return lambda x: x + 1
+---
+ok
+---
+
+=== lambda in return position with wrong type
+from typing import Callable
+def g() -> Callable[[int], str]:
+    return lambda x: x + 1
+---
+error: lambda return type int not assignable to str
+---
+
+=== lambda in return with wrong param count
+from typing import Callable
+def g() -> Callable[[int, str], bool]:
+    return lambda x: True
+---
+error: lambda has 1 parameters, expected 2
+---
+
+=== nullary lambda
+from typing import Callable
+def apply(f: Callable[[], int]) -> int:
+    return f()
+def g() -> int:
+    return apply(lambda: 42)
+---
+ok
+---
+
+=== multi-param lambda
+from typing import Callable
+def apply(f: Callable[[int, str], bool], x: int, s: str) -> bool:
+    return f(x, s)
+def g() -> bool:
+    return apply(lambda x, s: len(s) > x, 3, "hello")
+---
+ok
+---
+
+=== lambda capturing outer variable in return
+from typing import Callable
+def g(y: int) -> Callable[[int], int]:
+    return lambda x: x + y
+---
+error: lambda cannot capture variable 'y'
+---
+
+=== lambda capturing outer variable in assignment
+from typing import Callable
+def g(y: int) -> int:
+    f: Callable[[int], int] = lambda x: x + y
+    return f(1)
+---
+error: lambda cannot capture variable 'y'
+---
+
+=== lambda capturing variable in subexpression
+from typing import Callable
+def g(y: int) -> Callable[[int], int]:
+    return lambda x: x + y * 2
+---
+error: lambda cannot capture variable 'y'
+---
+
+=== lambda capturing multiple variables
+from typing import Callable
+def g(a: int, b: int) -> Callable[[int], int]:
+    return lambda x: a + x + b
+---
+error: lambda cannot capture variable 'a'
+---
+
+=== lambda capturing variable via attribute access
+from typing import Callable
+class Item:
+    def __init__(self) -> None:
+        self.value: int = 0
+def g(item: Item) -> Callable[[], int]:
+    return lambda: item.value
+---
+error: lambda cannot capture variable 'item'
+---
+
+=== lambda capturing variable in ternary
+from typing import Callable
+def g(y: int) -> Callable[[int], int]:
+    return lambda x: y if x > 0 else x
+---
+error: lambda cannot capture variable 'y'
+---
+
+=== lambda calling builtin is ok
+from typing import Callable
+def g() -> Callable[[str], int]:
+    return lambda s: len(s)
+---
+ok
+---
+
+=== lambda calling user function is ok
+from typing import Callable
+def helper(x: int) -> int:
+    return x + 1
+def g() -> Callable[[int], int]:
+    return lambda x: helper(x)
+---
+ok
+---
+
+=== lambda referencing class is ok
+from typing import Callable
+class Pair:
+    def __init__(self) -> None:
+        self.x: int = 0
+def g() -> Callable[[Pair], int]:
+    return lambda p: p.x
+---
+ok
+---
+
+=== lambda with no captures is ok
+from typing import Callable
+def g() -> Callable[[int, int], int]:
+    return lambda x, y: x + y
+---
+ok
+---

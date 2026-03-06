@@ -27,7 +27,8 @@ args: --stop-at subset
 #
 #
 # tongues: skip
-lambda x: x
+def f() -> None:
+    global x
 ---
 exit: 1
 ---
