@@ -1,0 +1,14 @@
+=== any with generator expression
+any(x > 0 for x in xs)
+
+=== all with generator expression
+all(x > 0 for x in xs)
+
+=== any with generator expression and condition
+any(x > 0 for x in xs if x % 2 == 0)
+
+=== any with equality comparison
+any(x == target for x in xs)
+
+=== any assigns to variable
+found: bool = any(x > 0 for x in xs)

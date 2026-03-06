@@ -258,6 +258,32 @@ fn Main() -> void {
     WritelnOut(ToString(Len(unique)))
 }
 
+=== any with generator
+fn Main() -> void {
+    let xs: list[int] = [-1, 2, -3]
+    let result: bool = false
+    for x in xs {
+        if x > 0 {
+            result = true
+            break
+        }
+    }
+    WritelnOut(ToString(result))
+}
+
+=== all with generator
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let result: bool = true
+    for x in xs {
+        if !(x > 0) {
+            result = false
+            break
+        }
+    }
+    WritelnOut(ToString(result))
+}
+
 === sorted with key lambda
 fn Main() -> void {
     let xs: list[int] = [3, -1, 2]

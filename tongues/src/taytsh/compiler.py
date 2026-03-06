@@ -1617,15 +1617,14 @@ class Compiler:
         has_named = len(expr.args) > 0 and expr.args[0].name is not None
         if has_named:
             # Named args: emit in field order, use defaults for missing
-            for fname in sd.field_names:
-                found = False
-                for a in expr.args:
-                    if a.name == fname:
-                        self._compile_expr(a.value, fc)
-                        found = True
-                        break
-                if not found:
-                    fidx = sd.field_names.index(fname)
+            arg_by_name: dict[str, TExpr] = {}
+            for a in expr.args:
+                if a.name is not None:
+                    arg_by_name[a.name] = a.value
+            for fidx, fname in enumerate(sd.field_names):
+                if fname in arg_by_name:
+                    self._compile_expr(arg_by_name[fname], fc)
+                else:
                     self._emit_zero_value(sd.field_types[fidx], fc, expr.pos.line)
         else:
             for a in expr.args:

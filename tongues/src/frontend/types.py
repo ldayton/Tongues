@@ -482,11 +482,7 @@ def type_eq(a: TypeNode, b: TypeNode) -> bool:
         if len(a.variants) != len(b.variants):
             return False
         for var_a in a.variants:
-            found = False
-            for var_b in b.variants:
-                if type_eq(var_a, var_b):
-                    found = True
-            if not found:
+            if not any(type_eq(var_a, var_b) for var_b in b.variants):
                 return False
         return True
     if isinstance(a, LiteralType) and isinstance(b, LiteralType):

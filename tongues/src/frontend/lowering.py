@@ -3811,6 +3811,7 @@ def _lower_any_all(fname: str, node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExp
         body = [TIfStmt(pos, cond, inner_body, None, {})]
     for_ann: Ann = {}
     for_ann.update(b_ann)
+    for_ann["provenance"] = "any_call" if is_any else "all_call"
     for_stmt = TForStmt(pos, binding, iter_expr, body, for_ann)
     env.pre_stmts.append(let_stmt)
     env.pre_stmts.append(for_stmt)

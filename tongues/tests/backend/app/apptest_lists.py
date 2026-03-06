@@ -788,6 +788,43 @@ def test_list_comprehension_with_annotation() -> None:
     assert squares == [0, 1, 4, 9, 16]
 
 
+def test_any_genexpr() -> None:
+    """any() with generator expression."""
+    assert any(x > 0 for x in [1, -2, -3]) == True
+    assert any(x > 0 for x in [-1, -2, -3]) == False
+    assert any(x > 0 for x in []) == False
+    assert any(x == 2 for x in [1, 2, 3]) == True
+    assert any(x == 5 for x in [1, 2, 3]) == False
+
+
+def test_all_genexpr() -> None:
+    """all() with generator expression."""
+    assert all(x > 0 for x in [1, 2, 3]) == True
+    assert all(x > 0 for x in [1, -2, 3]) == False
+    assert all(x > 0 for x in []) == True
+
+
+def test_any_genexpr_with_filter() -> None:
+    """any() with generator expression and if-filter."""
+    assert any(x > 0 for x in [-2, -4, 6] if x % 2 == 0) == True
+    assert any(x > 0 for x in [-2, -4, -6] if x % 2 == 0) == False
+
+
+def test_all_genexpr_with_filter() -> None:
+    """all() with generator expression and if-filter."""
+    assert all(x > 0 for x in [2, 4, -3] if x % 2 == 0) == True
+    assert all(x > 0 for x in [-2, 4, -3] if x % 2 == 0) == False
+
+
+def test_any_all_combined() -> None:
+    """any() and all() with generator expressions on same data."""
+    xs: list[int] = [1, -2, 3, -4, 5]
+    assert any(x > 0 for x in xs) == True
+    assert all(x > 0 for x in xs) == False
+    assert any(x < 0 for x in xs) == True
+    assert all(x != 0 for x in xs) == True
+
+
 def main() -> int:
     passed: int = 0
     failed: int = 0
@@ -878,6 +915,11 @@ def main() -> int:
             "test_list_comprehension_with_annotation",
             test_list_comprehension_with_annotation,
         ),
+        ("test_any_genexpr", test_any_genexpr),
+        ("test_all_genexpr", test_all_genexpr),
+        ("test_any_genexpr_with_filter", test_any_genexpr_with_filter),
+        ("test_all_genexpr_with_filter", test_all_genexpr_with_filter),
+        ("test_any_all_combined", test_any_all_combined),
     ]
     for name, fn in tests:
         try:

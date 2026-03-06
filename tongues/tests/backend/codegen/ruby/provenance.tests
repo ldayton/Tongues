@@ -120,3 +120,12 @@ xs = [0] * 5
 
 === isinstance with tuple of types (raised)
 return v.is_a?(A) || v.is_a?(B)
+
+=== any call with generator (raised)
+result = xs.any? { |x| x > 0 }
+
+=== all call with generator (raised)
+result = xs.all? { |x| x > 0 }
+
+=== any call with filter (raised)
+result = xs.any? { |x| x % 2 == 0 && x > 0 }
