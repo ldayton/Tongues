@@ -161,7 +161,7 @@ fn Main() -> void {
 ok
 ---
 
-=== error: shadowing in for loop
+=== valid: for loop variable shadows outer let
 fn Main() -> void {
     let i: int = 0
     let xs: list[int] = [1, 2, 3]
@@ -170,7 +170,7 @@ fn Main() -> void {
     }
 }
 ---
-error: shadows outer binding
+ok
 ---
 
 === error: shadowing in catch
@@ -372,7 +372,7 @@ fn Main() -> void {
 error: shadows outer binding
 ---
 
-=== error: for loop variable shadows outer let
+=== valid: for loop variable shadows outer let from nested block
 fn Main() -> void {
     let i: int = 0
     let xs: list[int] = [1]
@@ -383,7 +383,7 @@ fn Main() -> void {
     }
 }
 ---
-error: shadows outer binding
+ok
 ---
 
 === error: reading discard variable

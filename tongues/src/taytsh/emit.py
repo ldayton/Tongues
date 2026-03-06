@@ -632,8 +632,8 @@ class _Emitter:
             return f"{func}({', '.join(args)})"
         if isinstance(expr, TListLit):
             parts: list[str] = []
-            for e2 in expr.elements:
-                parts.append(self._render_expr(e2, _PREC_TERNARY))
+            for e in expr.elements:
+                parts.append(self._render_expr(e, _PREC_TERNARY))
             return f"[{', '.join(parts)}]"
         if isinstance(expr, TMapLit):
             entries: list[str] = []
@@ -644,16 +644,16 @@ class _Emitter:
             return "{" + ", ".join(entries) + "}"
         if isinstance(expr, TSetLit):
             elems: list[str] = []
-            for e3 in expr.elements:
-                elems.append(self._render_expr(e3, _PREC_TERNARY))
+            for e in expr.elements:
+                elems.append(self._render_expr(e, _PREC_TERNARY))
             return "{" + ", ".join(elems) + "}"
         if isinstance(expr, TTupleLit):
             if len(expr.elements) < 2:
                 raise ValueError("tuple literal must have 2+ elements")
-            elems2: list[str] = []
-            for e4 in expr.elements:
-                elems2.append(self._render_expr(e4, _PREC_TERNARY))
-            return "(" + ", ".join(elems2) + ")"
+            elems: list[str] = []
+            for e in expr.elements:
+                elems.append(self._render_expr(e, _PREC_TERNARY))
+            return "(" + ", ".join(elems) + ")"
         if isinstance(expr, TFnLit):
             params = self._render_param_list(expr.params)
             ret = self._render_type(expr.ret)

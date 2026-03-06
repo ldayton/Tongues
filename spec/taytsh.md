@@ -478,7 +478,9 @@ for i, v in items {
 
 ### No shadowing
 
-A binding cannot shadow a name that is currently in scope. Declaring a variable with the same name as a visible binding — including parameters, enclosing block variables, loop variables, and case/catch bindings — is a compile error. `_` is the exception — it may appear multiple times in bindings (e.g. `for _, _ in m`) and is never accessible as a variable.
+A binding cannot shadow a name that is currently in scope. Declaring a variable with the same name as a visible binding — including parameters, enclosing block variables, and case/catch bindings — is a compile error. `_` is the exception — it may appear multiple times in bindings (e.g. `for _, _ in m`) and is never accessible as a variable.
+
+A `for` loop variable may shadow an outer binding because the loop body is always a separate block scope — the outer binding is restored when the loop exits.
 
 A name may be reused when all prior bindings of that name have gone out of scope — i.e., their enclosing `{}` block has closed. This includes sibling `if`/`else` branches, sequential loops, and code after an early return.
 
