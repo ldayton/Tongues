@@ -344,3 +344,44 @@ fn f(v: A | B | C) -> bool {
 fn Main() -> void {
     WritelnOut(ToString(f(A(0))))
 }
+
+=== any call with generator (raised)
+fn Main() -> void {
+    let xs: list[int] = [-1, 2, -3]
+    let result: bool = false
+    @["provenance" = "any_call"] for x in xs {
+        if x > 0 {
+            result = true
+            break
+        }
+    }
+    WritelnOut(ToString(result))
+}
+
+=== all call with generator (raised)
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let result: bool = true
+    @["provenance" = "all_call"] for x in xs {
+        if !(x > 0) {
+            result = false
+            break
+        }
+    }
+    WritelnOut(ToString(result))
+}
+
+=== any call with filter (raised)
+fn Main() -> void {
+    let xs: list[int] = [-2, -4, 6]
+    let result: bool = false
+    @["provenance" = "any_call"] for x in xs {
+        if x % 2 == 0 {
+            if x > 0 {
+                result = true
+                break
+            }
+        }
+    }
+    WritelnOut(ToString(result))
+}

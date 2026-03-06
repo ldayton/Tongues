@@ -113,6 +113,24 @@ xs.each do |x|
   unique.add(x)
 end
 
+=== any with generator
+result = false
+xs.each do |x|
+    if x > 0
+        result = true
+        break
+    end
+end
+
+=== all with generator
+result = true
+xs.each do |x|
+    if !(x > 0)
+        result = false
+        break
+    end
+end
+
 === sorted with key lambda
 xs.sort_by { |x| x.abs }
 
