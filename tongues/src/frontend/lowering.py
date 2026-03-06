@@ -166,6 +166,8 @@ TAYTSH_KEYWORDS: set[str] = {
     "while",
 }
 
+_CONTEXT_ONLY_FUNCS: frozenset[str] = frozenset({"range", "enumerate", "reversed"})
+
 
 def _safe_name(name: str) -> str:
     """Rename if name collides with a Taytsh keyword."""
@@ -749,6 +751,7 @@ class _LowerCtx:
         known_classes: dict[str, str],
         class_bases: dict[str, list[str]],
         pycheck_result: PycheckResult,
+        known_funcs: set[str],
     ) -> None:
         self.tc_result: TypeCollectResult = tc_result
         self.hier_result: HierarchyResult = hier_result
@@ -760,6 +763,7 @@ class _LowerCtx:
         self.pycheck_result: PycheckResult = pycheck_result
         self.class_nodes: dict[str, ASTNode] = {}
         self.func_nodes: dict[str, ASTNode] = {}
+        self.known_funcs: set[str] = known_funcs
 
 
 class _Env:
@@ -1902,6 +1906,18 @@ def _lower_call(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     # Direct function call
     if _is_ast(func_node, "Name"):
         fname = get_str(func_node, "id")
+        safe_fname = _safe_name(fname)
+        if (
+            safe_fname in env.declared
+            or safe_fname in env.var_types
+            or fname in env.declared
+            or fname in env.var_types
+        ):
+            func = _lower_expr(func_node, env, ctx)
+            local_args: list[TArg] = []
+            for a in args:
+                local_args.append(TArg(pos, None, _lower_expr(a, env, ctx)))
+            return TCall(pos, func, local_args, {})
         return _lower_name_call(fname, args, keywords, node, env, ctx)
     # Parameterized constructor: set[T](), dict[K,V](), list[T](), frozenset[T]()
     if _is_ast(func_node, "Subscript"):
@@ -2216,6 +2232,12 @@ def _lower_collection_call(
                 return _make_call(pos, "Chars", [_lower_expr(args[0], env, ctx)])
             if _is_ast(args[0], "Call"):
                 rfunc = get_node(args[0], "func")
+                if _is_ast(rfunc, "Name") and get_str(rfunc, "id") == "reversed":
+                    rargs = get_nodes(args[0], "args")
+                    if rargs and isinstance(rargs[0], dict):
+                        return _make_call(
+                            pos, "Reversed", [_lower_expr(rargs[0], env, ctx)]
+                        )
                 if _is_ast(rfunc, "Name") and get_str(rfunc, "id") == "zip":
                     return _lower_expr(args[0], env, ctx)
                 if _is_ast(rfunc, "Attribute") and get_str(rfunc, "attr") in (
@@ -2381,6 +2403,8 @@ def _lower_name_call(
     if fname == "print":
         return _lower_print_call(pos, args, keywords, env, ctx)
     if fname in (
+        "Exception",
+        "ValueError",
         "TypeError",
         "NotImplementedError",
         "RuntimeError",
@@ -2395,6 +2419,21 @@ def _lower_name_call(
         return TCall(pos, TVar(pos, fname, {}), exc_args, {})
     if fname in ctx.known_classes:
         return _lower_struct_constructor(pos, fname, args, keywords, env, ctx)
+    if fname in _CONTEXT_ONLY_FUNCS:
+        ctx.errors.append(
+            LoweringError(
+                pos.line,
+                pos.col,
+                fname
+                + "() is not supported as a standalone expression; use it in a for loop",
+            )
+        )
+        return TNilLit(pos, {})
+    if fname not in ctx.known_funcs and fname not in ctx.tc_result.functions:
+        ctx.errors.append(
+            LoweringError(pos.line, pos.col, "unknown function '" + fname + "'")
+        )
+        return TNilLit(pos, {})
     lowered_args: list[TArg] = []
     if keywords:
         func_info = ctx.tc_result.functions.get(fname)
@@ -3743,6 +3782,7 @@ def _lower_any_all(fname: str, node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExp
         body = [TIfStmt(pos, cond, inner_body, None, {})]
     for_ann: Ann = {}
     for_ann.update(b_ann)
+    for_ann["provenance"] = "any_call" if is_any else "all_call"
     iter_type = _infer_expr_type(iter_node, env, ctx)
     if len(binding) == 1 and _is_type_dict(iter_type, ["bytes"]):
         for_stmt = _bytes_for_stmt(pos, binding, iter_expr, body, for_ann)
@@ -6407,6 +6447,7 @@ def lower(
     known_classes: dict[str, str],
     class_bases: dict[str, list[str]],
     pycheck_result: PycheckResult,
+    known_funcs: set[str] | None = None,
 ) -> tuple[TModule | None, list[LoweringError]]:
     """Lower the Python AST to Taytsh IR.
 
@@ -6417,7 +6458,14 @@ def lower(
     akeys = list(hier_result.ancestors.keys())
     for ak in akeys:
         _LOWER_ANCESTORS[ak] = hier_result.ancestors[ak]
-    ctx = _LowerCtx(tc_result, hier_result, known_classes, class_bases, pycheck_result)
+    ctx = _LowerCtx(
+        tc_result,
+        hier_result,
+        known_classes,
+        class_bases,
+        pycheck_result,
+        known_funcs if known_funcs is not None else set(),
+    )
     module = _build_module(tree, ctx)
     while _LOWER_ANCESTORS:
         _LOWER_ANCESTORS.pop(list(_LOWER_ANCESTORS.keys())[0])

@@ -1147,6 +1147,7 @@ def _pipeline_post_parse(
             _print_errors(warn_strs)
         return (0, to_json(_name_table_to_dict(bind_result.table)))
     known_classes = bind_result.known_classes
+    known_funcs = bind_result.known_funcs
     # Add aliases to known_classes (bare → prefixed) from file_renames
     if file_renames is not None:
         _bare_to_prefixed: dict[str, str] = {}
@@ -1231,6 +1232,7 @@ def _pipeline_post_parse(
         known_classes,
         class_bases,
         inf_result,
+        known_funcs,
     )
     if lower_errors:
         err_strs: list[str] = [str(e) for e in lower_errors]

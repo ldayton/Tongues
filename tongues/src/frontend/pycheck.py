@@ -56,6 +56,7 @@ from .types import (
     InterfaceRef,
     FuncType,
     IteratorType,
+    TypeGuardType,
     LiteralType,
     ANY_TYPE,
     INT_TYPE,
@@ -223,6 +224,9 @@ def _is_assignable(
         if isinstance(expected, InterfaceRef):
             return True
         return False
+    # TypeGuard[T] accepts bool
+    if isinstance(expected, TypeGuardType):
+        return _is_assignable(actual, BOOL_TYPE, hier)
     # LiteralType delegates to its base
     if isinstance(actual, LiteralType):
         return _is_assignable(actual.base, expected, hier)
@@ -485,9 +489,10 @@ def _synth_expr(
     node: ASTNode,
     env: TypeEnv,
     ctx: _InferCtx,
+    expected: TypeNode | None = None,
 ) -> TypeNode:
     """Synthesize the type of an expression node, recording the result."""
-    result = _synth_expr_inner(node, env, ctx)
+    result = _synth_expr_inner(node, env, ctx, expected)
     uid_jv = node.get("_uid") if isinstance(node, dict) else None
     if isinstance(uid_jv, JInt):
         ctx.result.expr_types[uid_jv.value] = result
@@ -512,6 +517,7 @@ def _synth_expr_inner(
     node: ASTNode,
     env: TypeEnv,
     ctx: _InferCtx,
+    expected: TypeNode | None = None,
 ) -> TypeNode:
     """Synthesize the type of an expression node."""
     if not isinstance(node, dict):
@@ -544,12 +550,14 @@ def _synth_expr_inner(
         return _synth_boolop(node, env, ctx)
     if t == "IfExp":
         return _synth_ifexp(node, env, ctx)
+    if t == "Lambda":
+        return _synth_lambda(node, env, ctx, expected)
     if t == "List":
-        return _synth_list(node, env, ctx)
+        return _synth_list(node, env, ctx, expected)
     if t == "Dict":
-        return _synth_dict(node, env, ctx)
+        return _synth_dict(node, env, ctx, expected)
     if t == "Set":
-        return _synth_set(node, env, ctx)
+        return _synth_set(node, env, ctx, expected)
     if t == "Tuple":
         return _synth_tuple(node, env, ctx)
     if t == "ListComp":
@@ -1019,10 +1027,11 @@ def _synth_call(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     args = get_nodes(node, "args")
     keywords = get_nodes(node, "keywords")
     for arg in args:
-        _synth_expr(arg, env, ctx)
+        if not _is_type(arg, ["Lambda"]):
+            _synth_expr(arg, env, ctx)
     for keyword in keywords:
         kw_val = get_node(keyword, "value")
-        if kw_val:
+        if kw_val and not _is_type(kw_val, ["Lambda"]):
             _synth_expr(kw_val, env, ctx)
     # Direct name call
     if _is_type(func, ["Name"]):
@@ -1047,6 +1056,18 @@ def _synth_call(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     if isinstance(func_type, FuncType):
         return func_type.ret
     return ANY_TYPE
+
+
+def _synth_key_kwarg(
+    node: ASTNode, elem: TypeNode, env: TypeEnv, ctx: _InferCtx
+) -> None:
+    """Synth key= keyword argument with expected FuncType([elem], ANY)."""
+    keywords = get_nodes(node, "keywords")
+    for kw in keywords:
+        if get_str(kw, "arg") == "key":
+            kw_val = get_node(kw, "value")
+            if kw_val:
+                _synth_expr(kw_val, env, ctx, FuncType([elem], ANY_TYPE))
 
 
 def _synth_name_call(
@@ -1096,11 +1117,12 @@ def _synth_name_call(
         if args:
             first = args[0]
             ft = _synth_expr(first, env, ctx)
+            elem: TypeNode = ANY_TYPE
             if isinstance(ft, SliceType):
-                return ft.element
-            if isinstance(ft, IteratorType):
-                return ft.element
-            if len(args) >= 2:
+                elem = ft.element
+            elif isinstance(ft, IteratorType):
+                elem = ft.element
+            elif len(args) >= 2:
                 has_int = False
                 has_bool = False
                 for arg in args:
@@ -1110,7 +1132,16 @@ def _synth_name_call(
                     if isinstance(at, PrimitiveType) and at.kind == "bool":
                         has_bool = True
                 if has_int or has_bool:
-                    return INT_TYPE
+                    elem = INT_TYPE
+                else:
+                    elem = ft
+            else:
+                elem = ft
+            _synth_key_kwarg(node, elem, env, ctx)
+            if isinstance(ft, (SliceType, IteratorType)):
+                return elem
+            if len(args) >= 2 and not is_any(elem):
+                return elem
             return ft
         return INT_TYPE
     if fname == "pow":
@@ -1163,8 +1194,10 @@ def _synth_name_call(
             first = args[0]
             ft = _synth_expr(first, env, ctx)
             if isinstance(ft, IteratorType):
+                _synth_key_kwarg(node, ft.element, env, ctx)
                 return SliceType(ft.element)
             elem = _element_type(ft)
+            _synth_key_kwarg(node, elem, env, ctx)
             return SliceType(elem)
         return SliceType(ANY_TYPE)
     if fname == "list":
@@ -1215,6 +1248,8 @@ def _synth_name_call(
     # User-defined function
     func_info = ctx.tc_result.functions.get(fname)
     if func_info is not None:
+        if isinstance(func_info.return_type, TypeGuardType):
+            return BOOL_TYPE
         return func_info.return_type
     # Class constructor
     if fname in ctx.known_classes:
@@ -1278,6 +1313,8 @@ def _synth_method_call(
         if methods is not None:
             method = methods.get(attr)
             if method is not None:
+                if isinstance(method.return_type, TypeGuardType):
+                    return BOOL_TYPE
                 return method.return_type
     return attr_type
 
@@ -1524,9 +1561,60 @@ def _synth_ifexp(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     return body_t
 
 
-def _synth_list(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
+def _synth_lambda(
+    node: ASTNode, env: TypeEnv, ctx: _InferCtx, expected: TypeNode | None
+) -> TypeNode:
+    """Synthesize type of a lambda expression using bidirectional expected type."""
+    if not isinstance(expected, FuncType):
+        return ANY_TYPE
+    args_node = get_node(node, "args")
+    lambda_params: list[str] = []
+    if args_node:
+        for arg in get_nodes(args_node, "args"):
+            if isinstance(arg, dict):
+                pname = get_str(arg, "arg")
+                if pname:
+                    lambda_params.append(pname)
+    lineno = get_int(node, "lineno")
+    if len(lambda_params) != len(expected.params):
+        ctx.result.add_error(
+            lineno,
+            0,
+            "lambda has "
+            + str(len(lambda_params))
+            + " parameters, expected "
+            + str(len(expected.params)),
+        )
+        return expected
+    body = get_node(node, "body")
+    if not body:
+        return expected
+    lamb_env = env.copy()
+    for i, param_name in enumerate(lambda_params):
+        lamb_env.set(param_name, expected.params[i])
+    _validate_expr_access(body, lamb_env, ctx, lineno)
+    body_type = _synth_expr(body, lamb_env, ctx)
+    if not is_any(expected.ret) and not _is_assignable(
+        body_type, expected.ret, ctx.hier_result
+    ):
+        ctx.result.add_error(
+            lineno,
+            0,
+            "lambda return type "
+            + _type_name(body_type)
+            + " not assignable to "
+            + _type_name(expected.ret),
+        )
+    return expected
+
+
+def _synth_list(
+    node: ASTNode, env: TypeEnv, ctx: _InferCtx, expected: TypeNode | None = None
+) -> TypeNode:
     elts = get_nodes(node, "elts")
     if not elts:
+        if isinstance(expected, SliceType):
+            return expected
         return SliceType(ANY_TYPE)
     first_t = _synth_expr(elts[0], env, ctx)
     for elt in elts[1:]:
@@ -1534,10 +1622,14 @@ def _synth_list(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     return SliceType(first_t)
 
 
-def _synth_dict(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
+def _synth_dict(
+    node: ASTNode, env: TypeEnv, ctx: _InferCtx, expected: TypeNode | None = None
+) -> TypeNode:
     keys = get_nodes(node, "keys")
     values = get_nodes(node, "values")
     if not keys:
+        if isinstance(expected, MapType):
+            return expected
         return MapType(ANY_TYPE, ANY_TYPE)
     kt = _synth_expr(keys[0], env, ctx)
     vt = _synth_expr(values[0], env, ctx) if values else ANY_TYPE
@@ -1548,9 +1640,13 @@ def _synth_dict(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     return MapType(kt, vt)
 
 
-def _synth_set(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
+def _synth_set(
+    node: ASTNode, env: TypeEnv, ctx: _InferCtx, expected: TypeNode | None = None
+) -> TypeNode:
     elts = get_nodes(node, "elts")
     if not elts:
+        if isinstance(expected, SetType):
+            return expected
         return SetType(ANY_TYPE)
     first_t = _synth_expr(elts[0], env, ctx)
     for elt in elts[1:]:
@@ -1824,11 +1920,7 @@ def _cfg_merge_env(
         all_keys.append(akey)
     bkeys = list(env_b.types.keys())
     for bkey in bkeys:
-        found = False
-        for existing in all_keys:
-            if existing == bkey:
-                found = True
-        if not found:
+        if bkey not in all_keys:
             all_keys.append(bkey)
     for k in all_keys:
         in_a = k in env_a.types
@@ -2564,9 +2656,9 @@ def _check_call_args(
         return
     for j, arg in enumerate(args):
         if j < len(params):
-            actual = _synth_expr(arg, env, ctx)
-            expected = params[j].typ
-            if not _is_assignable(actual, expected, ctx.hier_result):
+            param_type = params[j].typ
+            actual = _synth_expr(arg, env, ctx, param_type)
+            if not _is_assignable(actual, param_type, ctx.hier_result):
                 ctx.result.add_error(
                     lineno,
                     0,
@@ -2575,7 +2667,7 @@ def _check_call_args(
                     + " has type "
                     + _type_name(actual)
                     + ", expected "
-                    + _type_name(expected),
+                    + _type_name(param_type),
                 )
                 return
 
@@ -2598,9 +2690,9 @@ def _check_func_type_args(
         return
     for j, arg in enumerate(args):
         if j < len(ftype.params):
-            actual = _synth_expr(arg, env, ctx)
-            expected = ftype.params[j]
-            if not _is_assignable(actual, expected, ctx.hier_result):
+            param_type = ftype.params[j]
+            actual = _synth_expr(arg, env, ctx, param_type)
+            if not _is_assignable(actual, param_type, ctx.hier_result):
                 ctx.result.add_error(
                     lineno,
                     0,
@@ -2609,7 +2701,7 @@ def _check_func_type_args(
                     + " has type "
                     + _type_name(actual)
                     + ", expected "
-                    + _type_name(expected),
+                    + _type_name(param_type),
                 )
                 return
 
@@ -2902,6 +2994,8 @@ def _validate_match(
         _synth_expr(subject, env, ctx)
         if _is_type(subject, ["Name"]):
             subj_name = get_str(subject, "id")
+        elif _is_type(subject, ["Attribute"]):
+            subj_name = _attr_path(subject)
     cases = get_nodes(stmt, "cases")
     for case in cases:
         case_env = env.copy()
@@ -3069,6 +3163,8 @@ def _extract_narrowing(
         if func and _is_type(func, ["Name"]) and get_str(func, "id") == "isinstance":
             _narrow_isinstance(test, then_env, else_env, ctx)
             return
+        _narrow_typeguard(test, then_env, else_env, ctx)
+        return
     if t == "Compare":
         _narrow_compare(test, then_env, else_env, ctx)
         return
@@ -3247,6 +3343,44 @@ def _narrow_isinstance(
             )
         remaining_type = remove_from_union(else_type, remove_types)
         else_env.narrow(name, remaining_type)
+
+
+def _narrow_typeguard(
+    test: ASTNode, then_env: TypeEnv, else_env: TypeEnv, ctx: _InferCtx
+) -> None:
+    """Narrow from TypeGuard predicate calls."""
+    func = get_node(test, "func")
+    if not func:
+        return
+    args = get_nodes(test, "args")
+    func_info = None
+    if _is_type(func, ["Name"]):
+        fname = get_str(func, "id")
+        if fname:
+            func_info = ctx.tc_result.functions.get(fname)
+    elif _is_type(func, ["Attribute"]):
+        obj = get_node(func, "value")
+        attr = get_str(func, "attr")
+        if obj and attr:
+            obj_type = _synth_expr(obj, then_env, ctx)
+            sname = _struct_name(obj_type)
+            if sname:
+                methods = ctx.tc_result.methods.get(sname)
+                if methods is not None:
+                    func_info = methods.get(attr)
+    if func_info is None:
+        return
+    if not isinstance(func_info.return_type, TypeGuardType):
+        return
+    if not args:
+        return
+    target = args[0]
+    name = ""
+    if _is_type(target, ["Name"]):
+        name = get_str(target, "id")
+    if not name:
+        return
+    then_env.narrow(name, func_info.return_type.inner)
 
 
 def _pascal_to_kebab(name: str) -> str:

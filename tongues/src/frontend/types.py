@@ -109,6 +109,13 @@ class IteratorType(TypeNode):
 
 
 @dataclass
+class TypeGuardType(TypeNode):
+    """TypeGuard[T] — type predicate return type."""
+
+    inner: TypeNode
+
+
+@dataclass
 class LiteralType(TypeNode):
     """A literal type: Literal["foo"], Literal[42], Literal[true]."""
 
@@ -414,6 +421,8 @@ def type_name(t: TypeNode) -> str:
         return " | ".join(parts)
     if isinstance(t, IteratorType):
         return "Iterator[" + type_name(t.element) + "]"
+    if isinstance(t, TypeGuardType):
+        return "TypeGuard[" + type_name(t.inner) + "]"
     if isinstance(t, LiteralType):
         if t.base.kind == "string":
             return 'Literal["' + t.lit_value + '"]'
@@ -473,11 +482,7 @@ def type_eq(a: TypeNode, b: TypeNode) -> bool:
         if len(a.variants) != len(b.variants):
             return False
         for var_a in a.variants:
-            found = False
-            for var_b in b.variants:
-                if type_eq(var_a, var_b):
-                    found = True
-            if not found:
+            if not any(type_eq(var_a, var_b) for var_b in b.variants):
                 return False
         return True
     if isinstance(a, LiteralType) and isinstance(b, LiteralType):
@@ -699,6 +704,8 @@ def typenode_to_dict(t: TypeNode) -> JsonValue:
                 "ret": typenode_to_dict(t.ret),
             }
         )
+    if isinstance(t, TypeGuardType):
+        return JDict({"_type": JStr("TypeGuard"), "inner": typenode_to_dict(t.inner)})
     if isinstance(t, LiteralType):
         return JDict(
             {

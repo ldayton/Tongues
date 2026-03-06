@@ -11,6 +11,7 @@ from .types import (
     TupleType,
     OptionalType,
     UnionType,
+    TypeGuardType,
     PointerType,
     StructRef,
     InterfaceRef,
@@ -512,6 +513,18 @@ def _resolve_subscript(
             return InterfaceRef("any")
         inner_t = py_type_to_type_dict(args[0], known_classes, errors, lineno, col)
         return OptionalType(inner_t)
+    if base == "TypeGuard":
+        if len(args) != 1:
+            errors.append(
+                TypeCollectError(
+                    lineno,
+                    col,
+                    "TypeGuard requires exactly 1 type argument",
+                )
+            )
+            return InterfaceRef("any")
+        inner_t = py_type_to_type_dict(args[0], known_classes, errors, lineno, col)
+        return TypeGuardType(inner_t)
     if base == "Union":
         return _resolve_union(args, known_classes, errors, lineno, col)
     if base == "Callable":

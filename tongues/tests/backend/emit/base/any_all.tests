@@ -1,0 +1,41 @@
+=== any with generator expression
+def has_positive(xs: list[int]) -> bool:
+    return any(x > 0 for x in xs)
+def main() -> None:
+    print(str(has_positive([-1, 2, -3])))
+if __name__ == "__main__":
+    main()
+
+=== all with generator expression
+def all_positive(xs: list[int]) -> bool:
+    return all(x > 0 for x in xs)
+def main() -> None:
+    print(str(all_positive([1, 2, 3])))
+if __name__ == "__main__":
+    main()
+
+=== any with generator expression and condition
+def has_positive_even(xs: list[int]) -> bool:
+    return any(x > 0 for x in xs if x % 2 == 0)
+def main() -> None:
+    print(str(has_positive_even([-2, -4, 6])))
+if __name__ == "__main__":
+    main()
+
+=== any with equality comparison
+def contains_value(xs: list[int], target: int) -> bool:
+    return any(x == target for x in xs)
+def main() -> None:
+    print(str(contains_value([1, 2, 3], 2)))
+if __name__ == "__main__":
+    main()
+
+=== any assigns to variable
+def check(xs: list[int]) -> None:
+    found: bool = any(x > 0 for x in xs)
+    if found:
+        print("yes")
+def main() -> None:
+    check([1, -2, -3])
+if __name__ == "__main__":
+    main()

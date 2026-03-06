@@ -233,12 +233,7 @@ def _union_members_eq(a: list[Type], b: list[Type]) -> bool:
     if len(a) != len(b):
         return False
     for m in a:
-        found = False
-        for n in b:
-            if type_eq(m, n):
-                found = True
-                break
-        if not found:
+        if not any(type_eq(m, n) for n in b):
             return False
     return True
 
@@ -257,14 +252,10 @@ def _type_key(t: Type) -> str:
     if isinstance(t, SetT):
         return "set[" + _type_key(t.element) + "]"
     if isinstance(t, TupleT):
-        parts: list[str] = []
-        for e in t.elements:
-            parts.append(_type_key(e))
+        parts = [_type_key(e) for e in t.elements]
         return "(" + ",".join(parts) + ")"
     if isinstance(t, FnT):
-        parts2: list[str] = []
-        for p in t.params:
-            parts2.append(_type_key(p))
+        parts2 = [_type_key(p) for p in t.params]
         return "fn[" + ",".join(parts2) + "->" + _type_key(t.ret) + "]"
     if isinstance(t, StructT):
         return "struct:" + t.name
@@ -273,9 +264,7 @@ def _type_key(t: Type) -> str:
     if isinstance(t, EnumT):
         return "enum:" + t.name
     if isinstance(t, UnionT):
-        keys: list[str] = []
-        for m in t.members:
-            keys.append(_type_key(m))
+        keys = [_type_key(m) for m in t.members]
         keys.sort()
         return "union{" + "|".join(keys) + "}"
     return t.kind
@@ -290,15 +279,10 @@ def type_name(t: Type) -> str:
     if isinstance(t, SetT):
         return "set[" + type_name(t.element) + "]"
     if isinstance(t, TupleT):
-        parts: list[str] = []
-        for e in t.elements:
-            parts.append(type_name(e))
+        parts = [type_name(e) for e in t.elements]
         return "(" + ", ".join(parts) + ")"
     if isinstance(t, FnT):
-        parts2: list[str] = []
-        for p in t.params:
-            parts2.append(type_name(p))
-        parts2.append(type_name(t.ret))
+        parts2 = [type_name(p) for p in t.params] + [type_name(t.ret)]
         return "fn[" + ", ".join(parts2) + "]"
     if isinstance(t, StructT):
         return t.name
@@ -307,22 +291,8 @@ def type_name(t: Type) -> str:
     if isinstance(t, EnumT):
         return t.name
     if isinstance(t, UnionT):
-        keyed: list[tuple[str, Type]] = []
-        for m in t.members:
-            keyed.append((_type_key(m), m))
-        # Insertion sort by string key (tuples not sortable in Taytsh)
-        si = 1
-        while si < len(keyed):
-            skey = keyed[si]
-            sj = si - 1
-            while sj >= 0 and keyed[sj][0] > skey[0]:
-                keyed[sj + 1] = keyed[sj]
-                sj -= 1
-            keyed[sj + 1] = skey
-            si += 1
-        parts3: list[str] = []
-        for _k, m in keyed:
-            parts3.append(type_name(m))
+        members_by_key: dict[str, Type] = {_type_key(m): m for m in t.members}
+        parts3 = [type_name(members_by_key[k]) for k in sorted(members_by_key)]
         return " | ".join(parts3)
     return t.kind
 
@@ -333,22 +303,15 @@ def type_name(t: Type) -> str:
 
 
 def normalize_union(members: list[Type]) -> Type:
-    flat: list[Type] = []
-    for m in members:
-        if isinstance(m, UnionT):
-            for inner in m.members:
-                flat.append(inner)
-        else:
-            flat.append(m)
+    flat: list[Type] = [
+        inner
+        for m in members
+        for inner in (m.members if isinstance(m, UnionT) else [m])
+    ]
     # Deduplicate
     deduped: list[Type] = []
     for m in flat:
-        found = False
-        for existing in deduped:
-            if type_eq(m, existing):
-                found = True
-                break
-        if not found:
+        if not any(type_eq(m, existing) for existing in deduped):
             deduped.append(m)
     # Absorb error
     for m in deduped:
@@ -364,12 +327,7 @@ def make_optional(inner: Type) -> Type:
     if type_eq(inner, NIL_T):
         return NIL_T
     if isinstance(inner, UnionT):
-        has_nil = False
-        for m in inner.members:
-            if type_eq(m, NIL_T):
-                has_nil = True
-                break
-        if has_nil:
+        if any(type_eq(m, NIL_T) for m in inner.members):
             return inner
         return normalize_union(list(inner.members) + [NIL_T])
     return normalize_union([inner, NIL_T])
@@ -390,10 +348,7 @@ def remove_nil(t: Type) -> Type:
     if type_eq(t, NIL_T):
         return NIL_T
     if isinstance(t, UnionT):
-        remaining: list[Type] = []
-        for m in t.members:
-            if not type_eq(m, NIL_T):
-                remaining.append(m)
+        remaining = [m for m in t.members if not type_eq(m, NIL_T)]
         if not remaining:
             return NIL_T
         if len(remaining) == 1:
@@ -2247,13 +2202,12 @@ class Checker:
     def _compute_default_type(self, scrutinee: Type, covered: list[str]) -> Type:
         """Compute residual type for a default binding (scrutinee minus covered)."""
         if isinstance(scrutinee, InterfaceT):
-            remaining: list[Type] = []
-            for v in scrutinee.variants:
-                vt = self.types[v]
-                if isinstance(vt, InterfaceT):
-                    continue
-                if _type_key(vt) not in covered:
-                    remaining.append(vt)
+            remaining = [
+                self.types[v]
+                for v in scrutinee.variants
+                if not isinstance(self.types[v], InterfaceT)
+                and _type_key(self.types[v]) not in covered
+            ]
             if not remaining:
                 return scrutinee
             if len(remaining) == 1:

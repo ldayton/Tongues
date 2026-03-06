@@ -123,6 +123,24 @@ for my $x (@{$xs}) {
     $unique->{$x} = 1;
 }
 
+=== any with generator
+my $result = 0;
+for my $x (@{$xs}) {
+    if ($x > 0) {
+        $result = 1;
+        last;
+    }
+}
+
+=== all with generator
+my $result = 1;
+for my $x (@{$xs}) {
+    if (!($x > 0)) {
+        $result = 0;
+        last;
+    }
+}
+
 === sorted with key lambda
 [sort { abs($a) <=> abs($b) } @{$xs}]
 

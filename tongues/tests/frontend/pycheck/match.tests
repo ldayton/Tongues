@@ -19,3 +19,76 @@ def f(n: Node) -> int:
 ---
 ok
 ---
+
+=== match on field access narrows subject
+from dataclasses import dataclass
+class Pattern:
+    pass
+@dataclass
+class PatternType(Pattern):
+    name: str
+@dataclass
+class PatternEnum(Pattern):
+    variant: str
+@dataclass
+class Case:
+    pattern: Pattern
+def f(c: Case) -> str:
+    match c.pattern:
+        case PatternType():
+            return c.pattern.name
+        case PatternEnum():
+            return c.pattern.variant
+    return ""
+---
+ok
+---
+
+=== match on field access with or pattern narrows subject
+from dataclasses import dataclass
+class Expr:
+    pass
+@dataclass
+class IntLit(Expr):
+    value: int
+@dataclass
+class FloatLit(Expr):
+    value: int
+@dataclass
+class StrLit(Expr):
+    text: str
+@dataclass
+class Stmt:
+    expr: Expr
+def f(s: Stmt) -> int:
+    match s.expr:
+        case IntLit() | FloatLit():
+            return s.expr.value
+        case StrLit():
+            return len(s.expr.text)
+    return 0
+---
+ok
+---
+
+=== match on method result does not narrow
+from dataclasses import dataclass
+class Animal:
+    pass
+@dataclass
+class Dog(Animal):
+    bark_sound: str
+@dataclass
+class Cat(Animal):
+    purr_sound: str
+class Box:
+    def get(self) -> Animal:
+        return Dog(bark_sound="woof")
+def f(b: Box) -> str:
+    match b.get():
+        case Dog():
+            return "dog"
+    return "other"
+---
+ok
+---

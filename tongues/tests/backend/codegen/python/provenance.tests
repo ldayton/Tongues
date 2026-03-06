@@ -120,3 +120,12 @@ for ch in s:
 
 === isinstance with tuple of types (raised)
 return isinstance(v, (A, B))
+
+=== any call with generator (raised)
+result = any(x > 0 for x in xs)
+
+=== all call with generator (raised)
+result = all(x > 0 for x in xs)
+
+=== any call with filter (raised)
+result = any(x > 0 for x in xs if x % 2 == 0)

@@ -374,11 +374,46 @@ def _restore_fn_name(name: str, annotations: Ann) -> str:
 _LIST_UTIL_BUILTINS = frozenset({"Min", "Max", "Sum"})
 
 
+def _has_any_all_provenance(stmts: list[TStmt]) -> bool:
+    """Check if any for-loop in stmts has any_call/all_call provenance."""
+    for stmt in stmts:
+        if isinstance(stmt, TForStmt):
+            if stmt.annotations.get("provenance") in ("any_call", "all_call"):
+                return True
+            if _has_any_all_provenance(stmt.body):
+                return True
+        elif isinstance(stmt, TIfStmt):
+            if _has_any_all_provenance(stmt.then_body):
+                return True
+            if stmt.else_body is not None and _has_any_all_provenance(stmt.else_body):
+                return True
+        elif isinstance(stmt, TWhileStmt):
+            if _has_any_all_provenance(stmt.body):
+                return True
+    return False
+
+
 def _struct_needs_list_util(decl: TStructDecl) -> bool:
     """Check if any method in a struct uses Min/Max/Sum builtins."""
     for method in decl.methods:
         names = collect_builtin_calls(method.body)
         if not names.isdisjoint(_LIST_UTIL_BUILTINS):
+            return True
+    return False
+
+
+def _struct_needs_any_all(decl: TStructDecl) -> bool:
+    """Check if any method in a struct uses any_call/all_call provenance."""
+    for method in decl.methods:
+        if _has_any_all_provenance(method.body):
+            return True
+    return False
+
+
+def _module_needs_any_all(module: TModule) -> bool:
+    """Check if any top-level function uses any_call/all_call provenance."""
+    for decl in module.decls:
+        if isinstance(decl, TFnDecl) and _has_any_all_provenance(decl.body):
             return True
     return False
 
@@ -587,7 +622,10 @@ class _PerlEmitter(Emitter):
         self._line("use utf8;")
         self._line("no warnings 'uninitialized', 'numeric';")
         self._line("use POSIX qw(floor ceil);")
-        self._line("use List::Util qw(min max sum);")
+        lu = "min max sum"
+        if _module_needs_any_all(module):
+            lu += " any all"
+        self._line("use List::Util qw(" + lu + ");")
         self._line("use Scalar::Util qw(looks_like_number);")
         self._line("use Encode qw(encode decode);")
         self._line("binmode(STDOUT, ':utf8');")
@@ -652,8 +690,13 @@ class _PerlEmitter(Emitter):
                 case TStructDecl():
                     if current_package != decl.name:
                         self._line("package " + decl.name + ";")
-                        if _struct_needs_list_util(decl):
-                            self._line("use List::Util qw(min max sum);")
+                        needs_bu = _struct_needs_list_util(decl)
+                        needs_aa = _struct_needs_any_all(decl)
+                        if needs_bu or needs_aa:
+                            slu = "min max sum"
+                            if needs_aa:
+                                slu += " any all"
+                            self._line("use List::Util qw(" + slu + ");")
                         current_package = decl.name
                         self._line()
                     self._emit_struct(decl)
@@ -803,18 +846,23 @@ class _PerlEmitter(Emitter):
                         "dict_comprehension",
                         "set_comprehension",
                     ):
-                        comp = self._try_comprehension(stmt, next_stmt, prov)
-                        if comp is not None:
+                        lc = self._try_comprehension(stmt, next_stmt, prov)
+                        if lc is not None:
                             self.var_types[stmt.name] = stmt.typ
-                            self._line(comp)
+                            self._line(lc)
                             i += 2
                             continue
                     if prov == "step_slice":
-                        comp = self._try_step_slice(stmt, next_stmt)
-                        if comp is not None:
+                        ss = self._try_step_slice(stmt, next_stmt)
+                        if ss is not None:
                             self.var_types[stmt.name] = stmt.typ
-                            self._line(comp)
+                            self._line(ss)
                             i += 2
+                            continue
+                    if prov in ("any_call", "all_call"):
+                        result = self._emit_any_all(stmts, i, stmt, next_stmt, prov)
+                        if result > 0:
+                            i += result
                             continue
             self._emit_stmt(stmt)
             i += 1
@@ -990,6 +1038,110 @@ class _PerlEmitter(Emitter):
                         if isinstance(inner, TIndex):
                             return True, inner.obj
         return False, None
+
+    def _emit_any_all(
+        self,
+        stmts: list[TStmt],
+        i: int,
+        let_stmt: TLetStmt,
+        for_stmt: TForStmt,
+        prov: str,
+    ) -> int:
+        """Try to emit any/all. Returns number of statements to skip, or 0."""
+        aa = self._try_any_all(let_stmt, for_stmt, prov)
+        if aa:
+            lhs, rhs = aa
+            self.var_types[let_stmt.name] = let_stmt.typ
+            folded = self._fold_temp_assign(stmts, i, let_stmt.name, rhs)
+            if folded is not None:
+                self._line(folded)
+                return 3
+            self._line("my " + lhs + " = " + rhs + ";")
+            return 2
+        return 0
+
+    def _try_any_all(
+        self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
+    ) -> tuple[str, str] | None:
+        """Try to reconstruct any/all from a let + for pair. Returns (lhs, rhs)."""
+        # Perl's $_ can't destructure tuples, so bail on multi-binding
+        if len(for_stmt.binding) > 1:
+            return None
+        acc = "$" + _restore_name(let_stmt.name, let_stmt.annotations)
+        iterable = self._expr(for_stmt.iterable)
+        binding_name = for_stmt.binding[0] if for_stmt.binding else None
+        if self._is_set_expr(for_stmt.iterable):
+            iter_spread = "keys %{" + iterable + "}"
+        else:
+            iter_spread = "@{" + iterable + "}"
+        func = "any" if prov == "any_call" else "all"
+        body = for_stmt.body
+        if len(body) != 1:
+            return None
+        outer_if = body[0]
+        if not isinstance(outer_if, TIfStmt):
+            return None
+        if (
+            len(outer_if.then_body) == 2
+            and isinstance(outer_if.then_body[0], TAssignStmt)
+            and isinstance(outer_if.then_body[1], TBreakStmt)
+        ):
+            cond = (
+                self._strip_not(outer_if.cond) if prov == "all_call" else outer_if.cond
+            )
+            if binding_name is not None:
+                self.var_alias[binding_name] = "$_"
+            cond_s = self._expr(cond)
+            if binding_name is not None:
+                self.var_alias.pop(binding_name)
+            return (acc, func + " { " + cond_s + " } " + iter_spread)
+        if len(outer_if.then_body) == 1:
+            inner_if = outer_if.then_body[0]
+            if (
+                isinstance(inner_if, TIfStmt)
+                and len(inner_if.then_body) == 2
+                and isinstance(inner_if.then_body[0], TAssignStmt)
+                and isinstance(inner_if.then_body[1], TBreakStmt)
+            ):
+                cond = (
+                    self._strip_not(inner_if.cond)
+                    if prov == "all_call"
+                    else inner_if.cond
+                )
+                if binding_name is not None:
+                    self.var_alias[binding_name] = "$_"
+                filter_s = self._expr(outer_if.cond)
+                cond_s = self._expr(cond)
+                if binding_name is not None:
+                    self.var_alias.pop(binding_name)
+                return (
+                    acc,
+                    func + " { " + filter_s + " && " + cond_s + " } " + iter_spread,
+                )
+        return None
+
+    def _strip_not(self, expr: TExpr) -> TExpr:
+        """Strip a leading ! from a unary-not expression."""
+        if isinstance(expr, TUnaryOp) and expr.op == "!":
+            return expr.operand
+        return expr
+
+    def _fold_temp_assign(
+        self, stmts: list[TStmt], i: int, temp_name: str, rhs: str
+    ) -> str | None:
+        """If stmts[i+2] is `real_name = temp_name`, fold into `real_name = rhs`."""
+        if i + 2 >= len(stmts):
+            return None
+        third = stmts[i + 2]
+        if isinstance(third, TLetStmt) and isinstance(third.value, TVar):
+            if third.value.name == temp_name:
+                real = "$" + _restore_name(third.name, third.annotations)
+                return "my " + real + " = " + rhs + ";"
+        if isinstance(third, TAssignStmt) and isinstance(third.value, TVar):
+            if third.value.name == temp_name and isinstance(third.target, TVar):
+                real = "$" + _restore_name(third.target.name, third.target.annotations)
+                return real + " = " + rhs + ";"
+        return None
 
     def _emit_stmt(self, stmt: TStmt) -> None:
         if isinstance(stmt, TLetStmt):

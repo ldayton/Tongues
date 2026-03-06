@@ -1,0 +1,96 @@
+=== sorted key lambda with attribute access
+class Item:
+    def __init__(self) -> None:
+        self.name: str = ""
+def f(xs: list[Item]) -> list[Item]:
+    return sorted(xs, key=lambda x: x.name)
+---
+ok
+---
+
+=== sorted key lambda with negation
+def f(xs: list[int]) -> list[int]:
+    return sorted(xs, key=lambda x: -x)
+---
+ok
+---
+
+=== min key lambda with tuple subscript
+def f(xs: list[tuple[str, int]]) -> tuple[str, int]:
+    return min(xs, key=lambda t: t[1])
+---
+ok
+---
+
+=== max key lambda with len
+def f(xs: list[str]) -> str:
+    return max(xs, key=lambda s: len(s))
+---
+ok
+---
+
+=== sorted key lambda accesses nonexistent attribute
+class Item:
+    def __init__(self) -> None:
+        self.name: str = ""
+def f(xs: list[Item]) -> list[Item]:
+    return sorted(xs, key=lambda x: x.missing)
+---
+error: cannot access 'missing' on Item
+---
+
+=== lambda in callable param
+from typing import Callable
+def apply(f: Callable[[int], int], x: int) -> int:
+    return f(x)
+def g() -> int:
+    return apply(lambda x: x + 1, 5)
+---
+ok
+---
+
+=== lambda in callable param with attribute access
+from typing import Callable
+class Item:
+    def __init__(self) -> None:
+        self.name: str = ""
+def extract(f: Callable[[Item], str], item: Item) -> str:
+    return f(item)
+def g(item: Item) -> str:
+    return extract(lambda x: x.name, item)
+---
+ok
+---
+
+=== lambda param count mismatch
+from typing import Callable
+def apply(f: Callable[[int, str], bool], x: int) -> bool:
+    return f(x, "a")
+def g() -> bool:
+    return apply(lambda x: True, 1)
+---
+error: lambda has 1 parameters, expected 2
+---
+
+=== lambda body return type mismatch
+from typing import Callable
+def apply(f: Callable[[int], str]) -> str:
+    return f(1)
+def g() -> str:
+    return apply(lambda x: 42)
+---
+error: lambda return type int not assignable to str
+---
+
+=== lambda body accesses nonexistent attribute
+from typing import Callable
+class Item:
+    def __init__(self) -> None:
+        self.name: str = ""
+def apply(f: Callable[[Item], str]) -> str:
+    return f(Item())
+def g() -> str:
+    return apply(lambda x: x.missing)
+---
+error: cannot access 'missing' on Item
+---

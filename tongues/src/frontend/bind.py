@@ -342,6 +342,7 @@ class Verifier:
         self.in_file_open: bool = False  # Inside validated with-open block
         self.in_type_compare: bool = False  # type(x) is/== T comparison
         self.in_key_kwarg: bool = False  # Inside key= argument of min/max/sorted
+        self.in_call_arg: bool = False  # Inside a call argument position
         # Variables guarded by `if var:` condition (for tuple unpacking)
         self.guarded_vars: set[str] = set()
 
@@ -546,7 +547,7 @@ class Verifier:
             category = "control"
             message = "with statement: use try/finally instead"
         elif node_type == "Lambda":
-            if self.in_key_kwarg:
+            if self.in_key_kwarg or self.in_call_arg:
                 body = get_node(node, "body")
                 if body:
                     self.visit(body)
@@ -826,10 +827,13 @@ class Verifier:
         self.visit(func)
         # Set eager consumer context when visiting args
         old_in_eager = self.in_eager_consumer
+        old_in_call_arg = self.in_call_arg
         if is_eager:
             self.in_eager_consumer = True
+        self.in_call_arg = True
         for arg in args:
             self.visit(arg)
+        self.in_call_arg = old_in_call_arg
         self.in_eager_consumer = old_in_eager
         for kw in keywords:
             if _has_present(kw, "value"):
@@ -2405,6 +2409,7 @@ class BindResult:
         self.class_bases: dict[str, list[str]] = {}
         self.type_aliases: dict[str, str] = {}
         self.class_source_files: dict[str, str] = {}
+        self.known_funcs: set[str] = set()
         self.flow_graphs: dict[str, FlowGraph] = {}
 
     def subset_ok(self) -> bool:
@@ -2431,10 +2436,11 @@ def _compute_derived(
             for base in info.bases:
                 if base == "Node" or base.endswith("Node"):
                     result.node_classes.add(mname)
-    for mname in mkeys:
-        info = table.module_names[mname]
-        if info.kind == "class":
             result.class_bases[mname] = list(info.bases)
+        elif info.kind == "function" or info.kind == "import":
+            result.known_funcs.add(mname)
+    for bname in ALLOWED_BUILTINS:
+        result.known_funcs.add(bname)
     ta_body = get_nodes(ast_dict, "body")
     for ta_stmt in ta_body:
         if get_str(ta_stmt, "_type") == "TypeAlias":
