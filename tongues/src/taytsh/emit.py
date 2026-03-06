@@ -609,17 +609,17 @@ class _Emitter:
             obj = self._render_expr(expr.obj, _PREC_POSTFIX, "left")
             return f"{obj}.{expr.field}"
         if isinstance(expr, TTupleAccess):
-            obj2 = self._render_expr(expr.obj, _PREC_POSTFIX, "left")
-            return obj2 + "." + str(expr.index)
+            obj = self._render_expr(expr.obj, _PREC_POSTFIX, "left")
+            return obj + "." + str(expr.index)
         if isinstance(expr, TIndex):
-            obj3 = self._render_expr(expr.obj, _PREC_POSTFIX, "left")
+            obj = self._render_expr(expr.obj, _PREC_POSTFIX, "left")
             idx = self._render_expr(expr.index, _PREC_TERNARY)
-            return f"{obj3}[{idx}]"
+            return f"{obj}[{idx}]"
         if isinstance(expr, TSlice):
-            obj4 = self._render_expr(expr.obj, _PREC_POSTFIX, "left")
+            obj = self._render_expr(expr.obj, _PREC_POSTFIX, "left")
             low = self._render_expr(expr.low, _PREC_TERNARY)
             high = self._render_expr(expr.high, _PREC_TERNARY)
-            return f"{obj4}[{low}:{high}]"
+            return f"{obj}[{low}:{high}]"
         if isinstance(expr, TCall):
             func = self._render_expr(expr.func, _PREC_POSTFIX, "left")
             args: list[str] = []

@@ -237,8 +237,8 @@ def _val_to_string(v: Val) -> str:
         parts: list[str] = []
         for mi, mk in enumerate(map_keys):
             ks = _val_to_string_quoted(mk)
-            vs2 = _val_to_string_quoted(map_vals[mi])
-            parts.append(ks + ": " + vs2)
+            vs = _val_to_string_quoted(map_vals[mi])
+            parts.append(ks + ": " + vs)
         return "{" + ", ".join(parts) + "}"
     if isinstance(v, VSet):
         sorted_items = list(v.items)
@@ -255,10 +255,10 @@ def _val_to_string(v: Val) -> str:
     if isinstance(v, VEnum):
         return v.enum_name + "." + v.variant
     if isinstance(v, VStruct):
-        parts5: list[str] = []
-        for i2, fn in enumerate(v.field_names):
-            parts5.append(fn + ": " + _val_to_string(v.field_values[i2]))
-        return v.type_name + "{" + ", ".join(parts5) + "}"
+        parts: list[str] = []
+        for i, fn in enumerate(v.field_names):
+            parts.append(fn + ": " + _val_to_string(v.field_values[i]))
+        return v.type_name + "{" + ", ".join(parts) + "}"
     if isinstance(v, VFunc):
         return "fn" + v.type_sig if v.type_sig else "<fn>"
     return "<unknown>"

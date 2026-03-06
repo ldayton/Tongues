@@ -7,6 +7,53 @@ exit: 0
 stderr-empty: true
 ---
 
+=== name reuse across isinstance branches with for loop
+args: --target python
+from dataclasses import dataclass
+@dataclass
+class A:
+    value: int
+@dataclass
+class B:
+    items: list[int]
+@dataclass
+class C:
+    items: list[int]
+def render(expr: A | B | C) -> str:
+    if isinstance(expr, A):
+        e = str(expr.value)
+        return e
+    if isinstance(expr, B):
+        parts: list[str] = []
+        for e in expr.items:
+            parts.append(str(e))
+        return ", ".join(parts)
+    if isinstance(expr, C):
+        elems: list[str] = []
+        for e in expr.items:
+            elems.append(str(e))
+        return ", ".join(elems)
+    return "unknown"
+---
+exit: 0
+---
+
+=== name reuse for loop var across if-return branches
+args: --target python
+def f(x: int, xs: list[int]) -> str:
+    if x == 1:
+        e = "hello"
+        return e
+    if x == 2:
+        parts: list[str] = []
+        for e in xs:
+            parts.append(str(e))
+        return ", ".join(parts)
+    return "other"
+---
+exit: 0
+---
+
 === error stderr nonempty stdout empty
 args: --target go
 def f(x) -> int:
