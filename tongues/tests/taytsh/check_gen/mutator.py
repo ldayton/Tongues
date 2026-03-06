@@ -518,27 +518,6 @@ def wrong_named_arg(module: TModule, rng: Random) -> MutationResult | None:
     return _try_mutate(module, "wrong_named_arg", "nonexistent_param", apply)
 
 
-def assign_loop_var(module: TModule, rng: Random) -> MutationResult | None:
-    def apply(m: TModule) -> bool:
-        for fn in _find_fn_decls(m):
-            for s in _walk_stmts(fn.body):
-                if isinstance(s, TForStmt) and s.binding and s.body:
-                    var_name = s.binding[0]
-                    assign = TAssignStmt(
-                        pos=P,
-                        target=TVar(pos=P, name=var_name, annotations=A),
-                        value=TIntLit(pos=P, value=0, raw="0", annotations=A),
-                        annotations=A,
-                    )
-                    s.body.insert(0, assign)
-                    return True
-        return False
-
-    return _try_mutate(
-        module, "assign_loop_var", "cannot assign to loop variable", apply
-    )
-
-
 def throw_non_struct(module: TModule, rng: Random) -> MutationResult | None:
     def apply(m: TModule) -> bool:
         fns = _find_fn_decls(m)
@@ -658,7 +637,6 @@ ALL_MUTATIONS = [
     call_non_function,
     mixed_args,
     wrong_named_arg,
-    assign_loop_var,
     throw_non_struct,
     expr_no_effect,
     control_flow_in_finally,

@@ -182,7 +182,9 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot assign to loop variable
+Main.body.1.type = TForStmt
+Main.body.1.binder.x.is_reassigned = true
+Main.body.1.binder.x.is_const = false
 ---
 
 === for two binders

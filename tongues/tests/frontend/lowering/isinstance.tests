@@ -1,0 +1,29 @@
+=== elif reassignment should not lower to match
+from dataclasses import dataclass
+@dataclass
+class A:
+    x: int
+@dataclass
+class B:
+    x: int
+@dataclass
+class C:
+    z: int
+def convert_c(c: C) -> A:
+    return A(c.z)
+def f(items: list[A | B | C]) -> int:
+    total: int = 0
+    for item in items:
+        if isinstance(item, B):
+            total += item.x
+        elif isinstance(item, C):
+            item = convert_c(item)
+            total += item.x
+        else:
+            total += item.x
+    return total
+def main() -> None:
+    print(f([A(1), B(2), C(3)]))
+---
+if IsType(item, "B")
+---

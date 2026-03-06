@@ -817,7 +817,7 @@ fn Main() -> void {
 ok
 ---
 
-=== assign to loop variable rejected
+=== assign to loop variable allowed
 fn Main() -> void {
     let xs: list[int] = [1, 2, 3]
     for x in xs {
@@ -825,7 +825,7 @@ fn Main() -> void {
     }
 }
 ---
-error: cannot assign to loop variable
+ok
 ---
 
 === assign to slice rejected
