@@ -5,7 +5,7 @@ any { $_ > 0 } @{$xs}
 all { $_ > 0 } @{$xs}
 
 === any with generator expression and condition
-any { $_ % 2 == 0 && $_ > 0 } @{$xs}
+any { $_ - POSIX::floor($_ / 2) * 2 == 0 && $_ > 0 } @{$xs}
 
 === any with equality comparison
 any { $_ == $target } @{$xs}

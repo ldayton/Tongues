@@ -11,4 +11,4 @@ any(x > 0 for x in xs if x % 2 == 0)
 any(x == target for x in xs)
 
 === any assigns to variable
-found = any(x > 0 for x in xs)
+found: bool = any(x > 0 for x in xs)
