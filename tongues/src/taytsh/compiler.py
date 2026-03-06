@@ -504,11 +504,12 @@ class Compiler:
                     self._register_interface(decl)
         # Register all top-level function and let names as globals
         for decl in module.decls:
-            if isinstance(decl, TFnDecl):
-                self._ensure_global(decl.name)
-            elif isinstance(decl, TLetStmt):
-                self._ensure_global(decl.name)
-                self.global_let_types[decl.name] = self._resolve_ttype(decl.typ)
+            match decl:
+                case TFnDecl():
+                    self._ensure_global(decl.name)
+                case TLetStmt():
+                    self._ensure_global(decl.name)
+                    self.global_let_types[decl.name] = self._resolve_ttype(decl.typ)
         # Compile all top-level functions
         for decl in module.decls:
             if isinstance(decl, TFnDecl):
@@ -726,43 +727,44 @@ class Compiler:
     def _collect_locals(self, stmts: list[TStmt], fc: _FnCompiler) -> None:
         """Pre-scan statements to allocate local slots for let declarations."""
         for stmt in stmts:
-            if isinstance(stmt, TLetStmt):
-                if fc.scope.lookup(stmt.name) is None:
-                    typ = self._resolve_ttype(stmt.typ)
-                    fc.add_local(stmt.name, typ)
-            elif isinstance(stmt, TIfStmt):
-                self._collect_locals(stmt.then_body, fc)
-                if stmt.else_body is not None:
-                    self._collect_locals(stmt.else_body, fc)
-            elif isinstance(stmt, TWhileStmt):
-                self._collect_locals(stmt.body, fc)
-            elif isinstance(stmt, TForStmt):
-                for b in stmt.binding:
-                    if b != "_" and fc.scope.lookup(b) is None:
-                        fc.add_local(b, INT_T)
-                self._collect_locals(stmt.body, fc)
-            elif isinstance(stmt, TMatchStmt):
-                for case in stmt.cases:
-                    if isinstance(case.pattern, TPatternType):
-                        pname = case.pattern.name
-                        if fc.scope.lookup(pname) is None:
-                            pt = self._resolve_ttype(case.pattern.type_name)
-                            fc.add_local(pname, pt)
-                    self._collect_locals(case.body, fc)
-                if stmt.default is not None:
-                    dname = stmt.default.name
-                    if dname is not None:
-                        if fc.scope.lookup(dname) is None:
-                            fc.add_local(dname, VOID_T)
-                    self._collect_locals(stmt.default.body, fc)
-            elif isinstance(stmt, TTryStmt):
-                self._collect_locals(stmt.body, fc)
-                for catch in stmt.catches:
-                    if fc.scope.lookup(catch.name) is None:
-                        fc.add_local(catch.name, VOID_T)
-                    self._collect_locals(catch.body, fc)
-                if stmt.finally_body is not None:
-                    self._collect_locals(stmt.finally_body, fc)
+            match stmt:
+                case TLetStmt():
+                    if fc.scope.lookup(stmt.name) is None:
+                        typ = self._resolve_ttype(stmt.typ)
+                        fc.add_local(stmt.name, typ)
+                case TIfStmt():
+                    self._collect_locals(stmt.then_body, fc)
+                    if stmt.else_body is not None:
+                        self._collect_locals(stmt.else_body, fc)
+                case TWhileStmt():
+                    self._collect_locals(stmt.body, fc)
+                case TForStmt():
+                    for b in stmt.binding:
+                        if b != "_" and fc.scope.lookup(b) is None:
+                            fc.add_local(b, INT_T)
+                    self._collect_locals(stmt.body, fc)
+                case TMatchStmt():
+                    for case in stmt.cases:
+                        if isinstance(case.pattern, TPatternType):
+                            pname = case.pattern.name
+                            if fc.scope.lookup(pname) is None:
+                                pt = self._resolve_ttype(case.pattern.type_name)
+                                fc.add_local(pname, pt)
+                        self._collect_locals(case.body, fc)
+                    if stmt.default is not None:
+                        dname = stmt.default.name
+                        if dname is not None:
+                            if fc.scope.lookup(dname) is None:
+                                fc.add_local(dname, VOID_T)
+                        self._collect_locals(stmt.default.body, fc)
+                case TTryStmt():
+                    self._collect_locals(stmt.body, fc)
+                    for catch in stmt.catches:
+                        if fc.scope.lookup(catch.name) is None:
+                            fc.add_local(catch.name, VOID_T)
+                        self._collect_locals(catch.body, fc)
+                    if stmt.finally_body is not None:
+                        self._collect_locals(stmt.finally_body, fc)
 
     # ── Statement compilation ─────────────────────────────────
 
@@ -1260,18 +1262,17 @@ class Compiler:
                 fc.constants.append(VStr(tname))
                 fc.emit(OP_MATCH_TYPE, idx, case.pos.line)
                 skip = fc.emit_jump(OP_JUMP_IF_FALSE, case.pos.line)
-                # Bind the matched value
                 local = fc.scope.lookup(case.pattern.name)
                 if local is not None:
                     fc.emit(OP_DUP, 0, case.pos.line)
                     fc.emit(OP_STORE_LOCAL, local.slot, case.pos.line)
-                fc.match_depth += 2  # scrutinee + dup on stack
+                fc.match_depth += 2
                 self._compile_block(case.body, fc)
                 fc.match_depth -= 2
-                fc.emit(OP_POP, 0, case.pos.line)  # pop the dup (MATCH_TYPE peeks)
+                fc.emit(OP_POP, 0, case.pos.line)
                 end_patches.append(fc.emit_jump(OP_JUMP, case.pos.line))
                 fc.patch_jump(skip)
-                fc.emit(OP_POP, 0, case.pos.line)  # pop dup on failure path
+                fc.emit(OP_POP, 0, case.pos.line)
             elif isinstance(case.pattern, TPatternEnum):
                 idx = len(fc.constants)
                 fc.constants.append(
@@ -1279,18 +1280,18 @@ class Compiler:
                 )
                 fc.emit(OP_MATCH_TYPE, idx, case.pos.line)
                 skip = fc.emit_jump(OP_JUMP_IF_FALSE, case.pos.line)
-                fc.match_depth += 2  # scrutinee + dup on stack
+                fc.match_depth += 2
                 self._compile_block(case.body, fc)
                 fc.match_depth -= 2
-                fc.emit(OP_POP, 0, case.pos.line)  # pop the dup (MATCH_TYPE peeks)
+                fc.emit(OP_POP, 0, case.pos.line)
                 end_patches.append(fc.emit_jump(OP_JUMP, case.pos.line))
                 fc.patch_jump(skip)
-                fc.emit(OP_POP, 0, case.pos.line)  # pop dup on failure path
+                fc.emit(OP_POP, 0, case.pos.line)
             elif isinstance(case.pattern, TPatternNil):
                 fc.emit(OP_NIL, 0, case.pos.line)
-                fc.emit(OP_EQ, 0, case.pos.line)  # consumes dup
+                fc.emit(OP_EQ, 0, case.pos.line)
                 skip = fc.emit_jump(OP_JUMP_IF_FALSE, case.pos.line)
-                fc.match_depth += 1  # scrutinee on stack (dup consumed by EQ)
+                fc.match_depth += 1
                 self._compile_block(case.body, fc)
                 fc.match_depth -= 1
                 end_patches.append(fc.emit_jump(OP_JUMP, case.pos.line))

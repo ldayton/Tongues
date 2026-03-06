@@ -835,25 +835,24 @@ def _stmts_json(items: list[TStmt]) -> JsonValue:
 
 def _type_json(t: TType) -> JsonValue:
     d: dict[str, JsonValue] = {"pos": _pos_json(t.pos)}
-    if isinstance(t, TPrimitive):
-        d["kind"] = JStr(t.kind)
-    elif isinstance(t, TListType):
-        d["element"] = _type_json(t.element)
-    elif isinstance(t, TMapType):
-        d["key"] = _type_json(t.key)
-        d["value"] = _type_json(t.value)
-    elif isinstance(t, TSetType):
-        d["element"] = _type_json(t.element)
-    elif isinstance(t, TTupleType):
-        d["elements"] = _types_json(t.elements)
-    elif isinstance(t, TFuncType):
-        d["params"] = _types_json(t.params)
-    elif isinstance(t, TIdentType):
-        d["name"] = JStr(t.name)
-    elif isinstance(t, TUnionType):
-        d["members"] = _types_json(t.members)
-    elif isinstance(t, TOptionalType):
-        d["inner"] = _type_json(t.inner)
+    match t:
+        case TPrimitive():
+            d["kind"] = JStr(t.kind)
+        case TListType() | TSetType():
+            d["element"] = _type_json(t.element)
+        case TMapType():
+            d["key"] = _type_json(t.key)
+            d["value"] = _type_json(t.value)
+        case TTupleType():
+            d["elements"] = _types_json(t.elements)
+        case TFuncType():
+            d["params"] = _types_json(t.params)
+        case TIdentType():
+            d["name"] = JStr(t.name)
+        case TUnionType():
+            d["members"] = _types_json(t.members)
+        case TOptionalType():
+            d["inner"] = _type_json(t.inner)
     return JDict(d)
 
 
