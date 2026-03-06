@@ -97,6 +97,30 @@ struct Leaf : Node {
 }
 ---
 
+=== StrEnum lowers to enum
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    GREEN = "green"
+    BLUE = "blue"
+def f() -> Color:
+    return Color.RED
+---
+enum Color { RED GREEN BLUE }
+---
+
+=== IntEnum lowers to enum
+from enum import IntEnum
+class Priority(IntEnum):
+    LOW = 0
+    MEDIUM = 1
+    HIGH = 2
+def f() -> Priority:
+    return Priority.LOW
+---
+enum Priority { LOW MEDIUM HIGH }
+---
+
 === entry point
 def main() -> None:
     print("hi")

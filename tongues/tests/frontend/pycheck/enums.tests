@@ -1,0 +1,334 @@
+=== StrEnum variant access
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    GREEN = "green"
+    BLUE = "blue"
+def f() -> Color:
+    return Color.RED
+---
+ok
+---
+
+=== IntEnum variant access
+from enum import IntEnum
+class Priority(IntEnum):
+    LOW = 0
+    HIGH = 1
+def f() -> Priority:
+    return Priority.LOW
+---
+ok
+---
+
+=== StrEnum comparison
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    GREEN = "green"
+def f() -> bool:
+    return Color.RED == Color.GREEN
+---
+ok
+---
+
+=== IntEnum comparison
+from enum import IntEnum
+class Priority(IntEnum):
+    LOW = 0
+    HIGH = 1
+def f() -> bool:
+    return Priority.LOW == Priority.HIGH
+---
+ok
+---
+
+=== StrEnum wrong variant
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    GREEN = "green"
+def f() -> Color:
+    return Color.BLUE
+---
+error: not a variant
+---
+
+=== IntEnum wrong variant
+from enum import IntEnum
+class Priority(IntEnum):
+    LOW = 0
+    HIGH = 1
+def f() -> Priority:
+    return Priority.MEDIUM
+---
+error: not a variant
+---
+
+=== StrEnum cross-type comparison
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+class Size(StrEnum):
+    SMALL = "small"
+def f() -> bool:
+    return Color.RED == Size.SMALL
+---
+error: must be same type
+---
+
+=== StrEnum as parameter
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    GREEN = "green"
+    BLUE = "blue"
+def describe(c: Color) -> str:
+    if c == Color.RED:
+        return "red"
+    return "other"
+def f() -> str:
+    return describe(Color.RED)
+---
+ok
+---
+
+=== IntEnum as parameter
+from enum import IntEnum
+class Priority(IntEnum):
+    LOW = 0
+    HIGH = 1
+def level(p: Priority) -> str:
+    if p == Priority.HIGH:
+        return "high"
+    return "low"
+def f() -> str:
+    return level(Priority.LOW)
+---
+ok
+---
+
+=== StrEnum exhaustive match
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    GREEN = "green"
+    BLUE = "blue"
+def describe(c: Color) -> str:
+    match c:
+        case Color.RED:
+            return "red"
+        case Color.GREEN:
+            return "green"
+        case Color.BLUE:
+            return "blue"
+---
+ok
+---
+
+=== IntEnum exhaustive match
+from enum import IntEnum
+class Priority(IntEnum):
+    LOW = 0
+    MEDIUM = 1
+    HIGH = 2
+def describe(p: Priority) -> str:
+    match p:
+        case Priority.LOW:
+            return "low"
+        case Priority.MEDIUM:
+            return "mid"
+        case Priority.HIGH:
+            return "high"
+---
+ok
+---
+
+=== StrEnum non-exhaustive match
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    GREEN = "green"
+    BLUE = "blue"
+def describe(c: Color) -> str:
+    match c:
+        case Color.RED:
+            return "red"
+    return "other"
+---
+error: non-exhaustive
+---
+
+=== IntEnum non-exhaustive match
+from enum import IntEnum
+class Priority(IntEnum):
+    LOW = 0
+    MEDIUM = 1
+    HIGH = 2
+def describe(p: Priority) -> str:
+    match p:
+        case Priority.LOW:
+            return "low"
+    return "other"
+---
+error: non-exhaustive
+---
+
+=== optional StrEnum
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    GREEN = "green"
+def f(c: Color | None) -> str:
+    if c is None:
+        return "none"
+    return str(c)
+---
+ok
+---
+
+=== optional IntEnum
+from enum import IntEnum
+class Priority(IntEnum):
+    LOW = 0
+    HIGH = 1
+def f(p: Priority | None) -> str:
+    if p is None:
+        return "none"
+    return str(p)
+---
+ok
+---
+
+=== StrEnum in list
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    GREEN = "green"
+def f() -> list[Color]:
+    return [Color.RED, Color.GREEN]
+---
+ok
+---
+
+=== StrEnum as dict key
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    GREEN = "green"
+def f() -> dict[Color, str]:
+    return {Color.RED: "red", Color.GREEN: "green"}
+---
+ok
+---
+
+=== StrEnum in set
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    GREEN = "green"
+def f() -> set[Color]:
+    return {Color.RED, Color.GREEN}
+---
+ok
+---
+
+=== StrEnum as dataclass field
+from dataclasses import dataclass
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    GREEN = "green"
+@dataclass
+class Shirt:
+    color: Color
+    size: int
+def f() -> Shirt:
+    return Shirt(Color.RED, 10)
+---
+ok
+---
+
+=== error: assign str to StrEnum
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    GREEN = "green"
+def f() -> Color:
+    c: Color = "red"
+    return c
+---
+error: cannot assign
+---
+
+=== error: assign int to IntEnum
+from enum import IntEnum
+class Priority(IntEnum):
+    LOW = 0
+    HIGH = 1
+def f() -> Priority:
+    p: Priority = 0
+    return p
+---
+error: cannot assign
+---
+
+=== error: assign wrong enum type
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+class Size(StrEnum):
+    SMALL = "small"
+def f() -> Color:
+    c: Color = Size.SMALL
+    return c
+---
+error: cannot assign
+---
+
+=== error: ordering on StrEnum
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    GREEN = "green"
+def f() -> bool:
+    return Color.RED < Color.GREEN
+---
+error: not defined for enum
+---
+
+=== error: arithmetic on IntEnum
+from enum import IntEnum
+class Priority(IntEnum):
+    LOW = 0
+    HIGH = 1
+def f() -> Priority:
+    return Priority.LOW + Priority.HIGH
+---
+error: not defined for enum
+---
+
+=== StrEnum match with default
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    GREEN = "green"
+    BLUE = "blue"
+def describe(c: Color) -> str:
+    match c:
+        case Color.RED:
+            return "red"
+        case _:
+            return "other"
+---
+ok
+---
+
+=== error: duplicate StrEnum variant
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    RED = "red2"
+---
+error: duplicate variant
+---

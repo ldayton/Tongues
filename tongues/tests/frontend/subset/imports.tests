@@ -335,6 +335,28 @@ def f() -> int:
 error: import
 ---
 
+=== from enum import StrEnum allowed
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    GREEN = "green"
+def f() -> Color:
+    return Color.RED
+---
+ok
+---
+
+=== from enum import IntEnum allowed
+from enum import IntEnum
+class Priority(IntEnum):
+    LOW = 0
+    HIGH = 1
+def f() -> Priority:
+    return Priority.LOW
+---
+ok
+---
+
 === star import not allowed
 from typing import *
 def f(x: Optional[int]) -> int:
