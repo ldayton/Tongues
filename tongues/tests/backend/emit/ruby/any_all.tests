@@ -1,0 +1,14 @@
+=== any with generator expression
+xs.any? { |x| x > 0 }
+
+=== all with generator expression
+xs.all? { |x| x > 0 }
+
+=== any with generator expression and condition
+xs.any? { |x| x % 2 == 0 && x > 0 }
+
+=== any with equality comparison
+xs.any? { |x| x == target }
+
+=== any assigns to variable
+found = xs.any? { |x| x > 0 }

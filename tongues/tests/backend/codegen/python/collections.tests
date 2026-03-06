@@ -100,6 +100,20 @@ c: set[int] = a - b
 === set comprehension
 unique.add(x)
 
+=== any with generator
+result: bool = False
+for x in xs:
+    if x > 0:
+        result = True
+        break
+
+=== all with generator
+result: bool = True
+for x in xs:
+    if not x > 0:
+        result = False
+        break
+
 === sorted with key lambda
 sorted(xs, key=lambda x: abs(x))
 

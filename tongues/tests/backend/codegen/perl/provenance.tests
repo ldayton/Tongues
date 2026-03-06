@@ -144,3 +144,12 @@ my $xs = [(0) x 5];
 
 === isinstance with tuple of types (raised)
 return (defined($v) && $v->isa('A')) || (defined($v) && $v->isa('B'));
+
+=== any call with generator (raised)
+my $result = any { $_ > 0 } @{$xs};
+
+=== all call with generator (raised)
+my $result = all { $_ > 0 } @{$xs};
+
+=== any call with filter (raised)
+my $result = any { $_ % 2 == 0 && $_ > 0 } @{$xs};

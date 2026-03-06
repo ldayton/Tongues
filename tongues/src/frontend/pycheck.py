@@ -1922,11 +1922,7 @@ def _cfg_merge_env(
         all_keys.append(akey)
     bkeys = list(env_b.types.keys())
     for bkey in bkeys:
-        found = False
-        for existing in all_keys:
-            if existing == bkey:
-                found = True
-        if not found:
+        if bkey not in all_keys:
             all_keys.append(bkey)
     for k in all_keys:
         in_a = k in env_a.types

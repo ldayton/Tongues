@@ -1,0 +1,14 @@
+=== any with generator expression
+any { $_ > 0 } @{$xs}
+
+=== all with generator expression
+all { $_ > 0 } @{$xs}
+
+=== any with generator expression and condition
+any { $_ - POSIX::floor($_ / 2) * 2 == 0 && $_ > 0 } @{$xs}
+
+=== any with equality comparison
+any { $_ == $target } @{$xs}
+
+=== any assigns to variable
+my $found = any { $_ > 0 } @{$xs};
