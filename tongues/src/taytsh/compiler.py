@@ -771,46 +771,47 @@ class Compiler:
             self._compile_stmt(stmt, fc)
 
     def _compile_stmt(self, stmt: TStmt, fc: _FnCompiler) -> None:
-        if isinstance(stmt, TLetStmt):
-            self._compile_let(stmt, fc)
-        elif isinstance(stmt, TAssignStmt):
-            self._compile_assign(stmt, fc)
-        elif isinstance(stmt, TOpAssignStmt):
-            self._compile_op_assign(stmt, fc)
-        elif isinstance(stmt, TTupleAssignStmt):
-            self._compile_tuple_assign(stmt, fc)
-        elif isinstance(stmt, TExprStmt):
-            if (
-                isinstance(stmt.expr, TCall)
-                and isinstance(stmt.expr.func, TVar)
-                and stmt.expr.func.name == "reveal_type"
-            ):
-                return
-            self._compile_expr(stmt.expr, fc)
-            fc.emit(OP_POP, 0, stmt.pos.line)
-        elif isinstance(stmt, TReturnStmt):
-            if stmt.value is not None:
-                self._compile_expr(stmt.value, fc)
-                fc.emit(OP_RETURN, 0, stmt.pos.line)
-            else:
-                fc.emit(OP_RETURN_VOID, 0, stmt.pos.line)
-        elif isinstance(stmt, TIfStmt):
-            self._compile_if(stmt, fc)
-        elif isinstance(stmt, TWhileStmt):
-            self._compile_while(stmt, fc)
-        elif isinstance(stmt, TForStmt):
-            self._compile_for(stmt, fc)
-        elif isinstance(stmt, TBreakStmt):
-            self._compile_break(stmt, fc)
-        elif isinstance(stmt, TContinueStmt):
-            self._compile_continue(stmt, fc)
-        elif isinstance(stmt, TTryStmt):
-            self._compile_try(stmt, fc)
-        elif isinstance(stmt, TThrowStmt):
-            self._compile_expr(stmt.expr, fc)
-            fc.emit(OP_THROW, 0, stmt.pos.line)
-        elif isinstance(stmt, TMatchStmt):
-            self._compile_match(stmt, fc)
+        match stmt:
+            case TLetStmt():
+                self._compile_let(stmt, fc)
+            case TAssignStmt():
+                self._compile_assign(stmt, fc)
+            case TOpAssignStmt():
+                self._compile_op_assign(stmt, fc)
+            case TTupleAssignStmt():
+                self._compile_tuple_assign(stmt, fc)
+            case TExprStmt():
+                if (
+                    isinstance(stmt.expr, TCall)
+                    and isinstance(stmt.expr.func, TVar)
+                    and stmt.expr.func.name == "reveal_type"
+                ):
+                    return
+                self._compile_expr(stmt.expr, fc)
+                fc.emit(OP_POP, 0, stmt.pos.line)
+            case TReturnStmt():
+                if stmt.value is not None:
+                    self._compile_expr(stmt.value, fc)
+                    fc.emit(OP_RETURN, 0, stmt.pos.line)
+                else:
+                    fc.emit(OP_RETURN_VOID, 0, stmt.pos.line)
+            case TIfStmt():
+                self._compile_if(stmt, fc)
+            case TWhileStmt():
+                self._compile_while(stmt, fc)
+            case TForStmt():
+                self._compile_for(stmt, fc)
+            case TBreakStmt():
+                self._compile_break(stmt, fc)
+            case TContinueStmt():
+                self._compile_continue(stmt, fc)
+            case TTryStmt():
+                self._compile_try(stmt, fc)
+            case TThrowStmt():
+                self._compile_expr(stmt.expr, fc)
+                fc.emit(OP_THROW, 0, stmt.pos.line)
+            case TMatchStmt():
+                self._compile_match(stmt, fc)
 
     def _compile_let(self, stmt: TLetStmt, fc: _FnCompiler) -> None:
         local = fc.scope.lookup(stmt.name)
@@ -1310,78 +1311,78 @@ class Compiler:
     # ── Expression compilation ────────────────────────────────
 
     def _compile_expr(self, expr: TExpr, fc: _FnCompiler) -> None:
-        if isinstance(expr, TIntLit):
-            if expr.value == 0:
-                fc.emit(OP_INT_ZERO, 0, expr.pos.line)
-            elif expr.value == 1:
-                fc.emit(OP_INT_ONE, 0, expr.pos.line)
-            else:
-                fc.emit_const(VInt(expr.value), expr.pos.line)
-        elif isinstance(expr, TFloatLit):
-            fc.emit_const(VFloat(expr.value), expr.pos.line)
-        elif isinstance(expr, TBoolLit):
-            if expr.value:
-                fc.emit(OP_TRUE, 0, expr.pos.line)
-            else:
-                fc.emit(OP_FALSE, 0, expr.pos.line)
-        elif isinstance(expr, TNilLit):
-            fc.emit(OP_NIL, 0, expr.pos.line)
-        elif isinstance(expr, TStringLit):
-            fc.emit_const(VStr(expr.value), expr.pos.line)
-        elif isinstance(expr, TByteLit):
-            fc.emit_const(VByte(expr.value), expr.pos.line)
-        elif isinstance(expr, TRuneLit):
-            fc.emit_const(VRune(expr.value), expr.pos.line)
-        elif isinstance(expr, TBytesLit):
-            fc.emit_const(VBytes(expr.value), expr.pos.line)
-        elif isinstance(expr, TVar):
-            self._compile_var(expr, fc)
-        elif isinstance(expr, TBinaryOp):
-            self._compile_binop(expr, fc)
-        elif isinstance(expr, TUnaryOp):
-            self._compile_unaryop(expr, fc)
-        elif isinstance(expr, TCall):
-            self._compile_call(expr, fc)
-        elif isinstance(expr, TTernary):
-            self._compile_ternary(expr, fc)
-        elif isinstance(expr, TListLit):
-            for e in expr.elements:
-                self._compile_expr(e, fc)
-            fc.emit(OP_BUILD_LIST, len(expr.elements), expr.pos.line)
-        elif isinstance(expr, TMapLit):
-            for k, v in expr.entries:
-                self._compile_expr(k, fc)
-                self._compile_expr(v, fc)
-            fc.emit(OP_BUILD_MAP, len(expr.entries), expr.pos.line)
-        elif isinstance(expr, TSetLit):
-            for e in expr.elements:
-                self._compile_expr(e, fc)
-            fc.emit(OP_BUILD_SET, len(expr.elements), expr.pos.line)
-        elif isinstance(expr, TTupleLit):
-            for e in expr.elements:
-                self._compile_expr(e, fc)
-            fc.emit(OP_BUILD_TUPLE, len(expr.elements), expr.pos.line)
-        elif isinstance(expr, TIndex):
-            self._compile_expr(expr.obj, fc)
-            self._compile_expr(expr.index, fc)
-            fc.emit(OP_INDEX, 0, expr.pos.line)
-        elif isinstance(expr, TSlice):
-            self._compile_expr(expr.obj, fc)
-            self._compile_expr(expr.low, fc)
-            self._compile_expr(expr.high, fc)
-            fc.emit(OP_SLICE, 0, expr.pos.line)
-        elif isinstance(expr, TFieldAccess):
-            self._compile_field_access(expr, fc)
-        elif isinstance(expr, TTupleAccess):
-            self._compile_expr(expr.obj, fc)
-            fc.emit(OP_TUPLE_ACCESS, expr.index, expr.pos.line)
-        elif isinstance(expr, TFnLit):
-            self._compile_fn_lit(expr, fc)
-        elif isinstance(expr, TRange):
-            # Range as expression (not in for loop) — shouldn't appear normally
-            for a in expr.args:
-                self._compile_expr(a, fc)
-            fc.emit(OP_GET_ITER, len(expr.args), expr.pos.line)
+        match expr:
+            case TIntLit():
+                if expr.value == 0:
+                    fc.emit(OP_INT_ZERO, 0, expr.pos.line)
+                elif expr.value == 1:
+                    fc.emit(OP_INT_ONE, 0, expr.pos.line)
+                else:
+                    fc.emit_const(VInt(expr.value), expr.pos.line)
+            case TFloatLit():
+                fc.emit_const(VFloat(expr.value), expr.pos.line)
+            case TBoolLit():
+                if expr.value:
+                    fc.emit(OP_TRUE, 0, expr.pos.line)
+                else:
+                    fc.emit(OP_FALSE, 0, expr.pos.line)
+            case TNilLit():
+                fc.emit(OP_NIL, 0, expr.pos.line)
+            case TStringLit():
+                fc.emit_const(VStr(expr.value), expr.pos.line)
+            case TByteLit():
+                fc.emit_const(VByte(expr.value), expr.pos.line)
+            case TRuneLit():
+                fc.emit_const(VRune(expr.value), expr.pos.line)
+            case TBytesLit():
+                fc.emit_const(VBytes(expr.value), expr.pos.line)
+            case TVar():
+                self._compile_var(expr, fc)
+            case TBinaryOp():
+                self._compile_binop(expr, fc)
+            case TUnaryOp():
+                self._compile_unaryop(expr, fc)
+            case TCall():
+                self._compile_call(expr, fc)
+            case TTernary():
+                self._compile_ternary(expr, fc)
+            case TListLit():
+                for e in expr.elements:
+                    self._compile_expr(e, fc)
+                fc.emit(OP_BUILD_LIST, len(expr.elements), expr.pos.line)
+            case TMapLit():
+                for k, v in expr.entries:
+                    self._compile_expr(k, fc)
+                    self._compile_expr(v, fc)
+                fc.emit(OP_BUILD_MAP, len(expr.entries), expr.pos.line)
+            case TSetLit():
+                for e in expr.elements:
+                    self._compile_expr(e, fc)
+                fc.emit(OP_BUILD_SET, len(expr.elements), expr.pos.line)
+            case TTupleLit():
+                for e in expr.elements:
+                    self._compile_expr(e, fc)
+                fc.emit(OP_BUILD_TUPLE, len(expr.elements), expr.pos.line)
+            case TIndex():
+                self._compile_expr(expr.obj, fc)
+                self._compile_expr(expr.index, fc)
+                fc.emit(OP_INDEX, 0, expr.pos.line)
+            case TSlice():
+                self._compile_expr(expr.obj, fc)
+                self._compile_expr(expr.low, fc)
+                self._compile_expr(expr.high, fc)
+                fc.emit(OP_SLICE, 0, expr.pos.line)
+            case TFieldAccess():
+                self._compile_field_access(expr, fc)
+            case TTupleAccess():
+                self._compile_expr(expr.obj, fc)
+                fc.emit(OP_TUPLE_ACCESS, expr.index, expr.pos.line)
+            case TFnLit():
+                self._compile_fn_lit(expr, fc)
+            case TRange():
+                for a in expr.args:
+                    self._compile_expr(a, fc)
+                fc.emit(OP_GET_ITER, len(expr.args), expr.pos.line)
 
     def _compile_var(self, expr: TVar, fc: _FnCompiler) -> None:
         local = fc.scope.lookup(expr.name)
