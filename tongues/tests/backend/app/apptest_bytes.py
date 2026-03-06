@@ -150,6 +150,32 @@ def test_bytes_iteration() -> None:
     assert len(result) == 2
 
 
+def test_bytes_iteration_arithmetic() -> None:
+    """Byte iteration values work in int arithmetic."""
+    total: int = 0
+    for b in b"\x01\x02\x03":
+        total += b
+    assert total == 6
+
+
+def test_bytes_iteration_bitwise() -> None:
+    """Byte iteration values work in bitwise operations."""
+    result: list[int] = []
+    for b in b"\x0f\xf0":
+        result.append(b ^ 0xFF)
+    assert result[0] == 240
+    assert result[1] == 15
+
+
+def test_bytes_iteration_comparison() -> None:
+    """Byte iteration values comparable to int."""
+    count: int = 0
+    for b in b"\x00\x01\x00\x02\x00":
+        if b == 0:
+            count += 1
+    assert count == 3
+
+
 def test_bytes_count() -> None:
     """count() method."""
     assert b"hello".count(b"l") == 2
@@ -222,6 +248,26 @@ def test_bytes_replace() -> None:
     assert b"aaa".replace(b"a", b"b") == b"bbb"
 
 
+def test_bytes_reversed_iteration() -> None:
+    """reversed() iteration yields ints."""
+    result: list[int] = []
+    for b in reversed(b"hi"):
+        result.append(b)
+    assert result[0] == 105
+    assert result[1] == 104
+    assert len(result) == 2
+
+
+def test_bytes_list_comprehension() -> None:
+    """List comprehension over bytes yields ints."""
+    data: bytes = b"\x01\x02\x03"
+    result: list[int] = [b + 1 for b in data]
+    assert result[0] == 2
+    assert result[1] == 3
+    assert result[2] == 4
+    assert len(result) == 3
+
+
 def main() -> int:
     passed: int = 0
     failed: int = 0
@@ -240,6 +286,9 @@ def main() -> int:
         ("test_bytes_index_vs_slice", test_bytes_index_vs_slice),
         ("test_bytes_bool", test_bytes_bool),
         ("test_bytes_iteration", test_bytes_iteration),
+        ("test_bytes_iteration_arithmetic", test_bytes_iteration_arithmetic),
+        ("test_bytes_iteration_bitwise", test_bytes_iteration_bitwise),
+        ("test_bytes_iteration_comparison", test_bytes_iteration_comparison),
         ("test_bytes_count", test_bytes_count),
         ("test_bytes_find", test_bytes_find),
         ("test_bytes_startswith_endswith", test_bytes_startswith_endswith),
@@ -248,6 +297,8 @@ def main() -> int:
         ("test_bytes_split", test_bytes_split),
         ("test_bytes_join", test_bytes_join),
         ("test_bytes_replace", test_bytes_replace),
+        ("test_bytes_reversed_iteration", test_bytes_reversed_iteration),
+        ("test_bytes_list_comprehension", test_bytes_list_comprehension),
     ]
     for name, fn in tests:
         try:

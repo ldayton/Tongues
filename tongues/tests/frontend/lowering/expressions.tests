@@ -264,3 +264,10 @@ def encode(cp: int) -> bytes:
 ---
 return encode(65533)
 ---
+
+=== list comprehension over bytes widens to int
+def f(data: bytes) -> list[int]:
+    return [b + 1 for b in data]
+---
+ByteToInt(_raw_b)
+---

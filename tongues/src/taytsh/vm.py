@@ -1349,6 +1349,8 @@ class _BuiltinDispatch:
         return VInt(-1)
 
     def _reversed(self, args: list[Val]) -> Val:
+        if isinstance(args[0], VBytes):
+            return VBytes(args[0].value[::-1])
         if isinstance(args[0], VList):
             return VList(list(reversed(args[0].items)))
         return VList([])
@@ -2933,7 +2935,7 @@ class VM:
                         _make_error_struct("IndexError", "bytes index out of range")
                     )
                     return
-                self.stack.append(VByte(int(obj.value[i])))
+                self.stack.append(VByte(obj.value[i]))
                 return
         if isinstance(obj, VTuple):
             if isinstance(idx, VInt):
@@ -3181,7 +3183,7 @@ class VM:
                         frame.ip += jump_offset
                         return
                     self.stack.append(VInt(idx.value))
-                    self.stack.append(VByte(int(collection.value[idx.value])))
+                    self.stack.append(VByte(collection.value[idx.value]))
                     self.stack[sp - 1] = VInt(idx.value + 1)
                 else:
                     frame.ip += jump_offset

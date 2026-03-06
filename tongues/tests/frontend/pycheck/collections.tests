@@ -471,7 +471,7 @@ def f(a: bytes, b: bytes) -> None:
         reveal_type(x)
 ---
 ok
-reveal:3 = byte
+reveal:3 = int
 ---
 
 === zip three arguments for loop var types

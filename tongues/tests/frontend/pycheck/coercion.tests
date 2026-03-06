@@ -98,3 +98,74 @@ def f() -> int:
 ---
 ok
 ---
+
+=== byte widens to int in assignment
+def f(data: bytes) -> None:
+    for b in data:
+        x: int = b
+---
+ok
+---
+
+=== byte in int arithmetic
+def f(data: bytes) -> int:
+    total: int = 0
+    for b in data:
+        total += b
+    return total
+---
+ok
+---
+
+=== byte returned as int
+def f(data: bytes) -> int:
+    for b in data:
+        return b
+    return 0
+---
+ok
+---
+
+=== byte in bitwise with int
+def f(data: bytes) -> int:
+    for b in data:
+        return b ^ 0xFF
+    return 0
+---
+ok
+---
+
+=== byte compared to int literal
+def f(data: bytes) -> bool:
+    for b in data:
+        if b == 255:
+            return True
+    return False
+---
+ok
+---
+
+=== byte passed to int parameter
+def g(x: int) -> int:
+    return x * 2
+def f(data: bytes) -> int:
+    for b in data:
+        return g(b)
+    return 0
+---
+ok
+---
+
+=== bytes indexing yields int
+def f(data: bytes) -> int:
+    return data[0] + 1
+---
+ok
+---
+
+=== list comprehension over bytes yields int
+def f(data: bytes) -> list[int]:
+    return [b + 1 for b in data]
+---
+ok
+---

@@ -25,8 +25,8 @@ _TABLE: list[int] = _make_table()
 def crc32_update(crc: int, data: bytes) -> int:
     """Update a running CRC with new data. Initial crc should be 0."""
     c: int = (crc ^ _MASK) & _MASK
-    for i in range(len(data)):
-        c = _TABLE[(c ^ data[i]) & 0xFF] ^ (c >> 8)
+    for b in data:
+        c = _TABLE[(c ^ b) & 0xFF] ^ (c >> 8)
     return (c ^ _MASK) & _MASK
 
 

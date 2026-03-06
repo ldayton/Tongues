@@ -302,6 +302,24 @@ def f(s: str) -> bool:
 == '\n' || ch == '\t'
 ---
 
+=== byte xor int widens via ByteToInt
+def f(data: bytes) -> int:
+    for b in data:
+        return b ^ 0xFF
+    return 0
+---
+let b: int = ByteToInt(_raw_b)
+---
+
+=== byte shift widens via ByteToInt
+def f(data: bytes) -> int:
+    for b in data:
+        return b << 4
+    return 0
+---
+let b: int = ByteToInt(_raw_b)
+---
+
 === field from narrowed optional used in dict containment
 class Base:
     def __init__(self) -> None:

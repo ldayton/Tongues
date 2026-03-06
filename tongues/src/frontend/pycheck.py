@@ -1322,6 +1322,8 @@ def _synth_method_call(
 def _element_type(t: TypeNode) -> TypeNode:
     """Get the element type of a collection."""
     if isinstance(t, SliceType):
+        if isinstance(t.element, PrimitiveType) and t.element.kind == "byte":
+            return INT_TYPE
         return t.element
     if isinstance(t, SetType):
         return t.element
@@ -1332,8 +1334,6 @@ def _element_type(t: TypeNode) -> TypeNode:
             return t.elements[0]
     if _prim_kind(t) == "string":
         return STR_TYPE
-    if _prim_kind(t) == "bytes":
-        return PrimitiveType("byte")
     return ANY_TYPE
 
 
@@ -1370,16 +1370,14 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     # String indexing
     if _prim_kind(obj_type) == "string":
         return STR_TYPE
-    # Bytes indexing
-    if _prim_kind(obj_type) == "bytes":
-        if slc and _is_type(slc, ["Slice"]):
-            return obj_type
-        return PrimitiveType("byte")
-    # List indexing
+    # List/bytes indexing
     if isinstance(obj_type, SliceType):
         if slc and _is_type(slc, ["Slice"]):
             return obj_type
-        return obj_type.element
+        elem = obj_type.element
+        if isinstance(elem, PrimitiveType) and elem.kind == "byte":
+            return INT_TYPE
+        return elem
     # Iterator indexing
     if isinstance(obj_type, IteratorType):
         if slc and _is_type(slc, ["Slice"]):
@@ -1750,6 +1748,8 @@ def _iteration_element(t: TypeNode) -> TypeNode:
     if isinstance(t, IteratorType):
         return t.element
     if isinstance(t, SliceType):
+        if isinstance(t.element, PrimitiveType) and t.element.kind == "byte":
+            return INT_TYPE
         return t.element
     if isinstance(t, SetType):
         return t.element
@@ -1760,8 +1760,6 @@ def _iteration_element(t: TypeNode) -> TypeNode:
             return t.elements[0]
     if isinstance(t, PrimitiveType) and t.kind == "string":
         return STR_TYPE
-    if isinstance(t, PrimitiveType) and t.kind == "bytes":
-        return PrimitiveType("byte")
     return ANY_TYPE
 
 
