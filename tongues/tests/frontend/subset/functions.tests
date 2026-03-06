@@ -167,13 +167,65 @@ def g(r: Runner) -> int:
 ok
 ---
 
-=== lambda assigned to variable not allowed
+=== lambda assigned to variable allowed
 from typing import Callable
 def g() -> int:
     f: Callable[[int], int] = lambda x: x + 1
     return f(5)
 ---
-error: lambda
+ok
+---
+
+=== lambda in return allowed
+from typing import Callable
+def g() -> Callable[[int], int]:
+    return lambda x: x + 1
+---
+ok
+---
+
+=== lambda in list literal allowed
+from typing import Callable
+def g() -> list[Callable[[int], int]]:
+    return [lambda x: x + 1]
+---
+ok
+---
+
+=== lambda in dict value allowed
+from typing import Callable
+def g() -> dict[str, Callable[[int], int]]:
+    return {"inc": lambda x: x + 1}
+---
+ok
+---
+
+=== lambda in tuple literal allowed
+from typing import Callable
+def g() -> tuple[Callable[[int], int], int]:
+    return (lambda x: x + 1, 5)
+---
+ok
+---
+
+=== nullary lambda allowed
+from typing import Callable
+def apply(f: Callable[[], int]) -> int:
+    return f()
+def g() -> int:
+    return apply(lambda: 42)
+---
+ok
+---
+
+=== multi-param lambda allowed
+from typing import Callable
+def apply(f: Callable[[int, str], bool], x: int, s: str) -> bool:
+    return f(x, s)
+def g() -> bool:
+    return apply(lambda x, s: len(s) > x, 3, "hello")
+---
+ok
 ---
 
 === lambda as default not allowed

@@ -94,3 +94,81 @@ def g() -> str:
 ---
 error: cannot access 'missing' on Item
 ---
+
+=== lambda assigned to typed variable
+from typing import Callable
+def g() -> int:
+    f: Callable[[int], int] = lambda x: x + 1
+    return f(5)
+---
+ok
+---
+
+=== lambda assigned to variable with wrong return type
+from typing import Callable
+def g() -> int:
+    f: Callable[[int], str] = lambda x: x + 1
+    return f(5)
+---
+error: lambda return type int not assignable to str
+---
+
+=== lambda assigned to non-callable type
+def g() -> int:
+    f: int = lambda x: x + 1
+    return f
+---
+error: lambda
+---
+
+=== lambda in return position
+from typing import Callable
+def g() -> Callable[[int], int]:
+    return lambda x: x + 1
+---
+ok
+---
+
+=== lambda in return position with wrong type
+from typing import Callable
+def g() -> Callable[[int], str]:
+    return lambda x: x + 1
+---
+error: lambda return type int not assignable to str
+---
+
+=== lambda in return with wrong param count
+from typing import Callable
+def g() -> Callable[[int, str], bool]:
+    return lambda x: True
+---
+error: lambda has 1 parameters, expected 2
+---
+
+=== nullary lambda
+from typing import Callable
+def apply(f: Callable[[], int]) -> int:
+    return f()
+def g() -> int:
+    return apply(lambda: 42)
+---
+ok
+---
+
+=== multi-param lambda
+from typing import Callable
+def apply(f: Callable[[int, str], bool], x: int, s: str) -> bool:
+    return f(x, s)
+def g() -> bool:
+    return apply(lambda x, s: len(s) > x, 3, "hello")
+---
+ok
+---
+
+=== lambda capturing outer variable
+from typing import Callable
+def g(y: int) -> Callable[[int], int]:
+    return lambda x: x + y
+---
+ok
+---
