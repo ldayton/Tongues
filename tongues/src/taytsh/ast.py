@@ -1,6 +1,7 @@
 """Taytsh AST — parse-time node definitions."""
 
 from __future__ import annotations
+from typing import assert_never
 
 from dataclasses import dataclass
 
@@ -750,7 +751,7 @@ def _sa_collect_vars_stmt(
         case TBreakStmt() | TContinueStmt():
             pass
         case _:
-            raise ValueError("unhandled statement type: " + str(stmt))
+            assert_never(stmt)
 
 
 def _sa_collect_vars_stmts(
@@ -1013,7 +1014,7 @@ def _expr_json(e: TExpr) -> JsonValue:
             d["ret"] = _type_json(e.ret)
             d["body"] = _stmts_json(e.body)
         case _:
-            raise ValueError("unhandled expression type: " + str(e))
+            assert_never(e)
     d["annotations"] = _ann_json(e.annotations)
     return JDict(d)
 
@@ -1078,7 +1079,7 @@ def _stmt_json(s: TStmt) -> JsonValue:
                 _stmts_json(s.finally_body) if s.finally_body is not None else JNull()
             )
         case _:
-            raise ValueError("unhandled statement type: " + str(s))
+            assert_never(s)
     d["annotations"] = _ann_json(s.annotations)
     return JDict(d)
 

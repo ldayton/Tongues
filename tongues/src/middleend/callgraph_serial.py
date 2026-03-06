@@ -1,6 +1,7 @@
 """Callgraph serialization — JSON output for already-annotated AST nodes."""
 
 from __future__ import annotations
+from typing import assert_never
 
 from ..frontend.types import JDict, JStr, JsonValue
 from ..taytsh.ast import (
@@ -106,7 +107,7 @@ def _sc_collect_calls_stmt(
         case TBreakStmt() | TContinueStmt():
             pass
         case _:
-            raise ValueError("unhandled statement type: " + str(stmt))
+            assert_never(stmt)
 
 
 def _sc_collect_calls_expr(

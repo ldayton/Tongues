@@ -1,6 +1,7 @@
 """Ruby backend: Taytsh AST → Ruby source code."""
 
 from __future__ import annotations
+from typing import assert_never
 
 from .ordering import order_decls
 from .util import (
@@ -534,7 +535,7 @@ def _scan_stmt_for_needs(stmt: TStmt, flags: list[bool]) -> None:
         ):
             pass
         case _:
-            raise ValueError("unhandled statement type: " + str(stmt))
+            assert_never(stmt)
 
 
 def _scan_expr_for_needs(expr: TExpr, flags: list[bool]) -> None:
@@ -1247,7 +1248,7 @@ class _RubyEmitter(Emitter):
             case TMatchStmt():
                 self._emit_match(stmt)
             case _:
-                raise ValueError("unhandled statement type: " + str(stmt))
+                assert_never(stmt)
 
     def _emit_let(self, stmt: TLetStmt) -> None:
         safe = self._decl_name(stmt.name, stmt.annotations)

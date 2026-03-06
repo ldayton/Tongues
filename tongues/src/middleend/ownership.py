@@ -5,6 +5,7 @@ for each binding, writing annotations onto AST nodes.
 """
 
 from __future__ import annotations
+from typing import assert_never
 
 from dataclasses import dataclass
 
@@ -309,7 +310,7 @@ def _walk_stmt(stmt: TStmt, ctx: _OwnershipCtx) -> None:
         case TBreakStmt() | TContinueStmt():
             pass
         case _:
-            raise ValueError("unhandled statement type: " + str(stmt))
+            assert_never(stmt)
 
 
 # ============================================================

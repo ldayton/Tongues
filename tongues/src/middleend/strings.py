@@ -6,6 +6,7 @@ builder loops.
 """
 
 from __future__ import annotations
+from typing import assert_never
 
 from dataclasses import dataclass
 
@@ -672,7 +673,7 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
                 case TPatternNil():
                     covered.append(NIL_T)
                 case _:
-                    raise ValueError("unhandled pattern type: " + str(pat))
+                    assert_never(pat)
             _walk_stmts(case.body, ctx, case_declared)
         if stmt.default is not None:
             dflt_declared = set(declared)

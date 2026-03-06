@@ -1,6 +1,7 @@
 """Bytecode compiler for Taytsh — walks checked AST and emits bytecode."""
 
 from __future__ import annotations
+from typing import assert_never
 
 from .ast import (
     TAssignStmt,
@@ -815,7 +816,7 @@ class Compiler:
             case TMatchStmt():
                 self._compile_match(stmt, fc)
             case _:
-                raise ValueError("unhandled statement type: " + str(stmt))
+                assert_never(stmt)
 
     def _compile_let(self, stmt: TLetStmt, fc: _FnCompiler) -> None:
         local = fc.scope.lookup(stmt.name)
@@ -1387,7 +1388,7 @@ class Compiler:
                     self._compile_expr(a, fc)
                 fc.emit(OP_GET_ITER, len(expr.args), expr.pos.line)
             case _:
-                raise ValueError("unhandled expression type: " + str(expr))
+                assert_never(expr)
 
     def _compile_var(self, expr: TVar, fc: _FnCompiler) -> None:
         local = fc.scope.lookup(expr.name)

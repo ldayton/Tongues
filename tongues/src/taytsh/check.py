@@ -1,6 +1,7 @@
 """Taytsh typechecker — validates a parsed TModule against the spec's type rules."""
 
 from __future__ import annotations
+from typing import assert_never
 
 from dataclasses import dataclass
 
@@ -2194,7 +2195,7 @@ class Checker:
                 self.check_stmts(case.body)
                 self.exit_scope()
             case _:
-                raise ValueError("unhandled pattern type: " + str(pat))
+                assert_never(pat)
 
     def _get_scrutinee_enum(self, scrutinee: Type) -> EnumT | None:
         """Get the enum type from the scrutinee (direct or optional)."""

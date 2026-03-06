@@ -5,6 +5,7 @@ and tail call identification for every function and method in the module.
 """
 
 from __future__ import annotations
+from typing import assert_never
 
 from dataclasses import dataclass
 
@@ -281,7 +282,7 @@ def _collect_edges_stmt(stmt: TStmt, ctx: _EdgeCtx) -> None:
         case TBreakStmt() | TContinueStmt():
             pass
         case _:
-            raise ValueError("unhandled statement type: " + str(stmt))
+            assert_never(stmt)
 
 
 def _collect_edges_expr(expr: TExpr, ctx: _EdgeCtx) -> None:
@@ -598,7 +599,7 @@ def _collect_fn_throws_stmt(stmt: TStmt, ctx: _ThrowCtx) -> None:
         case TBreakStmt() | TContinueStmt():
             pass
         case _:
-            raise ValueError("unhandled statement type: " + str(stmt))
+            assert_never(stmt)
 
 
 def _collect_fn_throws_try(stmt: TTryStmt, ctx: _ThrowCtx) -> None:
@@ -813,7 +814,7 @@ def _walk_tail_stmt(stmt: TStmt, *, tail: bool) -> None:
         case TBreakStmt() | TContinueStmt():
             pass
         case _:
-            raise ValueError("unhandled statement type: " + str(stmt))
+            assert_never(stmt)
 
 
 def _walk_tail_expr(expr: TExpr, *, tail: bool) -> None:
