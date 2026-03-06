@@ -37,7 +37,7 @@ def f(x: int) -> int:
         case _:
             return 0
 ---
-error: lambda
+ok
 ---
 
 === literal value pattern rejected

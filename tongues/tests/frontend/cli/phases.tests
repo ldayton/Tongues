@@ -101,7 +101,8 @@ stdout-empty: true
 
 === early failure subset violation stops pipeline
 args: --stop-at lowering
-f = lambda x: x + 1
+def f() -> None:
+    global x
 ---
 exit: 1
 stdout-empty: true

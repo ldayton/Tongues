@@ -124,7 +124,7 @@ def apply(f: Callable[[int], int], x: int) -> int:
 def g() -> int:
     return apply(lambda x: x + 1, 5)
 ---
-Apply((x: int) -> int => x + 1, 5)
+apply((x: int) -> int => x + 1, 5)
 ---
 
 === lambda in return position
@@ -151,7 +151,7 @@ def apply(f: Callable[[], int]) -> int:
 def g() -> int:
     return apply(lambda: 42)
 ---
-Apply(() -> int => 42)
+apply(() -> int => 42)
 ---
 
 === multi-param lambda
@@ -161,7 +161,7 @@ def apply(f: Callable[[int, str], bool]) -> bool:
 def g() -> bool:
     return apply(lambda x, s: len(s) > x)
 ---
-Apply((x: int, s: string) -> bool => Len(s) > x)
+apply((x: int, s: string) -> bool => Len(s) > x)
 ---
 
 === sorted with key named function

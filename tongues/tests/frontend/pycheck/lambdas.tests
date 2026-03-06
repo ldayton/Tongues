@@ -170,5 +170,5 @@ from typing import Callable
 def g(y: int) -> Callable[[int], int]:
     return lambda x: x + y
 ---
-ok
+error: lambda cannot capture variable 'y'
 ---
