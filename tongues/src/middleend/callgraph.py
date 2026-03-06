@@ -802,49 +802,43 @@ def _walk_tail_stmt(stmt: TStmt, *, tail: bool) -> None:
 
 
 def _walk_tail_expr(expr: TExpr, *, tail: bool) -> None:
-    if isinstance(expr, TCall):
-        if tail:
-            expr.annotations["callgraph.is_tail_call"] = "true"
-        # Walk subexpressions — never in tail position
-        if isinstance(expr.func, TFieldAccess):
-            _walk_tail_expr(expr.func.obj, tail=False)
-        elif not isinstance(expr.func, TVar):
-            _walk_tail_expr(expr.func, tail=False)
-        for arg in expr.args:
-            _walk_tail_expr(arg.value, tail=False)
-    elif isinstance(expr, TTernary):
-        _walk_tail_expr(expr.cond, tail=False)
-        _walk_tail_expr(expr.then_expr, tail=tail)
-        _walk_tail_expr(expr.else_expr, tail=tail)
-    elif isinstance(expr, TBinaryOp):
-        _walk_tail_expr(expr.left, tail=False)
-        _walk_tail_expr(expr.right, tail=False)
-    elif isinstance(expr, TUnaryOp):
-        _walk_tail_expr(expr.operand, tail=False)
-    elif isinstance(expr, TFieldAccess):
-        _walk_tail_expr(expr.obj, tail=False)
-    elif isinstance(expr, TIndex):
-        _walk_tail_expr(expr.obj, tail=False)
-        _walk_tail_expr(expr.index, tail=False)
-    elif isinstance(expr, TSlice):
-        _walk_tail_expr(expr.obj, tail=False)
-        _walk_tail_expr(expr.low, tail=False)
-        _walk_tail_expr(expr.high, tail=False)
-    elif isinstance(expr, TListLit):
-        for e in expr.elements:
-            _walk_tail_expr(e, tail=False)
-    elif isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            _walk_tail_expr(k, tail=False)
-            _walk_tail_expr(v, tail=False)
-    elif isinstance(expr, TSetLit):
-        for e in expr.elements:
-            _walk_tail_expr(e, tail=False)
-    elif isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            _walk_tail_expr(e, tail=False)
-    elif isinstance(expr, TFnLit):
-        _walk_tail_stmts(expr.body, tail=False)
+    match expr:
+        case TCall():
+            if tail:
+                expr.annotations["callgraph.is_tail_call"] = "true"
+            if isinstance(expr.func, TFieldAccess):
+                _walk_tail_expr(expr.func.obj, tail=False)
+            elif not isinstance(expr.func, TVar):
+                _walk_tail_expr(expr.func, tail=False)
+            for arg in expr.args:
+                _walk_tail_expr(arg.value, tail=False)
+        case TTernary():
+            _walk_tail_expr(expr.cond, tail=False)
+            _walk_tail_expr(expr.then_expr, tail=tail)
+            _walk_tail_expr(expr.else_expr, tail=tail)
+        case TBinaryOp():
+            _walk_tail_expr(expr.left, tail=False)
+            _walk_tail_expr(expr.right, tail=False)
+        case TUnaryOp():
+            _walk_tail_expr(expr.operand, tail=False)
+        case TFieldAccess():
+            _walk_tail_expr(expr.obj, tail=False)
+        case TIndex():
+            _walk_tail_expr(expr.obj, tail=False)
+            _walk_tail_expr(expr.index, tail=False)
+        case TSlice():
+            _walk_tail_expr(expr.obj, tail=False)
+            _walk_tail_expr(expr.low, tail=False)
+            _walk_tail_expr(expr.high, tail=False)
+        case TListLit() | TSetLit() | TTupleLit():
+            for e in expr.elements:
+                _walk_tail_expr(e, tail=False)
+        case TMapLit():
+            for k, v in expr.entries:
+                _walk_tail_expr(k, tail=False)
+                _walk_tail_expr(v, tail=False)
+        case TFnLit():
+            _walk_tail_stmts(expr.body, tail=False)
 
 
 # ============================================================

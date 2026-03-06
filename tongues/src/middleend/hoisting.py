@@ -187,27 +187,28 @@ def _has_flow_stmt(stmts: list[TStmt], check_continue: bool) -> bool:
             return True
         if not check_continue and isinstance(stmt, TBreakStmt):
             return True
-        if isinstance(stmt, TIfStmt):
-            if _has_flow_stmt(stmt.then_body, check_continue):
-                return True
-            if stmt.else_body is not None and _has_flow_stmt(
-                stmt.else_body, check_continue
-            ):
-                return True
-        elif isinstance(stmt, TTryStmt):
-            if _has_flow_stmt(stmt.body, check_continue):
-                return True
-            for catch in stmt.catches:
-                if _has_flow_stmt(catch.body, check_continue):
+        match stmt:
+            case TIfStmt():
+                if _has_flow_stmt(stmt.then_body, check_continue):
                     return True
-        elif isinstance(stmt, TMatchStmt):
-            for case in stmt.cases:
-                if _has_flow_stmt(case.body, check_continue):
+                if stmt.else_body is not None and _has_flow_stmt(
+                    stmt.else_body, check_continue
+                ):
                     return True
-            if stmt.default is not None and _has_flow_stmt(
-                stmt.default.body, check_continue
-            ):
-                return True
+            case TTryStmt():
+                if _has_flow_stmt(stmt.body, check_continue):
+                    return True
+                for catch in stmt.catches:
+                    if _has_flow_stmt(catch.body, check_continue):
+                        return True
+            case TMatchStmt():
+                for case in stmt.cases:
+                    if _has_flow_stmt(case.body, check_continue):
+                        return True
+                if stmt.default is not None and _has_flow_stmt(
+                    stmt.default.body, check_continue
+                ):
+                    return True
     return False
 
 
@@ -222,23 +223,22 @@ def _find_let_stmts(stmts: list[TStmt]) -> list[TLetStmt]:
     for stmt in stmts:
         if isinstance(stmt, TLetStmt):
             result.append(stmt)
-        if isinstance(stmt, TIfStmt):
-            result.extend(_find_let_stmts(stmt.then_body))
-            if stmt.else_body is not None:
-                result.extend(_find_let_stmts(stmt.else_body))
-        elif isinstance(stmt, TWhileStmt):
-            result.extend(_find_let_stmts(stmt.body))
-        elif isinstance(stmt, TForStmt):
-            result.extend(_find_let_stmts(stmt.body))
-        elif isinstance(stmt, TTryStmt):
-            result.extend(_find_let_stmts(stmt.body))
-            for catch in stmt.catches:
-                result.extend(_find_let_stmts(catch.body))
-        elif isinstance(stmt, TMatchStmt):
-            for case in stmt.cases:
-                result.extend(_find_let_stmts(case.body))
-            if stmt.default is not None:
-                result.extend(_find_let_stmts(stmt.default.body))
+        match stmt:
+            case TIfStmt():
+                result.extend(_find_let_stmts(stmt.then_body))
+                if stmt.else_body is not None:
+                    result.extend(_find_let_stmts(stmt.else_body))
+            case TWhileStmt() | TForStmt():
+                result.extend(_find_let_stmts(stmt.body))
+            case TTryStmt():
+                result.extend(_find_let_stmts(stmt.body))
+                for catch in stmt.catches:
+                    result.extend(_find_let_stmts(catch.body))
+            case TMatchStmt():
+                for case in stmt.cases:
+                    result.extend(_find_let_stmts(case.body))
+                if stmt.default is not None:
+                    result.extend(_find_let_stmts(stmt.default.body))
     return result
 
 
@@ -301,13 +301,12 @@ def _collect_target_read_names(target: TExpr, out: set[str]) -> None:
     if isinstance(target, TVar):
         out.add(target.name)
         return
-    if isinstance(target, TIndex):
-        _collect_expr_var_names(target.obj, out)
-        _collect_expr_var_names(target.index, out)
-    elif isinstance(target, TFieldAccess):
-        _collect_expr_var_names(target.obj, out)
-    elif isinstance(target, TTupleAccess):
-        _collect_expr_var_names(target.obj, out)
+    match target:
+        case TIndex():
+            _collect_expr_var_names(target.obj, out)
+            _collect_expr_var_names(target.index, out)
+        case TFieldAccess() | TTupleAccess():
+            _collect_expr_var_names(target.obj, out)
 
 
 def _collect_stmts_var_names(stmts: list[TStmt], out: set[str]) -> None:
@@ -405,23 +404,20 @@ def _analyze_stmts(stmts: list[TStmt], declared: set[str], checker: Checker) -> 
         if not is_control:
             continue
 
-        if isinstance(stmt, TWhileStmt):
-            stmt.annotations["hoisting.has_continue"] = (
-                "true" if _has_flow_stmt(stmt.body, True) else "false"
-            )
-        elif isinstance(stmt, TForStmt):
-            stmt.annotations["hoisting.has_continue"] = (
-                "true" if _has_flow_stmt(stmt.body, True) else "false"
-            )
-        elif isinstance(stmt, TMatchStmt):
-            all_case_stmts: list[TStmt] = []
-            for case in stmt.cases:
-                all_case_stmts.extend(case.body)
-            if stmt.default is not None:
-                all_case_stmts.extend(stmt.default.body)
-            stmt.annotations["hoisting.has_break"] = (
-                "true" if _has_flow_stmt(all_case_stmts, False) else "false"
-            )
+        match stmt:
+            case TWhileStmt() | TForStmt():
+                stmt.annotations["hoisting.has_continue"] = (
+                    "true" if _has_flow_stmt(stmt.body, True) else "false"
+                )
+            case TMatchStmt():
+                all_case_stmts: list[TStmt] = []
+                for case in stmt.cases:
+                    all_case_stmts.extend(case.body)
+                if stmt.default is not None:
+                    all_case_stmts.extend(stmt.default.body)
+                stmt.annotations["hoisting.has_break"] = (
+                    "true" if _has_flow_stmt(all_case_stmts, False) else "false"
+                )
 
         # Collect let decls inside this control structure
         inner_decls = _collect_let_decls(_get_control_bodies(stmt), declared, checker)
@@ -538,9 +534,10 @@ def _collect_fn_let_bindings(
 def analyze_hoisting(module: TModule, checker: Checker) -> None:
     """Run hoisting analysis on all functions in the module."""
     for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            _analyze_fn(decl, checker)
-        elif isinstance(decl, TStructDecl):
-            st = checker.types.get(decl.name)
-            for method in decl.methods:
-                _analyze_fn(method, checker, self_type=st)
+        match decl:
+            case TFnDecl():
+                _analyze_fn(decl, checker)
+            case TStructDecl():
+                st = checker.types.get(decl.name)
+                for method in decl.methods:
+                    _analyze_fn(method, checker, self_type=st)

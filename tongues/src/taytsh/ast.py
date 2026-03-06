@@ -890,13 +890,14 @@ def _arg_json(a: TArg) -> JsonValue:
 
 def _pattern_json(p: TPattern) -> JsonValue:
     d: dict[str, JsonValue] = {"pos": _pos_json(p.pos)}
-    if isinstance(p, TPatternType):
-        d["name"] = JStr(p.name)
-        d["type_name"] = _type_json(p.type_name)
-        d["annotations"] = _ann_json(p.annotations)
-    elif isinstance(p, TPatternEnum):
-        d["enum_name"] = JStr(p.enum_name)
-        d["variant"] = JStr(p.variant)
+    match p:
+        case TPatternType():
+            d["name"] = JStr(p.name)
+            d["type_name"] = _type_json(p.type_name)
+            d["annotations"] = _ann_json(p.annotations)
+        case TPatternEnum():
+            d["enum_name"] = JStr(p.enum_name)
+            d["variant"] = JStr(p.variant)
     return JDict(d)
 
 
@@ -1170,24 +1171,25 @@ def _sa_serialize_stmt(stmt: TStmt, pfx: str, plen: int) -> dict[str, JsonValue]
         for bk, bv in binder.items():
             bd[bk] = JDict(bv)
         d["binder"] = JDict(bd)
-    if isinstance(stmt, TMatchStmt):
-        cases: list[JsonValue] = []
-        for case in stmt.cases:
-            cd: Ann = _sa_strip(case.annotations, pfx, plen)
-            if isinstance(case.pattern, TPatternType):
-                pat = _sa_strip(case.pattern.annotations, pfx, plen)
-                cd.update(pat)
-                for ka, va in pat.items():
-                    cd["pattern." + ka] = va
-            cases.append(_wrap_ann(cd))
-        d["cases"] = JList(cases)
-        if stmt.default is not None:
-            d["default"] = _wrap_ann(_sa_strip(stmt.default.annotations, pfx, plen))
-    elif isinstance(stmt, TTryStmt):
-        catches: list[JsonValue] = [
-            _wrap_ann(_sa_strip(c.annotations, pfx, plen)) for c in stmt.catches
-        ]
-        d["catches"] = JList(catches)
+    match stmt:
+        case TMatchStmt():
+            cases: list[JsonValue] = []
+            for case in stmt.cases:
+                cd: Ann = _sa_strip(case.annotations, pfx, plen)
+                if isinstance(case.pattern, TPatternType):
+                    pat = _sa_strip(case.pattern.annotations, pfx, plen)
+                    cd.update(pat)
+                    for ka, va in pat.items():
+                        cd["pattern." + ka] = va
+                cases.append(_wrap_ann(cd))
+            d["cases"] = JList(cases)
+            if stmt.default is not None:
+                d["default"] = _wrap_ann(_sa_strip(stmt.default.annotations, pfx, plen))
+        case TTryStmt():
+            catches: list[JsonValue] = [
+                _wrap_ann(_sa_strip(c.annotations, pfx, plen)) for c in stmt.catches
+            ]
+            d["catches"] = JList(catches)
     return d
 
 
@@ -1239,11 +1241,12 @@ def serialize_annotations(module: TModule, prefix: str) -> dict[str, JsonValue]:
     plen = len(pfx)
     result: dict[str, JsonValue] = {}
     for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            result[decl.name] = JDict(_sa_serialize_fn(decl, pfx, plen))
-        elif isinstance(decl, TStructDecl):
-            for method in decl.methods:
-                result[f"{decl.name}.{method.name}"] = JDict(
-                    _sa_serialize_fn(method, pfx, plen)
-                )
+        match decl:
+            case TFnDecl():
+                result[decl.name] = JDict(_sa_serialize_fn(decl, pfx, plen))
+            case TStructDecl():
+                for method in decl.methods:
+                    result[f"{decl.name}.{method.name}"] = JDict(
+                        _sa_serialize_fn(method, pfx, plen)
+                    )
     return result
