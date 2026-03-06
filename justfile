@@ -150,6 +150,7 @@ lang-python *ARGS:
     #!/usr/bin/env bash
     set -euo pipefail
     just _self-transpile python
+    uvx pyright tongues/.out/tongues.py
     uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
         tests/test_backend_codegen.py tests/test_backend_target.py tests/test_taytsh_app.py \
         tests/test_frontend_linker.py \
