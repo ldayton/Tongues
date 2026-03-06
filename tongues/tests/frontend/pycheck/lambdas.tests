@@ -165,10 +165,91 @@ def g() -> bool:
 ok
 ---
 
-=== lambda capturing outer variable
+=== lambda capturing outer variable in return
 from typing import Callable
 def g(y: int) -> Callable[[int], int]:
     return lambda x: x + y
 ---
 error: lambda cannot capture variable 'y'
+---
+
+=== lambda capturing outer variable in assignment
+from typing import Callable
+def g(y: int) -> int:
+    f: Callable[[int], int] = lambda x: x + y
+    return f(1)
+---
+error: lambda cannot capture variable 'y'
+---
+
+=== lambda capturing variable in subexpression
+from typing import Callable
+def g(y: int) -> Callable[[int], int]:
+    return lambda x: x + y * 2
+---
+error: lambda cannot capture variable 'y'
+---
+
+=== lambda capturing multiple variables
+from typing import Callable
+def g(a: int, b: int) -> Callable[[int], int]:
+    return lambda x: a + x + b
+---
+error: lambda cannot capture variable 'a'
+---
+
+=== lambda capturing variable via attribute access
+from typing import Callable
+class Item:
+    def __init__(self) -> None:
+        self.value: int = 0
+def g(item: Item) -> Callable[[], int]:
+    return lambda: item.value
+---
+error: lambda cannot capture variable 'item'
+---
+
+=== lambda capturing variable in ternary
+from typing import Callable
+def g(y: int) -> Callable[[int], int]:
+    return lambda x: y if x > 0 else x
+---
+error: lambda cannot capture variable 'y'
+---
+
+=== lambda calling builtin is ok
+from typing import Callable
+def g() -> Callable[[str], int]:
+    return lambda s: len(s)
+---
+ok
+---
+
+=== lambda calling user function is ok
+from typing import Callable
+def helper(x: int) -> int:
+    return x + 1
+def g() -> Callable[[int], int]:
+    return lambda x: helper(x)
+---
+ok
+---
+
+=== lambda referencing class is ok
+from typing import Callable
+class Pair:
+    def __init__(self) -> None:
+        self.x: int = 0
+def g() -> Callable[[Pair], int]:
+    return lambda p: p.x
+---
+ok
+---
+
+=== lambda with no captures is ok
+from typing import Callable
+def g() -> Callable[[int, int], int]:
+    return lambda x, y: x + y
+---
+ok
 ---
