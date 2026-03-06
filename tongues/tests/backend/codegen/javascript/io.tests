@@ -2,7 +2,7 @@
 process.stdout.write("no newline");
 
 === ReadAll and ReadLine
-let all = input;
+fs.readFileSync("/dev/stdin", "utf-8")
 
 === ReadLine returns optional
 if (line !== null) {

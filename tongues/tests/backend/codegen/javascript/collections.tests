@@ -76,7 +76,7 @@ console.log(String(xs.reduce((a, b) => a + b, 0)));
 console.log(String(xs[xs.length - 1]));
 
 === open-end slice
-let tail = xs.slice(1);
+let tail = xs.slice(1, xs.length);
 
 === open-start slice
 let head = xs.slice(0, 3);

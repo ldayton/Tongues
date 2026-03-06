@@ -23,7 +23,7 @@ console.log("hello".toUpperCase());
 console.log(String(s.startsWith("hello")));
 
 === Trim functions
-let s = "  hello  ".split(" ").join("");
+let s = "  hello  ".replace(/^ +| +$/g, "");
 
 === Count and RFind on string
 let c = "abcabc".split("abc").length - 1;

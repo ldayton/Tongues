@@ -24,12 +24,12 @@ console.log(String(Number.isNaN(x)));
 console.log(String("hello".length));
 
 === DivMod
-let q = Math.trunc(17 / 5);
-let r = 17 - q * 5;
+q = Math.trunc(17 / 5);
+r = 17 - q * 5;
 
 === DivMod negative dividend
-let q = Math.trunc(-7 / 2);
-let r = -7 - q * 2;
+q = Math.trunc(-7 / 2);
+r = -7 - q * 2;
 
 === Sqrt function
 let x = Math.sqrt(2.0);

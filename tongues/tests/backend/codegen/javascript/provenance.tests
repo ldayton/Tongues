@@ -128,4 +128,4 @@ let result = xs.some(x => x > 0);
 let result = xs.every(x => x > 0);
 
 === any call with filter (raised)
-let result = xs.filter(x => x % 2 === 0).some(x => x > 0);
+let result = xs.some(x => x % 2 === 0 && x > 0);
