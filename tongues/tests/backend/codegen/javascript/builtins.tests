@@ -1,0 +1,59 @@
+=== math functions
+console.log(String(Math.abs(-5)));
+
+=== float math functions
+let r = Math.round(3.7);
+
+=== conversion functions
+let f = 42;
+let n = Math.trunc(3.14);
+
+=== ParseInt and ParseFloat
+let n = parseInt("42", 10);
+
+=== FormatInt
+let hex = (255).toString(16);
+
+=== RuneToInt and RuneFromInt
+let n = "A".codePointAt(0);
+
+=== IsNaN and IsInf
+console.log(String(Number.isNaN(x)));
+
+=== Len on various types
+console.log(String("hello".length));
+
+=== DivMod
+let q = Math.trunc(17 / 5);
+let r = 17 - q * 5;
+
+=== DivMod negative dividend
+let q = Math.trunc(-7 / 2);
+let r = -7 - q * 2;
+
+=== Sqrt function
+let x = Math.sqrt(2.0);
+
+=== Floor function
+let n = Math.floor(3.7);
+
+=== Ceil function
+let n = Math.ceil(3.2);
+
+=== FloorDiv negative operands
+let q = Math.floor(-7 / 2);
+
+=== PythonMod negative dividend
+let r = ((-7 % 2) + 2) % 2;
+
+=== RangeList
+let xs = Array.from({length: 5}, (_, i) => i);
+
+=== RangeList with step
+let xs = Array.from({length: 5}, (_, i) => i * 2);
+
+=== ListFrom bytes
+let xs = [...data];
+
+=== IsNil check
+x === null

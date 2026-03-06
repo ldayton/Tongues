@@ -1,0 +1,43 @@
+=== match default binds scrutinee value
+if (typeof value === "number") {
+    let n = value;
+    return String(n);
+} else {
+    let x = value;
+    return String(x);
+}
+
+=== unused match binding is omitted
+if (typeof value === "number") {
+    return "int";
+
+=== match on optional with nil case
+} else if (x === null) {
+    return "absent";
+
+=== match on enum
+if (c === Color.Red) {
+    return "red";
+
+=== match on interface
+if (s instanceof Circle) {
+    let c = s;
+    return 3.14159 * c.radius * c.radius;
+
+=== match on union with three types
+if (typeof v === "number") {
+
+=== match with default no binding
+} else {
+    return false;
+}
+
+=== nil narrowing after check
+if (x !== null) {
+    return x + 1;
+
+=== nil check with early return
+if (x === null) {
+    return 0;
+}
+return x * 2;
