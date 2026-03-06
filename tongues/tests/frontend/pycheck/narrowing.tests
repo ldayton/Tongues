@@ -202,7 +202,7 @@ def f(x: int | None) -> int:
 error: None
 ---
 
-=== isinstance does not narrow else for non-exhaustive
+=== isinstance narrows else to remaining subclasses on base class
 class Animal:
     pass
 class Dog(Animal):
@@ -214,9 +214,10 @@ class Cat(Animal):
 def f(a: Animal) -> str:
     if isinstance(a, Dog):
         return a.bark()
+    reveal_type(a)
     return a.meow()
 ---
-error: meow
+reveal:12 = Cat
 ---
 
 === narrowing resets after branch merges
@@ -5195,7 +5196,7 @@ def f(x: A | B) -> str:
 ---
 error:
 ---
-=== isinstance with continue wrong branch fails
+=== isinstance with continue narrows else to never on single subclass
 class A:
     pass
 class B(A):
@@ -5205,10 +5206,11 @@ def f(items: list[A]) -> int:
     for item in items:
         if isinstance(item, B):
             continue
+        reveal_type(item)
         total += item.x
     return total
 ---
-error: cannot access
+reveal:10 = never
 ---
 === narrowing in nested for loops inner does not leak to outer
 class A:
@@ -5394,7 +5396,7 @@ def f(x: int | None, y: str | None) -> int:
 ---
 error: None
 ---
-=== isinstance short-circuit or disallows attribute access
+=== isinstance short-circuit or allows access after base class expansion
 class A:
     pass
 class B(A):
@@ -5402,11 +5404,12 @@ class B(A):
 def f(x: A) -> int:
     if isinstance(x, B) or x.flag > 0:
         return 0
+    reveal_type(x)
     return 0
 ---
-error: flag
+reveal:8 = never
 ---
-=== not isinstance short-circuit and disallows attribute access
+=== not isinstance short-circuit and allows access after base class expansion
 class A:
     pass
 class B(A):
@@ -5414,11 +5417,12 @@ class B(A):
 def f(x: A) -> int:
     if not isinstance(x, B) and x.flag > 0:
         return 0
+    reveal_type(x)
     return 0
 ---
-error: flag
+reveal:8 = B
 ---
-=== isinstance ternary condition wrong branch
+=== isinstance ternary narrows else via base class expansion
 class A:
     pass
 class B(A):
@@ -5426,7 +5430,7 @@ class B(A):
 def f(x: A) -> int:
     return 0 if isinstance(x, B) else x.flag
 ---
-error: flag
+ok
 ---
 === isinstance or non-isinstance in or does not narrow
 class A:
@@ -5492,7 +5496,7 @@ def f(a: int | None, b: str | None) -> int:
 ---
 error: cannot
 ---
-=== isinstance conditional return wrong branch
+=== isinstance conditional return narrows else via base class expansion
 class A:
     pass
 class B(A):
@@ -5500,7 +5504,7 @@ class B(A):
 def f(x: A) -> int:
     return 0 if isinstance(x, B) else x.val
 ---
-error:
+ok
 ---
 === isinstance and is not None wrong order fails
 class A:
@@ -5605,7 +5609,7 @@ def f(x: int | str) -> str:
 ---
 error:
 ---
-=== walrus isinstance wrong branch access
+=== walrus isinstance narrows else via base class expansion
 class A:
     pass
 class B(A):
@@ -5615,9 +5619,10 @@ def make() -> A:
 def f() -> int:
     if isinstance((val := make()), B):
         return 0
+    reveal_type(val)
     return val.x
 ---
-error: cannot access
+reveal:10 = never
 ---
 === isinstance in method wrong access on self
 class A:
@@ -6187,6 +6192,172 @@ def f(x: int) -> None:
     assert_never(x)
 ---
 error: argument 1 has type int, expected never
+---
+
+=== assert_never succeeds after exhaustive match on union
+from typing import assert_never
+from dataclasses import dataclass
+@dataclass
+class A:
+    a_val: int
+@dataclass
+class B:
+    b_val: str
+@dataclass
+class C:
+    c_val: float
+def f(x: A | B | C) -> int:
+    match x:
+        case A():
+            return x.a_val
+        case B():
+            return len(x.b_val)
+        case C():
+            return int(x.c_val)
+        case _:
+            assert_never(x)
+---
+ok
+---
+
+=== assert_never succeeds after exhaustive match on base class
+from typing import assert_never
+class Stmt:
+    pass
+class LetStmt(Stmt):
+    def __init__(self) -> None:
+        self.name: str = ""
+class ReturnStmt(Stmt):
+    def __init__(self) -> None:
+        self.value: int = 0
+class ExprStmt(Stmt):
+    def __init__(self) -> None:
+        self.expr: str = ""
+def f(s: Stmt) -> str:
+    match s:
+        case LetStmt():
+            return s.name
+        case ReturnStmt():
+            return str(s.value)
+        case ExprStmt():
+            return s.expr
+        case _:
+            assert_never(s)
+---
+ok
+---
+
+=== assert_never errors after non-exhaustive match on union
+from typing import assert_never
+from dataclasses import dataclass
+@dataclass
+class A:
+    val: int
+@dataclass
+class B:
+    val: str
+@dataclass
+class C:
+    val: float
+def f(x: A | B | C) -> None:
+    match x:
+        case A():
+            pass
+        case _:
+            assert_never(x)
+---
+error: argument 1 has type B | C, expected never
+---
+
+=== isinstance narrows else to remainder on base class
+class Node:
+    pass
+class Add(Node):
+    def __init__(self) -> None:
+        self.result: int = 0
+class Sub(Node):
+    def __init__(self) -> None:
+        self.result: int = 0
+def f(n: Node) -> int:
+    if isinstance(n, Add):
+        return n.result
+    else:
+        reveal_type(n)
+    return 0
+---
+reveal:13 = Sub
+---
+
+=== isinstance elif narrows else across base class subclasses
+class Stmt:
+    pass
+class LetStmt(Stmt):
+    def __init__(self) -> None:
+        self.name: str = ""
+class ReturnStmt(Stmt):
+    def __init__(self) -> None:
+        self.value: int = 0
+class ExprStmt(Stmt):
+    def __init__(self) -> None:
+        self.expr: str = ""
+def f(s: Stmt) -> str:
+    if isinstance(s, LetStmt):
+        return s.name
+    elif isinstance(s, ReturnStmt):
+        return str(s.value)
+    else:
+        reveal_type(s)
+    return ""
+---
+reveal:18 = ExprStmt
+---
+
+=== assert_never succeeds after exhaustive isinstance elif on base class
+from typing import assert_never
+class Stmt:
+    pass
+class LetStmt(Stmt):
+    def __init__(self) -> None:
+        self.name: str = ""
+class ReturnStmt(Stmt):
+    def __init__(self) -> None:
+        self.value: int = 0
+class ExprStmt(Stmt):
+    def __init__(self) -> None:
+        self.expr: str = ""
+def f(s: Stmt) -> str:
+    if isinstance(s, LetStmt):
+        return s.name
+    elif isinstance(s, ReturnStmt):
+        return str(s.value)
+    elif isinstance(s, ExprStmt):
+        return s.expr
+    else:
+        assert_never(s)
+---
+ok
+---
+
+=== assert_never errors after non-exhaustive isinstance elif on base class
+from typing import assert_never
+class Stmt:
+    pass
+class LetStmt(Stmt):
+    def __init__(self) -> None:
+        self.name: str = ""
+class ReturnStmt(Stmt):
+    def __init__(self) -> None:
+        self.value: int = 0
+class ExprStmt(Stmt):
+    def __init__(self) -> None:
+        self.expr: str = ""
+def f(s: Stmt) -> str:
+    if isinstance(s, LetStmt):
+        return s.name
+    else:
+        assert_never(s)
+---
+error: argument 1 has type ReturnStmt | ExprStmt, expected never
 ---
 
 === TypeGuard narrows in if branch
