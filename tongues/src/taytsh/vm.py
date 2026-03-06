@@ -234,31 +234,31 @@ def _val_to_string(v: Val) -> str:
         map_keys: list[Val] = list(v.keys)
         map_vals: list[Val] = list(v.values)
         _sort_key_pairs(map_keys, map_vals)
-        parts2: list[str] = []
+        parts: list[str] = []
         for mi, mk in enumerate(map_keys):
             ks = _val_to_string_quoted(mk)
-            vs2 = _val_to_string_quoted(map_vals[mi])
-            parts2.append(ks + ": " + vs2)
-        return "{" + ", ".join(parts2) + "}"
+            vs = _val_to_string_quoted(map_vals[mi])
+            parts.append(ks + ": " + vs)
+        return "{" + ", ".join(parts) + "}"
     if isinstance(v, VSet):
         sorted_items = list(v.items)
         _sort_vals(sorted_items)
-        parts3: list[str] = []
+        parts: list[str] = []
         for item in sorted_items:
-            parts3.append(_val_to_string_quoted(item))
-        return "{" + ", ".join(parts3) + "}"
+            parts.append(_val_to_string_quoted(item))
+        return "{" + ", ".join(parts) + "}"
     if isinstance(v, VTuple):
-        parts4: list[str] = []
+        parts: list[str] = []
         for item in v.items:
-            parts4.append(_val_to_string_quoted(item))
-        return "(" + ", ".join(parts4) + ")"
+            parts.append(_val_to_string_quoted(item))
+        return "(" + ", ".join(parts) + ")"
     if isinstance(v, VEnum):
         return v.enum_name + "." + v.variant
     if isinstance(v, VStruct):
-        parts5: list[str] = []
-        for i2, fn in enumerate(v.field_names):
-            parts5.append(fn + ": " + _val_to_string(v.field_values[i2]))
-        return v.type_name + "{" + ", ".join(parts5) + "}"
+        parts: list[str] = []
+        for i, fn in enumerate(v.field_names):
+            parts.append(fn + ": " + _val_to_string(v.field_values[i]))
+        return v.type_name + "{" + ", ".join(parts) + "}"
     if isinstance(v, VFunc):
         return "fn" + v.type_sig if v.type_sig else "<fn>"
     return "<unknown>"
@@ -872,19 +872,19 @@ class _BuiltinDispatch:
                     _make_error_struct("ValueError", "SplitN max must be > 0")
                 )
             parts = args[0].value.split(args[1].value, n - 1)
-            items2: list[Val] = []
+            items: list[Val] = []
             for part in parts:
-                items2.append(VStr(part))
-            return VList(items2)
+                items.append(VStr(part))
+            return VList(items)
         return VList([])
 
     def _split_whitespace(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr):
             parts = args[0].value.split()
-            items3: list[Val] = []
+            items: list[Val] = []
             for part in parts:
-                items3.append(VStr(part))
-            return VList(items3)
+                items.append(VStr(part))
+            return VList(items)
         return VList([])
 
     def _join(self, args: list[Val]) -> Val:

@@ -4828,6 +4828,25 @@ def _is_guard_body(body: list[ASTNode]) -> bool:
     return t in ("Return", "Continue", "Break", "Raise")
 
 
+def _body_always_returns(body: list[ASTNode]) -> bool:
+    """Check if a body unconditionally returns (variables can't leak out)."""
+    if not body:
+        return False
+    last = body[-1]
+    if not isinstance(last, dict):
+        return False
+    t = get_str(last, "_type")
+    if t in ("Return", "Raise"):
+        return True
+    if t == "If":
+        then_body = get_nodes(last, "body")
+        else_body = get_nodes(last, "orelse")
+        if not else_body:
+            return False
+        return _body_always_returns(then_body) and _body_always_returns(else_body)
+    return False
+
+
 def _is_negated_isinstance(node: ASTNode) -> bool:
     """Check if node is 'not isinstance(x, T)'."""
     if not _is_ast(node, "UnaryOp"):

@@ -2351,8 +2351,8 @@ class _PerlEmitter(Emitter):
                 prefix = "main::" if self.in_package else ""
                 return prefix + _safe_fn_name(func.name) + "(" + arg_strs + ")"
         fn_expr = self._expr(func)
-        arg_strs2 = ", ".join(self._expr(a.value) for a in args)
-        return fn_expr + "->(" + arg_strs2 + ")"
+        arg_strs = ", ".join(self._expr(a.value) for a in args)
+        return fn_expr + "->(" + arg_strs + ")"
 
     def _star_unpack(self, expr: TCall) -> str:
         """Reconstruct [ @{$a}, $x, @{$b} ] from a Concat chain."""
@@ -2609,25 +2609,25 @@ class _PerlEmitter(Emitter):
                 + "]+$//g; $__t }"
             )
         if name == "TrimStart":
-            s2 = self._a(args, 0)
-            chars2_expr: TExpr = args[1].value
-            if isinstance(chars2_expr, TStringLit):
-                if chars2_expr.value == " \t\n\r":
-                    return "do { my $__t = " + s2 + "; $__t =~ s/^\\s+//; $__t }"
-                raw2 = _escape_regex_charclass(chars2_expr.value)
-                return "do { my $__t = " + s2 + "; $__t =~ s/^[" + raw2 + "]+//; $__t }"
-            c2 = self._a(args, 1)
-            return "do { my $__t = " + s2 + "; $__t =~ s/^[" + c2 + "]+//; $__t }"
+            s = self._a(args, 0)
+            chars = args[1].value
+            if isinstance(chars, TStringLit):
+                if chars.value == " \t\n\r":
+                    return "do { my $__t = " + s + "; $__t =~ s/^\\s+//; $__t }"
+                raw = _escape_regex_charclass(chars.value)
+                return "do { my $__t = " + s + "; $__t =~ s/^[" + raw + "]+//; $__t }"
+            c = self._a(args, 1)
+            return "do { my $__t = " + s + "; $__t =~ s/^[" + c + "]+//; $__t }"
         if name == "TrimEnd":
-            s3 = self._a(args, 0)
-            chars3_expr: TExpr = args[1].value
-            if isinstance(chars3_expr, TStringLit):
-                if chars3_expr.value == " \t\n\r":
-                    return "do { my $__t = " + s3 + "; $__t =~ s/\\s+$//; $__t }"
-                raw3 = _escape_regex_charclass(chars3_expr.value)
-                return "do { my $__t = " + s3 + "; $__t =~ s/[" + raw3 + "]+$//; $__t }"
-            c3 = self._a(args, 1)
-            return "do { my $__t = " + s3 + "; $__t =~ s/[" + c3 + "]+$//; $__t }"
+            s = self._a(args, 0)
+            chars = args[1].value
+            if isinstance(chars, TStringLit):
+                if chars.value == " \t\n\r":
+                    return "do { my $__t = " + s + "; $__t =~ s/\\s+$//; $__t }"
+                raw = _escape_regex_charclass(chars.value)
+                return "do { my $__t = " + s + "; $__t =~ s/[" + raw + "]+$//; $__t }"
+            c = self._a(args, 1)
+            return "do { my $__t = " + s + "; $__t =~ s/[" + c + "]+$//; $__t }"
         if name == "Split":
             return (
                 "do { my $__s = "

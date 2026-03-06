@@ -255,8 +255,8 @@ def _type_key(t: Type) -> str:
         parts = [_type_key(e) for e in t.elements]
         return "(" + ",".join(parts) + ")"
     if isinstance(t, FnT):
-        parts2 = [_type_key(p) for p in t.params]
-        return "fn[" + ",".join(parts2) + "->" + _type_key(t.ret) + "]"
+        parts = [_type_key(p) for p in t.params]
+        return "fn[" + ",".join(parts) + "->" + _type_key(t.ret) + "]"
     if isinstance(t, StructT):
         return "struct:" + t.name
     if isinstance(t, InterfaceT):
@@ -282,8 +282,8 @@ def type_name(t: Type) -> str:
         parts = [type_name(e) for e in t.elements]
         return "(" + ", ".join(parts) + ")"
     if isinstance(t, FnT):
-        parts2 = [type_name(p) for p in t.params] + [type_name(t.ret)]
-        return "fn[" + ", ".join(parts2) + "]"
+        parts = [type_name(p) for p in t.params] + [type_name(t.ret)]
+        return "fn[" + ", ".join(parts) + "]"
     if isinstance(t, StructT):
         return t.name
     if isinstance(t, InterfaceT):
@@ -292,8 +292,8 @@ def type_name(t: Type) -> str:
         return t.name
     if isinstance(t, UnionT):
         members_by_key: dict[str, Type] = {_type_key(m): m for m in t.members}
-        parts3 = [type_name(members_by_key[k]) for k in sorted(members_by_key)]
-        return " | ".join(parts3)
+        parts = [type_name(members_by_key[k]) for k in sorted(members_by_key)]
+        return " | ".join(parts)
     return t.kind
 
 
@@ -1063,6 +1063,7 @@ class Checker:
         self.in_finally: bool = False
         self.uninitialized: set[str] = set()
         self._declared: dict[str, Type] = {}
+        self._allow_shadow: bool = False
         self.expr_types: dict[tuple[int, int], Type] = {}
         self.bool_facts: dict[str, TExpr] = {}
         self.reveals: list[tuple[int, str]] = []
@@ -1094,13 +1095,14 @@ class Checker:
         if self.scopes and name in self.scopes[-1]:
             self.error("'" + name + "' shadows outer binding", pos)
             return
-        # Check outer scopes for shadowing
-        i = len(self.scopes) - 2
-        while i >= 0:
-            if name in self.scopes[i]:
-                self.error("'" + name + "' shadows outer binding", pos)
-                return
-            i -= 1
+        # Check outer scopes for shadowing (skip for block-scoped bindings)
+        if not self._allow_shadow:
+            i = len(self.scopes) - 2
+            while i >= 0:
+                if name in self.scopes[i]:
+                    self.error("'" + name + "' shadows outer binding", pos)
+                    return
+                i -= 1
         if self.scopes:
             self.scopes[-1][name] = typ
             self._declared[name] = typ
@@ -1919,6 +1921,8 @@ class Checker:
         self.loop_vars = set(b for b in stmt.binding if b != "_")
         saved_uninit = set(self.uninitialized)
         self.enter_scope()
+        # For-loop bindings are block-scoped, so allow shadowing outer names
+        self._allow_shadow = True
         if isinstance(stmt.iterable, TRange):
             # range — all args must be int, loop var is int
             for arg in stmt.iterable.args:
@@ -1951,6 +1955,7 @@ class Checker:
                             stmt.annotations["iter_kind"] = "tuple_unpack"
                         elif len(stmt.binding) == 2:
                             stmt.annotations["iter_kind"] = "enumerate"
+        self._allow_shadow = False
         self.check_stmts(stmt.body)
         self.exit_scope()
         self.uninitialized = saved_uninit

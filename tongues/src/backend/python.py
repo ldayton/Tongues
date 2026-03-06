@@ -617,10 +617,10 @@ class _PythonEmitter(Emitter):
             iterable = "range(" + args + ")"
         else:
             iterable = self._expr(for_stmt.iterable)
-        binder_parts2: list[str] = []
+        binder_parts: list[str] = []
         for b in binding:
-            binder_parts2.append(_restore_name(b, for_stmt.annotations))
-        binders = ", ".join(binder_parts2)
+            binder_parts.append(_restore_name(b, for_stmt.annotations))
+        binders = ", ".join(binder_parts)
         iter_is_map = self._is_map_for(for_stmt)
         if iter_is_map:
             iterable += ".items()"
@@ -1173,10 +1173,10 @@ class _PythonEmitter(Emitter):
                 + ":"
             )
         else:
-            binder_parts3: list[str] = []
+            binder_parts: list[str] = []
             for b in binding:
-                binder_parts3.append(_restore_name(b, ann))
-            binders = ", ".join(binder_parts3)
+                binder_parts.append(_restore_name(b, ann))
+            binders = ", ".join(binder_parts)
             self._line(
                 "for " + binders + " in " + self._for_iterable(stmt.iterable) + ":"
             )
@@ -1724,11 +1724,11 @@ class _PythonEmitter(Emitter):
                             k = _safe_name(k)
                         named[k] = self._expr(a.value)
                 if len(named) < len(ordered):
-                    parts2: list[str] = []
+                    parts: list[str] = []
                     for f in ordered:
                         if f in named:
-                            parts2.append(f + "=" + named[f])
-                    return name + "(" + ", ".join(parts2) + ")"
+                            parts.append(f + "=" + named[f])
+                    return name + "(" + ", ".join(parts) + ")"
                 vals: list[str] = []
                 for f in ordered:
                     vals.append(named.get(f, "None"))

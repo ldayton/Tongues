@@ -14,7 +14,7 @@ Some passes are conditional — they run only when the target set includes langu
 
 ### Type Checking
 
-Validates the Taytsh IR against the type system defined in the Taytsh spec. Enforces type safety, exhaustive pattern matching, no-closure invariants, no-shadowing rules, and nil safety. This is a standalone validator for Taytsh itself — independent of the frontend's pycheck, which validates Python source. A Taytsh program produced by hand or by a tool other than the Tongues frontend must still pass this checker.
+Validates the Taytsh IR against the type system defined in the Taytsh spec. Enforces type safety, exhaustive pattern matching, no-closure invariants, scoping rules, and nil safety. This is a standalone validator for Taytsh itself — independent of the frontend's pycheck, which validates Python source. A Taytsh program produced by hand or by a tool other than the Tongues frontend must still pass this checker.
 
 Produces no annotations. Rejects invalid programs with diagnostics.
 

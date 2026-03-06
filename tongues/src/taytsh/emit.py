@@ -491,10 +491,10 @@ class _Emitter:
                 parts.append(self._render_type(e))
             return f"({', '.join(parts)})"
         if isinstance(typ, TFuncType):
-            parts2: list[str] = []
+            parts: list[str] = []
             for p in typ.params:
-                parts2.append(self._render_type(p))
-            return f"fn[{', '.join(parts2)}]"
+                parts.append(self._render_type(p))
+            return f"fn[{', '.join(parts)}]"
         if isinstance(typ, TIdentType):
             return typ.name
         if isinstance(typ, TUnionType):
@@ -609,17 +609,17 @@ class _Emitter:
             obj = self._render_expr(expr.obj, _PREC_POSTFIX, "left")
             return f"{obj}.{expr.field}"
         if isinstance(expr, TTupleAccess):
-            obj2 = self._render_expr(expr.obj, _PREC_POSTFIX, "left")
-            return obj2 + "." + str(expr.index)
+            obj = self._render_expr(expr.obj, _PREC_POSTFIX, "left")
+            return obj + "." + str(expr.index)
         if isinstance(expr, TIndex):
-            obj3 = self._render_expr(expr.obj, _PREC_POSTFIX, "left")
+            obj = self._render_expr(expr.obj, _PREC_POSTFIX, "left")
             idx = self._render_expr(expr.index, _PREC_TERNARY)
-            return f"{obj3}[{idx}]"
+            return f"{obj}[{idx}]"
         if isinstance(expr, TSlice):
-            obj4 = self._render_expr(expr.obj, _PREC_POSTFIX, "left")
+            obj = self._render_expr(expr.obj, _PREC_POSTFIX, "left")
             low = self._render_expr(expr.low, _PREC_TERNARY)
             high = self._render_expr(expr.high, _PREC_TERNARY)
-            return f"{obj4}[{low}:{high}]"
+            return f"{obj}[{low}:{high}]"
         if isinstance(expr, TCall):
             func = self._render_expr(expr.func, _PREC_POSTFIX, "left")
             args: list[str] = []
@@ -631,10 +631,10 @@ class _Emitter:
                     args.append(f"{a.name}: {val}")
             return f"{func}({', '.join(args)})"
         if isinstance(expr, TListLit):
-            parts3: list[str] = []
-            for e2 in expr.elements:
-                parts3.append(self._render_expr(e2, _PREC_TERNARY))
-            return f"[{', '.join(parts3)}]"
+            parts: list[str] = []
+            for e in expr.elements:
+                parts.append(self._render_expr(e, _PREC_TERNARY))
+            return f"[{', '.join(parts)}]"
         if isinstance(expr, TMapLit):
             entries: list[str] = []
             for k, v in expr.entries:
@@ -644,16 +644,16 @@ class _Emitter:
             return "{" + ", ".join(entries) + "}"
         if isinstance(expr, TSetLit):
             elems: list[str] = []
-            for e3 in expr.elements:
-                elems.append(self._render_expr(e3, _PREC_TERNARY))
+            for e in expr.elements:
+                elems.append(self._render_expr(e, _PREC_TERNARY))
             return "{" + ", ".join(elems) + "}"
         if isinstance(expr, TTupleLit):
             if len(expr.elements) < 2:
                 raise ValueError("tuple literal must have 2+ elements")
-            elems2: list[str] = []
-            for e4 in expr.elements:
-                elems2.append(self._render_expr(e4, _PREC_TERNARY))
-            return "(" + ", ".join(elems2) + ")"
+            elems: list[str] = []
+            for e in expr.elements:
+                elems.append(self._render_expr(e, _PREC_TERNARY))
+            return "(" + ", ".join(elems) + ")"
         if isinstance(expr, TFnLit):
             params = self._render_param_list(expr.params)
             ret = self._render_type(expr.ret)
