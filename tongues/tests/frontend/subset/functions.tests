@@ -146,6 +146,36 @@ def f(items: list[int]) -> list[int]:
 ok
 ---
 
+=== lambda in callable param allowed
+from typing import Callable
+def apply(f: Callable[[int], int], x: int) -> int:
+    return f(x)
+def g() -> int:
+    return apply(lambda x: x + 1, 5)
+---
+ok
+---
+
+=== lambda in callable method param allowed
+from typing import Callable
+class Runner:
+    def run(self, f: Callable[[str], int]) -> int:
+        return f("hello")
+def g(r: Runner) -> int:
+    return r.run(lambda s: len(s))
+---
+ok
+---
+
+=== lambda assigned to variable not allowed
+from typing import Callable
+def g() -> int:
+    f: Callable[[int], int] = lambda x: x + 1
+    return f(5)
+---
+error: lambda
+---
+
 === lambda as default not allowed
 def f(fn: object = lambda: 1) -> object:
     return fn
