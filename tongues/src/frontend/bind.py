@@ -2405,6 +2405,7 @@ class BindResult:
         self.class_bases: dict[str, list[str]] = {}
         self.type_aliases: dict[str, str] = {}
         self.class_source_files: dict[str, str] = {}
+        self.known_funcs: set[str] = set()
         self.flow_graphs: dict[str, FlowGraph] = {}
 
     def subset_ok(self) -> bool:
@@ -2431,10 +2432,11 @@ def _compute_derived(
             for base in info.bases:
                 if base == "Node" or base.endswith("Node"):
                     result.node_classes.add(mname)
-    for mname in mkeys:
-        info = table.module_names[mname]
-        if info.kind == "class":
             result.class_bases[mname] = list(info.bases)
+        elif info.kind == "function" or info.kind == "import":
+            result.known_funcs.add(mname)
+    for bname in ALLOWED_BUILTINS:
+        result.known_funcs.add(bname)
     ta_body = get_nodes(ast_dict, "body")
     for ta_stmt in ta_body:
         if get_str(ta_stmt, "_type") == "TypeAlias":
