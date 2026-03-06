@@ -6188,3 +6188,87 @@ def f(x: int) -> None:
 ---
 error: argument 1 has type int, expected never
 ---
+
+=== TypeGuard narrows in if branch
+from typing import TypeGuard
+class Animal:
+    pass
+class Dog(Animal):
+    def bark(self) -> str:
+        return "woof"
+def is_dog(a: Animal) -> TypeGuard[Dog]:
+    return isinstance(a, Dog)
+def f(a: Animal) -> str:
+    if is_dog(a):
+        return a.bark()
+    return "unknown"
+---
+ok
+---
+
+=== TypeGuard narrows first argument only
+from typing import TypeGuard
+class Base:
+    pass
+class Sub(Base):
+    val: int
+def check(x: Base, y: int) -> TypeGuard[Sub]:
+    return isinstance(x, Sub) and y > 0
+def f(b: Base) -> int:
+    if check(b, 1):
+        return b.val
+    return 0
+---
+ok
+---
+
+=== TypeGuard method narrows self argument
+from typing import TypeGuard
+class Expr:
+    pass
+class Call(Expr):
+    def __init__(self) -> None:
+        self.name: str = ""
+class Checker:
+    def is_call(self, e: Expr) -> TypeGuard[Call]:
+        return isinstance(e, Call)
+def f(c: Checker, e: Expr) -> str:
+    if c.is_call(e):
+        return e.name
+    return ""
+---
+ok
+---
+
+=== TypeGuard with early return narrows remainder
+from typing import TypeGuard
+class Animal:
+    pass
+class Dog(Animal):
+    def bark(self) -> str:
+        return "woof"
+def is_dog(a: Animal) -> TypeGuard[Dog]:
+    return isinstance(a, Dog)
+def f(a: Animal) -> str:
+    if not is_dog(a):
+        return "not a dog"
+    return a.bark()
+---
+ok
+---
+
+=== TypeGuard without guard does not narrow
+from typing import TypeGuard
+class Animal:
+    pass
+class Dog(Animal):
+    def bark(self) -> str:
+        return "woof"
+def is_dog(a: Animal) -> TypeGuard[Dog]:
+    return isinstance(a, Dog)
+def f(a: Animal) -> str:
+    is_dog(a)
+    return a.bark()
+---
+error
+---
