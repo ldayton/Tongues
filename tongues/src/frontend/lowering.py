@@ -1886,6 +1886,18 @@ def _lower_call(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     # Direct function call
     if _is_ast(func_node, "Name"):
         fname = get_str(func_node, "id")
+        safe_fname = _safe_name(fname)
+        if (
+            safe_fname in env.declared
+            or safe_fname in env.var_types
+            or fname in env.declared
+            or fname in env.var_types
+        ):
+            func = _lower_expr(func_node, env, ctx)
+            local_args: list[TArg] = []
+            for a in args:
+                local_args.append(TArg(pos, None, _lower_expr(a, env, ctx)))
+            return TCall(pos, func, local_args, {})
         return _lower_name_call(fname, args, keywords, node, env, ctx)
     # Parameterized constructor: set[T](), dict[K,V](), list[T](), frozenset[T]()
     if _is_ast(func_node, "Subscript"):
@@ -2397,15 +2409,7 @@ def _lower_name_call(
             )
         )
         return TNilLit(pos, {})
-    safe_fname = _safe_name(fname)
-    if (
-        fname not in ctx.known_funcs
-        and fname not in ctx.tc_result.functions
-        and fname not in env.declared
-        and safe_fname not in env.declared
-        and fname not in env.var_types
-        and safe_fname not in env.var_types
-    ):
+    if fname not in ctx.known_funcs and fname not in ctx.tc_result.functions:
         ctx.errors.append(
             LoweringError(pos.line, pos.col, "unknown function '" + fname + "'")
         )
@@ -5343,8 +5347,6 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             obj_node = get_node(func, "value")
             iter_expr = _lower_expr(obj_node, env, ctx)
             binding, b_ann = _extract_binding(target_node)
-            for b in binding:
-                env.declared.add(b)
             obj_type = _infer_expr_type(obj_node, env, ctx)
             if isinstance(obj_type, MapType) and len(binding) >= 2:
                 env.var_types[binding[0]] = obj_type.key
@@ -5365,16 +5367,12 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             for j in range(len(elems)):
                 items.append(TTupleAccess(pos, iter_lowered, j, {}))
             binding, b_ann = _extract_binding(target_node)
-            for b in binding:
-                env.declared.add(b)
             body_stmts = _lower_stmts(body, env, ctx)
             list_expr = TListLit(pos, items, {})
             pre_stmts.append(TForStmt(pos, binding, list_expr, body_stmts, b_ann))
             return pre_stmts
     # Regular iteration: for x in xs
     binding, b_ann = _extract_binding(target_node)
-    for b in binding:
-        env.declared.add(b)
     iter_expr = _lower_expr(iter_node, env, ctx)
     if len(binding) >= 2 and isinstance(iter_type, SliceType):
         elem = iter_type.element
