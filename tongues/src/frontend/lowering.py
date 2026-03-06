@@ -166,6 +166,8 @@ TAYTSH_KEYWORDS: set[str] = {
     "while",
 }
 
+_CONTEXT_ONLY_FUNCS: frozenset[str] = frozenset({"range", "enumerate", "reversed"})
+
 
 def _safe_name(name: str) -> str:
     """Rename if name collides with a Taytsh keyword."""
@@ -2196,6 +2198,12 @@ def _lower_collection_call(
                 return _make_call(pos, "Chars", [_lower_expr(args[0], env, ctx)])
             if _is_ast(args[0], "Call"):
                 rfunc = get_node(args[0], "func")
+                if _is_ast(rfunc, "Name") and get_str(rfunc, "id") == "reversed":
+                    rargs = get_nodes(args[0], "args")
+                    if rargs and isinstance(rargs[0], dict):
+                        return _make_call(
+                            pos, "Reversed", [_lower_expr(rargs[0], env, ctx)]
+                        )
                 if _is_ast(rfunc, "Name") and get_str(rfunc, "id") == "zip":
                     return _lower_expr(args[0], env, ctx)
                 if _is_ast(rfunc, "Attribute") and get_str(rfunc, "attr") in (
@@ -2361,6 +2369,8 @@ def _lower_name_call(
     if fname == "print":
         return _lower_print_call(pos, args, keywords, env, ctx)
     if fname in (
+        "Exception",
+        "ValueError",
         "TypeError",
         "NotImplementedError",
         "RuntimeError",
@@ -2375,6 +2385,16 @@ def _lower_name_call(
         return TCall(pos, TVar(pos, fname, {}), exc_args, {})
     if fname in ctx.known_classes:
         return _lower_struct_constructor(pos, fname, args, keywords, env, ctx)
+    if fname in _CONTEXT_ONLY_FUNCS:
+        ctx.errors.append(
+            LoweringError(
+                pos.line,
+                pos.col,
+                fname
+                + "() is not supported as a standalone expression; use it in a for loop",
+            )
+        )
+        return TNilLit(pos, {})
     lowered_args: list[TArg] = []
     if keywords:
         func_info = ctx.tc_result.functions.get(fname)
