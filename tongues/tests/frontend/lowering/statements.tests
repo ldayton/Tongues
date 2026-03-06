@@ -398,3 +398,13 @@ def f(xs: list[int]) -> None:
 ---
 let chunk: bytes = b""
 ---
+
+=== for reversed bytes widens to int
+def f(data: bytes) -> int:
+    total: int = 0
+    for b in reversed(data):
+        total += b
+    return total
+---
+let b: int = ByteToInt(_raw_b)
+---

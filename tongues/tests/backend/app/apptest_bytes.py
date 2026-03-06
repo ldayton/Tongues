@@ -248,6 +248,26 @@ def test_bytes_replace() -> None:
     assert b"aaa".replace(b"a", b"b") == b"bbb"
 
 
+def test_bytes_reversed_iteration() -> None:
+    """reversed() iteration yields ints."""
+    result: list[int] = []
+    for b in reversed(b"hi"):
+        result.append(b)
+    assert result[0] == 105
+    assert result[1] == 104
+    assert len(result) == 2
+
+
+def test_bytes_list_comprehension() -> None:
+    """List comprehension over bytes yields ints."""
+    data: bytes = b"\x01\x02\x03"
+    result: list[int] = [b + 1 for b in data]
+    assert result[0] == 2
+    assert result[1] == 3
+    assert result[2] == 4
+    assert len(result) == 3
+
+
 def main() -> int:
     passed: int = 0
     failed: int = 0
@@ -277,6 +297,8 @@ def main() -> int:
         ("test_bytes_split", test_bytes_split),
         ("test_bytes_join", test_bytes_join),
         ("test_bytes_replace", test_bytes_replace),
+        ("test_bytes_reversed_iteration", test_bytes_reversed_iteration),
+        ("test_bytes_list_comprehension", test_bytes_list_comprehension),
     ]
     for name, fn in tests:
         try:

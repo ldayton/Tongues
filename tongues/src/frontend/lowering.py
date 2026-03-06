@@ -980,6 +980,26 @@ def _make_call(pos: Pos, name: str, args: list[TExpr]) -> TCall:
     return TCall(pos, TVar(pos, name, {}), targs, {})
 
 
+def _bytes_for_stmt(
+    pos: Pos,
+    binding: list[str],
+    iter_expr: TExpr,
+    body: list[TStmt],
+    ann: Ann,
+) -> TForStmt:
+    """Build a TForStmt that inserts ByteToInt for single-binding bytes iteration."""
+    raw_name = "_raw_" + binding[0]
+    convert = TLetStmt(
+        pos,
+        binding[0],
+        TPrimitive(pos, "int"),
+        _make_call(pos, "ByteToInt", [TVar(pos, raw_name, {})]),
+        ann,
+    )
+    body.insert(0, convert)
+    return TForStmt(pos, [raw_name], iter_expr, body, {})
+
+
 def _len_expr(pos: Pos, obj: TExpr, obj_type: TypeNode) -> TExpr:
     """Len(obj) for most types, literal int for fixed-size tuples."""
     if isinstance(obj_type, TupleType):
@@ -3723,7 +3743,11 @@ def _lower_any_all(fname: str, node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExp
         body = [TIfStmt(pos, cond, inner_body, None, {})]
     for_ann: Ann = {}
     for_ann.update(b_ann)
-    for_stmt = TForStmt(pos, binding, iter_expr, body, for_ann)
+    iter_type = _infer_expr_type(iter_node, env, ctx)
+    if len(binding) == 1 and _is_type_dict(iter_type, ["bytes"]):
+        for_stmt = _bytes_for_stmt(pos, binding, iter_expr, body, for_ann)
+    else:
+        for_stmt = TForStmt(pos, binding, iter_expr, body, for_ann)
     env.pre_stmts.append(let_stmt)
     env.pre_stmts.append(for_stmt)
     return result_var
@@ -3739,7 +3763,9 @@ def _set_comp_var_types(
     """Set loop variable types in comp_env from the iter expression type."""
     iter_type = _infer_expr_type(iter_node, env, ctx)
     elem_type: TypeNode = VOID_TYPE
-    if isinstance(iter_type, SliceType):
+    if _is_type_dict(iter_type, ["bytes"]):
+        elem_type = INT_TYPE
+    elif isinstance(iter_type, SliceType):
         elem_type = iter_type.element
     elif isinstance(iter_type, SetType):
         elem_type = iter_type.element
@@ -3803,7 +3829,11 @@ def _lower_listcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
                 body = [TIfStmt(pos, cond, body, None, {})]
             f_ann: Ann = {}
             f_ann.update(g_ann)
-            body = [TForStmt(pos, gb, g_iter_expr, body, f_ann)]
+            g_iter_type = _infer_expr_type(g_iter, env, ctx)
+            if len(gb) == 1 and _is_type_dict(g_iter_type, ["bytes"]):
+                body = [_bytes_for_stmt(pos, gb, g_iter_expr, body, f_ann)]
+            else:
+                body = [TForStmt(pos, gb, g_iter_expr, body, f_ann)]
         gi -= 1
     env.pre_stmts.append(let_stmt)
     for s in body:
@@ -3844,7 +3874,11 @@ def _lower_setcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         body = [TIfStmt(pos, cond, body, None, {})]
     for_ann: Ann = {}
     for_ann.update(b_ann)
-    for_stmt = TForStmt(pos, binding, iter_expr, body, for_ann)
+    iter_type = _infer_expr_type(iter_node, env, ctx)
+    if len(binding) == 1 and _is_type_dict(iter_type, ["bytes"]):
+        for_stmt = _bytes_for_stmt(pos, binding, iter_expr, body, for_ann)
+    else:
+        for_stmt = TForStmt(pos, binding, iter_expr, body, for_ann)
     env.pre_stmts.append(let_stmt)
     env.pre_stmts.append(for_stmt)
     return result_var
@@ -3914,7 +3948,14 @@ def _lower_dictcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         )
     else:
         iter_expr = _lower_extend_arg(iter_node, env, ctx)
-    for_stmt = TForStmt(pos, binding, iter_expr, body, for_ann)
+    if (
+        not is_items
+        and len(binding) == 1
+        and _is_type_dict(_infer_expr_type(iter_node, env, ctx), ["bytes"])
+    ):
+        for_stmt = _bytes_for_stmt(pos, binding, iter_expr, body, for_ann)
+    else:
+        for_stmt = TForStmt(pos, binding, iter_expr, body, for_ann)
     env.pre_stmts.append(let_stmt)
     env.pre_stmts.append(for_stmt)
     return result_var
@@ -3953,7 +3994,11 @@ def _expand_listcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     if ifs and isinstance(ifs[0], dict):
         cond = _lower_as_bool(ifs[0], comp_env, ctx)
         body = [TIfStmt(pos, cond, body, None, {})]
-    for_stmt = TForStmt(pos, [target_name], iter_expr, body, t_ann)
+    iter_type = _infer_expr_type(iter_node, env, ctx)
+    if _is_type_dict(iter_type, ["bytes"]):
+        for_stmt = _bytes_for_stmt(pos, [target_name], iter_expr, body, t_ann)
+    else:
+        for_stmt = TForStmt(pos, [target_name], iter_expr, body, t_ann)
     # Return __result__
     return_stmt = TReturnStmt(pos, result_var, {})
     return [let_stmt, for_stmt, return_stmt]
@@ -3989,7 +4034,11 @@ def _expand_setcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     if ifs and isinstance(ifs[0], dict):
         cond = _lower_as_bool(ifs[0], comp_env, ctx)
         body = [TIfStmt(pos, cond, body, None, {})]
-    for_stmt = TForStmt(pos, [target_name], iter_expr, body, t_ann)
+    iter_type = _infer_expr_type(iter_node, env, ctx)
+    if _is_type_dict(iter_type, ["bytes"]):
+        for_stmt = _bytes_for_stmt(pos, [target_name], iter_expr, body, t_ann)
+    else:
+        for_stmt = TForStmt(pos, [target_name], iter_expr, body, t_ann)
     return_stmt = TReturnStmt(pos, result_var, {})
     return [let_stmt, for_stmt, return_stmt]
 
@@ -4025,7 +4074,11 @@ def _expand_dictcomp(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     if ifs and isinstance(ifs[0], dict):
         cond = _lower_as_bool(ifs[0], comp_env, ctx)
         body = [TIfStmt(pos, cond, body, None, {})]
-    for_stmt = TForStmt(pos, [target_name], iter_expr, body, t_ann)
+    iter_type = _infer_expr_type(iter_node, env, ctx)
+    if _is_type_dict(iter_type, ["bytes"]):
+        for_stmt = _bytes_for_stmt(pos, [target_name], iter_expr, body, t_ann)
+    else:
+        for_stmt = TForStmt(pos, [target_name], iter_expr, body, t_ann)
     return_stmt = TReturnStmt(pos, result_var, {})
     return [let_stmt, for_stmt, return_stmt]
 
@@ -5346,19 +5399,11 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         if _is_type_dict(iter_type, ["string"]):
             elem_type = PrimitiveType("rune")
         elif _is_type_dict(iter_type, ["bytes"]):
-            raw_name = "_raw_" + binding[0]
-            env.var_types[raw_name] = PrimitiveType("byte")
             env.var_types[binding[0]] = INT_TYPE
             body_stmts = _lower_stmts(body, env, ctx)
-            convert = TLetStmt(
-                pos,
-                binding[0],
-                TPrimitive(pos, "int"),
-                _make_call(pos, "ByteToInt", [TVar(pos, raw_name, {})]),
-                b_ann,
+            pre_stmts.append(
+                _bytes_for_stmt(pos, binding, iter_expr, body_stmts, b_ann)
             )
-            body_stmts.insert(0, convert)
-            pre_stmts.append(TForStmt(pos, [raw_name], iter_expr, body_stmts, {}))
             return pre_stmts
         elif isinstance(iter_type, SliceType):
             elem_type = iter_type.element
@@ -5470,6 +5515,11 @@ def _lower_for_reversed(
     # reversed(xs) → for x in Reversed(xs)
     inner_expr = _lower_expr(inner, env, ctx)
     inner_type = _infer_expr_type(inner, env, ctx)
+    if len(binding) == 1 and _is_type_dict(inner_type, ["bytes"]):
+        env.var_types[binding[0]] = INT_TYPE
+        iter_expr = _make_call(pos, "Reversed", [inner_expr])
+        body_stmts = _lower_stmts(body, env, ctx)
+        return [_bytes_for_stmt(pos, binding, iter_expr, body_stmts, b_ann)]
     if len(binding) == 1 and isinstance(inner_type, SliceType):
         env.var_types[binding[0]] = inner_type.element
     iter_expr = _make_call(pos, "Reversed", [inner_expr])

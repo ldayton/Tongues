@@ -1333,16 +1333,14 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     # String indexing
     if _prim_kind(obj_type) == "string":
         return STR_TYPE
-    # Bytes indexing
-    if _prim_kind(obj_type) == "bytes":
-        if slc and _is_type(slc, ["Slice"]):
-            return obj_type
-        return PrimitiveType("byte")
-    # List indexing
+    # List/bytes indexing
     if isinstance(obj_type, SliceType):
         if slc and _is_type(slc, ["Slice"]):
             return obj_type
-        return obj_type.element
+        elem = obj_type.element
+        if isinstance(elem, PrimitiveType) and elem.kind == "byte":
+            return INT_TYPE
+        return elem
     # Iterator indexing
     if isinstance(obj_type, IteratorType):
         if slc and _is_type(slc, ["Slice"]):

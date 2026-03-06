@@ -1349,6 +1349,8 @@ class _BuiltinDispatch:
         return VInt(-1)
 
     def _reversed(self, args: list[Val]) -> Val:
+        if isinstance(args[0], VBytes):
+            return VBytes(bytes(reversed(args[0].value)))
         if isinstance(args[0], VList):
             return VList(list(reversed(args[0].items)))
         return VList([])

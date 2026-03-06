@@ -3741,8 +3741,10 @@ def _bi_reverse(rt: Runtime, args: list[Value]) -> Value:
 
 def _bi_reversed(rt: Runtime, args: list[Value]) -> Value:
     xs = args[0]
+    if isinstance(xs, VBytes):
+        return VBytes(bytes(reversed(xs.value)))
     if not isinstance(xs, VList):
-        raise TaytshRuntimeFault("Reversed expects list", None)
+        raise TaytshRuntimeFault("Reversed expects list or bytes", None)
     rev: list[Value] = []
     i = len(xs.elements) - 1
     while i >= 0:

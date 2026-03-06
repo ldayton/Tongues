@@ -4267,8 +4267,10 @@ class Checker:
             t = _bctx_arg(ctx, 0)
             if t is not None and isinstance(t, ListT):
                 return t
+            if t is not None and type_eq(t, BYTES_T):
+                return t
             if t is not None:
-                self.error("Reversed requires list", pos)
+                self.error("Reversed requires list or bytes", pos)
             return None
         if name == "Sorted":
             if not _bctx_require_range(ctx, 1, 2):
