@@ -2863,10 +2863,28 @@ def _validate_if(
     if orelse:
         is_elif = len(orelse) == 1 and _is_type(orelse[0], ["If"])
         if not is_elif and _has_never_narrowing(env, else_env):
-            else_lineno = get_int(orelse[0], "lineno")
-            ctx.result.add_error(
-                else_lineno, 0, "unreachable code: all union variants already handled"
-            )
+            from_hierarchy = False
+            for k in else_env.types:
+                t = else_env.types[k]
+                if isinstance(t, PrimitiveType) and t.kind == "never":
+                    pre_t = env.types.get(k)
+                    if pre_t is not None:
+                        sn = _struct_name(pre_t)
+                        if sn:
+                            if sn in ctx.class_bases and ctx.class_bases[sn]:
+                                from_hierarchy = True
+                            else:
+                                for bases in ctx.class_bases.values():
+                                    if sn in bases:
+                                        from_hierarchy = True
+                                        break
+            if not from_hierarchy:
+                else_lineno = get_int(orelse[0], "lineno")
+                ctx.result.add_error(
+                    else_lineno,
+                    0,
+                    "unreachable code: all union variants already handled",
+                )
         else_returns = _validate_stmts(orelse, else_env, func_info, ctx)
     if then_returns and not else_returns:
         ekeys = list(else_env.types.keys())
@@ -3395,6 +3413,21 @@ def _narrow_isinstance(
         then_env.narrow(name, UnionType(variants))
     else_type = else_env.get_type(name)
     if else_type is not None:
+        if not isinstance(else_type, UnionType):
+            base_name = _struct_name(else_type)
+            if base_name:
+                children: list[TypeNode] = []
+                for cls_k, bases in ctx.class_bases.items():
+                    if base_name in bases:
+                        sig_e_exp: list[TypeCollectError] = []
+                        children.append(
+                            py_type_to_type_dict(
+                                cls_k, ctx.known_classes, sig_e_exp, 0, 0
+                            )
+                        )
+                if children:
+                    else_type = UnionType(children)
+                    else_env.narrow(name, else_type)
         remove_types: list[TypeNode] = []
         for nname in narrow_names:
             sig_e_rm: list[TypeCollectError] = []

@@ -202,7 +202,7 @@ def f(x: int | None) -> int:
 error: None
 ---
 
-=== isinstance does not narrow else for non-exhaustive
+=== isinstance narrows else to remaining subclasses on base class
 class Animal:
     pass
 class Dog(Animal):
@@ -214,9 +214,10 @@ class Cat(Animal):
 def f(a: Animal) -> str:
     if isinstance(a, Dog):
         return a.bark()
+    reveal_type(a)
     return a.meow()
 ---
-error: meow
+reveal:12 = Cat
 ---
 
 === narrowing resets after branch merges
@@ -5195,7 +5196,7 @@ def f(x: A | B) -> str:
 ---
 error:
 ---
-=== isinstance with continue wrong branch fails
+=== isinstance with continue narrows else to never on single subclass
 class A:
     pass
 class B(A):
@@ -5205,10 +5206,11 @@ def f(items: list[A]) -> int:
     for item in items:
         if isinstance(item, B):
             continue
+        reveal_type(item)
         total += item.x
     return total
 ---
-error: cannot access
+reveal:10 = never
 ---
 === narrowing in nested for loops inner does not leak to outer
 class A:
@@ -5394,7 +5396,7 @@ def f(x: int | None, y: str | None) -> int:
 ---
 error: None
 ---
-=== isinstance short-circuit or disallows attribute access
+=== isinstance short-circuit or allows access after base class expansion
 class A:
     pass
 class B(A):
@@ -5402,11 +5404,12 @@ class B(A):
 def f(x: A) -> int:
     if isinstance(x, B) or x.flag > 0:
         return 0
+    reveal_type(x)
     return 0
 ---
-error: flag
+reveal:8 = never
 ---
-=== not isinstance short-circuit and disallows attribute access
+=== not isinstance short-circuit and allows access after base class expansion
 class A:
     pass
 class B(A):
@@ -5414,11 +5417,12 @@ class B(A):
 def f(x: A) -> int:
     if not isinstance(x, B) and x.flag > 0:
         return 0
+    reveal_type(x)
     return 0
 ---
-error: flag
+reveal:8 = B
 ---
-=== isinstance ternary condition wrong branch
+=== isinstance ternary narrows else via base class expansion
 class A:
     pass
 class B(A):
@@ -5426,7 +5430,7 @@ class B(A):
 def f(x: A) -> int:
     return 0 if isinstance(x, B) else x.flag
 ---
-error: flag
+ok
 ---
 === isinstance or non-isinstance in or does not narrow
 class A:
@@ -5492,7 +5496,7 @@ def f(a: int | None, b: str | None) -> int:
 ---
 error: cannot
 ---
-=== isinstance conditional return wrong branch
+=== isinstance conditional return narrows else via base class expansion
 class A:
     pass
 class B(A):
@@ -5500,7 +5504,7 @@ class B(A):
 def f(x: A) -> int:
     return 0 if isinstance(x, B) else x.val
 ---
-error:
+ok
 ---
 === isinstance and is not None wrong order fails
 class A:
@@ -5605,7 +5609,7 @@ def f(x: int | str) -> str:
 ---
 error:
 ---
-=== walrus isinstance wrong branch access
+=== walrus isinstance narrows else via base class expansion
 class A:
     pass
 class B(A):
@@ -5615,9 +5619,10 @@ def make() -> A:
 def f() -> int:
     if isinstance((val := make()), B):
         return 0
+    reveal_type(val)
     return val.x
 ---
-error: cannot access
+reveal:10 = never
 ---
 === isinstance in method wrong access on self
 class A:
