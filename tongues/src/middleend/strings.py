@@ -471,52 +471,45 @@ def _mark_len_called_from_call(expr: TCall, ctx: _StringsCtx) -> None:
 
 
 def _walk_expr_usage(expr: TExpr, ctx: _StringsCtx) -> None:
-    if isinstance(expr, TBinaryOp):
-        _walk_expr_usage(expr.left, ctx)
-        _walk_expr_usage(expr.right, ctx)
-    elif isinstance(expr, TUnaryOp):
-        _walk_expr_usage(expr.operand, ctx)
-    elif isinstance(expr, TTernary):
-        _walk_expr_usage(expr.cond, ctx)
-        _walk_expr_usage(expr.then_expr, ctx)
-        _walk_expr_usage(expr.else_expr, ctx)
-    elif isinstance(expr, TFieldAccess):
-        _walk_expr_usage(expr.obj, ctx)
-    elif isinstance(expr, TTupleAccess):
-        _walk_expr_usage(expr.obj, ctx)
-    elif isinstance(expr, TIndex):
-        base = _base_var(expr.obj)
-        if base is not None and base in ctx.string_bindings:
-            ctx.string_bindings[base].indexed = True
-        _walk_expr_usage(expr.obj, ctx)
-        _walk_expr_usage(expr.index, ctx)
-    elif isinstance(expr, TSlice):
-        base = _base_var(expr.obj)
-        if base is not None and base in ctx.string_bindings:
-            ctx.string_bindings[base].indexed = True
-        _walk_expr_usage(expr.obj, ctx)
-        _walk_expr_usage(expr.low, ctx)
-        _walk_expr_usage(expr.high, ctx)
-    elif isinstance(expr, TCall):
-        _mark_len_called_from_call(expr, ctx)
-        _walk_expr_usage(expr.func, ctx)
-        for a in expr.args:
-            _walk_expr_usage(a.value, ctx)
-    elif isinstance(expr, TListLit):
-        for e in expr.elements:
-            _walk_expr_usage(e, ctx)
-    elif isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            _walk_expr_usage(k, ctx)
-            _walk_expr_usage(v, ctx)
-    elif isinstance(expr, TSetLit):
-        for e in expr.elements:
-            _walk_expr_usage(e, ctx)
-    elif isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            _walk_expr_usage(e, ctx)
-    elif isinstance(expr, TFnLit):
-        _walk_stmts(expr.body, ctx, set())
+    match expr:
+        case TBinaryOp():
+            _walk_expr_usage(expr.left, ctx)
+            _walk_expr_usage(expr.right, ctx)
+        case TUnaryOp():
+            _walk_expr_usage(expr.operand, ctx)
+        case TTernary():
+            _walk_expr_usage(expr.cond, ctx)
+            _walk_expr_usage(expr.then_expr, ctx)
+            _walk_expr_usage(expr.else_expr, ctx)
+        case TFieldAccess() | TTupleAccess():
+            _walk_expr_usage(expr.obj, ctx)
+        case TIndex():
+            base = _base_var(expr.obj)
+            if base is not None and base in ctx.string_bindings:
+                ctx.string_bindings[base].indexed = True
+            _walk_expr_usage(expr.obj, ctx)
+            _walk_expr_usage(expr.index, ctx)
+        case TSlice():
+            base = _base_var(expr.obj)
+            if base is not None and base in ctx.string_bindings:
+                ctx.string_bindings[base].indexed = True
+            _walk_expr_usage(expr.obj, ctx)
+            _walk_expr_usage(expr.low, ctx)
+            _walk_expr_usage(expr.high, ctx)
+        case TCall():
+            _mark_len_called_from_call(expr, ctx)
+            _walk_expr_usage(expr.func, ctx)
+            for a in expr.args:
+                _walk_expr_usage(a.value, ctx)
+        case TListLit() | TSetLit() | TTupleLit():
+            for e in expr.elements:
+                _walk_expr_usage(e, ctx)
+        case TMapLit():
+            for k, v in expr.entries:
+                _walk_expr_usage(k, ctx)
+                _walk_expr_usage(v, ctx)
+        case TFnLit():
+            _walk_stmts(expr.body, ctx, set())
 
 
 def _compute_builder(
@@ -662,19 +655,22 @@ def _walk_stmt(stmt: TStmt, ctx: _StringsCtx, declared: set[str]) -> None:
         for case in stmt.cases:
             case_declared = set(declared)
             pat = case.pattern
-            if isinstance(pat, TPatternType):
-                case_t = ctx.checker.resolve_type(pat.type_name)
-                covered.append(case_t)
-                ctx.var_types[pat.name] = case_t
-                if _contains_string_type(case_t):
-                    _register_string_binding(ctx, pat.name, pat.annotations, None, True)
-                case_declared.add(pat.name)
-            elif isinstance(pat, TPatternEnum):
-                enum_t = ctx.checker.types.get(pat.enum_name)
-                if enum_t is not None:
-                    covered.append(enum_t)
-            elif isinstance(pat, TPatternNil):
-                covered.append(NIL_T)
+            match pat:
+                case TPatternType():
+                    case_t = ctx.checker.resolve_type(pat.type_name)
+                    covered.append(case_t)
+                    ctx.var_types[pat.name] = case_t
+                    if _contains_string_type(case_t):
+                        _register_string_binding(
+                            ctx, pat.name, pat.annotations, None, True
+                        )
+                    case_declared.add(pat.name)
+                case TPatternEnum():
+                    enum_t = ctx.checker.types.get(pat.enum_name)
+                    if enum_t is not None:
+                        covered.append(enum_t)
+                case TPatternNil():
+                    covered.append(NIL_T)
             _walk_stmts(case.body, ctx, case_declared)
         if stmt.default is not None:
             dflt_declared = set(declared)
@@ -827,11 +823,12 @@ def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) 
 def analyze_strings(module: TModule, checker: Checker) -> None:
     """Run strings analysis on all functions in the module."""
     for decl in module.decls:
-        if isinstance(decl, TFnDecl):
-            _analyze_fn(decl, checker)
-        elif isinstance(decl, TStructDecl):
-            st = checker.types.get(decl.name)
-            for method in decl.methods:
-                _analyze_fn(method, checker, self_type=st)
-        elif isinstance(decl, TEnumDecl):
-            continue
+        match decl:
+            case TFnDecl():
+                _analyze_fn(decl, checker)
+            case TStructDecl():
+                st = checker.types.get(decl.name)
+                for method in decl.methods:
+                    _analyze_fn(method, checker, self_type=st)
+            case TEnumDecl():
+                continue

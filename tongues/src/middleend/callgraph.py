@@ -226,97 +226,94 @@ def _collect_edges(stmts: list[TStmt], ctx: _EdgeCtx) -> None:
 
 
 def _collect_edges_stmt(stmt: TStmt, ctx: _EdgeCtx) -> None:
-    if isinstance(stmt, TExprStmt):
-        _collect_edges_expr(stmt.expr, ctx)
-    elif isinstance(stmt, TReturnStmt) and stmt.value is not None:
-        _collect_edges_expr(stmt.value, ctx)
-    elif isinstance(stmt, TThrowStmt):
-        _collect_edges_expr(stmt.expr, ctx)
-    elif isinstance(stmt, TLetStmt):
-        if stmt.value is not None:
+    match stmt:
+        case TExprStmt():
+            _collect_edges_expr(stmt.expr, ctx)
+        case TReturnStmt():
+            if stmt.value is not None:
+                _collect_edges_expr(stmt.value, ctx)
+        case TThrowStmt():
+            _collect_edges_expr(stmt.expr, ctx)
+        case TLetStmt():
+            if stmt.value is not None:
+                _collect_edges_expr(stmt.value, ctx)
+            ctx.resolver.register_let(stmt.name, ctx.checker.resolve_type(stmt.typ))
+        case TAssignStmt():
+            _collect_edges_expr(stmt.target, ctx)
             _collect_edges_expr(stmt.value, ctx)
-        ctx.resolver.register_let(stmt.name, ctx.checker.resolve_type(stmt.typ))
-    elif isinstance(stmt, TAssignStmt):
-        _collect_edges_expr(stmt.target, ctx)
-        _collect_edges_expr(stmt.value, ctx)
-    elif isinstance(stmt, TOpAssignStmt):
-        _collect_edges_expr(stmt.target, ctx)
-        _collect_edges_expr(stmt.value, ctx)
-    elif isinstance(stmt, TTupleAssignStmt):
-        for t in stmt.targets:
-            _collect_edges_expr(t, ctx)
-        _collect_edges_expr(stmt.value, ctx)
-    elif isinstance(stmt, TIfStmt):
-        _collect_edges_expr(stmt.cond, ctx)
-        _collect_edges(stmt.then_body, ctx)
-        if stmt.else_body is not None:
-            _collect_edges(stmt.else_body, ctx)
-    elif isinstance(stmt, TWhileStmt):
-        _collect_edges_expr(stmt.cond, ctx)
-        _collect_edges(stmt.body, ctx)
-    elif isinstance(stmt, TForStmt):
-        if isinstance(stmt.iterable, TRange):
-            for a in stmt.iterable.args:
-                _collect_edges_expr(a, ctx)
-        else:
-            _collect_edges_expr(stmt.iterable, ctx)
-        _collect_edges(stmt.body, ctx)
-    elif isinstance(stmt, TMatchStmt):
-        _collect_edges_expr(stmt.expr, ctx)
-        for case in stmt.cases:
-            _collect_edges(case.body, ctx)
-        if stmt.default is not None:
-            _collect_edges(stmt.default.body, ctx)
-    elif isinstance(stmt, TTryStmt):
-        _collect_edges(stmt.body, ctx)
-        for catch in stmt.catches:
-            _collect_edges(catch.body, ctx)
-        if stmt.finally_body is not None:
-            _collect_edges(stmt.finally_body, ctx)
+        case TOpAssignStmt():
+            _collect_edges_expr(stmt.target, ctx)
+            _collect_edges_expr(stmt.value, ctx)
+        case TTupleAssignStmt():
+            for t in stmt.targets:
+                _collect_edges_expr(t, ctx)
+            _collect_edges_expr(stmt.value, ctx)
+        case TIfStmt():
+            _collect_edges_expr(stmt.cond, ctx)
+            _collect_edges(stmt.then_body, ctx)
+            if stmt.else_body is not None:
+                _collect_edges(stmt.else_body, ctx)
+        case TWhileStmt():
+            _collect_edges_expr(stmt.cond, ctx)
+            _collect_edges(stmt.body, ctx)
+        case TForStmt():
+            if isinstance(stmt.iterable, TRange):
+                for a in stmt.iterable.args:
+                    _collect_edges_expr(a, ctx)
+            else:
+                _collect_edges_expr(stmt.iterable, ctx)
+            _collect_edges(stmt.body, ctx)
+        case TMatchStmt():
+            _collect_edges_expr(stmt.expr, ctx)
+            for case in stmt.cases:
+                _collect_edges(case.body, ctx)
+            if stmt.default is not None:
+                _collect_edges(stmt.default.body, ctx)
+        case TTryStmt():
+            _collect_edges(stmt.body, ctx)
+            for catch in stmt.catches:
+                _collect_edges(catch.body, ctx)
+            if stmt.finally_body is not None:
+                _collect_edges(stmt.finally_body, ctx)
 
 
 def _collect_edges_expr(expr: TExpr, ctx: _EdgeCtx) -> None:
-    if isinstance(expr, TCall):
-        for callee_key in _resolve_all_call_targets(
-            expr, ctx.fn_decls, ctx.checker, ctx.resolver
-        ):
-            ctx.edges[ctx.caller].add(callee_key)
-        _collect_edges_expr(expr.func, ctx)
-        for arg in expr.args:
-            _collect_edges_expr(arg.value, ctx)
-    elif isinstance(expr, TBinaryOp):
-        _collect_edges_expr(expr.left, ctx)
-        _collect_edges_expr(expr.right, ctx)
-    elif isinstance(expr, TUnaryOp):
-        _collect_edges_expr(expr.operand, ctx)
-    elif isinstance(expr, TTernary):
-        _collect_edges_expr(expr.cond, ctx)
-        _collect_edges_expr(expr.then_expr, ctx)
-        _collect_edges_expr(expr.else_expr, ctx)
-    elif isinstance(expr, TFieldAccess):
-        _collect_edges_expr(expr.obj, ctx)
-    elif isinstance(expr, TIndex):
-        _collect_edges_expr(expr.obj, ctx)
-        _collect_edges_expr(expr.index, ctx)
-    elif isinstance(expr, TSlice):
-        _collect_edges_expr(expr.obj, ctx)
-        _collect_edges_expr(expr.low, ctx)
-        _collect_edges_expr(expr.high, ctx)
-    elif isinstance(expr, TListLit):
-        for e in expr.elements:
-            _collect_edges_expr(e, ctx)
-    elif isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            _collect_edges_expr(k, ctx)
-            _collect_edges_expr(v, ctx)
-    elif isinstance(expr, TSetLit):
-        for e in expr.elements:
-            _collect_edges_expr(e, ctx)
-    elif isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            _collect_edges_expr(e, ctx)
-    elif isinstance(expr, TFnLit):
-        _collect_edges(expr.body, ctx)
+    match expr:
+        case TCall():
+            for callee_key in _resolve_all_call_targets(
+                expr, ctx.fn_decls, ctx.checker, ctx.resolver
+            ):
+                ctx.edges[ctx.caller].add(callee_key)
+            _collect_edges_expr(expr.func, ctx)
+            for arg in expr.args:
+                _collect_edges_expr(arg.value, ctx)
+        case TBinaryOp():
+            _collect_edges_expr(expr.left, ctx)
+            _collect_edges_expr(expr.right, ctx)
+        case TUnaryOp():
+            _collect_edges_expr(expr.operand, ctx)
+        case TTernary():
+            _collect_edges_expr(expr.cond, ctx)
+            _collect_edges_expr(expr.then_expr, ctx)
+            _collect_edges_expr(expr.else_expr, ctx)
+        case TFieldAccess():
+            _collect_edges_expr(expr.obj, ctx)
+        case TIndex():
+            _collect_edges_expr(expr.obj, ctx)
+            _collect_edges_expr(expr.index, ctx)
+        case TSlice():
+            _collect_edges_expr(expr.obj, ctx)
+            _collect_edges_expr(expr.low, ctx)
+            _collect_edges_expr(expr.high, ctx)
+        case TListLit() | TSetLit() | TTupleLit():
+            for e in expr.elements:
+                _collect_edges_expr(e, ctx)
+        case TMapLit():
+            for k, v in expr.entries:
+                _collect_edges_expr(k, ctx)
+                _collect_edges_expr(v, ctx)
+        case TFnLit():
+            _collect_edges(expr.body, ctx)
 
 
 def _resolve_all_call_targets(
@@ -533,62 +530,64 @@ def _collect_fn_throws(stmts: list[TStmt], ctx: _ThrowCtx) -> None:
 
 
 def _collect_fn_throws_stmt(stmt: TStmt, ctx: _ThrowCtx) -> None:
-    if isinstance(stmt, TThrowStmt):
-        if isinstance(stmt.expr, TCall):
-            func = stmt.expr.func
-            if isinstance(func, TVar):
-                _add_throws({func.name}, ctx.throws, ctx.caught_filter)
-        elif isinstance(stmt.expr, TVar):
-            name = stmt.expr.name
-            if name in ctx.resolver.catch_vars:
-                _add_throws(
-                    ctx.resolver.catch_vars[name], ctx.throws, ctx.caught_filter
-                )
-            else:
-                _add_throws({name}, ctx.throws, ctx.caught_filter)
-        _collect_fn_throws_expr(stmt.expr, ctx)
-    elif isinstance(stmt, TExprStmt):
-        _collect_fn_throws_expr(stmt.expr, ctx)
-    elif isinstance(stmt, TReturnStmt) and stmt.value is not None:
-        _collect_fn_throws_expr(stmt.value, ctx)
-    elif isinstance(stmt, TLetStmt):
-        if stmt.value is not None:
+    match stmt:
+        case TThrowStmt():
+            if isinstance(stmt.expr, TCall):
+                func = stmt.expr.func
+                if isinstance(func, TVar):
+                    _add_throws({func.name}, ctx.throws, ctx.caught_filter)
+            elif isinstance(stmt.expr, TVar):
+                name = stmt.expr.name
+                if name in ctx.resolver.catch_vars:
+                    _add_throws(
+                        ctx.resolver.catch_vars[name], ctx.throws, ctx.caught_filter
+                    )
+                else:
+                    _add_throws({name}, ctx.throws, ctx.caught_filter)
+            _collect_fn_throws_expr(stmt.expr, ctx)
+        case TExprStmt():
+            _collect_fn_throws_expr(stmt.expr, ctx)
+        case TReturnStmt():
+            if stmt.value is not None:
+                _collect_fn_throws_expr(stmt.value, ctx)
+        case TLetStmt():
+            if stmt.value is not None:
+                _collect_fn_throws_expr(stmt.value, ctx)
+            ctx.resolver.register_let(stmt.name, ctx.checker.resolve_type(stmt.typ))
+        case TAssignStmt():
+            _collect_fn_throws_expr(stmt.target, ctx)
             _collect_fn_throws_expr(stmt.value, ctx)
-        ctx.resolver.register_let(stmt.name, ctx.checker.resolve_type(stmt.typ))
-    elif isinstance(stmt, TAssignStmt):
-        _collect_fn_throws_expr(stmt.target, ctx)
-        _collect_fn_throws_expr(stmt.value, ctx)
-    elif isinstance(stmt, TOpAssignStmt):
-        _collect_fn_throws_expr(stmt.target, ctx)
-        _collect_fn_throws_expr(stmt.value, ctx)
-        _check_op_throws(stmt.op.rstrip("="), stmt.target, ctx)
-    elif isinstance(stmt, TTupleAssignStmt):
-        for t in stmt.targets:
-            _collect_fn_throws_expr(t, ctx)
-        _collect_fn_throws_expr(stmt.value, ctx)
-    elif isinstance(stmt, TIfStmt):
-        _collect_fn_throws_expr(stmt.cond, ctx)
-        _collect_fn_throws(stmt.then_body, ctx)
-        if stmt.else_body is not None:
-            _collect_fn_throws(stmt.else_body, ctx)
-    elif isinstance(stmt, TWhileStmt):
-        _collect_fn_throws_expr(stmt.cond, ctx)
-        _collect_fn_throws(stmt.body, ctx)
-    elif isinstance(stmt, TForStmt):
-        if isinstance(stmt.iterable, TRange):
-            for a in stmt.iterable.args:
-                _collect_fn_throws_expr(a, ctx)
-        else:
-            _collect_fn_throws_expr(stmt.iterable, ctx)
-        _collect_fn_throws(stmt.body, ctx)
-    elif isinstance(stmt, TMatchStmt):
-        _collect_fn_throws_expr(stmt.expr, ctx)
-        for case in stmt.cases:
-            _collect_fn_throws(case.body, ctx)
-        if stmt.default is not None:
-            _collect_fn_throws(stmt.default.body, ctx)
-    elif isinstance(stmt, TTryStmt):
-        _collect_fn_throws_try(stmt, ctx)
+        case TOpAssignStmt():
+            _collect_fn_throws_expr(stmt.target, ctx)
+            _collect_fn_throws_expr(stmt.value, ctx)
+            _check_op_throws(stmt.op.rstrip("="), stmt.target, ctx)
+        case TTupleAssignStmt():
+            for t in stmt.targets:
+                _collect_fn_throws_expr(t, ctx)
+            _collect_fn_throws_expr(stmt.value, ctx)
+        case TIfStmt():
+            _collect_fn_throws_expr(stmt.cond, ctx)
+            _collect_fn_throws(stmt.then_body, ctx)
+            if stmt.else_body is not None:
+                _collect_fn_throws(stmt.else_body, ctx)
+        case TWhileStmt():
+            _collect_fn_throws_expr(stmt.cond, ctx)
+            _collect_fn_throws(stmt.body, ctx)
+        case TForStmt():
+            if isinstance(stmt.iterable, TRange):
+                for a in stmt.iterable.args:
+                    _collect_fn_throws_expr(a, ctx)
+            else:
+                _collect_fn_throws_expr(stmt.iterable, ctx)
+            _collect_fn_throws(stmt.body, ctx)
+        case TMatchStmt():
+            _collect_fn_throws_expr(stmt.expr, ctx)
+            for case in stmt.cases:
+                _collect_fn_throws(case.body, ctx)
+            if stmt.default is not None:
+                _collect_fn_throws(stmt.default.body, ctx)
+        case TTryStmt():
+            _collect_fn_throws_try(stmt, ctx)
 
 
 def _collect_fn_throws_try(stmt: TTryStmt, ctx: _ThrowCtx) -> None:
@@ -653,86 +652,81 @@ def _collect_fn_throws_try(stmt: TTryStmt, ctx: _ThrowCtx) -> None:
 
 
 def _collect_fn_throws_expr(expr: TExpr, ctx: _ThrowCtx) -> None:
-    if isinstance(expr, TCall):
-        if isinstance(expr.func, TVar):
-            name = expr.func.name
-            if name in BUILTIN_THROWS and name not in ctx.checker.functions:
-                _add_throws(BUILTIN_THROWS[name], ctx.throws, ctx.caught_filter)
-            if ctx.strict_math and name == "Sorted":
-                if name not in ctx.checker.functions:
+    match expr:
+        case TCall():
+            if isinstance(expr.func, TVar):
+                name = expr.func.name
+                if name in BUILTIN_THROWS and name not in ctx.checker.functions:
+                    _add_throws(BUILTIN_THROWS[name], ctx.throws, ctx.caught_filter)
+                if ctx.strict_math and name == "Sorted":
+                    if name not in ctx.checker.functions:
+                        _add_throws({"ValueError"}, ctx.throws, ctx.caught_filter)
+                if ctx.strict_math and name == "Pow":
+                    if name not in ctx.checker.functions:
+                        _add_throws({"ValueError"}, ctx.throws, ctx.caught_filter)
+                targets = _resolve_all_call_targets(
+                    expr, ctx.fn_decls, ctx.checker, ctx.resolver
+                )
+                for target in targets:
+                    if target in ctx.callee_throws:
+                        _add_throws(
+                            ctx.callee_throws[target], ctx.throws, ctx.caught_filter
+                        )
+            elif isinstance(expr.func, TFieldAccess):
+                targets = _resolve_all_call_targets(
+                    expr, ctx.fn_decls, ctx.checker, ctx.resolver
+                )
+                for target in targets:
+                    if target in ctx.callee_throws:
+                        _add_throws(
+                            ctx.callee_throws[target], ctx.throws, ctx.caught_filter
+                        )
+                _collect_fn_throws_expr(expr.func.obj, ctx)
+            else:
+                all_throws: set[str] = set()
+                for t in ctx.callee_throws.values():
+                    all_throws |= t
+                _add_throws(all_throws, ctx.throws, ctx.caught_filter)
+            for arg in expr.args:
+                _collect_fn_throws_expr(arg.value, ctx)
+        case TBinaryOp():
+            _collect_fn_throws_expr(expr.left, ctx)
+            _collect_fn_throws_expr(expr.right, ctx)
+            _check_op_throws(expr.op, expr.left, ctx)
+        case TUnaryOp():
+            _collect_fn_throws_expr(expr.operand, ctx)
+            if ctx.strict_math and expr.op == "-":
+                op_t = ctx.resolver.resolve(expr.operand)
+                if op_t is not None and type_eq(op_t, INT_T):
                     _add_throws({"ValueError"}, ctx.throws, ctx.caught_filter)
-            if ctx.strict_math and name == "Pow":
-                if name not in ctx.checker.functions:
-                    _add_throws({"ValueError"}, ctx.throws, ctx.caught_filter)
-            targets = _resolve_all_call_targets(
-                expr, ctx.fn_decls, ctx.checker, ctx.resolver
-            )
-            for target in targets:
-                if target in ctx.callee_throws:
-                    _add_throws(
-                        ctx.callee_throws[target], ctx.throws, ctx.caught_filter
-                    )
-        elif isinstance(expr.func, TFieldAccess):
-            targets = _resolve_all_call_targets(
-                expr, ctx.fn_decls, ctx.checker, ctx.resolver
-            )
-            for target in targets:
-                if target in ctx.callee_throws:
-                    _add_throws(
-                        ctx.callee_throws[target], ctx.throws, ctx.caught_filter
-                    )
-            _collect_fn_throws_expr(expr.func.obj, ctx)
-        else:
-            all_throws: set[str] = set()
-            for t in ctx.callee_throws.values():
-                all_throws |= t
-            _add_throws(all_throws, ctx.throws, ctx.caught_filter)
-        for arg in expr.args:
-            _collect_fn_throws_expr(arg.value, ctx)
-    elif isinstance(expr, TBinaryOp):
-        _collect_fn_throws_expr(expr.left, ctx)
-        _collect_fn_throws_expr(expr.right, ctx)
-        _check_op_throws(expr.op, expr.left, ctx)
-    elif isinstance(expr, TUnaryOp):
-        _collect_fn_throws_expr(expr.operand, ctx)
-        if ctx.strict_math and expr.op == "-":
-            op_t = ctx.resolver.resolve(expr.operand)
-            if op_t is not None and type_eq(op_t, INT_T):
-                _add_throws({"ValueError"}, ctx.throws, ctx.caught_filter)
-    elif isinstance(expr, TTernary):
-        _collect_fn_throws_expr(expr.cond, ctx)
-        _collect_fn_throws_expr(expr.then_expr, ctx)
-        _collect_fn_throws_expr(expr.else_expr, ctx)
-    elif isinstance(expr, TIndex):
-        _collect_fn_throws_expr(expr.obj, ctx)
-        _collect_fn_throws_expr(expr.index, ctx)
-        obj_t = ctx.resolver.resolve(expr.obj)
-        if obj_t is not None and isinstance(obj_t, MapT):
-            _add_throws({"KeyError"}, ctx.throws, ctx.caught_filter)
-        else:
+        case TTernary():
+            _collect_fn_throws_expr(expr.cond, ctx)
+            _collect_fn_throws_expr(expr.then_expr, ctx)
+            _collect_fn_throws_expr(expr.else_expr, ctx)
+        case TIndex():
+            _collect_fn_throws_expr(expr.obj, ctx)
+            _collect_fn_throws_expr(expr.index, ctx)
+            obj_t = ctx.resolver.resolve(expr.obj)
+            if obj_t is not None and isinstance(obj_t, MapT):
+                _add_throws({"KeyError"}, ctx.throws, ctx.caught_filter)
+            else:
+                _add_throws({"IndexError"}, ctx.throws, ctx.caught_filter)
+        case TSlice():
+            _collect_fn_throws_expr(expr.obj, ctx)
+            _collect_fn_throws_expr(expr.low, ctx)
+            _collect_fn_throws_expr(expr.high, ctx)
             _add_throws({"IndexError"}, ctx.throws, ctx.caught_filter)
-    elif isinstance(expr, TSlice):
-        _collect_fn_throws_expr(expr.obj, ctx)
-        _collect_fn_throws_expr(expr.low, ctx)
-        _collect_fn_throws_expr(expr.high, ctx)
-        _add_throws({"IndexError"}, ctx.throws, ctx.caught_filter)
-    elif isinstance(expr, TFieldAccess):
-        _collect_fn_throws_expr(expr.obj, ctx)
-    elif isinstance(expr, TListLit):
-        for e in expr.elements:
-            _collect_fn_throws_expr(e, ctx)
-    elif isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            _collect_fn_throws_expr(k, ctx)
-            _collect_fn_throws_expr(v, ctx)
-    elif isinstance(expr, TSetLit):
-        for e in expr.elements:
-            _collect_fn_throws_expr(e, ctx)
-    elif isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            _collect_fn_throws_expr(e, ctx)
-    elif isinstance(expr, TFnLit):
-        _collect_fn_throws(expr.body, ctx)
+        case TFieldAccess():
+            _collect_fn_throws_expr(expr.obj, ctx)
+        case TListLit() | TSetLit() | TTupleLit():
+            for e in expr.elements:
+                _collect_fn_throws_expr(e, ctx)
+        case TMapLit():
+            for k, v in expr.entries:
+                _collect_fn_throws_expr(k, ctx)
+                _collect_fn_throws_expr(v, ctx)
+        case TFnLit():
+            _collect_fn_throws(expr.body, ctx)
 
 
 # ============================================================
@@ -754,61 +748,57 @@ def _walk_tail_stmts(stmts: list[TStmt], *, tail: bool) -> None:
 
 
 def _walk_tail_stmt(stmt: TStmt, *, tail: bool) -> None:
-    if isinstance(stmt, TReturnStmt):
-        if stmt.value is not None:
-            _walk_tail_expr(stmt.value, tail=tail)
-    elif isinstance(stmt, TExprStmt):
-        # A bare expression statement at the end of a function body
-        # (void function) — the call is in tail position
-        _walk_tail_expr(stmt.expr, tail=tail)
-    elif isinstance(stmt, TIfStmt):
-        _walk_tail_expr(stmt.cond, tail=False)
-        _walk_tail_stmts(stmt.then_body, tail=tail)
-        if stmt.else_body is not None:
-            _walk_tail_stmts(stmt.else_body, tail=tail)
-    elif isinstance(stmt, TMatchStmt):
-        _walk_tail_expr(stmt.expr, tail=False)
-        for case in stmt.cases:
-            _walk_tail_stmts(case.body, tail=tail)
-        if stmt.default is not None:
-            _walk_tail_stmts(stmt.default.body, tail=tail)
-    elif isinstance(stmt, TTryStmt):
-        # try body: NEVER in tail position
-        _walk_tail_stmts(stmt.body, tail=False)
-        if stmt.finally_body is not None:
-            # With finally: catch bodies NOT in tail position, finally IS
-            for catch in stmt.catches:
-                _walk_tail_stmts(catch.body, tail=False)
-            _walk_tail_stmts(stmt.finally_body, tail=tail)
-        else:
-            # Without finally: catch bodies inherit tail position
-            for catch in stmt.catches:
-                _walk_tail_stmts(catch.body, tail=tail)
-    elif isinstance(stmt, (TWhileStmt, TForStmt)):
-        # Loop bodies are NEVER in tail position
-        if isinstance(stmt, TWhileStmt):
+    match stmt:
+        case TReturnStmt():
+            if stmt.value is not None:
+                _walk_tail_expr(stmt.value, tail=tail)
+        case TExprStmt():
+            _walk_tail_expr(stmt.expr, tail=tail)
+        case TIfStmt():
             _walk_tail_expr(stmt.cond, tail=False)
-        elif isinstance(stmt, TForStmt):
+            _walk_tail_stmts(stmt.then_body, tail=tail)
+            if stmt.else_body is not None:
+                _walk_tail_stmts(stmt.else_body, tail=tail)
+        case TMatchStmt():
+            _walk_tail_expr(stmt.expr, tail=False)
+            for case in stmt.cases:
+                _walk_tail_stmts(case.body, tail=tail)
+            if stmt.default is not None:
+                _walk_tail_stmts(stmt.default.body, tail=tail)
+        case TTryStmt():
+            _walk_tail_stmts(stmt.body, tail=False)
+            if stmt.finally_body is not None:
+                for catch in stmt.catches:
+                    _walk_tail_stmts(catch.body, tail=False)
+                _walk_tail_stmts(stmt.finally_body, tail=tail)
+            else:
+                for catch in stmt.catches:
+                    _walk_tail_stmts(catch.body, tail=tail)
+        case TWhileStmt():
+            _walk_tail_expr(stmt.cond, tail=False)
+            _walk_tail_stmts(stmt.body, tail=False)
+        case TForStmt():
             if isinstance(stmt.iterable, TRange):
                 for a in stmt.iterable.args:
                     _walk_tail_expr(a, tail=False)
             else:
                 _walk_tail_expr(stmt.iterable, tail=False)
-        _walk_tail_stmts(stmt.body, tail=False)
-    elif isinstance(stmt, TLetStmt) and stmt.value is not None:
-        _walk_tail_expr(stmt.value, tail=False)
-    elif isinstance(stmt, TAssignStmt):
-        _walk_tail_expr(stmt.target, tail=False)
-        _walk_tail_expr(stmt.value, tail=False)
-    elif isinstance(stmt, TOpAssignStmt):
-        _walk_tail_expr(stmt.target, tail=False)
-        _walk_tail_expr(stmt.value, tail=False)
-    elif isinstance(stmt, TTupleAssignStmt):
-        for t in stmt.targets:
-            _walk_tail_expr(t, tail=False)
-        _walk_tail_expr(stmt.value, tail=False)
-    elif isinstance(stmt, TThrowStmt):
-        _walk_tail_expr(stmt.expr, tail=False)
+            _walk_tail_stmts(stmt.body, tail=False)
+        case TLetStmt():
+            if stmt.value is not None:
+                _walk_tail_expr(stmt.value, tail=False)
+        case TAssignStmt():
+            _walk_tail_expr(stmt.target, tail=False)
+            _walk_tail_expr(stmt.value, tail=False)
+        case TOpAssignStmt():
+            _walk_tail_expr(stmt.target, tail=False)
+            _walk_tail_expr(stmt.value, tail=False)
+        case TTupleAssignStmt():
+            for t in stmt.targets:
+                _walk_tail_expr(t, tail=False)
+            _walk_tail_expr(stmt.value, tail=False)
+        case TThrowStmt():
+            _walk_tail_expr(stmt.expr, tail=False)
 
 
 def _walk_tail_expr(expr: TExpr, *, tail: bool) -> None:

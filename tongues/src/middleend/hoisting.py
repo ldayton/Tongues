@@ -85,87 +85,81 @@ def _collect_rune_expr(expr: TExpr, bindings: dict[str, Type], out: set[str]) ->
         _collect_rune_expr(expr.low, bindings, out)
         _collect_rune_expr(expr.high, bindings, out)
         return
-    if isinstance(expr, TBinaryOp):
-        _collect_rune_expr(expr.left, bindings, out)
-        _collect_rune_expr(expr.right, bindings, out)
-    elif isinstance(expr, TUnaryOp):
-        _collect_rune_expr(expr.operand, bindings, out)
-    elif isinstance(expr, TTernary):
-        _collect_rune_expr(expr.cond, bindings, out)
-        _collect_rune_expr(expr.then_expr, bindings, out)
-        _collect_rune_expr(expr.else_expr, bindings, out)
-    elif isinstance(expr, TFieldAccess):
-        _collect_rune_expr(expr.obj, bindings, out)
-    elif isinstance(expr, TTupleAccess):
-        _collect_rune_expr(expr.obj, bindings, out)
-    elif isinstance(expr, TCall):
-        _collect_rune_expr(expr.func, bindings, out)
-        for a in expr.args:
-            _collect_rune_expr(a.value, bindings, out)
-    elif isinstance(expr, TListLit):
-        for e in expr.elements:
-            _collect_rune_expr(e, bindings, out)
-    elif isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            _collect_rune_expr(e, bindings, out)
-    elif isinstance(expr, TSetLit):
-        for e in expr.elements:
-            _collect_rune_expr(e, bindings, out)
-    elif isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            _collect_rune_expr(k, bindings, out)
-            _collect_rune_expr(v, bindings, out)
+    match expr:
+        case TBinaryOp():
+            _collect_rune_expr(expr.left, bindings, out)
+            _collect_rune_expr(expr.right, bindings, out)
+        case TUnaryOp():
+            _collect_rune_expr(expr.operand, bindings, out)
+        case TTernary():
+            _collect_rune_expr(expr.cond, bindings, out)
+            _collect_rune_expr(expr.then_expr, bindings, out)
+            _collect_rune_expr(expr.else_expr, bindings, out)
+        case TFieldAccess() | TTupleAccess():
+            _collect_rune_expr(expr.obj, bindings, out)
+        case TCall():
+            _collect_rune_expr(expr.func, bindings, out)
+            for a in expr.args:
+                _collect_rune_expr(a.value, bindings, out)
+        case TListLit() | TTupleLit() | TSetLit():
+            for e in expr.elements:
+                _collect_rune_expr(e, bindings, out)
+        case TMapLit():
+            for k, v in expr.entries:
+                _collect_rune_expr(k, bindings, out)
+                _collect_rune_expr(v, bindings, out)
 
 
 def _collect_rune_stmt(stmt: TStmt, bindings: dict[str, Type], out: set[str]) -> None:
     """Walk a statement for rune variable uses."""
-    if isinstance(stmt, TLetStmt):
-        if stmt.value is not None:
+    match stmt:
+        case TLetStmt():
+            if stmt.value is not None:
+                _collect_rune_expr(stmt.value, bindings, out)
+        case TAssignStmt():
             _collect_rune_expr(stmt.value, bindings, out)
-    elif isinstance(stmt, TAssignStmt):
-        _collect_rune_expr(stmt.value, bindings, out)
-        _collect_rune_expr(stmt.target, bindings, out)
-    elif isinstance(stmt, TOpAssignStmt):
-        _collect_rune_expr(stmt.value, bindings, out)
-        _collect_rune_expr(stmt.target, bindings, out)
-    elif isinstance(stmt, TTupleAssignStmt):
-        _collect_rune_expr(stmt.value, bindings, out)
-        for t in stmt.targets:
-            _collect_rune_expr(t, bindings, out)
-    elif isinstance(stmt, TExprStmt):
-        _collect_rune_expr(stmt.expr, bindings, out)
-    elif isinstance(stmt, TReturnStmt):
-        if stmt.value is not None:
+            _collect_rune_expr(stmt.target, bindings, out)
+        case TOpAssignStmt():
             _collect_rune_expr(stmt.value, bindings, out)
-    elif isinstance(stmt, TThrowStmt):
-        _collect_rune_expr(stmt.expr, bindings, out)
-    elif isinstance(stmt, TIfStmt):
-        _collect_rune_expr(stmt.cond, bindings, out)
-        _collect_rune_stmts(stmt.then_body, bindings, out)
-        if stmt.else_body is not None:
-            _collect_rune_stmts(stmt.else_body, bindings, out)
-    elif isinstance(stmt, TWhileStmt):
-        _collect_rune_expr(stmt.cond, bindings, out)
-        _collect_rune_stmts(stmt.body, bindings, out)
-    elif isinstance(stmt, TForStmt):
-        if isinstance(stmt.iterable, TRange):
-            for a in stmt.iterable.args:
-                _collect_rune_expr(a, bindings, out)
-        else:
-            _collect_rune_expr(stmt.iterable, bindings, out)
-        _collect_rune_stmts(stmt.body, bindings, out)
-    elif isinstance(stmt, TTryStmt):
-        _collect_rune_stmts(stmt.body, bindings, out)
-        for catch in stmt.catches:
-            _collect_rune_stmts(catch.body, bindings, out)
-        if stmt.finally_body is not None:
-            _collect_rune_stmts(stmt.finally_body, bindings, out)
-    elif isinstance(stmt, TMatchStmt):
-        _collect_rune_expr(stmt.expr, bindings, out)
-        for case in stmt.cases:
-            _collect_rune_stmts(case.body, bindings, out)
-        if stmt.default is not None:
-            _collect_rune_stmts(stmt.default.body, bindings, out)
+            _collect_rune_expr(stmt.target, bindings, out)
+        case TTupleAssignStmt():
+            _collect_rune_expr(stmt.value, bindings, out)
+            for t in stmt.targets:
+                _collect_rune_expr(t, bindings, out)
+        case TExprStmt():
+            _collect_rune_expr(stmt.expr, bindings, out)
+        case TReturnStmt():
+            if stmt.value is not None:
+                _collect_rune_expr(stmt.value, bindings, out)
+        case TThrowStmt():
+            _collect_rune_expr(stmt.expr, bindings, out)
+        case TIfStmt():
+            _collect_rune_expr(stmt.cond, bindings, out)
+            _collect_rune_stmts(stmt.then_body, bindings, out)
+            if stmt.else_body is not None:
+                _collect_rune_stmts(stmt.else_body, bindings, out)
+        case TWhileStmt():
+            _collect_rune_expr(stmt.cond, bindings, out)
+            _collect_rune_stmts(stmt.body, bindings, out)
+        case TForStmt():
+            if isinstance(stmt.iterable, TRange):
+                for a in stmt.iterable.args:
+                    _collect_rune_expr(a, bindings, out)
+            else:
+                _collect_rune_expr(stmt.iterable, bindings, out)
+            _collect_rune_stmts(stmt.body, bindings, out)
+        case TTryStmt():
+            _collect_rune_stmts(stmt.body, bindings, out)
+            for catch in stmt.catches:
+                _collect_rune_stmts(catch.body, bindings, out)
+            if stmt.finally_body is not None:
+                _collect_rune_stmts(stmt.finally_body, bindings, out)
+        case TMatchStmt():
+            _collect_rune_expr(stmt.expr, bindings, out)
+            for case in stmt.cases:
+                _collect_rune_stmts(case.body, bindings, out)
+            if stmt.default is not None:
+                _collect_rune_stmts(stmt.default.body, bindings, out)
 
 
 def _collect_rune_stmts(
@@ -270,43 +264,36 @@ def _collect_expr_var_names(expr: TExpr, out: set[str]) -> None:
     if isinstance(expr, TVar):
         out.add(expr.name)
         return
-    if isinstance(expr, TBinaryOp):
-        _collect_expr_var_names(expr.left, out)
-        _collect_expr_var_names(expr.right, out)
-    elif isinstance(expr, TUnaryOp):
-        _collect_expr_var_names(expr.operand, out)
-    elif isinstance(expr, TTernary):
-        _collect_expr_var_names(expr.cond, out)
-        _collect_expr_var_names(expr.then_expr, out)
-        _collect_expr_var_names(expr.else_expr, out)
-    elif isinstance(expr, TFieldAccess):
-        _collect_expr_var_names(expr.obj, out)
-    elif isinstance(expr, TTupleAccess):
-        _collect_expr_var_names(expr.obj, out)
-    elif isinstance(expr, TIndex):
-        _collect_expr_var_names(expr.obj, out)
-        _collect_expr_var_names(expr.index, out)
-    elif isinstance(expr, TSlice):
-        _collect_expr_var_names(expr.obj, out)
-        _collect_expr_var_names(expr.low, out)
-        _collect_expr_var_names(expr.high, out)
-    elif isinstance(expr, TCall):
-        _collect_expr_var_names(expr.func, out)
-        for a in expr.args:
-            _collect_expr_var_names(a.value, out)
-    elif isinstance(expr, TListLit):
-        for e in expr.elements:
-            _collect_expr_var_names(e, out)
-    elif isinstance(expr, TTupleLit):
-        for e in expr.elements:
-            _collect_expr_var_names(e, out)
-    elif isinstance(expr, TSetLit):
-        for e in expr.elements:
-            _collect_expr_var_names(e, out)
-    elif isinstance(expr, TMapLit):
-        for k, v in expr.entries:
-            _collect_expr_var_names(k, out)
-            _collect_expr_var_names(v, out)
+    match expr:
+        case TBinaryOp():
+            _collect_expr_var_names(expr.left, out)
+            _collect_expr_var_names(expr.right, out)
+        case TUnaryOp():
+            _collect_expr_var_names(expr.operand, out)
+        case TTernary():
+            _collect_expr_var_names(expr.cond, out)
+            _collect_expr_var_names(expr.then_expr, out)
+            _collect_expr_var_names(expr.else_expr, out)
+        case TFieldAccess() | TTupleAccess():
+            _collect_expr_var_names(expr.obj, out)
+        case TIndex():
+            _collect_expr_var_names(expr.obj, out)
+            _collect_expr_var_names(expr.index, out)
+        case TSlice():
+            _collect_expr_var_names(expr.obj, out)
+            _collect_expr_var_names(expr.low, out)
+            _collect_expr_var_names(expr.high, out)
+        case TCall():
+            _collect_expr_var_names(expr.func, out)
+            for a in expr.args:
+                _collect_expr_var_names(a.value, out)
+        case TListLit() | TTupleLit() | TSetLit():
+            for e in expr.elements:
+                _collect_expr_var_names(e, out)
+        case TMapLit():
+            for k, v in expr.entries:
+                _collect_expr_var_names(k, out)
+                _collect_expr_var_names(v, out)
 
 
 def _collect_target_read_names(target: TExpr, out: set[str]) -> None:
@@ -330,53 +317,54 @@ def _collect_stmts_var_names(stmts: list[TStmt], out: set[str]) -> None:
 
 def _collect_stmt_var_names(stmt: TStmt, out: set[str]) -> None:
     """Collect variable names in read positions within a statement."""
-    if isinstance(stmt, TLetStmt):
-        if stmt.value is not None:
+    match stmt:
+        case TLetStmt():
+            if stmt.value is not None:
+                _collect_expr_var_names(stmt.value, out)
+        case TAssignStmt():
             _collect_expr_var_names(stmt.value, out)
-    elif isinstance(stmt, TAssignStmt):
-        _collect_expr_var_names(stmt.value, out)
-        _collect_target_read_names(stmt.target, out)
-    elif isinstance(stmt, TOpAssignStmt):
-        _collect_expr_var_names(stmt.value, out)
-        _collect_expr_var_names(stmt.target, out)
-    elif isinstance(stmt, TTupleAssignStmt):
-        _collect_expr_var_names(stmt.value, out)
-        for t in stmt.targets:
-            _collect_target_read_names(t, out)
-    elif isinstance(stmt, TExprStmt):
-        _collect_expr_var_names(stmt.expr, out)
-    elif isinstance(stmt, TReturnStmt):
-        if stmt.value is not None:
+            _collect_target_read_names(stmt.target, out)
+        case TOpAssignStmt():
             _collect_expr_var_names(stmt.value, out)
-    elif isinstance(stmt, TThrowStmt):
-        _collect_expr_var_names(stmt.expr, out)
-    elif isinstance(stmt, TIfStmt):
-        _collect_expr_var_names(stmt.cond, out)
-        _collect_stmts_var_names(stmt.then_body, out)
-        if stmt.else_body is not None:
-            _collect_stmts_var_names(stmt.else_body, out)
-    elif isinstance(stmt, TWhileStmt):
-        _collect_expr_var_names(stmt.cond, out)
-        _collect_stmts_var_names(stmt.body, out)
-    elif isinstance(stmt, TForStmt):
-        if isinstance(stmt.iterable, TRange):
-            for a in stmt.iterable.args:
-                _collect_expr_var_names(a, out)
-        else:
-            _collect_expr_var_names(stmt.iterable, out)
-        _collect_stmts_var_names(stmt.body, out)
-    elif isinstance(stmt, TTryStmt):
-        _collect_stmts_var_names(stmt.body, out)
-        for catch in stmt.catches:
-            _collect_stmts_var_names(catch.body, out)
-        if stmt.finally_body is not None:
-            _collect_stmts_var_names(stmt.finally_body, out)
-    elif isinstance(stmt, TMatchStmt):
-        _collect_expr_var_names(stmt.expr, out)
-        for case in stmt.cases:
-            _collect_stmts_var_names(case.body, out)
-        if stmt.default is not None:
-            _collect_stmts_var_names(stmt.default.body, out)
+            _collect_expr_var_names(stmt.target, out)
+        case TTupleAssignStmt():
+            _collect_expr_var_names(stmt.value, out)
+            for t in stmt.targets:
+                _collect_target_read_names(t, out)
+        case TExprStmt():
+            _collect_expr_var_names(stmt.expr, out)
+        case TReturnStmt():
+            if stmt.value is not None:
+                _collect_expr_var_names(stmt.value, out)
+        case TThrowStmt():
+            _collect_expr_var_names(stmt.expr, out)
+        case TIfStmt():
+            _collect_expr_var_names(stmt.cond, out)
+            _collect_stmts_var_names(stmt.then_body, out)
+            if stmt.else_body is not None:
+                _collect_stmts_var_names(stmt.else_body, out)
+        case TWhileStmt():
+            _collect_expr_var_names(stmt.cond, out)
+            _collect_stmts_var_names(stmt.body, out)
+        case TForStmt():
+            if isinstance(stmt.iterable, TRange):
+                for a in stmt.iterable.args:
+                    _collect_expr_var_names(a, out)
+            else:
+                _collect_expr_var_names(stmt.iterable, out)
+            _collect_stmts_var_names(stmt.body, out)
+        case TTryStmt():
+            _collect_stmts_var_names(stmt.body, out)
+            for catch in stmt.catches:
+                _collect_stmts_var_names(catch.body, out)
+            if stmt.finally_body is not None:
+                _collect_stmts_var_names(stmt.finally_body, out)
+        case TMatchStmt():
+            _collect_expr_var_names(stmt.expr, out)
+            for case in stmt.cases:
+                _collect_stmts_var_names(case.body, out)
+            if stmt.default is not None:
+                _collect_stmts_var_names(stmt.default.body, out)
 
 
 def _collect_used_vars(stmts: list[TStmt]) -> set[str]:
@@ -460,23 +448,22 @@ def _analyze_stmts(stmts: list[TStmt], declared: set[str], checker: Checker) -> 
 def _get_control_bodies(stmt: TStmt) -> list[TStmt]:
     """Gather all inner statements of a control structure into a flat list."""
     result: list[TStmt] = []
-    if isinstance(stmt, TIfStmt):
-        result.extend(stmt.then_body)
-        if stmt.else_body is not None:
-            result.extend(stmt.else_body)
-    elif isinstance(stmt, TTryStmt):
-        result.extend(stmt.body)
-        for catch in stmt.catches:
-            result.extend(catch.body)
-    elif isinstance(stmt, TWhileStmt):
-        result.extend(stmt.body)
-    elif isinstance(stmt, TForStmt):
-        result.extend(stmt.body)
-    elif isinstance(stmt, TMatchStmt):
-        for case in stmt.cases:
-            result.extend(case.body)
-        if stmt.default is not None:
-            result.extend(stmt.default.body)
+    match stmt:
+        case TIfStmt():
+            result.extend(stmt.then_body)
+            if stmt.else_body is not None:
+                result.extend(stmt.else_body)
+        case TTryStmt():
+            result.extend(stmt.body)
+            for catch in stmt.catches:
+                result.extend(catch.body)
+        case TWhileStmt() | TForStmt():
+            result.extend(stmt.body)
+        case TMatchStmt():
+            for case in stmt.cases:
+                result.extend(case.body)
+            if stmt.default is not None:
+                result.extend(stmt.default.body)
     return result
 
 
@@ -484,26 +471,27 @@ def _recurse_control_children(
     stmt: TStmt, declared: set[str], checker: Checker
 ) -> None:
     """Recurse into the bodies of a control structure."""
-    if isinstance(stmt, TIfStmt):
-        _analyze_stmts(stmt.then_body, set(declared), checker)
-        if stmt.else_body is not None:
-            _analyze_stmts(stmt.else_body, set(declared), checker)
-    elif isinstance(stmt, TTryStmt):
-        _analyze_stmts(stmt.body, set(declared), checker)
-        for catch in stmt.catches:
-            _analyze_stmts(catch.body, set(declared), checker)
-    elif isinstance(stmt, TWhileStmt):
-        _analyze_stmts(stmt.body, set(declared), checker)
-    elif isinstance(stmt, TForStmt):
-        child_declared = set(declared)
-        for b in stmt.binding:
-            child_declared.add(b)
-        _analyze_stmts(stmt.body, child_declared, checker)
-    elif isinstance(stmt, TMatchStmt):
-        for case in stmt.cases:
-            _analyze_stmts(case.body, set(declared), checker)
-        if stmt.default is not None:
-            _analyze_stmts(stmt.default.body, set(declared), checker)
+    match stmt:
+        case TIfStmt():
+            _analyze_stmts(stmt.then_body, set(declared), checker)
+            if stmt.else_body is not None:
+                _analyze_stmts(stmt.else_body, set(declared), checker)
+        case TTryStmt():
+            _analyze_stmts(stmt.body, set(declared), checker)
+            for catch in stmt.catches:
+                _analyze_stmts(catch.body, set(declared), checker)
+        case TWhileStmt():
+            _analyze_stmts(stmt.body, set(declared), checker)
+        case TForStmt():
+            child_declared = set(declared)
+            for b in stmt.binding:
+                child_declared.add(b)
+            _analyze_stmts(stmt.body, child_declared, checker)
+        case TMatchStmt():
+            for case in stmt.cases:
+                _analyze_stmts(case.body, set(declared), checker)
+            if stmt.default is not None:
+                _analyze_stmts(stmt.default.body, set(declared), checker)
 
 
 # ============================================================
