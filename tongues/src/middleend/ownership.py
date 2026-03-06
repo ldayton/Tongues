@@ -5,13 +5,16 @@ for each binding, writing annotations onto AST nodes.
 """
 
 from __future__ import annotations
+from typing import assert_never
 
 from dataclasses import dataclass
 
 from ..taytsh.ast import (
     TAssignStmt,
     TBinaryOp,
+    TBreakStmt,
     TCall,
+    TContinueStmt,
     TExpr,
     TExprStmt,
     TFieldAccess,
@@ -304,6 +307,10 @@ def _walk_stmt(stmt: TStmt, ctx: _OwnershipCtx) -> None:
             _walk_try_stmt(stmt, ctx)
         case TMatchStmt():
             _walk_match_stmt(stmt, ctx)
+        case TBreakStmt() | TContinueStmt():
+            pass
+        case _:
+            assert_never(stmt)
 
 
 # ============================================================

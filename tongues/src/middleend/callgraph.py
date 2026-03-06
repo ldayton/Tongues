@@ -5,13 +5,16 @@ and tail call identification for every function and method in the module.
 """
 
 from __future__ import annotations
+from typing import assert_never
 
 from dataclasses import dataclass
 
 from ..taytsh.ast import (
     TAssignStmt,
     TBinaryOp,
+    TBreakStmt,
     TCall,
+    TContinueStmt,
     TExpr,
     TExprStmt,
     TFieldAccess,
@@ -276,6 +279,10 @@ def _collect_edges_stmt(stmt: TStmt, ctx: _EdgeCtx) -> None:
                 _collect_edges(catch.body, ctx)
             if stmt.finally_body is not None:
                 _collect_edges(stmt.finally_body, ctx)
+        case TBreakStmt() | TContinueStmt():
+            pass
+        case _:
+            assert_never(stmt)
 
 
 def _collect_edges_expr(expr: TExpr, ctx: _EdgeCtx) -> None:
@@ -589,6 +596,10 @@ def _collect_fn_throws_stmt(stmt: TStmt, ctx: _ThrowCtx) -> None:
                 _collect_fn_throws(stmt.default.body, ctx)
         case TTryStmt():
             _collect_fn_throws_try(stmt, ctx)
+        case TBreakStmt() | TContinueStmt():
+            pass
+        case _:
+            assert_never(stmt)
 
 
 def _collect_fn_throws_try(stmt: TTryStmt, ctx: _ThrowCtx) -> None:
@@ -800,6 +811,10 @@ def _walk_tail_stmt(stmt: TStmt, *, tail: bool) -> None:
             _walk_tail_expr(stmt.value, tail=False)
         case TThrowStmt():
             _walk_tail_expr(stmt.expr, tail=False)
+        case TBreakStmt() | TContinueStmt():
+            pass
+        case _:
+            assert_never(stmt)
 
 
 def _walk_tail_expr(expr: TExpr, *, tail: bool) -> None:

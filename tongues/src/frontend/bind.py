@@ -212,6 +212,7 @@ ALLOWED_FROM_MODULES: set[str] = {
     "dataclasses",
     "collections.abc",
     "__future__",
+    "enum",
 }
 
 # Restricted builtin keyword arguments: {func_name: {banned_kwarg_names}}
@@ -945,6 +946,9 @@ class Verifier:
             self.error(pattern, "pattern", "unsupported pattern value")
             return
         if pt == "MatchValue":
+            mv = get_node(pattern, "value")
+            if mv and get_str(mv, "_type") == "Attribute":
+                return
             self.error(pattern, "pattern", "unsupported pattern value")
             return
         if pt == "MatchOr":

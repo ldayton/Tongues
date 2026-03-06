@@ -6,6 +6,7 @@ rune variable collection (Go string indexing).
 """
 
 from __future__ import annotations
+from typing import assert_never
 
 from ..taytsh.ast import (
     TAssignStmt,
@@ -160,6 +161,10 @@ def _collect_rune_stmt(stmt: TStmt, bindings: dict[str, Type], out: set[str]) ->
                 _collect_rune_stmts(case.body, bindings, out)
             if stmt.default is not None:
                 _collect_rune_stmts(stmt.default.body, bindings, out)
+        case TBreakStmt() | TContinueStmt():
+            pass
+        case _:
+            assert_never(stmt)
 
 
 def _collect_rune_stmts(
@@ -364,6 +369,10 @@ def _collect_stmt_var_names(stmt: TStmt, out: set[str]) -> None:
                 _collect_stmts_var_names(case.body, out)
             if stmt.default is not None:
                 _collect_stmts_var_names(stmt.default.body, out)
+        case TBreakStmt() | TContinueStmt():
+            pass
+        case _:
+            assert_never(stmt)
 
 
 def _collect_used_vars(stmts: list[TStmt]) -> set[str]:
