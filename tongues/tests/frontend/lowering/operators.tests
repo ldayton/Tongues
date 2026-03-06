@@ -308,7 +308,7 @@ def f(data: bytes) -> int:
         return b ^ 0xFF
     return 0
 ---
-ByteToInt(b) ^ 255
+let b: int = ByteToInt(_raw_b)
 ---
 
 === byte shift widens via ByteToInt
@@ -317,7 +317,7 @@ def f(data: bytes) -> int:
         return b << 4
     return 0
 ---
-ByteToInt(b) << 4
+let b: int = ByteToInt(_raw_b)
 ---
 
 === field from narrowed optional used in dict containment

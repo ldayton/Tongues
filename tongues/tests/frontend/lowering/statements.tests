@@ -376,7 +376,7 @@ def f(data: bytes) -> int:
         total += b
     return total
 ---
-ByteToInt(b)
+let b: int = ByteToInt(_raw_b)
 ---
 
 === for over bytes with enumerate widens to int
@@ -386,7 +386,7 @@ def f(data: bytes) -> int:
             return i
     return -1
 ---
-ByteToInt(b)
+let b: int = ByteToInt(_raw_b)
 ---
 
 === hoisted bytes variable in for loop gets correct zero value

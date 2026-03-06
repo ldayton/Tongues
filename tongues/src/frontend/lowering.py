@@ -5346,7 +5346,20 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         if _is_type_dict(iter_type, ["string"]):
             elem_type = PrimitiveType("rune")
         elif _is_type_dict(iter_type, ["bytes"]):
-            elem_type = PrimitiveType("byte")
+            raw_name = "_raw_" + binding[0]
+            env.var_types[raw_name] = PrimitiveType("byte")
+            env.var_types[binding[0]] = INT_TYPE
+            body_stmts = _lower_stmts(body, env, ctx)
+            convert = TLetStmt(
+                pos,
+                binding[0],
+                TPrimitive(pos, "int"),
+                _make_call(pos, "ByteToInt", [TVar(pos, raw_name, {})]),
+                b_ann,
+            )
+            body_stmts.insert(0, convert)
+            pre_stmts.append(TForStmt(pos, [raw_name], iter_expr, body_stmts, {}))
+            return pre_stmts
         elif isinstance(iter_type, SliceType):
             elem_type = iter_type.element
         elif isinstance(iter_type, SetType):
@@ -5512,7 +5525,19 @@ def _lower_for_enumerate(
         if _is_type_dict(inner_type, ["string"]):
             elem_type = PrimitiveType("rune")
         elif _is_type_dict(inner_type, ["bytes"]):
-            elem_type = PrimitiveType("byte")
+            raw_name = "_raw_" + binding[1]
+            env.var_types[raw_name] = PrimitiveType("byte")
+            env.var_types[binding[1]] = INT_TYPE
+            body_stmts = _lower_stmts(body, env, ctx)
+            convert = TLetStmt(
+                pos,
+                binding[1],
+                TPrimitive(pos, "int"),
+                _make_call(pos, "ByteToInt", [TVar(pos, raw_name, {})]),
+                b_ann,
+            )
+            body_stmts.insert(0, convert)
+            return [TForStmt(pos, [binding[0], raw_name], iter_expr, body_stmts, b_ann)]
         elif isinstance(inner_type, SliceType):
             elem_type = inner_type.element
         elif isinstance(inner_type, MapType):
