@@ -5085,7 +5085,10 @@ def _lower_if(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     orelse = get_nodes(node, "orelse")
     isinstance_result = _extract_isinstance_chain(node)
     if isinstance_result is not None:
-        if not _body_reassigns_var(body, isinstance_result.cases[0].var_name):
+        var_name = isinstance_result.cases[0].var_name
+        if not any(
+            _body_reassigns_var(c.body, var_name) for c in isinstance_result.cases
+        ):
             return _lower_isinstance_chain(
                 pos, isinstance_result.cases, isinstance_result.else_body, env, ctx
             )
