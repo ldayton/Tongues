@@ -106,7 +106,11 @@ class Color(StrEnum):
 def f() -> Color:
     return Color.RED
 ---
-enum Color { RED GREEN BLUE }
+enum Color {
+    RED
+    GREEN
+    BLUE
+}
 ---
 
 === IntEnum lowers to enum
@@ -118,7 +122,11 @@ class Priority(IntEnum):
 def f() -> Priority:
     return Priority.LOW
 ---
-enum Priority { LOW MEDIUM HIGH }
+enum Priority {
+    LOW
+    MEDIUM
+    HIGH
+}
 ---
 
 === entry point

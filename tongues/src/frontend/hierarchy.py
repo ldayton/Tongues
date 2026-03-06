@@ -250,20 +250,37 @@ def build_hierarchy(
     src_files: dict[str, str] = (
         class_source_files if class_source_files is not None else {}
     )
+    _ENUM_BASES: set[str] = {"StrEnum", "IntEnum"}
     result = HierarchyResult()
     # Validate base classes exist
     for name in class_bases:
         bases = class_bases[name]
         sf = src_files.get(name, "")
         for base in bases:
-            if base != "Exception" and base not in known_classes:
+            if (
+                base != "Exception"
+                and base not in _ENUM_BASES
+                and base not in known_classes
+            ):
                 result.add_error(0, 0, "'" + base + "' is not defined", sf)
                 return result
     # Detect cycles
-    if _detect_cycles(class_bases, result._errors, src_files):
+    enum_classes: set[str] = set()
+    for name in class_bases:
+        for base in class_bases[name]:
+            if base in _ENUM_BASES:
+                enum_classes.add(name)
+    non_enum_bases: dict[str, list[str]] = {}
+    for name in class_bases:
+        if name not in enum_classes:
+            non_enum_bases[name] = class_bases[name]
+    if _detect_cycles(non_enum_bases, result._errors, src_files):
         return result
     # Build ancestor lists (direct bases only)
     for name in class_bases:
+        if name in enum_classes:
+            result.ancestors[name] = []
+            continue
         bases = class_bases.get(name, [])
         ancestors: list[str] = []
         for base in bases:

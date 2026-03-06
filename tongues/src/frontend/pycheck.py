@@ -35,6 +35,7 @@ from .flowgraph import (
     lookup_alias,
 )
 from .typecollect import (
+    ClassInfo,
     FuncInfo,
     TypeCollectResult,
     annotation_to_str,
@@ -365,6 +366,17 @@ def _struct_name(t: TypeNode) -> str:
     return ""
 
 
+def _is_enum_type(t: TypeNode, ctx: _InferCtx) -> bool:
+    """Check if a type is an enum type."""
+    name = _struct_name(t)
+    if not name:
+        return False
+    cls = ctx.tc_result.classes.get(name)
+    if cls is not None and cls.is_enum:
+        return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Type environment
 # ---------------------------------------------------------------------------
@@ -539,12 +551,35 @@ def _synth_expr_inner(
         return _synth_unaryop(node, env, ctx)
     if t == "Compare":
         left = get_node(node, "left")
+        lt: TypeNode = ANY_TYPE
         if left:
-            _synth_expr(left, env, ctx)
+            lt = _synth_expr(left, env, ctx)
         comparators = get_nodes(node, "comparators")
-        for comparator in comparators:
+        ops = get_nodes(node, "ops")
+        for ci in range(len(comparators)):
+            comparator = comparators[ci]
             if isinstance(comparator, dict):
-                _synth_expr(comparator, env, ctx)
+                rt = _synth_expr(comparator, env, ctx)
+                lt_enum = _is_enum_type(lt, ctx)
+                rt_enum = _is_enum_type(rt, ctx)
+                if lt_enum or rt_enum:
+                    op_type = ""
+                    if ci < len(ops):
+                        op_type = get_str(ops[ci], "_type")
+                    if op_type in ("Lt", "LtE", "Gt", "GtE"):
+                        lineno = get_int(node, "lineno")
+                        ctx.result.add_error(lineno, 0, "ordering not defined for enum")
+                        return BOOL_TYPE
+                    if lt_enum and rt_enum:
+                        ln = _struct_name(lt)
+                        rn = _struct_name(rt)
+                        if ln and rn and ln != rn:
+                            lineno = get_int(node, "lineno")
+                            ctx.result.add_error(
+                                lineno, 0, "enum comparison must be same type"
+                            )
+                            return BOOL_TYPE
+                lt = rt
         return BOOL_TYPE
     if t == "BoolOp":
         return _synth_boolop(node, env, ctx)
@@ -946,6 +981,11 @@ def _resolve_struct_attr(
     """Resolve attribute on a struct type."""
     cls = ctx.tc_result.classes.get(sname)
     if cls is not None:
+        if cls.is_enum:
+            if attr in cls.enum_variants:
+                return StructRef(sname)
+            ctx.result.add_error(0, 0, "'" + attr + "' is not a variant of " + sname)
+            return ANY_TYPE
         fld = cls.fields.get(attr)
         if fld is not None:
             return fld.typ
@@ -1429,6 +1469,11 @@ def _synth_binop(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     if rt == ANY_TYPE and lt != ANY_TYPE:
         rt = lt
     op_type = get_str(op, "_type")
+    # Enum rejection
+    if _is_enum_type(lt, ctx) or _is_enum_type(rt, ctx):
+        b_lineno = get_int(node, "lineno")
+        ctx.result.add_error(b_lineno, 0, "arithmetic not defined for enum")
+        return ANY_TYPE
     # String concatenation
     if _prim_kind(lt) == "string" and _prim_kind(rt) == "string":
         return STR_TYPE
@@ -3038,6 +3083,15 @@ def _validate_try(
     _validate_stmts(finalbody, env, func_info, ctx)
 
 
+def _extract_enum_variant(pattern: ASTNode, matched: set[str]) -> None:
+    """Extract enum variant name from a MatchValue pattern."""
+    v = get_node(pattern, "value")
+    if v and _is_type(v, ["Attribute"]):
+        variant = get_str(v, "attr")
+        if variant:
+            matched.add(variant)
+
+
 def _validate_match(
     stmt: ASTNode, env: TypeEnv, func_info: FuncInfo, ctx: _InferCtx
 ) -> None:
@@ -3067,6 +3121,16 @@ def _validate_match(
                         )
                 if children:
                     remainder_env.narrow(subj_name, UnionType(children))
+    # Track enum variant coverage for exhaustiveness
+    enum_matched_variants: set[str] = set()
+    has_wildcard = False
+    enum_cls_info: ClassInfo | None = None
+    if subj_type is not None:
+        enum_name = _struct_name(subj_type)
+        if enum_name:
+            ec = ctx.tc_result.classes.get(enum_name)
+            if ec is not None and ec.is_enum:
+                enum_cls_info = ec
     for case in cases:
         case_env = remainder_env.copy()
         matched_types: list[TypeNode] = []
@@ -3083,6 +3147,11 @@ def _validate_match(
                         )
                         case_env.narrow(subj_name, narrowed)
                         matched_types.append(narrowed)
+            elif pattern and _is_type(pattern, ["MatchValue"]):
+                _extract_enum_variant(pattern, enum_matched_variants)
+            elif pattern and _is_type(pattern, ["MatchAs"]):
+                if isinstance(pattern.get("name"), JNull):
+                    has_wildcard = True
             elif pattern and _is_type(pattern, ["MatchOr"]):
                 or_patterns = get_nodes(pattern, "patterns")
                 variants: list[TypeNode] = []
@@ -3097,6 +3166,8 @@ def _validate_match(
                                     op_name, ctx.known_classes, sig_errors2, 0, 0
                                 )
                                 variants.append(vt)
+                    elif _is_type(op, ["MatchValue"]):
+                        _extract_enum_variant(op, enum_matched_variants)
                 if variants:
                     if len(variants) == 1:
                         case_env.narrow(subj_name, variants[0])
@@ -3110,6 +3181,15 @@ def _validate_match(
                 remainder_env.narrow(subj_name, remaining)
         case_body = get_nodes(case, "body")
         _validate_stmts(case_body, case_env, func_info, ctx)
+    # Check enum exhaustiveness
+    if enum_cls_info is not None and enum_matched_variants and not has_wildcard:
+        all_variants: set[str] = set()
+        for v in enum_cls_info.enum_variants:
+            all_variants.add(v)
+        missing = all_variants - enum_matched_variants
+        if missing:
+            lineno = get_int(stmt, "lineno")
+            ctx.result.add_error(lineno, 0, "non-exhaustive enum match")
 
 
 # ---------------------------------------------------------------------------

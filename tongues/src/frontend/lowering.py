@@ -25,6 +25,7 @@ from ..taytsh.ast import (
     TContinueStmt,
     TDecl,
     TDefault,
+    TEnumDecl,
     TExpr,
     TExprStmt,
     TFieldAccess,
@@ -52,6 +53,7 @@ from ..taytsh.ast import (
     TOpAssignStmt,
     TOptionalType,
     TParam,
+    TPatternEnum,
     TPatternNil,
     TPatternType,
     TPrimitive,
@@ -765,6 +767,11 @@ class _LowerCtx:
         self.class_nodes: dict[str, ASTNode] = {}
         self.func_nodes: dict[str, ASTNode] = {}
         self.known_funcs: set[str] = known_funcs
+        self.enum_classes: set[str] = set()
+        for ec_name, ec_bases in class_bases.items():
+            for ec_base in ec_bases:
+                if ec_base == "StrEnum" or ec_base == "IntEnum":
+                    self.enum_classes.add(ec_name)
 
 
 class _Env:
@@ -1127,9 +1134,12 @@ def _lower_attribute(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     pos = _node_pos(node)
     attr = get_str(node, "attr")
     obj_node = get_node(node, "value")
-    # Class constant access: ClassName.CONST → Var("ClassName_CONST")
+    # Enum variant access: Color.RED → FieldAccess(Var("Color"), "RED")
     if _is_ast(obj_node, "Name"):
         obj_name = get_str(obj_node, "id")
+        if obj_name in ctx.enum_classes:
+            return TFieldAccess(pos, TVar(pos, obj_name, {}), attr, {})
+        # Class constant access: ClassName.CONST → Var("ClassName_CONST")
         if obj_name in ctx.known_classes and attr.isupper():
             return TVar(pos, obj_name + "_" + attr, {})
         # sys.argv → Args()
@@ -5391,11 +5401,22 @@ def _lower_match(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                 # case None → case nil
                 case_body = _lower_stmts(case_body_nodes, env, ctx)
                 nil_cases.append(TMatchCase(pos, TPatternNil(pos), case_body, {}))
+            elif isinstance(v, JDict):
+                v_node: ASTNode = v.entries
+                if get_str(v_node, "_type") == "Attribute":
+                    ev_obj = get_node(v_node, "value")
+                    if ev_obj and _is_ast(ev_obj, "Name"):
+                        ev_enum = get_str(ev_obj, "id")
+                        ev_variant = get_str(v_node, "attr")
+                        if ev_enum in ctx.enum_classes and ev_variant:
+                            case_body = _lower_stmts(case_body_nodes, env, ctx)
+                            ep = TPatternEnum(pos, ev_enum, ev_variant)
+                            type_cases.append(TMatchCase(pos, ep, case_body, {}))
         elif pt == "MatchOr":
             subs = get_nodes(pattern, "patterns")
             case_env = env.copy()
             case_body = _lower_stmts(case_body_nodes, case_env, ctx)
-            # Emit one case arm per MatchClass alternative
+            # Emit one case arm per MatchClass/MatchValue alternative
             for sub in subs:
                 if get_str(sub, "_type") == "MatchClass":
                     sub_cls = get_node(sub, "cls")
@@ -5410,6 +5431,16 @@ def _lower_match(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                         nil_cases.append(
                             TMatchCase(pos, TPatternNil(pos), case_body, {})
                         )
+                elif get_str(sub, "_type") == "MatchValue":
+                    sv = get_node(sub, "value")
+                    if sv and get_str(sv, "_type") == "Attribute":
+                        sv_obj = get_node(sv, "value")
+                        if sv_obj and _is_ast(sv_obj, "Name"):
+                            sv_enum = get_str(sv_obj, "id")
+                            sv_variant = get_str(sv, "attr")
+                            if sv_enum in ctx.enum_classes and sv_variant:
+                                ep = TPatternEnum(pos, sv_enum, sv_variant)
+                                type_cases.append(TMatchCase(pos, ep, case_body, {}))
     if default is None:
         default = TDefault(pos, None, [], {})
     cases: list[TMatchCase] = nil_cases + type_cases
@@ -6215,9 +6246,15 @@ def _build_struct(
     node: ASTNode,
     ctx: _LowerCtx,
 ) -> TDecl | None:
-    """Build a TStructDecl or TInterfaceDecl from a ClassDef node."""
+    """Build a TStructDecl, TInterfaceDecl, or TEnumDecl from a ClassDef node."""
     pos = _node_pos(node)
     name = get_str(node, "name")
+    # Check if this is an enum class
+    if name in ctx.enum_classes:
+        cls_info = ctx.tc_result.classes.get(name)
+        if cls_info is not None and cls_info.is_enum:
+            return TEnumDecl(pos, name, cls_info.enum_variants, {})
+        return None
     # Check if this is a hierarchy root → interface
     if ctx.hier_result.is_hierarchy_root(name):
         ann: Ann = {}
@@ -6317,6 +6354,8 @@ def _build_class_constants(class_node: ASTNode, ctx: _LowerCtx) -> list[TModuleI
     """Extract class-level ALL_CAPS constants from a class body."""
     result: list[TModuleItem] = []
     class_name = get_str(class_node, "name")
+    if class_name in ctx.enum_classes:
+        return result
     class_body = get_nodes(class_node, "body")
     for item in class_body:
         if _is_ast(item, "Assign"):

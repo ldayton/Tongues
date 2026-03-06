@@ -1055,6 +1055,8 @@ class ClassInfo:
         self.is_dataclass: bool = False
         self.kw_only: bool = False
         self.needs_constructor: bool = False
+        self.is_enum: bool = False
+        self.enum_variants: list[str] = []
 
     def to_dict(self) -> JsonValue:
         """Serialize to a JsonValue dict for test assertions."""
@@ -1743,6 +1745,32 @@ def _collect_class_fields(
     class_name = get_str(node, "name")
     lineno = get_int(node, "lineno")
     info = ClassInfo(class_name)
+    # Check if this is an enum class
+    bases = get_nodes(node, "bases")
+    for base in bases:
+        base_name = get_str(base, "id") if _is_type(base, ["Name"]) else ""
+        if base_name == "StrEnum" or base_name == "IntEnum":
+            info.is_enum = True
+    if info.is_enum:
+        body = get_nodes(node, "body")
+        seen_variants: set[str] = set()
+        for stmt in body:
+            if _is_type(stmt, ["Assign"]):
+                targets = get_nodes(stmt, "targets")
+                if targets:
+                    t = targets[0]
+                    if _is_type(t, ["Name"]):
+                        vname = get_str(t, "id")
+                        if vname:
+                            if vname in seen_variants:
+                                result.add_error(
+                                    lineno, 0, "duplicate variant '" + vname + "'"
+                                )
+                                return
+                            seen_variants.add(vname)
+                            info.enum_variants.append(vname)
+        result.classes[class_name] = info
+        return
     is_dc, kw_only = _is_dataclass_class(node)
     info.is_dataclass = is_dc
     info.kw_only = kw_only
