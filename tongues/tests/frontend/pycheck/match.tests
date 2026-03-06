@@ -90,7 +90,7 @@ def f(x: A | B | C) -> str:
             reveal_type(x)
     return ""
 ---
-reveal:14 = B
+reveal:16 = B
 ---
 
 === match narrows remainder across multiple cases on union
@@ -113,7 +113,7 @@ def f(x: A | B | C) -> None:
         case _:
             reveal_type(x)
 ---
-reveal:14 = C
+reveal:18 = C
 ---
 
 === match exhaustive over union narrows to never
@@ -201,7 +201,7 @@ def f(s: Stmt) -> None:
         case _:
             reveal_type(s.expr)
 ---
-reveal:13 = StrLit
+reveal:18 = StrLit
 ---
 
 === match on method result does not narrow

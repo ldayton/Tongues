@@ -3025,15 +3025,33 @@ def _validate_match(
 ) -> None:
     subject = get_node(stmt, "subject")
     subj_name = ""
+    subj_type: TypeNode | None = None
     if subject:
-        _synth_expr(subject, env, ctx)
+        subj_type = _synth_expr(subject, env, ctx)
         if _is_type(subject, ["Name"]):
             subj_name = get_str(subject, "id")
         elif _is_type(subject, ["Attribute"]):
             subj_name = _attr_path(subject)
     cases = get_nodes(stmt, "cases")
+    remainder_env = env.copy()
+    if subj_name and subj_type is not None:
+        if remainder_env.get_type(subj_name) is None:
+            remainder_env.set(subj_name, subj_type)
+        if not isinstance(subj_type, UnionType):
+            base_name = _struct_name(subj_type)
+            if base_name:
+                children: list[TypeNode] = []
+                for cls_k, bases in ctx.class_bases.items():
+                    if base_name in bases:
+                        sig_e: list[TypeCollectError] = []
+                        children.append(
+                            py_type_to_type_dict(cls_k, ctx.known_classes, sig_e, 0, 0)
+                        )
+                if children:
+                    remainder_env.narrow(subj_name, UnionType(children))
     for case in cases:
-        case_env = env.copy()
+        case_env = remainder_env.copy()
+        matched_types: list[TypeNode] = []
         if subj_name:
             pattern = get_node(case, "pattern")
             if pattern and _is_type(pattern, ["MatchClass"]):
@@ -3046,6 +3064,7 @@ def _validate_match(
                             cls_name, ctx.known_classes, sig_errors, 0, 0
                         )
                         case_env.narrow(subj_name, narrowed)
+                        matched_types.append(narrowed)
             elif pattern and _is_type(pattern, ["MatchOr"]):
                 or_patterns = get_nodes(pattern, "patterns")
                 variants: list[TypeNode] = []
@@ -3065,6 +3084,12 @@ def _validate_match(
                         case_env.narrow(subj_name, variants[0])
                     else:
                         case_env.narrow(subj_name, UnionType(variants))
+                    matched_types.extend(variants)
+        if matched_types:
+            rem_type = remainder_env.get_type(subj_name)
+            if rem_type is not None:
+                remaining = remove_from_union(rem_type, matched_types)
+                remainder_env.narrow(subj_name, remaining)
         case_body = get_nodes(case, "body")
         _validate_stmts(case_body, case_env, func_info, ctx)
 
