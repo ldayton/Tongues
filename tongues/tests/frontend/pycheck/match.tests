@@ -71,6 +71,139 @@ def f(s: Stmt) -> int:
 ok
 ---
 
+=== match narrows remainder after case on union
+from dataclasses import dataclass
+@dataclass
+class A:
+    a_val: int
+@dataclass
+class B:
+    b_val: str
+@dataclass
+class C:
+    c_val: float
+def f(x: A | B | C) -> str:
+    match x:
+        case A():
+            return "a"
+        case B():
+            reveal_type(x)
+    return ""
+---
+reveal:14 = B
+---
+
+=== match narrows remainder across multiple cases on union
+from dataclasses import dataclass
+@dataclass
+class A:
+    a_val: int
+@dataclass
+class B:
+    b_val: str
+@dataclass
+class C:
+    c_val: float
+def f(x: A | B | C) -> None:
+    match x:
+        case A():
+            pass
+        case B():
+            pass
+        case _:
+            reveal_type(x)
+---
+reveal:14 = C
+---
+
+=== match exhaustive over union narrows to never
+from typing import assert_never
+from dataclasses import dataclass
+@dataclass
+class A:
+    a_val: int
+@dataclass
+class B:
+    b_val: str
+def f(x: A | B) -> int:
+    match x:
+        case A():
+            return x.a_val
+        case B():
+            return len(x.b_val)
+        case _:
+            assert_never(x)
+---
+ok
+---
+
+=== match exhaustive over base class subclasses narrows to never
+from typing import assert_never
+class Node:
+    pass
+class Add(Node):
+    def __init__(self) -> None:
+        self.result: int = 0
+class Sub(Node):
+    def __init__(self) -> None:
+        self.result: int = 0
+def f(n: Node) -> int:
+    match n:
+        case Add():
+            return n.result
+        case Sub():
+            return n.result
+        case _:
+            assert_never(n)
+---
+ok
+---
+
+=== match non-exhaustive over union errors on assert_never
+from typing import assert_never
+from dataclasses import dataclass
+@dataclass
+class A:
+    a_val: int
+@dataclass
+class B:
+    b_val: str
+@dataclass
+class C:
+    c_val: float
+def f(x: A | B | C) -> int:
+    match x:
+        case A():
+            return x.a_val
+        case _:
+            assert_never(x)
+---
+error: argument 1 has type B | C, expected never
+---
+
+=== match narrows remainder on field access
+from dataclasses import dataclass
+class Expr:
+    pass
+@dataclass
+class IntLit(Expr):
+    value: int
+@dataclass
+class StrLit(Expr):
+    text: str
+@dataclass
+class Stmt:
+    expr: Expr
+def f(s: Stmt) -> None:
+    match s.expr:
+        case IntLit():
+            pass
+        case _:
+            reveal_type(s.expr)
+---
+reveal:13 = StrLit
+---
+
 === match on method result does not narrow
 from dataclasses import dataclass
 class Animal:

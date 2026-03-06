@@ -6189,6 +6189,81 @@ def f(x: int) -> None:
 error: argument 1 has type int, expected never
 ---
 
+=== assert_never succeeds after exhaustive match on union
+from typing import assert_never
+from dataclasses import dataclass
+@dataclass
+class A:
+    a_val: int
+@dataclass
+class B:
+    b_val: str
+@dataclass
+class C:
+    c_val: float
+def f(x: A | B | C) -> int:
+    match x:
+        case A():
+            return x.a_val
+        case B():
+            return len(x.b_val)
+        case C():
+            return int(x.c_val)
+        case _:
+            assert_never(x)
+---
+ok
+---
+
+=== assert_never succeeds after exhaustive match on base class
+from typing import assert_never
+class Stmt:
+    pass
+class LetStmt(Stmt):
+    def __init__(self) -> None:
+        self.name: str = ""
+class ReturnStmt(Stmt):
+    def __init__(self) -> None:
+        self.value: int = 0
+class ExprStmt(Stmt):
+    def __init__(self) -> None:
+        self.expr: str = ""
+def f(s: Stmt) -> str:
+    match s:
+        case LetStmt():
+            return s.name
+        case ReturnStmt():
+            return str(s.value)
+        case ExprStmt():
+            return s.expr
+        case _:
+            assert_never(s)
+---
+ok
+---
+
+=== assert_never errors after non-exhaustive match on union
+from typing import assert_never
+from dataclasses import dataclass
+@dataclass
+class A:
+    val: int
+@dataclass
+class B:
+    val: str
+@dataclass
+class C:
+    val: float
+def f(x: A | B | C) -> None:
+    match x:
+        case A():
+            pass
+        case _:
+            assert_never(x)
+---
+error: argument 1 has type B | C, expected never
+---
+
 === TypeGuard narrows in if branch
 from typing import TypeGuard
 class Animal:
