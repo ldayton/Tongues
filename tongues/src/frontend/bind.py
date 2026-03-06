@@ -342,6 +342,7 @@ class Verifier:
         self.in_file_open: bool = False  # Inside validated with-open block
         self.in_type_compare: bool = False  # type(x) is/== T comparison
         self.in_key_kwarg: bool = False  # Inside key= argument of min/max/sorted
+        self.in_call_arg: bool = False  # Inside a call argument position
         # Variables guarded by `if var:` condition (for tuple unpacking)
         self.guarded_vars: set[str] = set()
 
@@ -546,7 +547,7 @@ class Verifier:
             category = "control"
             message = "with statement: use try/finally instead"
         elif node_type == "Lambda":
-            if self.in_key_kwarg:
+            if self.in_key_kwarg or self.in_call_arg:
                 body = get_node(node, "body")
                 if body:
                     self.visit(body)
@@ -826,10 +827,13 @@ class Verifier:
         self.visit(func)
         # Set eager consumer context when visiting args
         old_in_eager = self.in_eager_consumer
+        old_in_call_arg = self.in_call_arg
         if is_eager:
             self.in_eager_consumer = True
+        self.in_call_arg = True
         for arg in args:
             self.visit(arg)
+        self.in_call_arg = old_in_call_arg
         self.in_eager_consumer = old_in_eager
         for kw in keywords:
             if _has_present(kw, "value"):
