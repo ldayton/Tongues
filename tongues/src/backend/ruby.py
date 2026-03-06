@@ -1074,20 +1074,20 @@ class _RubyEmitter(Emitter):
     ) -> int:
         """Try to emit .any?/.all?. Returns number of statements to skip, or 0."""
         aa = self._try_any_all(let_stmt, for_stmt, prov)
-        if aa is None:
-            return 0
-        skip = 2
-        folded = self._fold_temp_assign(stmts, i, let_stmt.name, aa)
-        if folded is not None:
-            aa = folded
-            skip = 3
-        self._line(aa)
-        return skip
+        if aa:
+            lhs, rhs = aa
+            folded = self._fold_temp_assign(stmts, i, let_stmt.name, rhs)
+            if folded is not None:
+                self._line(folded)
+                return 3
+            self._line(lhs + " = " + rhs)
+            return 2
+        return 0
 
     def _try_any_all(
         self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
-    ) -> str | None:
-        """Try to reconstruct .any?/.all? from a let + for pair."""
+    ) -> tuple[str, str] | None:
+        """Try to reconstruct .any?/.all? from a let + for pair. Returns (lhs, rhs)."""
         acc = self._decl_name(let_stmt.name, let_stmt.annotations)
         binding = for_stmt.binding
         binders = ", ".join(self._decl_name(b, for_stmt.annotations) for b in binding)
@@ -1122,15 +1122,8 @@ class _RubyEmitter(Emitter):
             )
             cond_s = self._expr(cond)
             return (
-                acc
-                + " = "
-                + iterable
-                + method
-                + " { |"
-                + binders
-                + "| "
-                + cond_s
-                + " }"
+                acc,
+                iterable + method + " { |" + binders + "| " + cond_s + " }",
             )
         if len(outer_if.then_body) == 1:
             inner_if = outer_if.then_body[0]
@@ -1148,9 +1141,8 @@ class _RubyEmitter(Emitter):
                 )
                 cond_s = self._expr(cond)
                 return (
-                    acc
-                    + " = "
-                    + iterable
+                    acc,
+                    iterable
                     + method
                     + " { |"
                     + binders
@@ -1158,7 +1150,7 @@ class _RubyEmitter(Emitter):
                     + filter_s
                     + " && "
                     + cond_s
-                    + " }"
+                    + " }",
                 )
         return None
 
@@ -1169,7 +1161,7 @@ class _RubyEmitter(Emitter):
         return expr
 
     def _fold_temp_assign(
-        self, stmts: list[TStmt], i: int, temp_name: str, comp: str
+        self, stmts: list[TStmt], i: int, temp_name: str, rhs: str
     ) -> str | None:
         """If stmts[i+2] is `real_name = temp_name`, fold into `real_name = rhs`."""
         if i + 2 >= len(stmts):
@@ -1178,12 +1170,10 @@ class _RubyEmitter(Emitter):
         if isinstance(third, TLetStmt) and isinstance(third.value, TVar):
             if third.value.name == temp_name:
                 real = self._decl_name(third.name, third.annotations)
-                rhs = comp.split(" = ", 1)[1]
                 return real + " = " + rhs
         if isinstance(third, TAssignStmt) and isinstance(third.value, TVar):
             if third.value.name == temp_name and isinstance(third.target, TVar):
                 real = self._decl_name(third.target.name, third.target.annotations)
-                rhs = comp.split(" = ", 1)[1]
                 return real + " = " + rhs
         return None
 

@@ -394,12 +394,26 @@ def _has_any_all_provenance(stmts: list[TStmt]) -> bool:
 
 
 def _struct_needs_list_util(decl: TStructDecl) -> bool:
-    """Check if any method in a struct uses Min/Max/Sum/any/all."""
+    """Check if any method in a struct uses Min/Max/Sum builtins."""
     for method in decl.methods:
         names = collect_builtin_calls(method.body)
         if not names.isdisjoint(_LIST_UTIL_BUILTINS):
             return True
+    return False
+
+
+def _struct_needs_any_all(decl: TStructDecl) -> bool:
+    """Check if any method in a struct uses any_call/all_call provenance."""
+    for method in decl.methods:
         if _has_any_all_provenance(method.body):
+            return True
+    return False
+
+
+def _module_needs_any_all(module: TModule) -> bool:
+    """Check if any top-level function uses any_call/all_call provenance."""
+    for decl in module.decls:
+        if isinstance(decl, TFnDecl) and _has_any_all_provenance(decl.body):
             return True
     return False
 
@@ -608,7 +622,10 @@ class _PerlEmitter(Emitter):
         self._line("use utf8;")
         self._line("no warnings 'uninitialized', 'numeric';")
         self._line("use POSIX qw(floor ceil);")
-        self._line("use List::Util qw(min max sum any all);")
+        lu = "min max sum"
+        if _module_needs_any_all(module):
+            lu += " any all"
+        self._line("use List::Util qw(" + lu + ");")
         self._line("use Scalar::Util qw(looks_like_number);")
         self._line("use Encode qw(encode decode);")
         self._line("binmode(STDOUT, ':utf8');")
@@ -673,8 +690,13 @@ class _PerlEmitter(Emitter):
                 case TStructDecl():
                     if current_package != decl.name:
                         self._line("package " + decl.name + ";")
-                        if _struct_needs_list_util(decl):
-                            self._line("use List::Util qw(min max sum any all);")
+                        needs_bu = _struct_needs_list_util(decl)
+                        needs_aa = _struct_needs_any_all(decl)
+                        if needs_bu or needs_aa:
+                            slu = "min max sum"
+                            if needs_aa:
+                                slu += " any all"
+                            self._line("use List::Util qw(" + slu + ");")
                         current_package = decl.name
                         self._line()
                     self._emit_struct(decl)
@@ -1027,21 +1049,22 @@ class _PerlEmitter(Emitter):
     ) -> int:
         """Try to emit any/all. Returns number of statements to skip, or 0."""
         aa = self._try_any_all(let_stmt, for_stmt, prov)
-        if aa is None:
-            return 0
-        self.var_types[let_stmt.name] = let_stmt.typ
-        skip = 2
-        folded = self._fold_temp_assign(stmts, i, let_stmt.name, aa)
-        if folded is not None:
-            aa = folded
-            skip = 3
-        self._line(aa)
-        return skip
+        if aa:
+            lhs, rhs = aa
+            self.var_types[let_stmt.name] = let_stmt.typ
+            folded = self._fold_temp_assign(stmts, i, let_stmt.name, rhs)
+            if folded is not None:
+                self._line(folded)
+                return 3
+            self._line("my " + lhs + " = " + rhs + ";")
+            return 2
+        return 0
 
     def _try_any_all(
         self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
-    ) -> str | None:
-        """Try to reconstruct any/all from a let + for pair."""
+    ) -> tuple[str, str] | None:
+        """Try to reconstruct any/all from a let + for pair. Returns (lhs, rhs)."""
+        # Perl's $_ can't destructure tuples, so bail on multi-binding
         if len(for_stmt.binding) > 1:
             return None
         acc = "$" + _restore_name(let_stmt.name, let_stmt.annotations)
@@ -1071,9 +1094,7 @@ class _PerlEmitter(Emitter):
             cond_s = self._expr(cond)
             if binding_name is not None:
                 self.var_alias.pop(binding_name)
-            return (
-                "my " + acc + " = " + func + " { " + cond_s + " } " + iter_spread + ";"
-            )
+            return (acc, func + " { " + cond_s + " } " + iter_spread)
         if len(outer_if.then_body) == 1:
             inner_if = outer_if.then_body[0]
             if (
@@ -1094,17 +1115,8 @@ class _PerlEmitter(Emitter):
                 if binding_name is not None:
                     self.var_alias.pop(binding_name)
                 return (
-                    "my "
-                    + acc
-                    + " = "
-                    + func
-                    + " { "
-                    + filter_s
-                    + " && "
-                    + cond_s
-                    + " } "
-                    + iter_spread
-                    + ";"
+                    acc,
+                    func + " { " + filter_s + " && " + cond_s + " } " + iter_spread,
                 )
         return None
 
@@ -1115,7 +1127,7 @@ class _PerlEmitter(Emitter):
         return expr
 
     def _fold_temp_assign(
-        self, stmts: list[TStmt], i: int, temp_name: str, comp: str
+        self, stmts: list[TStmt], i: int, temp_name: str, rhs: str
     ) -> str | None:
         """If stmts[i+2] is `real_name = temp_name`, fold into `real_name = rhs`."""
         if i + 2 >= len(stmts):
@@ -1124,13 +1136,11 @@ class _PerlEmitter(Emitter):
         if isinstance(third, TLetStmt) and isinstance(third.value, TVar):
             if third.value.name == temp_name:
                 real = "$" + _restore_name(third.name, third.annotations)
-                rhs = comp.split(" = ", 1)[1]
-                return "my " + real + " = " + rhs
+                return "my " + real + " = " + rhs + ";"
         if isinstance(third, TAssignStmt) and isinstance(third.value, TVar):
             if third.value.name == temp_name and isinstance(third.target, TVar):
                 real = "$" + _restore_name(third.target.name, third.target.annotations)
-                rhs = comp.split(" = ", 1)[1]
-                return real + " = " + rhs
+                return real + " = " + rhs + ";"
         return None
 
     def _emit_stmt(self, stmt: TStmt) -> None:

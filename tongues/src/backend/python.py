@@ -761,20 +761,20 @@ class _PythonEmitter(Emitter):
     ) -> int:
         """Try to emit any()/all(). Returns number of statements to skip, or 0."""
         aa = self._try_any_all(let_stmt, for_stmt, prov)
-        if aa is None:
-            return 0
-        skip = 2
-        folded = self._fold_temp_assign(stmts, i, let_stmt.name, aa)
-        if folded is not None:
-            aa = folded
-            skip = 3
-        self._line(aa)
-        return skip
+        if aa:
+            lhs, rhs = aa
+            folded = self._fold_temp_assign(stmts, i, let_stmt.name, rhs)
+            if folded is not None:
+                self._line(folded)
+                return 3
+            self._line(lhs + " = " + rhs)
+            return 2
+        return 0
 
     def _try_any_all(
         self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
-    ) -> str | None:
-        """Try to reconstruct any()/all() from a let + for pair."""
+    ) -> tuple[str, str] | None:
+        """Try to reconstruct any()/all() from a let + for pair. Returns (lhs, rhs)."""
         acc = _restore_name(let_stmt.name, let_stmt.annotations)
         binding = for_stmt.binding
         binder_parts: list[str] = []
@@ -809,16 +809,8 @@ class _PythonEmitter(Emitter):
             )
             cond_s = self._expr(cond)
             return (
-                acc
-                + " = "
-                + func
-                + "("
-                + cond_s
-                + " for "
-                + binders
-                + " in "
-                + iterable
-                + ")"
+                acc,
+                func + "(" + cond_s + " for " + binders + " in " + iterable + ")",
             )
         # With filter: if filter { if cond { assign; break } }
         if len(outer_if.then_body) == 1:
@@ -837,9 +829,8 @@ class _PythonEmitter(Emitter):
                 )
                 cond_s = self._expr(cond)
                 return (
-                    acc
-                    + " = "
-                    + func
+                    acc,
+                    func
                     + "("
                     + cond_s
                     + " for "
@@ -848,7 +839,7 @@ class _PythonEmitter(Emitter):
                     + iterable
                     + " if "
                     + filter_s
-                    + ")"
+                    + ")",
                 )
         return None
 
@@ -859,7 +850,7 @@ class _PythonEmitter(Emitter):
         return expr
 
     def _fold_temp_assign(
-        self, stmts: list[TStmt], i: int, temp_name: str, comp: str
+        self, stmts: list[TStmt], i: int, temp_name: str, rhs: str
     ) -> str | None:
         """If stmts[i+2] is `real_name = temp_name`, fold into `real_name = rhs`."""
         if i + 2 >= len(stmts):
@@ -868,12 +859,10 @@ class _PythonEmitter(Emitter):
         if isinstance(third, TLetStmt) and isinstance(third.value, TVar):
             if third.value.name == temp_name:
                 real = _restore_name(third.name, third.annotations)
-                rhs = comp.split(" = ", 1)[1]
                 return real + ": " + self._type(third.typ) + " = " + rhs
         if isinstance(third, TAssignStmt) and isinstance(third.value, TVar):
             if third.value.name == temp_name and isinstance(third.target, TVar):
                 real = _restore_name(third.target.name, third.target.annotations)
-                rhs = comp.split(" = ", 1)[1]
                 return real + " = " + rhs
         return None
 
