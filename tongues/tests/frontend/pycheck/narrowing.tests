@@ -6270,5 +6270,5 @@ def f(a: Animal) -> str:
     is_dog(a)
     return a.bark()
 ---
-error
+error: cannot access 'bark' on Animal
 ---

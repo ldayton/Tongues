@@ -56,6 +56,7 @@ from .types import (
     InterfaceRef,
     FuncType,
     IteratorType,
+    TypeGuardType,
     LiteralType,
     ANY_TYPE,
     INT_TYPE,
@@ -223,6 +224,9 @@ def _is_assignable(
         if isinstance(expected, InterfaceRef):
             return True
         return False
+    # TypeGuard[T] accepts bool
+    if isinstance(expected, TypeGuardType):
+        return _is_assignable(actual, BOOL_TYPE, hier)
     # LiteralType delegates to its base
     if isinstance(actual, LiteralType):
         return _is_assignable(actual.base, expected, hier)
@@ -1215,6 +1219,8 @@ def _synth_name_call(
     # User-defined function
     func_info = ctx.tc_result.functions.get(fname)
     if func_info is not None:
+        if isinstance(func_info.return_type, TypeGuardType):
+            return BOOL_TYPE
         return func_info.return_type
     # Class constructor
     if fname in ctx.known_classes:
@@ -1278,6 +1284,8 @@ def _synth_method_call(
         if methods is not None:
             method = methods.get(attr)
             if method is not None:
+                if isinstance(method.return_type, TypeGuardType):
+                    return BOOL_TYPE
                 return method.return_type
     return attr_type
 
@@ -2904,6 +2912,8 @@ def _validate_match(
         _synth_expr(subject, env, ctx)
         if _is_type(subject, ["Name"]):
             subj_name = get_str(subject, "id")
+        elif _is_type(subject, ["Attribute"]):
+            subj_name = _attr_path(subject)
     cases = get_nodes(stmt, "cases")
     for case in cases:
         case_env = env.copy()
@@ -3071,6 +3081,8 @@ def _extract_narrowing(
         if func and _is_type(func, ["Name"]) and get_str(func, "id") == "isinstance":
             _narrow_isinstance(test, then_env, else_env, ctx)
             return
+        _narrow_typeguard(test, then_env, else_env, ctx)
+        return
     if t == "Compare":
         _narrow_compare(test, then_env, else_env, ctx)
         return
@@ -3249,6 +3261,44 @@ def _narrow_isinstance(
             )
         remaining_type = remove_from_union(else_type, remove_types)
         else_env.narrow(name, remaining_type)
+
+
+def _narrow_typeguard(
+    test: ASTNode, then_env: TypeEnv, else_env: TypeEnv, ctx: _InferCtx
+) -> None:
+    """Narrow from TypeGuard predicate calls."""
+    func = get_node(test, "func")
+    if not func:
+        return
+    args = get_nodes(test, "args")
+    func_info = None
+    if _is_type(func, ["Name"]):
+        fname = get_str(func, "id")
+        if fname:
+            func_info = ctx.tc_result.functions.get(fname)
+    elif _is_type(func, ["Attribute"]):
+        obj = get_node(func, "value")
+        attr = get_str(func, "attr")
+        if obj and attr:
+            obj_type = _synth_expr(obj, then_env, ctx)
+            sname = _struct_name(obj_type)
+            if sname:
+                methods = ctx.tc_result.methods.get(sname)
+                if methods is not None:
+                    func_info = methods.get(attr)
+    if func_info is None:
+        return
+    if not isinstance(func_info.return_type, TypeGuardType):
+        return
+    if not args:
+        return
+    target = args[0]
+    name = ""
+    if _is_type(target, ["Name"]):
+        name = get_str(target, "id")
+    if not name:
+        return
+    then_env.narrow(name, func_info.return_type.inner)
 
 
 def _pascal_to_kebab(name: str) -> str:
