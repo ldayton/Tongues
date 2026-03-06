@@ -751,6 +751,7 @@ class _LowerCtx:
         known_classes: dict[str, str],
         class_bases: dict[str, list[str]],
         pycheck_result: PycheckResult,
+        known_funcs: set[str],
     ) -> None:
         self.tc_result: TypeCollectResult = tc_result
         self.hier_result: HierarchyResult = hier_result
@@ -762,6 +763,7 @@ class _LowerCtx:
         self.pycheck_result: PycheckResult = pycheck_result
         self.class_nodes: dict[str, ASTNode] = {}
         self.func_nodes: dict[str, ASTNode] = {}
+        self.known_funcs: set[str] = known_funcs
 
 
 class _Env:
@@ -2393,6 +2395,19 @@ def _lower_name_call(
                 fname
                 + "() is not supported as a standalone expression; use it in a for loop",
             )
+        )
+        return TNilLit(pos, {})
+    safe_fname = _safe_name(fname)
+    if (
+        fname not in ctx.known_funcs
+        and fname not in ctx.tc_result.functions
+        and fname not in env.declared
+        and safe_fname not in env.declared
+        and fname not in env.var_types
+        and safe_fname not in env.var_types
+    ):
+        ctx.errors.append(
+            LoweringError(pos.line, pos.col, "unknown function '" + fname + "'")
         )
         return TNilLit(pos, {})
     lowered_args: list[TArg] = []
@@ -5328,6 +5343,8 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             obj_node = get_node(func, "value")
             iter_expr = _lower_expr(obj_node, env, ctx)
             binding, b_ann = _extract_binding(target_node)
+            for b in binding:
+                env.declared.add(b)
             obj_type = _infer_expr_type(obj_node, env, ctx)
             if isinstance(obj_type, MapType) and len(binding) >= 2:
                 env.var_types[binding[0]] = obj_type.key
@@ -5348,12 +5365,16 @@ def _lower_for(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             for j in range(len(elems)):
                 items.append(TTupleAccess(pos, iter_lowered, j, {}))
             binding, b_ann = _extract_binding(target_node)
+            for b in binding:
+                env.declared.add(b)
             body_stmts = _lower_stmts(body, env, ctx)
             list_expr = TListLit(pos, items, {})
             pre_stmts.append(TForStmt(pos, binding, list_expr, body_stmts, b_ann))
             return pre_stmts
     # Regular iteration: for x in xs
     binding, b_ann = _extract_binding(target_node)
+    for b in binding:
+        env.declared.add(b)
     iter_expr = _lower_expr(iter_node, env, ctx)
     if len(binding) >= 2 and isinstance(iter_type, SliceType):
         elem = iter_type.element
@@ -6352,6 +6373,7 @@ def lower(
     known_classes: dict[str, str],
     class_bases: dict[str, list[str]],
     pycheck_result: PycheckResult,
+    known_funcs: set[str] | None = None,
 ) -> tuple[TModule | None, list[LoweringError]]:
     """Lower the Python AST to Taytsh IR.
 
@@ -6362,7 +6384,14 @@ def lower(
     akeys = list(hier_result.ancestors.keys())
     for ak in akeys:
         _LOWER_ANCESTORS[ak] = hier_result.ancestors[ak]
-    ctx = _LowerCtx(tc_result, hier_result, known_classes, class_bases, pycheck_result)
+    ctx = _LowerCtx(
+        tc_result,
+        hier_result,
+        known_classes,
+        class_bases,
+        pycheck_result,
+        known_funcs if known_funcs is not None else set(),
+    )
     module = _build_module(tree, ctx)
     while _LOWER_ANCESTORS:
         _LOWER_ANCESTORS.pop(list(_LOWER_ANCESTORS.keys())[0])
