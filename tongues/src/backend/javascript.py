@@ -473,8 +473,7 @@ class _JavaScriptEmitter(Emitter):
         error_refs = _collect_error_refs(module)
         if "Decode" in all_builtins:
             error_refs.add("ValueError")
-        referenced_errors = list(error_refs - declared_structs)
-        referenced_errors.sort()
+        referenced_errors: list[str] = sorted(list(error_refs - declared_structs))
         for ename in referenced_errors:
             self._line(
                 "class "
