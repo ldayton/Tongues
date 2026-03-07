@@ -21,5 +21,11 @@ case *VInt:
 === map literal with interface value in return
 return map[string]Node{"a": &Leaf{V: 1}}
 
+=== default string param fills zero value
+fmt.Println(Greet(""))
+
+=== optional string field deref
+return *c.Name
+
 === list literal with interface type in return
 return []Node{&Leaf{V: 1}}

@@ -11,6 +11,7 @@ from .util import (
 )
 from ..taytsh.ast import (
     Ann,
+    Pos,
     TArg,
     TAssignStmt,
     TBinaryOp,
@@ -2167,6 +2168,40 @@ class _GoEmitter(Emitter):
             return isinstance(typ, TPrimitive) and typ.kind == "bytes"
         return False
 
+    def _field_access_raw(self, expr: TFieldAccess) -> str:
+        """Emit a field access without optional primitive deref."""
+        obj_s = self._expr(expr.obj)
+        fname = expr.field[0].upper() + expr.field[1:] if expr.field else expr.field
+        return obj_s + "." + fname
+
+    def _is_optional_primitive_field(self, expr: TFieldAccess) -> bool:
+        """Check if field access returns an optional primitive (needs deref in Go)."""
+        if not isinstance(expr.obj, TVar):
+            return False
+        obj_type = self.var_types.get(expr.obj.name)
+        if isinstance(obj_type, TIdentType):
+            struct_name = obj_type.name
+        elif isinstance(obj_type, TOptionalType) and isinstance(
+            obj_type.inner, TIdentType
+        ):
+            struct_name = obj_type.inner.name
+        else:
+            return False
+        fields = self.struct_field_types.get(struct_name, [])
+        for f in fields:
+            if f.name == expr.field and isinstance(f.typ, TOptionalType):
+                inner = f.typ.inner
+                if isinstance(inner, TPrimitive) and inner.kind in (
+                    "string",
+                    "int",
+                    "float",
+                    "bool",
+                    "byte",
+                    "rune",
+                ):
+                    return True
+        return False
+
     def _is_string_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
         if ann == "string":
@@ -2947,7 +2982,10 @@ class _GoEmitter(Emitter):
                 return obj_s + ".Get" + fname + "()"
             obj_s = self._expr(expr.obj)
             fname = expr.field[0].upper() + expr.field[1:] if expr.field else expr.field
-            return obj_s + "." + fname
+            result = obj_s + "." + fname
+            if self._is_optional_primitive_field(expr):
+                return "*" + result
+            return result
         if isinstance(expr, TTupleAccess):
             return self._expr(expr.obj) + "[" + str(expr.index) + "]"
         if isinstance(expr, TIndex):
@@ -3240,21 +3278,19 @@ class _GoEmitter(Emitter):
             if op == "!=":
                 return "!" + eq
             return eq
-        # nil comparisons: don't deref the variable
-        if (
-            op in ("==", "!=")
-            and isinstance(expr.right, TNilLit)
-            and isinstance(expr.left, TVar)
-        ):
-            name = _restore_name(expr.left.name, expr.left.annotations)
-            return name + " " + op + " nil"
-        if (
-            op in ("==", "!=")
-            and isinstance(expr.left, TNilLit)
-            and isinstance(expr.right, TVar)
-        ):
-            name = _restore_name(expr.right.name, expr.right.annotations)
-            return "nil " + op + " " + name
+        # nil comparisons: don't deref the variable or field
+        if op in ("==", "!=") and isinstance(expr.right, TNilLit):
+            if isinstance(expr.left, TVar):
+                name = _restore_name(expr.left.name, expr.left.annotations)
+                return name + " " + op + " nil"
+            if isinstance(expr.left, TFieldAccess):
+                return self._field_access_raw(expr.left) + " " + op + " nil"
+        if op in ("==", "!=") and isinstance(expr.left, TNilLit):
+            if isinstance(expr.right, TVar):
+                name = _restore_name(expr.right.name, expr.right.annotations)
+                return "nil " + op + " " + name
+            if isinstance(expr.right, TFieldAccess):
+                return "nil " + op + " " + self._field_access_raw(expr.right)
         left_str = self._maybe_paren(expr.left, op, is_left=True)
         right_str = self._maybe_paren(expr.right, op, is_left=False)
         return left_str + " " + op + " " + right_str
@@ -4472,11 +4508,26 @@ class _GoEmitter(Emitter):
         for p in non_self_params[len(args) :]:
             if p.has_default and p.typ is not None:
                 filled.append(
-                    TArg(pos=p.pos, name=None, value=TNilLit(pos=p.pos, annotations={}))
+                    TArg(
+                        pos=p.pos, name=None, value=self._zero_value_expr(p.typ, p.pos)
+                    )
                 )
             else:
                 break
         return filled
+
+    def _zero_value_expr(self, typ: TType, pos: Pos) -> TExpr:
+        """Return a zero-value expression for the given type."""
+        if isinstance(typ, TPrimitive):
+            if typ.kind == "string":
+                return TStringLit(pos=pos, value="", annotations={})
+            if typ.kind == "int":
+                return TIntLit(pos=pos, value=0, raw="0", annotations={})
+            if typ.kind == "float":
+                return TFloatLit(pos=pos, value=0.0, raw="0.0", annotations={})
+            if typ.kind == "bool":
+                return TBoolLit(pos=pos, value=False, annotations={})
+        return TNilLit(pos=pos, annotations={})
 
     def _join_args(
         self, args: list[TArg], sep: str, params: list[TParam] | None = None

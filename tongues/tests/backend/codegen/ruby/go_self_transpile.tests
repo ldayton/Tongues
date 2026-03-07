@@ -21,5 +21,11 @@ if v.is_a?(VInt)
 === map literal with interface value in return
 return {"a" => Leaf.new(v: 1)}
 
+=== default string param fills zero value
+puts(greet())
+
+=== optional string field deref
+return c.name
+
 === list literal with interface type in return
 return [Leaf.new(v: 1)]

@@ -19,5 +19,11 @@ if (v instanceof VInt)
 === map literal with interface value in return
 return new Map([["a", new Leaf(1)]])
 
+=== default string param fills zero value
+console.log(greet())
+
+=== optional string field deref
+return c.name
+
 === list literal with interface type in return
 return [new Leaf(1)]

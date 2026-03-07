@@ -124,6 +124,28 @@ fn Main() -> void {
     WritelnOut(ToString(Len(MakeMap())))
 }
 
+=== default string param fills zero value
+fn Greet(name: string = "world") -> string {
+    return name
+}
+fn Main() -> void {
+    WritelnOut(Greet())
+}
+
+=== optional string field deref
+struct Config {
+    name: string?
+}
+fn GetName(c: Config) -> string {
+    if c.name != nil {
+        return c.name
+    }
+    return "default"
+}
+fn Main() -> void {
+    WritelnOut(GetName(Config(name: "test")))
+}
+
 === list literal with interface type in return
 interface Node {}
 struct Leaf : Node {
