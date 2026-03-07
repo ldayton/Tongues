@@ -1,5 +1,5 @@
 === struct construction and field access
-p := Point{X: 1, Y: 2}
+p := &Point{X: 1, Y: 2}
 
 === struct method call
 c.Inc()
@@ -19,4 +19,4 @@ return Eval(b.Left) + Eval(b.Right)
 if c == ColorRed
 
 === named struct construction
-Point{X: 1, Y: 2}
+&Point{X: 1, Y: 2}

@@ -5,7 +5,7 @@ case int:
 default:
 
 === unused match binding is omitted
-switch value.(type) {
+switch n := value.(type) {
 case int:
 	return "int"
 
@@ -22,7 +22,7 @@ case ColorRed:
 case *Circle:
 
 === match on union with three types
-switch v.(type) {
+switch n := v.(type) {
 case int:
 
 === match with default no binding
