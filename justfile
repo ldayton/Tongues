@@ -138,7 +138,7 @@ fmt *ARGS:
 _self-transpile target="python":
     #!/usr/bin/env bash
     set -euo pipefail
-    declare -A ext=([python]=py [ruby]=rb [perl]=pl [taytsh]=ty)
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js [taytsh]=ty)
     mkdir -p tongues/.out
     cd tongues && uv run bin/tongues --target {{target}} -o ".out/tongues.${ext[{{target}}]}" src
     if [ "{{target}}" = "python" ]; then
@@ -155,6 +155,17 @@ lang-python *ARGS:
         tests/test_backend_codegen.py tests/test_backend_target.py tests/test_taytsh_app.py \
         tests/test_frontend_linker.py \
         --transpiled ".out/tongues.py" -v {{ ARGS }}
+
+# Self-transpile and test against transpiled JavaScript binary
+lang-javascript:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _self-transpile javascript
+    cd tongues
+    printf 'tests/shared/test_harness.py\0%s\0lib/json.py\0%s' \
+        "$(<tests/shared/test_harness.py)" "$(<src/lib/json.py)" \
+        | uv run bin/tongues --project --target javascript -o .out/test_harness.js
+    node tests/test-transpiled.js ".out/tongues.js"
 
 # Self-transpile and test against transpiled Ruby binary
 lang-ruby:
@@ -321,12 +332,14 @@ test:
         just "lang-$lang"
     }
     _st python & pid_py=$!
+    _st javascript & pid_js=$!
     _st ruby & pid_rb=$!
     _st perl & pid_pl=$!
     _st taytsh-treewalker & pid_ty_tw=$!
     _st taytsh-vm & pid_ty_vm=$!
     just fixed-point & pid_fp=$!
     wait $pid_py && results[lang-python]=✅ || { results[lang-python]=❌; failed=1; }
+    wait $pid_js && results[lang-javascript]=✅ || { results[lang-javascript]=❌; failed=1; }
     wait $pid_rb && results[lang-ruby]=✅ || { results[lang-ruby]=❌; failed=1; }
     wait $pid_pl && results[lang-perl]=✅ || { results[lang-perl]=❌; failed=1; }
     wait $pid_ty_tw && results[lang-taytsh-tw]=✅ || { results[lang-taytsh-tw]=❌; failed=1; }
@@ -338,7 +351,7 @@ test:
     echo "══════════════════════════════════════"
     printf "%-16s %s\n" "TARGET" "STATUS"
     printf "%-16s %s\n" "──────" "──────"
-    for t in versions tests lang-python lang-ruby lang-perl lang-taytsh-tw lang-taytsh-vm fixed-point; do
+    for t in versions tests lang-python lang-javascript lang-ruby lang-perl lang-taytsh-tw lang-taytsh-vm fixed-point; do
         printf "%-16s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"

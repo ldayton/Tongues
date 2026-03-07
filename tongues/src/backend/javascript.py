@@ -1969,10 +1969,24 @@ class _JavaScriptEmitter(Emitter):
         cond = expr.cond
         if isinstance(cond, TBinaryOp) and cond.op == "!=":
             if isinstance(cond.right, TNilLit):
-                return self._expr(cond.left) + " ?? " + self._expr(expr.else_expr)
+                return (
+                    "("
+                    + self._expr(cond.left)
+                    + " ?? "
+                    + self._expr(expr.else_expr)
+                    + ")"
+                )
             if isinstance(cond.left, TNilLit):
-                return self._expr(cond.right) + " ?? " + self._expr(expr.else_expr)
-        return self._expr(expr.then_expr) + " ?? " + self._expr(expr.else_expr)
+                return (
+                    "("
+                    + self._expr(cond.right)
+                    + " ?? "
+                    + self._expr(expr.else_expr)
+                    + ")"
+                )
+        return (
+            "(" + self._expr(expr.then_expr) + " ?? " + self._expr(expr.else_expr) + ")"
+        )
 
     def _partition_ternary(self, expr: TTernary, prov: str) -> str:
         pt_cond = expr.cond
@@ -2331,13 +2345,15 @@ class _JavaScriptEmitter(Emitter):
         if name == "Get":
             if len(args) == 3:
                 return (
-                    self._a(args, 0)
+                    "("
+                    + self._a(args, 0)
                     + ".get("
                     + self._a(args, 1)
                     + ") ?? "
                     + self._a(args, 2)
+                    + ")"
                 )
-            return self._a(args, 0) + ".get(" + self._a(args, 1) + ") ?? null"
+            return "(" + self._a(args, 0) + ".get(" + self._a(args, 1) + ") ?? null)"
         if name == "Delete":
             return self._a(args, 0) + ".delete(" + self._a(args, 1) + ")"
         if name == "Union":
