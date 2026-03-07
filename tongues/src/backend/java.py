@@ -30,6 +30,18 @@ def _escape_java_string(value: str) -> str:
     return "".join(out)
 
 
+def _escape_java_char(value: str) -> str:
+    """Escape a single character for a Java char literal."""
+    if value == "'":
+        return "\\'"
+    if value == '"':
+        return '"'
+    s = _escape_java_string(value)
+    if s.startswith("\\u") and len(s) > 6:
+        return s[:6]
+    return s
+
+
 JAVA_STRICT_INT_BINARY: dict[str, str] = {
     "+": "Math.addExact",
     "-": "Math.subtractExact",
@@ -275,24 +287,26 @@ _JAVA_STDLIB_EXCEPTIONS: frozenset[str] = frozenset(
 _PRECEDENCE: dict[str, int] = {
     "||": 1,
     "&&": 2,
-    "==": 3,
-    "!=": 3,
-    "<": 3,
-    ">": 3,
-    "<=": 3,
-    ">=": 3,
-    "|": 4,
-    "^": 5,
-    "&": 6,
-    "<<": 7,
-    ">>": 7,
-    ">>>": 7,
-    "+": 8,
-    "-": 8,
-    "*": 9,
-    "/": 9,
-    "%": 9,
+    "|": 3,
+    "^": 4,
+    "&": 5,
+    "==": 6,
+    "!=": 6,
+    "<": 7,
+    ">": 7,
+    "<=": 7,
+    ">=": 7,
+    "<<": 8,
+    ">>": 8,
+    ">>>": 8,
+    "+": 9,
+    "-": 9,
+    "*": 10,
+    "/": 10,
+    "%": 10,
 }
+# NOTE: higher number = higher precedence (tighter binding).
+# Java order (low→high): || && | ^ & == != < > <= >= << >> >>> + - * / %
 
 _CMP_OPS = frozenset(["==", "!=", "<", ">", "<=", ">="])
 
@@ -342,7 +356,7 @@ def _scan_imports(module: TModule) -> dict[str, bool]:
 #   float -> double
 #   bool -> boolean
 #   str -> String
-#   rune -> int (codepoint)
+#   rune -> char
 #   byte -> int (unsigned 0-255)
 #   bytes -> byte[]
 #   list[T] -> List<T> (ArrayList)
@@ -425,7 +439,7 @@ class _JavaEmitter(Emitter):
             if typ.kind == "string":
                 return "String"
             if typ.kind == "rune":
-                return "int"
+                return "char"
             if typ.kind == "byte":
                 return "int"
             if typ.kind == "bytes":
@@ -469,7 +483,9 @@ class _JavaEmitter(Emitter):
                 return "Boolean"
             if typ.kind == "string":
                 return "String"
-            if typ.kind in ("rune", "byte"):
+            if typ.kind == "rune":
+                return "Character"
+            if typ.kind == "byte":
                 return "Integer"
             if typ.kind == "bytes":
                 return "byte[]"
@@ -477,8 +493,10 @@ class _JavaEmitter(Emitter):
 
     def _zero_value(self, typ: TType) -> str:
         if isinstance(typ, TPrimitive):
-            if typ.kind in ("int", "byte", "rune"):
+            if typ.kind in ("int", "byte"):
                 return "0"
+            if typ.kind == "rune":
+                return "'\\0'"
             if typ.kind == "float":
                 return "0.0"
             if typ.kind == "bool":
@@ -495,8 +513,10 @@ class _JavaEmitter(Emitter):
     def _field_zero(self, typ: TType) -> str:
         """Return the Java zero/default value for a type."""
         if isinstance(typ, TPrimitive):
-            if typ.kind in ("int", "rune", "byte"):
+            if typ.kind in ("int", "byte"):
                 return "0"
+            if typ.kind == "rune":
+                return "'\\0'"
             if typ.kind == "float":
                 return "0.0"
             if typ.kind == "bool":
@@ -1365,11 +1385,11 @@ class _JavaEmitter(Emitter):
         is_map = self._is_map_type(stmt.iterable)
         if is_string:
             self._line(
-                "for (int "
+                "for (char "
                 + binding[0]
                 + " : "
                 + iterable_expr
-                + ".codePoints().toArray()) {"
+                + ".toCharArray()) {"
             )
         elif is_map and len(binding) == 2:
             self._line("for (var __entry : " + iterable_expr + ".entrySet()) {")
@@ -2146,7 +2166,7 @@ class _JavaEmitter(Emitter):
         if isinstance(expr, TBytesLit):
             return self._bytes_lit(expr)
         if isinstance(expr, TRuneLit):
-            return '"' + _escape_java_string(expr.value) + '"'
+            return "'" + _escape_java_char(expr.value) + "'"
         if isinstance(expr, TVar):
             if expr.name == self.self_name:
                 return "this"
@@ -2273,7 +2293,7 @@ class _JavaEmitter(Emitter):
         if ann == "bytes" or self._is_bytes_expr(expr.obj):
             return obj + "[" + idx + "]"
         if ann == "string" or self._is_string_expr(expr.obj):
-            return obj + ".codePointAt(" + idx + ")"
+            return obj + ".charAt(" + idx + ")"
         return obj + ".get(" + idx + ")"
 
     def _is_string_expr(self, expr: TExpr) -> bool:
@@ -2331,19 +2351,41 @@ class _JavaEmitter(Emitter):
                     + self._expr(expr.right)
                     + ")"
                 )
+        if op in ("<", "<=", ">", ">=") and self._is_string_expr(expr.left):
+            return (
+                self._expr(expr.left)
+                + ".compareTo("
+                + self._expr(expr.right)
+                + ") "
+                + op
+                + " 0"
+            )
         left = self._maybe_paren(expr.left, op, True)
         right = self._maybe_paren(expr.right, op, False)
         return left + " " + op + " " + right
 
     def _unary(self, expr: TUnaryOp) -> str:
-        operand = self._expr(expr.operand)
         if expr.op in ("not", "!"):
-            if isinstance(expr.operand, (TVar, TBoolLit, TFieldAccess, TIndex, TCall)):
-                return "!" + operand
-            return "!(" + operand + ")"
+            return self._unary_not(expr.operand)
+        operand = self._expr(expr.operand)
         if self.strict_math and expr.op == "-" and self._is_int_expr(expr.operand):
             return "Math.negateExact(" + operand + ")"
         return expr.op + operand
+
+    def _unary_not(self, operand: TExpr) -> str:
+        """Emit `!operand` with Java-correct truthiness."""
+        if isinstance(operand, TCall) and isinstance(operand.func, TVar):
+            fn = operand.func.name
+            if fn == "IsNil":
+                return self._a(operand.args, 0) + " != null"
+            if fn == "IsType":
+                info = self._isinstance_info(operand)
+                if info is not None:
+                    return "!(" + info[0] + " instanceof " + info[1] + ")"
+        rendered = self._expr(operand)
+        if isinstance(operand, (TVar, TBoolLit, TFieldAccess, TIndex, TCall)):
+            return "!" + rendered
+        return "!(" + rendered + ")"
 
     def _ternary(self, expr: TTernary) -> str:
         else_str = self._expr(expr.else_expr)
@@ -2474,13 +2516,9 @@ class _JavaEmitter(Emitter):
         if name == "Format":
             return self._format_call(args)
         if name == "RuneToInt":
-            arg_expr = args[0].value
-            rendered = self._a(args, 0)
-            if isinstance(arg_expr, TRuneLit) or isinstance(arg_expr, TStringLit):
-                return rendered + ".codePointAt(0)"
-            return rendered
+            return "(int) " + self._a(args, 0)
         if name == "RuneFromInt":
-            return "new String(Character.toChars(" + self._a(args, 0) + "))"
+            return "(char) " + self._a(args, 0)
         if name == "Len":
             return self._len_expr(args[0].value)
         if name == "Abs":

@@ -15,7 +15,7 @@ int n = Integer.parseInt("42", 10);
 String hex = Integer.toString(255, 16);
 
 === RuneToInt and RuneFromInt
-int n = "A".codePointAt(0);
+int n = (int) 'A';
 
 === IsNaN and IsInf
 System.out.println(String.valueOf(Double.isNaN(x)));

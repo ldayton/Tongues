@@ -119,7 +119,7 @@ for (int __i = 0; __i < Math.min(a.size(), b.size()); __i++) {
 for (int __i = 0; __i < Math.min(a.size(), Math.min(b.size(), c.size())); __i++) {
 
 === string iteration for loop (raised)
-for (int ch : s.codePoints().toArray()) {
+for (char ch : s.toCharArray()) {
 
 === list repetition (raised)
 List<Integer> xs = new ArrayList<>(Collections.nCopies(5, 0));

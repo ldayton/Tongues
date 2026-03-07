@@ -154,4 +154,4 @@ for (int __i = 0; __i < Math.min(a.length, b.length); __i++) {
     int y = b[__i];
 
 === for over string yields rune
-for (int ch : s.codePoints().toArray()) {
+for (char ch : s.toCharArray()) {

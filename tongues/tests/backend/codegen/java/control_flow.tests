@@ -35,7 +35,7 @@ for (var __entry : m.entrySet()) {
     var v = __entry.getValue();
 
 === for over string characters
-for (int ch : "hello".codePoints().toArray()) {
+for (char ch : "hello".toCharArray()) {
 
 === for over set
 for (int v : s) {
