@@ -181,8 +181,17 @@ lang-ruby:
         | uv run bin/tongues --project --target ruby -o .out/test_harness.rb
     ruby tests/test-transpiled.rb ".out/tongues.rb"
 
-# Run Java codegen + app tests (no self-transpile — compiled language)
+# Self-transpile to Java, compile, and run codegen + app tests
 lang-java:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _self-transpile java
+    echo "Compiling self-transpiled Java..."
+    tmpdir=$(mktemp -d)
+    trap 'rm -rf "$tmpdir"' EXIT
+    cp tongues/.out/tongues.java "$tmpdir/Main.java"
+    javac -encoding UTF-8 "$tmpdir/Main.java" -d "$tmpdir" 2>&1
+    echo "Java compilation succeeded."
     uv run --directory tongues pytest tests/test_backend_codegen.py tests/test_backend_target.py -k java --target java -v
 
 # Self-transpile and test against transpiled Perl binary

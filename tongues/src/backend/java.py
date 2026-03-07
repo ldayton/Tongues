@@ -9,6 +9,27 @@ from .util import (
     escape_string,
 )
 
+
+def _escape_java_string(value: str) -> str:
+    """Escape a string for Java, converting non-Java escape sequences."""
+    s = escape_string(value)
+    s = s.replace("\\x00", "\\u0000")
+    s = s.replace("\\v", "\\u000b")
+    out: list[str] = []
+    i = 0
+    while i < len(s):
+        if s[i : i + 2] == "\\U" and i + 10 <= len(s):
+            cp = int(s[i + 2 : i + 10], 16)
+            hi = 0xD800 + ((cp - 0x10000) >> 10)
+            lo = 0xDC00 + ((cp - 0x10000) & 0x3FF)
+            out.append("\\u" + hex(hi)[2:].zfill(4) + "\\u" + hex(lo)[2:].zfill(4))
+            i += 10
+        else:
+            out.append(s[i])
+            i += 1
+    return "".join(out)
+
+
 JAVA_STRICT_INT_BINARY: dict[str, str] = {
     "+": "Math.addExact",
     "-": "Math.subtractExact",
@@ -37,7 +58,6 @@ from ..taytsh.ast import (
     TCall,
     TCatch,
     TContinueStmt,
-    TDecl,
     TEnumDecl,
     TExpr,
     TExprStmt,
@@ -60,6 +80,7 @@ from ..taytsh.ast import (
     TMapType,
     TMatchStmt,
     TModule,
+    TModuleItem,
     TNilLit,
     TOpAssignStmt,
     TOptionalType,
@@ -98,6 +119,16 @@ from ..taytsh.check import (
 # ============================================================
 # JAVA RESERVED WORDS
 # ============================================================
+
+_ISTYPE_MAP: dict[str, str] = {
+    "dict": "HashMap",
+    "list": "ArrayList",
+    "set": "HashSet",
+    "str": "String",
+    "int": "Integer",
+    "float": "Double",
+    "bool": "Boolean",
+}
 
 _JAVA_RESERVED = frozenset(
     {
@@ -153,6 +184,8 @@ _JAVA_RESERVED = frozenset(
         "volatile",
         "while",
         "yield",
+        # Java 9+ keyword
+        "_",
         # Common clashes
         "System",
         "String",
@@ -193,6 +226,18 @@ def _restore_name(name: str, annotations: Ann) -> str:
     return _safe_name(name)
 
 
+def _binding_name(expr_str: str) -> str:
+    """Make a safe Java identifier for a pattern binding alias."""
+    _KEEP = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+    out: list[str] = []
+    for ch in expr_str:
+        if ch in _KEEP:
+            out.append(ch)
+        elif ch == ".":
+            out.append("_")
+    return "".join(out) + "__"
+
+
 def _lower1(s: str) -> str:
     """Lowercase first character."""
     if not s:
@@ -205,6 +250,22 @@ _EXCEPTION_MAP: dict[str, str] = {
     "BaseException": "RuntimeException",
     "RuntimeError": "RuntimeException",
 }
+
+_JAVA_STDLIB_EXCEPTIONS: frozenset[str] = frozenset(
+    {
+        "RuntimeException",
+        "Exception",
+        "ArithmeticException",
+        "NumberFormatException",
+        "IndexOutOfBoundsException",
+        "ClassCastException",
+        "UnsupportedOperationException",
+        "IllegalArgumentException",
+        "NullPointerException",
+        "IllegalStateException",
+        "AssertionError",
+    }
+)
 
 
 # ============================================================
@@ -334,7 +395,7 @@ class _JavaEmitter(Emitter):
         self.var_types: dict[str, TType] = {}
         self.module_let_names: set[str] = set()
         self._needs_read_all: bool = False
-        self._module_decls: list[TDecl] = []
+        self._module_decls: list[TModuleItem] = []
         self._current_struct: str = ""
         self._struct_field_decls: dict[str, list[TFieldDecl]] = {}
         self._enum_names: set[str] = set()
@@ -342,6 +403,11 @@ class _JavaEmitter(Emitter):
         self._error_struct_names: set[str] = set()
         self.fn_names: set[str] = set()
         self._needs_strict_helpers: set[str] = set()
+        self._needs_replace_count: bool = False
+        self._needs_to_byte_array: bool = False
+        self._needs_replace_slice: bool = False
+        self._ret_is_void: bool = True
+        self._var_aliases: dict[str, str] = {}
 
     # ── Type emission ────────────────────────────────────────
 
@@ -426,6 +492,52 @@ class _JavaEmitter(Emitter):
     def _field_default(self, fld: TFieldDecl) -> str:
         raise NotImplementedError
 
+    def _field_zero(self, typ: TType) -> str:
+        """Return the Java zero/default value for a type."""
+        if isinstance(typ, TPrimitive):
+            if typ.kind in ("int", "rune", "byte"):
+                return "0"
+            if typ.kind == "float":
+                return "0.0"
+            if typ.kind == "bool":
+                return "false"
+            if typ.kind == "string":
+                return '""'
+        if isinstance(typ, TIdentType):
+            n = typ.name
+            if n == "int":
+                return "0"
+            if n == "float":
+                return "0.0"
+            if n == "bool":
+                return "false"
+            if n == "string":
+                return '""'
+        return "null"
+
+    def _emit_builtin_exception_stubs(self, module: TModule) -> None:
+        thrown = _collect_thrown_types(module)
+        defined: set[str] = set()
+        for decl in module.decls:
+            if isinstance(decl, TStructDecl):
+                defined.add(decl.name)
+            elif isinstance(decl, TInterfaceDecl):
+                defined.add(decl.name)
+        mapped = set(_EXCEPTION_MAP.values())
+        for name in sorted(thrown - defined):
+            java_name = _EXCEPTION_MAP.get(name, name)
+            if java_name in mapped and name in _EXCEPTION_MAP:
+                continue
+            if java_name in _JAVA_STDLIB_EXCEPTIONS:
+                continue
+            self._line()
+            self._line("static class " + java_name + " extends RuntimeException {")
+            self.indent += 1
+            self._line(java_name + "(String message) { super(message); }")
+            self._line(java_name + "() { super(); }")
+            self.indent -= 1
+            self._line("}")
+
     # ── Module ───────────────────────────────────────────────
 
     def emit_module(self, module: TModule) -> None:
@@ -442,7 +554,8 @@ class _JavaEmitter(Emitter):
         for decl in module.decls:
             if isinstance(decl, TFnDecl):
                 all_builtins |= collect_builtin_calls(decl.body)
-                for m in decl.methods if isinstance(decl, TStructDecl) else []:
+            elif isinstance(decl, TStructDecl):
+                for m in decl.methods:
                     all_builtins |= collect_builtin_calls(m.body)
             elif isinstance(decl, TStmt):
                 all_builtins |= collect_builtin_calls([decl])
@@ -461,6 +574,11 @@ class _JavaEmitter(Emitter):
                 case TInterfaceDecl():
                     self._line()
                     self._emit_interface(decl)
+        self._emit_builtin_exception_stubs(module)
+        for decl in module.decls:
+            if isinstance(decl, TLetStmt):
+                self._line()
+                self._emit_module_let(decl)
         for decl in module.decls:
             if isinstance(decl, TFnDecl):
                 self._line()
@@ -478,6 +596,50 @@ class _JavaEmitter(Emitter):
                     "String input = new String(System.in.readAllBytes(), StandardCharsets.UTF_8);"
                 )
             self._emit_stmts(top_stmts)
+            self.indent -= 1
+            self._line("}")
+        if self._needs_replace_slice:
+            self._line()
+            self._line(
+                "static <T> void replaceSlice(List<T> xs, int lo, int hi, List<T> vals) {"
+            )
+            self.indent += 1
+            self._line("xs.subList(lo, hi).clear();")
+            self._line("xs.addAll(lo, vals);")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_to_byte_array:
+            self._line()
+            self._line("static byte[] toByteArray(List<Integer> xs) {")
+            self.indent += 1
+            self._line("byte[] result = new byte[xs.size()];")
+            self._line(
+                "for (int i = 0; i < xs.size(); i++) result[i] = xs.get(i).byteValue();"
+            )
+            self._line("return result;")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_replace_count:
+            self._line()
+            self._line(
+                "static String replaceCount(String s, String old, String rep, int count) {"
+            )
+            self.indent += 1
+            self._line("StringBuilder sb = new StringBuilder();")
+            self._line("int start = 0;")
+            self._line("int n = 0;")
+            self._line("while (n < count) {")
+            self.indent += 1
+            self._line("int idx = s.indexOf(old, start);")
+            self._line("if (idx < 0) break;")
+            self._line("sb.append(s, start, idx);")
+            self._line("sb.append(rep);")
+            self._line("start = idx + old.length();")
+            self._line("n++;")
+            self.indent -= 1
+            self._line("}")
+            self._line("sb.append(s.substring(start));")
+            self._line("return sb.toString();")
             self.indent -= 1
             self._line("}")
         self.indent -= 1
@@ -508,8 +670,7 @@ class _JavaEmitter(Emitter):
             return
         extends = ""
         if parent is not None:
-            kw = "implements" if parent in self._interface_names else "extends"
-            extends = " " + kw + " " + _safe_name(parent)
+            extends = " extends " + _safe_name(parent)
         self._line("static class " + name + extends + " {")
         self.indent += 1
         for f in decl.fields:
@@ -525,6 +686,32 @@ class _JavaEmitter(Emitter):
                 self._line("this." + safe + " = " + safe + ";")
             self.indent -= 1
             self._line("}")
+            required = [f for f in decl.fields if not f.has_default]
+            defaulted = [f for f in decl.fields if f.has_default]
+            if defaulted:
+                for i in range(len(defaulted)):
+                    used = required + defaulted[:i]
+                    used_names: set[str] = set()
+                    for f in used:
+                        used_names.add(f.name)
+                    if used:
+                        rparams = ", ".join(
+                            self._type(f.typ) + " " + _safe_name(f.name) for f in used
+                        )
+                        self._line(name + "(" + rparams + ") {")
+                    else:
+                        self._line(name + "() {")
+                    self.indent += 1
+                    for f in decl.fields:
+                        safe = _safe_name(f.name)
+                        if f.name in used_names:
+                            self._line("this." + safe + " = " + safe + ";")
+                        else:
+                            self._line(
+                                "this." + safe + " = " + self._field_zero(f.typ) + ";"
+                            )
+                    self.indent -= 1
+                    self._line("}")
         for m in decl.methods:
             self._line()
             self._emit_method(m)
@@ -556,24 +743,31 @@ class _JavaEmitter(Emitter):
 
     def _emit_interface(self, decl: TInterfaceDecl) -> None:
         name = _safe_name(decl.name)
-        self._line("interface " + name + " {")
+        parent = decl.annotations.get("_parent_interface", "")
+        extends = ""
+        if parent:
+            extends = " extends " + _safe_name(parent)
+        self._line("static class " + name + extends + " {")
         self.indent += 1
         for f in decl.fields:
-            self._line(self._type(f.typ) + " " + _safe_name(f.name) + "();")
+            self._line(self._type(f.typ) + " " + _safe_name(f.name) + ";")
         self.indent -= 1
         self._line("}")
 
     def _emit_fn(self, decl: TFnDecl) -> None:
         old_var_types = self.var_types.copy()
+        old_ret = self._ret_is_void
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
         if decl.name == "Main":
+            self._ret_is_void = True
             self._line("public static void main(String[] args) throws Exception {")
         else:
             ret = "void"
             if decl.ret is not None:
                 ret = self._type(decl.ret)
+            self._ret_is_void = ret == "void"
             params = self._params(decl.params)
             fname = _lower1(_safe_name(decl.name))
             self._line(
@@ -593,11 +787,53 @@ class _JavaEmitter(Emitter):
         self._emit_stmts(decl.body)
         self.indent -= 1
         self._line("}")
+        if decl.name != "Main":
+            self._emit_fn_overloads(decl, is_static=True)
         self.var_types = old_var_types
+        self._ret_is_void = old_ret
+
+    def _emit_fn_overloads(self, decl: TFnDecl, is_static: bool) -> None:
+        """Emit overloaded versions for functions with default parameters."""
+        params = decl.params if is_static else decl.params[1:]
+        has_defaults = any(p.has_default for p in params)
+        if not has_defaults:
+            return
+        required = [p for p in params if not p.has_default]
+        defaulted = [p for p in params if p.has_default]
+        ret = "void"
+        if decl.ret is not None:
+            ret = self._type(decl.ret)
+        fname = _lower1(_safe_name(decl.name))
+        prefix = "public static " if is_static else ""
+        for i in range(len(defaulted)):
+            used = required + defaulted[:i]
+            pstr = self._params(used)
+            self._line()
+            self._line(prefix + ret + " " + fname + "(" + pstr + ") throws Exception {")
+            self.indent += 1
+            args: list[str] = []
+            for p in used:
+                args.append(_safe_name(p.name))
+            for p in defaulted[i:]:
+                args.append(self._param_zero(p))
+            call = fname + "(" + ", ".join(args) + ")"
+            if ret == "void":
+                self._line(call + ";")
+            else:
+                self._line("return " + call + ";")
+            self.indent -= 1
+            self._line("}")
+
+    def _param_zero(self, param: TParam) -> str:
+        """Return the Java zero/default value for a parameter."""
+        if param.typ is None:
+            return "null"
+        return self._field_zero(param.typ)
 
     def _emit_method(self, decl: TFnDecl) -> None:
         old_var_types = self.var_types.copy()
         old_self = self.self_name
+        old_ret = self._ret_is_void
         self.self_name = decl.params[0].name if decl.params else None
         method_params = decl.params[1:]
         for p in method_params:
@@ -606,6 +842,7 @@ class _JavaEmitter(Emitter):
         ret = "void"
         if decl.ret is not None:
             ret = self._type(decl.ret)
+        self._ret_is_void = ret == "void"
         params = self._params(method_params)
         fname = _safe_name(decl.name).lower()
         self._line(ret + " " + fname + "(" + params + ") throws Exception {")
@@ -613,8 +850,10 @@ class _JavaEmitter(Emitter):
         self._emit_stmts(decl.body)
         self.indent -= 1
         self._line("}")
+        self._emit_fn_overloads(decl, is_static=False)
         self.self_name = old_self
         self.var_types = old_var_types
+        self._ret_is_void = old_ret
 
     def _params(self, params: list[TParam]) -> str:
         parts: list[str] = []
@@ -656,8 +895,48 @@ class _JavaEmitter(Emitter):
                         self._line(stream)
                         i += 2
                         continue
+            if isinstance(stmt, TIfStmt) and i + 1 < len(stmts):
+                guard = self._detect_isinstance_guard(stmt)
+                if guard is not None:
+                    self._emit_stmt(stmt)
+                    var_name, type_name = guard
+                    cast_name = _binding_name(var_name)
+                    self._line(
+                        type_name
+                        + " "
+                        + cast_name
+                        + " = ("
+                        + type_name
+                        + ") "
+                        + var_name
+                        + ";"
+                    )
+                    old_aliases = self._var_aliases.copy()
+                    self._var_aliases[var_name] = cast_name
+                    i += 1
+                    while i < len(stmts):
+                        self._emit_stmt(stmts[i])
+                        i += 1
+                    self._var_aliases = old_aliases
+                    return
             self._emit_stmt(stmt)
             i += 1
+
+    def _detect_isinstance_guard(self, stmt: TIfStmt) -> tuple[str, str] | None:
+        """Detect `if not isinstance(x, T): return/throw` guard pattern."""
+        if stmt.else_body is not None:
+            return None
+        if len(stmt.then_body) != 1:
+            return None
+        body_stmt = stmt.then_body[0]
+        if not isinstance(body_stmt, (TReturnStmt, TThrowStmt)):
+            return None
+        cond = stmt.cond
+        if not isinstance(cond, TUnaryOp):
+            return None
+        if cond.op not in ("not", "!"):
+            return None
+        return self._isinstance_info(cond.operand)
 
     def _emit_stmt(self, stmt: TStmt) -> None:
         match stmt:
@@ -710,9 +989,33 @@ class _JavaEmitter(Emitter):
                     else:
                         self._line("return " + self._expr(stmt.value) + ";")
                 else:
-                    self._line("return;")
+                    if self._ret_is_void:
+                        self._line("return;")
+                    else:
+                        self._line("return null;")
             case TThrowStmt():
-                self._line("throw " + self._expr(stmt.expr) + ";")
+                throw_val = stmt.expr
+                if isinstance(throw_val, TVar):
+                    vname = _safe_name(throw_val.name)
+                    if vname in self.struct_names or vname in _EXCEPTION_MAP:
+                        exc_name = _EXCEPTION_MAP.get(throw_val.name, vname)
+                        self._line("throw new " + exc_name + "();")
+                    else:
+                        self._line("throw " + self._expr(throw_val) + ";")
+                elif isinstance(throw_val, TCall):
+                    throw_func = throw_val.func
+                    if isinstance(throw_func, TVar):
+                        exc_name = _EXCEPTION_MAP.get(
+                            throw_func.name, _safe_name(throw_func.name)
+                        )
+                        exc_args = ", ".join(
+                            self._expr(a.value) for a in throw_val.args
+                        )
+                        self._line("throw new " + exc_name + "(" + exc_args + ");")
+                    else:
+                        self._line("throw " + self._expr(stmt.expr) + ";")
+                else:
+                    self._line("throw " + self._expr(stmt.expr) + ";")
             case TBreakStmt():
                 self._line("break;")
             case TContinueStmt():
@@ -734,6 +1037,17 @@ class _JavaEmitter(Emitter):
         "Intersection": "retainAll",
         "Difference": "removeAll",
     }
+
+    def _emit_module_let(self, stmt: TLetStmt) -> None:
+        safe = _restore_name(stmt.name, stmt.annotations)
+        self.var_types[stmt.name] = stmt.typ
+        jtype = self._type(stmt.typ)
+        if stmt.value is not None:
+            self._line(
+                "static " + jtype + " " + safe + " = " + self._expr(stmt.value) + ";"
+            )
+        else:
+            self._line("static " + jtype + " " + safe + ";")
 
     def _emit_let(self, stmt: TLetStmt) -> None:
         safe = _restore_name(stmt.name, stmt.annotations)
@@ -781,19 +1095,19 @@ class _JavaEmitter(Emitter):
                     + ".length);"
                 )
                 return
-            if (
-                isinstance(stmt.value, TCall)
-                and isinstance(stmt.value.func, TVar)
-                and stmt.value.func.name in self._COLLECTION_OPS
-            ):
-                op_name = stmt.value.func.name
-                method = self._COLLECTION_OPS[op_name]
-                a = self._expr(stmt.value.args[0].value)
-                b = self._expr(stmt.value.args[1].value)
-                raw = jtype.split("<")[0]
-                self._line(jtype + " " + safe + " = new " + raw + "<>(" + a + ");")
-                self._line(safe + "." + method + "(" + b + ");")
-                return
+            if isinstance(stmt.value, TCall):
+                call_func = stmt.value.func
+                if (
+                    isinstance(call_func, TVar)
+                    and call_func.name in self._COLLECTION_OPS
+                ):
+                    method = self._COLLECTION_OPS[call_func.name]
+                    a = self._expr(stmt.value.args[0].value)
+                    b = self._expr(stmt.value.args[1].value)
+                    raw = jtype.split("<")[0]
+                    self._line(jtype + " " + safe + " = new " + raw + "<>(" + a + ");")
+                    self._line(safe + "." + method + "(" + b + ");")
+                    return
             self._line(jtype + " " + safe + " = " + self._expr(stmt.value) + ";")
         else:
             self._line(jtype + " " + safe + ";")
@@ -817,6 +1131,8 @@ class _JavaEmitter(Emitter):
 
     def _emit_expr_stmt(self, stmt: TExprStmt) -> None:
         expr = stmt.expr
+        if isinstance(expr, TStringLit):
+            return
         if (
             isinstance(expr, TCall)
             and isinstance(expr.func, TVar)
@@ -846,14 +1162,98 @@ class _JavaEmitter(Emitter):
             return
         self._line(self._expr(expr) + ";")
 
+    def _isinstance_info(self, cond: TExpr) -> tuple[str, str] | None:
+        """If cond is IsType(var_or_field, Type), return (expr_str, type_name)."""
+        if not isinstance(cond, TCall):
+            return None
+        func = cond.func
+        if not isinstance(func, TVar) or func.name != "IsType":
+            return None
+        if len(cond.args) < 2:
+            return None
+        var_expr = cond.args[0].value
+        if not isinstance(var_expr, (TVar, TFieldAccess)):
+            return None
+        type_arg = cond.args[1].value
+        var_name = self._expr(var_expr)
+        if isinstance(type_arg, TStringLit):
+            tn = type_arg.value
+            type_name = _ISTYPE_MAP.get(tn, tn)
+        else:
+            type_name = self._expr(type_arg)
+        return (var_name, type_name)
+
+    def _isinstance_info_checked(self, cond: TExpr) -> tuple[str, str]:
+        """Like _isinstance_info but asserts the result is not None."""
+        result = self._isinstance_info(cond)
+        assert result is not None
+        return result
+
+    def _collect_isinstance_checks(self, cond: TExpr) -> list[tuple[str, str]]:
+        """Collect all IsType checks from a condition (including &&-joined)."""
+        if isinstance(cond, TBinaryOp) and cond.op in ("&&", "and"):
+            return self._collect_isinstance_checks(
+                cond.left
+            ) + self._collect_isinstance_checks(cond.right)
+        info = self._isinstance_info(cond)
+        if info is not None:
+            return [info]
+        return []
+
+    def _collect_isinstance_raw(self, cond: TExpr) -> list[TExpr]:
+        """Collect raw IsType call expressions from a compound && condition."""
+        if isinstance(cond, TBinaryOp) and cond.op in ("&&", "and"):
+            return self._collect_isinstance_raw(
+                cond.left
+            ) + self._collect_isinstance_raw(cond.right)
+        if self._isinstance_info(cond) is not None:
+            return [cond]
+        return []
+
+    def _emit_if_with_bindings(
+        self, cond_expr: TExpr, cond_str: str, body: list[TStmt]
+    ) -> None:
+        raw_checks = self._collect_isinstance_raw(cond_expr)
+        old_aliases = self._var_aliases.copy()
+        if raw_checks:
+            parts: list[str] = []
+            for check_expr in raw_checks:
+                var_name, type_name = self._isinstance_info_checked(check_expr)
+                cast_name = _binding_name(var_name)
+                parts.append(var_name + " instanceof " + type_name + " " + cast_name)
+                self._var_aliases[var_name] = cast_name
+            remaining = self._strip_isinstance_parts(cond_expr)
+            if remaining is not None:
+                parts.append(self._expr(remaining))
+            self._line("if (" + " && ".join(parts) + ") {")
+        else:
+            self._line("if (" + cond_str + ") {")
+        self.indent += 1
+        self._emit_stmts(body)
+        self.indent -= 1
+        self._var_aliases = old_aliases
+
+    def _strip_isinstance_parts(self, cond: TExpr) -> TExpr | None:
+        """Return the non-isinstance portion of a compound && condition."""
+        if isinstance(cond, TBinaryOp) and cond.op in ("&&", "and"):
+            left = self._strip_isinstance_parts(cond.left)
+            right = self._strip_isinstance_parts(cond.right)
+            if left is None and right is None:
+                return None
+            if left is None:
+                return right
+            if right is None:
+                return left
+            return TBinaryOp(cond.pos, cond.op, left, right, cond.annotations)
+        if self._isinstance_info(cond) is not None:
+            return None
+        return cond
+
     def _emit_if(self, stmt: TIfStmt) -> None:
         prov = stmt.annotations.get("provenance", "")
         truth = self._truthiness_expr(stmt.cond, raised=prov == "truthiness")
         cond = truth if truth is not None else self._expr(stmt.cond)
-        self._line("if (" + cond + ") {")
-        self.indent += 1
-        self._emit_stmts(stmt.then_body)
-        self.indent -= 1
+        self._emit_if_with_bindings(stmt.cond, cond, stmt.then_body)
         self._emit_else_body(stmt.else_body)
 
     def _emit_else_body(self, else_body: list[TStmt] | None) -> None:
@@ -862,14 +1262,32 @@ class _JavaEmitter(Emitter):
             return
         if len(else_body) == 1 and isinstance(else_body[0], TIfStmt):
             elif_stmt = else_body[0]
+            assert isinstance(elif_stmt, TIfStmt)
             prov = elif_stmt.annotations.get("provenance", "")
             truth = self._truthiness_expr(elif_stmt.cond, raised=prov == "truthiness")
             cond = truth if truth is not None else self._expr(elif_stmt.cond)
-            self._line("} else if (" + cond + ") {")
+            raw_checks = self._collect_isinstance_raw(elif_stmt.cond)
+            old_aliases = self._var_aliases.copy()
+            if raw_checks:
+                parts_list: list[str] = []
+                for check_expr in raw_checks:
+                    var_name, type_name = self._isinstance_info_checked(check_expr)
+                    cast_name = _binding_name(var_name)
+                    parts_list.append(
+                        var_name + " instanceof " + type_name + " " + cast_name
+                    )
+                    self._var_aliases[var_name] = cast_name
+                remaining = self._strip_isinstance_parts(elif_stmt.cond)
+                if remaining is not None:
+                    parts_list.append(self._expr(remaining))
+                self._line("} else if (" + " && ".join(parts_list) + ") {")
+            else:
+                self._line("} else if (" + cond + ") {")
             self.indent += 1
-            self._emit_stmts(else_body[0].then_body)
+            self._emit_stmts(elif_stmt.then_body)
             self.indent -= 1
-            self._emit_else_body(else_body[0].else_body)
+            self._var_aliases = old_aliases
+            self._emit_else_body(elif_stmt.else_body)
         else:
             self._line("} else {")
             self.indent += 1
@@ -932,13 +1350,16 @@ class _JavaEmitter(Emitter):
             return
         iterable_expr = self._expr(stmt.iterable)
         iter_type = ann.get("iter_type", "")
+        iter_var_type = (
+            self.var_types.get(stmt.iterable.name)
+            if isinstance(stmt.iterable, TVar)
+            else None
+        )
         is_string = (
             iter_type == "string"
             or isinstance(stmt.iterable, TStringLit)
             or (
-                isinstance(stmt.iterable, TVar)
-                and isinstance(self.var_types.get(stmt.iterable.name), TPrimitive)
-                and self.var_types[stmt.iterable.name].kind == "string"
+                isinstance(iter_var_type, TPrimitive) and iter_var_type.kind == "string"
             )
         )
         is_map = self._is_map_type(stmt.iterable)
@@ -982,9 +1403,11 @@ class _JavaEmitter(Emitter):
         iterable = self._expr(for_stmt.iterable)
         func = "anyMatch" if prov == "any_call" else "allMatch"
         body = for_stmt.body
-        if len(body) != 1 or not isinstance(body[0], TIfStmt):
+        if len(body) != 1:
             return None
-        outer_if: TIfStmt = body[0]
+        outer_if = body[0]
+        if not isinstance(outer_if, TIfStmt):
+            return None
         if (
             len(outer_if.then_body) == 2
             and isinstance(outer_if.then_body[0], TAssignStmt)
@@ -1009,7 +1432,8 @@ class _JavaEmitter(Emitter):
             )
         if len(outer_if.then_body) == 1 and isinstance(outer_if.then_body[0], TIfStmt):
             inner_if = outer_if.then_body[0]
-            assert isinstance(inner_if, TIfStmt)
+            if not isinstance(inner_if, TIfStmt):
+                return None
             if (
                 len(inner_if.then_body) == 2
                 and isinstance(inner_if.then_body[0], TAssignStmt)
@@ -1129,9 +1553,11 @@ class _JavaEmitter(Emitter):
         acc = _safe_name(let_stmt.name)
         type_str = self._let_type(let_stmt)
         body = for_stmt.body
-        if len(body) != 1 or not isinstance(body[0], TAssignStmt):
+        if len(body) != 1:
             return None
         assign = body[0]
+        if not isinstance(assign, TAssignStmt):
+            return None
         if not isinstance(assign.target, TIndex):
             return None
         binding = [_safe_name(b) for b in for_stmt.binding]
@@ -1142,7 +1568,7 @@ class _JavaEmitter(Emitter):
         iterable = self._expr(for_stmt.iterable)
         key_expr = self._expr(assign.target.index)
         val_expr = self._expr(assign.value)
-        key_fn: str
+        key_fn: str = ""
         if key_expr == val_var:
             key_fn = iterable + "::get"
         else:
@@ -1167,20 +1593,23 @@ class _JavaEmitter(Emitter):
             return None
         rng = for_stmt.iterable
         start_val = self._static_int(rng.args[0])
-        step_val = self._static_int(rng.args[2]) if len(rng.args) >= 3 else None
-        if step_val is None:
+        step_val_opt = self._static_int(rng.args[2]) if len(rng.args) >= 3 else None
+        if step_val_opt is None:
             return None
+        step_val: int = step_val_opt
         acc = _safe_name(let_stmt.name)
         type_str = self._let_type(let_stmt)
         size_expr = self._expr(rng.args[1])
         is_string = (
             isinstance(let_stmt.typ, TPrimitive) and let_stmt.typ.kind == "string"
         )
-        if start_val is not None and start_val == 0:
+        if start_val is None:
+            return None
+        if start_val == 0:
             filter_expr = "i -> i % " + str(step_val) + " == 0"
-        elif start_val is not None and start_val < step_val:
+        elif start_val < step_val:
             filter_expr = "i -> i % " + str(step_val) + " == " + str(start_val)
-        elif start_val is not None:
+        else:
             filter_expr = (
                 "i -> i >= "
                 + str(start_val)
@@ -1190,8 +1619,6 @@ class _JavaEmitter(Emitter):
                 + str(step_val)
                 + " == 0"
             )
-        else:
-            return None
         if is_string:
             src = self._find_string_source(for_stmt.body)
             if src is not None:
@@ -1229,21 +1656,22 @@ class _JavaEmitter(Emitter):
 
     def _find_string_source(self, body: list[TStmt]) -> str | None:
         """Find the source string var in: r = Concat(r, ToString(s[__i]))."""
-        if len(body) != 1 or not isinstance(body[0], TAssignStmt):
+        if len(body) != 1:
             return None
-        val = body[0].value
-        if not (
-            isinstance(val, TCall)
-            and isinstance(val.func, TVar)
-            and val.func.name == "Concat"
-        ):
+        stmt0 = body[0]
+        if not isinstance(stmt0, TAssignStmt):
+            return None
+        val = stmt0.value
+        if not isinstance(val, TCall):
+            return None
+        val_func = val.func
+        if not isinstance(val_func, TVar) or val_func.name != "Concat":
             return None
         to_str = val.args[1].value
-        if not (
-            isinstance(to_str, TCall)
-            and isinstance(to_str.func, TVar)
-            and to_str.func.name == "ToString"
-        ):
+        if not isinstance(to_str, TCall):
+            return None
+        to_str_func = to_str.func
+        if not isinstance(to_str_func, TVar) or to_str_func.name != "ToString":
             return None
         idx = to_str.args[0].value
         if isinstance(idx, TIndex) and isinstance(idx.obj, TVar):
@@ -1252,9 +1680,12 @@ class _JavaEmitter(Emitter):
 
     def _extract_append(self, body: list[TStmt]) -> TExpr | None:
         """Extract the value from Append(acc, value) in a single-stmt body."""
-        if len(body) != 1 or not isinstance(body[0], TExprStmt):
+        if len(body) != 1:
             return None
-        call = body[0].expr
+        stmt0 = body[0]
+        if not isinstance(stmt0, TExprStmt):
+            return None
+        call = stmt0.expr
         if (
             isinstance(call, TCall)
             and isinstance(call.func, TVar)
@@ -1266,9 +1697,12 @@ class _JavaEmitter(Emitter):
 
     def _extract_set_add(self, body: list[TStmt]) -> TExpr | None:
         """Extract the value from Add(acc, value) in a single-stmt body."""
-        if len(body) != 1 or not isinstance(body[0], TExprStmt):
+        if len(body) != 1:
             return None
-        call = body[0].expr
+        stmt0 = body[0]
+        if not isinstance(stmt0, TExprStmt):
+            return None
+        call = stmt0.expr
         if (
             isinstance(call, TCall)
             and isinstance(call.func, TVar)
@@ -1280,9 +1714,11 @@ class _JavaEmitter(Emitter):
 
     def _extract_filtered_append(self, body: list[TStmt]) -> tuple[TExpr, TExpr] | None:
         """Extract (filter_cond, value) from: if cond { Append(acc, val) }."""
-        if len(body) != 1 or not isinstance(body[0], TIfStmt):
+        if len(body) != 1:
             return None
-        if_stmt: TIfStmt = body[0]
+        if_stmt = body[0]
+        if not isinstance(if_stmt, TIfStmt):
+            return None
         append = self._extract_append(if_stmt.then_body)
         if append is not None:
             return (if_stmt.cond, append)
@@ -1335,7 +1771,24 @@ class _JavaEmitter(Emitter):
             high = self._expr(iterable.args[1])
             step = iterable.args[2]
             step_val = self._static_int(step)
-            if step_val is not None and step_val == -1:
+            if step_val is None:
+                step_str = self._expr(step)
+                self._line(
+                    "for (int "
+                    + var_name
+                    + " = "
+                    + low
+                    + "; "
+                    + var_name
+                    + " < "
+                    + high
+                    + "; "
+                    + var_name
+                    + " += "
+                    + step_str
+                    + ") {"
+                )
+            elif step_val == -1:
                 prov = ann.get("provenance", "")
                 if prov == "reversed_range":
                     high_val = self._static_int(iterable.args[1])
@@ -1381,7 +1834,7 @@ class _JavaEmitter(Emitter):
                         + var_name
                         + "--) {"
                     )
-            elif step_val is not None and step_val == 1:
+            elif step_val == 1:
                 self._line(
                     "for (int "
                     + var_name
@@ -1395,7 +1848,7 @@ class _JavaEmitter(Emitter):
                     + var_name
                     + "++) {"
                 )
-            elif step_val is not None and step_val < 0:
+            elif step_val < 0:
                 step_str = self._expr(step)
                 self._line(
                     "for (int "
@@ -1516,7 +1969,10 @@ class _JavaEmitter(Emitter):
             if isinstance(pat, TPatternType):
                 type_name = self._type(pat.type_name)
                 binding = _safe_name(pat.name)
+                old_aliases = self._var_aliases.copy()
+                self._var_aliases[expr_str] = binding
                 self._emit_switch_case("case " + type_name + " " + binding, case.body)
+                self._var_aliases = old_aliases
         if stmt.default:
             self._emit_switch_case("default", stmt.default.body)
         self.indent -= 1
@@ -1570,9 +2026,13 @@ class _JavaEmitter(Emitter):
                 else:
                     self._line("} else if (" + expr_str + " == null) {")
             first = False
+            old_aliases = self._var_aliases.copy()
+            if isinstance(pat, TPatternType):
+                self._var_aliases[expr_str] = _safe_name(pat.name)
             self.indent += 1
             self._emit_stmts(case.body)
             self.indent -= 1
+            self._var_aliases = old_aliases
         if stmt.default:
             binding = stmt.default.name
             if first:
@@ -1595,10 +2055,14 @@ class _JavaEmitter(Emitter):
             self._line("return " + self._expr(expr) + ";")
             return
         find_call = cond.left
-        if not (isinstance(find_call, TCall) and isinstance(find_call.func, TVar)):
+        if not isinstance(find_call, TCall):
             self._line("return " + self._expr(expr) + ";")
             return
-        method = "indexOf" if find_call.func.name == "Find" else "lastIndexOf"
+        fc_func = find_call.func
+        if not isinstance(fc_func, TVar):
+            self._line("return " + self._expr(expr) + ";")
+            return
+        method = "indexOf" if fc_func.name == "Find" else "lastIndexOf"
         s_arg = self._expr(find_call.args[0].value)
         sep_arg = self._expr(find_call.args[1].value)
         self._line("int __idx = " + s_arg + "." + method + "(" + sep_arg + ");")
@@ -1613,7 +2077,7 @@ class _JavaEmitter(Emitter):
             + sep_arg
             + ".length())}"
         )
-        false_str: str
+        false_str: str = ""
         if prov == "partition":
             false_str = "new Object[]{" + s_arg + ', "", ""}'
         else:
@@ -1672,7 +2136,7 @@ class _JavaEmitter(Emitter):
         if isinstance(expr, TFloatLit):
             return expr.raw
         if isinstance(expr, TStringLit):
-            return '"' + escape_string(expr.value) + '"'
+            return '"' + _escape_java_string(expr.value) + '"'
         if isinstance(expr, TBoolLit):
             return "true" if expr.value else "false"
         if isinstance(expr, TNilLit):
@@ -1682,11 +2146,13 @@ class _JavaEmitter(Emitter):
         if isinstance(expr, TBytesLit):
             return self._bytes_lit(expr)
         if isinstance(expr, TRuneLit):
-            return '"' + escape_string(expr.value) + '"'
+            return '"' + _escape_java_string(expr.value) + '"'
         if isinstance(expr, TVar):
             if expr.name == self.self_name:
                 return "this"
             n = _restore_name(expr.name, expr.annotations)
+            if n in self._var_aliases:
+                return self._var_aliases[n]
             if expr.name in self.fn_names:
                 return _lower1(n)
             return n
@@ -1694,8 +2160,12 @@ class _JavaEmitter(Emitter):
             obj = self._expr(expr.obj)
             field = _safe_name(expr.field)
             if field == "message":
-                return obj + ".getMessage()"
-            return obj + "." + field
+                result = obj + ".getMessage()"
+            else:
+                result = obj + "." + field
+            if result in self._var_aliases:
+                return self._var_aliases[result]
+            return result
         if isinstance(expr, TTupleAccess):
             return self._expr(expr.obj) + "[" + str(expr.index) + "]"
         if isinstance(expr, TIndex):
@@ -1741,10 +2211,18 @@ class _JavaEmitter(Emitter):
         return "null"
 
     def _int_lit(self, expr: TIntLit) -> str:
+        v = expr.value
+        if v > 9223372036854775807:
+            signed = v - (1 << 64)
+            return str(signed) + "L"
         raw = expr.raw
         if raw.startswith(("0x", "0X", "0o", "0O", "0b", "0B")):
+            if v > 2147483647 or v < -2147483648:
+                return raw + "L"
             return raw
-        return str(expr.value)
+        if v > 2147483647 or v < -2147483648:
+            return str(v) + "L"
+        return str(v)
 
     def _bytes_lit(self, expr: TBytesLit) -> str:
         elems = ", ".join("(byte) 0x" + hex(b)[2:].zfill(2) for b in expr.value)
@@ -1860,9 +2338,9 @@ class _JavaEmitter(Emitter):
     def _unary(self, expr: TUnaryOp) -> str:
         operand = self._expr(expr.operand)
         if expr.op in ("not", "!"):
-            if isinstance(expr.operand, (TBinaryOp, TUnaryOp)):
-                return "!(" + operand + ")"
-            return "!" + operand
+            if isinstance(expr.operand, (TVar, TBoolLit, TFieldAccess, TIndex, TCall)):
+                return "!" + operand
+            return "!(" + operand + ")"
         if self.strict_math and expr.op == "-" and self._is_int_expr(expr.operand):
             return "Math.negateExact(" + operand + ")"
         return expr.op + operand
@@ -1897,18 +2375,15 @@ class _JavaEmitter(Emitter):
     def _fn_lit(self, expr: TFnLit) -> str:
         """Emit lambda: (x) -> expr  or  (x) -> { stmts }"""
         params = ", ".join(_safe_name(p.name) for p in expr.params)
-        if (
-            len(expr.body) == 1
-            and isinstance(expr.body[0], TReturnStmt)
-            and expr.body[0].value is not None
-        ):
-            return "(" + params + ") -> " + self._expr(expr.body[0].value)
-        if (
-            len(expr.body) == 1
-            and isinstance(expr.body[0], TExprStmt)
-            and expr.annotations.get("fn_lit.arrow") == "true"
-        ):
-            return "(" + params + ") -> " + self._expr(expr.body[0].expr)
+        if len(expr.body) == 1:
+            stmt0 = expr.body[0]
+            if isinstance(stmt0, TReturnStmt) and stmt0.value is not None:
+                return "(" + params + ") -> " + self._expr(stmt0.value)
+            if (
+                isinstance(stmt0, TExprStmt)
+                and expr.annotations.get("fn_lit.arrow") == "true"
+            ):
+                return "(" + params + ") -> " + self._expr(stmt0.expr)
         lines_buf: list[str] = []
         old_lines = self.lines
         self.lines = lines_buf
@@ -1947,7 +2422,7 @@ class _JavaEmitter(Emitter):
     def _struct_call(self, name: str, args: list[TArg]) -> str:
         """Emit: new StructName(args)"""
         safe = _EXCEPTION_MAP.get(name, _safe_name(name))
-        if name in self._struct_field_decls and any(a.name for a in args):
+        if name in self._struct_field_decls and any(a.name is not None for a in args):
             field_order = [f.name for f in self._struct_field_decls[name]]
             ordered = self._reorder_named_args(args, field_order)
             arg_strs = ", ".join(self._expr(a.value) for a in ordered)
@@ -1999,7 +2474,11 @@ class _JavaEmitter(Emitter):
         if name == "Format":
             return self._format_call(args)
         if name == "RuneToInt":
-            return self._a(args, 0) + ".codePointAt(0)"
+            arg_expr = args[0].value
+            rendered = self._a(args, 0)
+            if isinstance(arg_expr, TRuneLit) or isinstance(arg_expr, TStringLit):
+                return rendered + ".codePointAt(0)"
+            return rendered
         if name == "RuneFromInt":
             return "new String(Character.toChars(" + self._a(args, 0) + "))"
         if name == "Len":
@@ -2119,8 +2598,8 @@ class _JavaEmitter(Emitter):
             obj = args[0].value
             if self._is_map_type(obj):
                 return self._a(args, 0) + ".containsKey(" + self._a(args, 1) + ")"
-            ann = obj.annotations.get("type", "")
-            if ann == "string" or self._is_string_expr(obj):
+            type_ann = obj.annotations.get("type", "")
+            if type_ann == "string" or self._is_string_expr(obj):
                 return self._a(args, 0) + ".contains(" + self._a(args, 1) + ")"
             return self._a(args, 0) + ".contains(" + self._a(args, 1) + ")"
         if name == "Keys":
@@ -2128,8 +2607,8 @@ class _JavaEmitter(Emitter):
         if name == "IndexOf":
             return self._a(args, 0) + ".indexOf(" + self._a(args, 1) + ")"
         if name == "Concat":
-            ann = args[0].value.annotations.get("type", "")
-            if ann == "string" or self._is_string_expr(args[0].value):
+            type_ann = args[0].value.annotations.get("type", "")
+            if type_ann == "string" or self._is_string_expr(args[0].value):
                 return self._a(args, 0) + " + " + self._a(args, 1)
             return self._a(args, 0) + " + " + self._a(args, 1)
         if name == "Merge":
@@ -2209,8 +2688,8 @@ class _JavaEmitter(Emitter):
         if name == "Reversed":
             return "new ArrayList<>(" + self._a(args, 0) + ".reversed())"
         if name == "Reverse":
-            ann = args[0].value.annotations.get("type", "")
-            if ann == "string" or self._is_string_expr(args[0].value):
+            type_ann = args[0].value.annotations.get("type", "")
+            if type_ann == "string" or self._is_string_expr(args[0].value):
                 return (
                     "new StringBuilder(" + self._a(args, 0) + ").reverse().toString()"
                 )
@@ -2225,8 +2704,8 @@ class _JavaEmitter(Emitter):
             raise NotImplementedError("builtin: Zip")
         if name == "Repeat":
             first = args[0].value
-            ann = first.annotations.get("type", "")
-            if ann == "string" or self._is_string_expr(first):
+            type_ann = first.annotations.get("type", "")
+            if type_ann == "string" or self._is_string_expr(first):
                 return self._a(args, 0) + ".repeat(" + self._a(args, 1) + ")"
             if isinstance(first, TListLit) and len(first.elements) == 1:
                 elem = self._expr(first.elements[0])
@@ -2300,6 +2779,19 @@ class _JavaEmitter(Emitter):
                 + self._a(args, 2)
                 + ")"
             )
+        if name == "ReplaceCount":
+            self._needs_replace_count = True
+            return (
+                "replaceCount("
+                + self._a(args, 0)
+                + ", "
+                + self._a(args, 1)
+                + ", "
+                + self._a(args, 2)
+                + ", "
+                + self._a(args, 3)
+                + ")"
+            )
         if name == "Upper":
             return self._a(args, 0) + ".toUpperCase()"
         if name == "Lower":
@@ -2346,6 +2838,8 @@ class _JavaEmitter(Emitter):
                 + self._a(args, 1)
                 + ")"
             )
+        if name == "ReadBytes":
+            return "System.in.readAllBytes()"
         if name == "ReadBytesN":
             return "System.in.readNBytes(" + self._a(args, 0) + ")"
         if name == "Encode":
@@ -2369,7 +2863,9 @@ class _JavaEmitter(Emitter):
         if name == "IsType":
             type_arg = args[1].value
             if isinstance(type_arg, TStringLit):
-                return self._a(args, 0) + " instanceof " + _safe_name(type_arg.value)
+                tn = type_arg.value
+                tn = _ISTYPE_MAP.get(tn, tn)
+                return self._a(args, 0) + " instanceof " + tn
             return self._a(args, 0) + " instanceof " + self._expr(type_arg)
         if name == "Values":
             return "new ArrayList<>(" + self._a(args, 0) + ".values())"
@@ -2381,6 +2877,24 @@ class _JavaEmitter(Emitter):
             return "List.of(" + self._a(args, 0) + '.trim().split("\\\\s+"))'
         if name == "IsAlnum":
             return self._a(args, 0) + ".chars().allMatch(Character::isLetterOrDigit)"
+        if name == "BytesFrom":
+            self._needs_to_byte_array = True
+            return "toByteArray(" + self._a(args, 0) + ")"
+        if name == "ToRepr":
+            return '"\\"" + ' + self._a(args, 0) + ' + "\\""'
+        if name == "ReplaceSlice":
+            self._needs_replace_slice = True
+            return (
+                "replaceSlice("
+                + self._a(args, 0)
+                + ", "
+                + self._a(args, 1)
+                + ", "
+                + self._a(args, 2)
+                + ", "
+                + self._a(args, 3)
+                + ")"
+            )
         raise NotImplementedError("builtin: " + name)
 
     def _star_unpack(self, expr: TCall) -> str:
@@ -2557,7 +3071,12 @@ class _JavaEmitter(Emitter):
         chars_expr = args[1].value
         if isinstance(chars_expr, TStringLit) and len(chars_expr.value) == 1:
             ch = chars_expr.value
-            esc = ch.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+            esc = (
+                ch.replace("\\", "\\\\")
+                .replace("[", "\\[")
+                .replace("]", "\\]")
+                .replace('"', '\\"')
+            )
             if mode == "both":
                 return s + '.replaceAll("^[' + esc + "]+|[" + esc + ']+$", "")'
             if mode == "start":
@@ -2590,13 +3109,15 @@ class _JavaEmitter(Emitter):
         remaining = template
         arg_idx = 0
         while "{}" in remaining and arg_idx < len(fmt_args):
-            before, remaining = remaining.split("{}", 1)
+            split_parts = remaining.split("{}", 1)
+            before = split_parts[0]
+            remaining = split_parts[1]
             if before:
-                parts.append('"' + escape_string(before) + '"')
+                parts.append('"' + _escape_java_string(before) + '"')
             parts.append(self._expr(fmt_args[arg_idx].value))
             arg_idx += 1
         if remaining:
-            parts.append('"' + escape_string(remaining) + '"')
+            parts.append('"' + _escape_java_string(remaining) + '"')
         if not parts:
             return '""'
         return " + ".join(parts)
@@ -2613,18 +3134,17 @@ class _JavaEmitter(Emitter):
         return "var"
 
     def _comparator(self, fn_lit: TExpr) -> str:
-        assert isinstance(fn_lit, TFnLit)
+        if not isinstance(fn_lit, TFnLit):
+            return ""
         param = _safe_name(fn_lit.params[0].name)
         body = fn_lit.body
         inner: TExpr | None = None
-        if (
-            len(body) == 1
-            and isinstance(body[0], TReturnStmt)
-            and body[0].value is not None
-        ):
-            inner = body[0].value
-        elif len(body) == 1 and isinstance(body[0], TExprStmt):
-            inner = body[0].expr
+        if len(body) == 1:
+            stmt0 = body[0]
+            if isinstance(stmt0, TReturnStmt) and stmt0.value is not None:
+                inner = stmt0.value
+            elif isinstance(stmt0, TExprStmt):
+                inner = stmt0.expr
         if inner is not None:
             ref = self._try_method_ref(fn_lit.params[0], inner)
             if ref is not None:
@@ -2634,9 +3154,12 @@ class _JavaEmitter(Emitter):
 
     def _try_method_ref(self, param: TParam, body_expr: TExpr) -> str | None:
         """Try to emit a method reference like String::length."""
-        if not (isinstance(body_expr, TCall) and isinstance(body_expr.func, TVar)):
+        if not isinstance(body_expr, TCall):
             return None
-        if body_expr.func.name != "Len" or len(body_expr.args) != 1:
+        be_func = body_expr.func
+        if not isinstance(be_func, TVar):
+            return None
+        if be_func.name != "Len" or len(body_expr.args) != 1:
             return None
         arg = body_expr.args[0].value
         if not (isinstance(arg, TVar) and arg.name == param.name):
@@ -2717,7 +3240,10 @@ class _JavaEmitter(Emitter):
             return "boolean"
         if type_hint == "string":
             return "String"
-        return self._type_from_ann(source) or "var"
+        result = self._type_from_ann(source)
+        if result is not None:
+            return result
+        return "var"
 
     def _type_from_ann(self, expr: TExpr) -> str | None:
         ann = expr.annotations.get("type", "")
@@ -2763,8 +3289,11 @@ class _JavaEmitter(Emitter):
 def _visit_thrown_types(stmts: list[TStmt], names: set[str]) -> None:
     for stmt in stmts:
         if isinstance(stmt, TThrowStmt):
-            if isinstance(stmt.expr, TCall) and isinstance(stmt.expr.func, TVar):
-                names.add(stmt.expr.func.name)
+            throw_expr = stmt.expr
+            if isinstance(throw_expr, TCall):
+                throw_func = throw_expr.func
+                if isinstance(throw_func, TVar):
+                    names.add(throw_func.name)
         elif isinstance(stmt, TTryStmt):
             _visit_thrown_types(stmt.body, names)
             for catch in stmt.catches:
@@ -2782,6 +3311,11 @@ def _visit_thrown_types(stmts: list[TStmt], names: set[str]) -> None:
             _visit_thrown_types(stmt.body, names)
         elif isinstance(stmt, TForStmt):
             _visit_thrown_types(stmt.body, names)
+        elif isinstance(stmt, TMatchStmt):
+            for case in stmt.cases:
+                _visit_thrown_types(case.body, names)
+            if stmt.default is not None:
+                _visit_thrown_types(stmt.default.body, names)
 
 
 def _collect_thrown_types(module: TModule) -> set[str]:
@@ -2804,28 +3338,30 @@ def emit_java(module: TModule) -> str:
     interface_names: set[str] = set()
     error_struct_names: set[str] = set()
     for decl in module.decls:
-        match decl:
-            case TStructDecl():
-                struct_names.add(decl.name)
-                fnames: list[str] = []
+        if isinstance(decl, TStructDecl):
+            struct_names.add(decl.name)
+            fnames: list[str] = []
+            for f in decl.fields:
+                fnames.append(_safe_name(f.name))
+            struct_fields[decl.name] = fnames
+            struct_field_decls[decl.name] = decl.fields
+            if decl.parent == "Error":
+                error_struct_names.add(decl.name)
+        elif isinstance(decl, TInterfaceDecl):
+            struct_names.add(decl.name)
+            interface_names.add(decl.name)
+            if decl.fields:
+                ifnames: list[str] = []
                 for f in decl.fields:
-                    fnames.append(_safe_name(f.name))
-                struct_fields[decl.name] = fnames
+                    ifnames.append(_safe_name(f.name))
+                struct_fields[decl.name] = ifnames
                 struct_field_decls[decl.name] = decl.fields
-                if decl.parent is not None:
-                    error_struct_names.add(decl.name)
-            case TInterfaceDecl():
-                struct_names.add(decl.name)
-                interface_names.add(decl.name)
-                if decl.fields:
-                    ifnames: list[str] = []
-                    for f in decl.fields:
-                        ifnames.append(_safe_name(f.name))
-                    struct_fields[decl.name] = ifnames
-                    struct_field_decls[decl.name] = decl.fields
-            case TEnumDecl():
-                enum_names.add(decl.name)
-    user_struct_names = {d.name for d in module.decls if isinstance(d, TStructDecl)}
+        elif isinstance(decl, TEnumDecl):
+            enum_names.add(decl.name)
+    user_struct_names: set[str] = set()
+    for d in module.decls:
+        if isinstance(d, TStructDecl):
+            user_struct_names.add(d.name)
     error_struct_names |= _collect_thrown_types(module) & user_struct_names
     emitter = _JavaEmitter(
         struct_names, struct_fields, module.strict_math, module.strict_tostring
