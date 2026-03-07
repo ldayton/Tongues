@@ -936,6 +936,8 @@ class _JavaScriptEmitter(Emitter):
         if isinstance(for_stmt.iterable, TRange):
             return None
         iterable = self._expr(for_stmt.iterable)
+        if self._is_set_type(for_stmt.iterable):
+            iterable = "[..." + iterable + "]"
         func = "some" if prov == "any_call" else "every"
         body = for_stmt.body
         if len(body) != 1:
@@ -2417,11 +2419,11 @@ class _JavaScriptEmitter(Emitter):
         if name == "Lower":
             return self._a(args, 0) + ".toLowerCase()"
         if name == "Trim":
-            return self._a(args, 0) + '.replace(/^ +| +$/g, "")'
+            return self._a(args, 0) + ".trim()"
         if name == "TrimStart":
-            return self._a(args, 0) + '.replace(/^ +/, "")'
+            return self._a(args, 0) + ".trimStart()"
         if name == "TrimEnd":
-            return self._a(args, 0) + '.replace(/ +$/, "")'
+            return self._a(args, 0) + ".trimEnd()"
         if name == "Split":
             return self._a(args, 0) + ".split(" + self._a(args, 1) + ")"
         if name == "SplitN":
@@ -2762,7 +2764,11 @@ class _JavaScriptEmitter(Emitter):
                     + self._a(args, 1)
                     + ")"
                 )
-            return self._a(args, 0) + " ** " + self._a(args, 1)
+            left = self._a(args, 0)
+            left_val = args[0].value
+            if isinstance(left_val, TUnaryOp) and left_val.op == "-":
+                left = "(" + left + ")"
+            return left + " ** " + self._a(args, 1)
         if name == "Contains":
             inner = args[0].value
             if self._is_map_type(inner):
