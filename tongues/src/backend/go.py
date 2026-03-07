@@ -683,6 +683,7 @@ class _GoEmitter(Emitter):
         self._interface_children: dict[str, list[str]] = {}
         self._interface_names: set[str] = set()
         self._interface_parent: dict[str, str] = {}
+        self._interface_common_fields: dict[str, list[TFieldDecl]] = {}
         self._error_structs: set[str] = set()
         self._pointer_structs: set[str] = set()
         self._need_reverse_string: bool = False
@@ -761,6 +762,27 @@ class _GoEmitter(Emitter):
                 if len(child_methods[mname]) == len(children):
                     common.append(child_methods[mname][0])
             self._interface_methods[iface_name] = common
+
+        # Scan child structs to find common fields for interface accessors
+        self._interface_common_fields: dict[str, list[TFieldDecl]] = {}
+        for iface_name in self._interface_children:
+            children = self._interface_children[iface_name]
+            if not children:
+                continue
+            field_counts: dict[str, TFieldDecl] = {}
+            field_present: dict[str, int] = {}
+            for decl in module.decls:
+                if isinstance(decl, TStructDecl) and decl.name in children:
+                    for fld in decl.fields:
+                        if fld.name not in field_counts:
+                            field_counts[fld.name] = fld
+                            field_present[fld.name] = 0
+                        field_present[fld.name] += 1
+            common_fields: list[TFieldDecl] = []
+            for fname in field_counts:
+                if field_present[fname] == len(children):
+                    common_fields.append(field_counts[fname])
+            self._interface_common_fields[iface_name] = common_fields
 
         # Collect error struct refs for built-in error types
         declared_structs: set[str] = set()
@@ -882,14 +904,26 @@ class _GoEmitter(Emitter):
                 iface = decl.parent
                 while iface != "":
                     self._line()
-                    self._line(
-                        "func (self "
-                        + decl.name
-                        + ") is"
-                        + iface
-                        + "() {}"
-                    )
+                    self._line("func (self " + decl.name + ") is" + iface + "() {}")
                     iface = self._interface_parent.get(iface, "")
+        if decl.parent is not None and decl.parent in self._interface_names:
+            common_fields = self._interface_common_fields.get(decl.parent, [])
+            for fld in common_fields:
+                fname = fld.name[0].upper() + fld.name[1:] if fld.name else fld.name
+                self._line()
+                self._line(
+                    "func (self *"
+                    + decl.name
+                    + ") Get"
+                    + fname
+                    + "() "
+                    + self._type(fld.typ)
+                    + " {"
+                )
+                self.indent += 1
+                self._line("return self." + fname)
+                self.indent -= 1
+                self._line("}")
         if is_error:
             self._line()
             msg_field: TFieldDecl | None = None
@@ -957,6 +991,10 @@ class _GoEmitter(Emitter):
                 sig += " " + ret_m
             self._line(sig)
             emitted.add(m.name)
+        common_fields = self._interface_common_fields.get(decl.name, [])
+        for fld in common_fields:
+            fname = fld.name[0].upper() + fld.name[1:] if fld.name else fld.name
+            self._line("Get" + fname + "() " + self._type(fld.typ))
         self.indent -= 1
         self._line("}")
 
@@ -1301,7 +1339,9 @@ class _GoEmitter(Emitter):
             case TReturnStmt():
                 if stmt.value is not None:
                     if self._try_result_var is not None:
-                        self._line(self._try_result_var + " = " + self._expr(stmt.value))
+                        self._line(
+                            self._try_result_var + " = " + self._expr(stmt.value)
+                        )
                         self._line("return")
                     elif isinstance(stmt.value, TTernary):
                         self._emit_ternary_return(stmt.value)
@@ -1312,12 +1352,22 @@ class _GoEmitter(Emitter):
                     elif self._needs_ptr_wrap_return(stmt.value):
                         self._line("__retv := " + self._expr(stmt.value))
                         self._line("return &__retv")
+                    elif (
+                        self._current_ret_type is not None
+                        and self._is_empty_collection_return(stmt.value)
+                    ):
+                        self._line(
+                            "return " + self._type(self._current_ret_type) + "{}"
+                        )
                     else:
                         self._line("return " + self._expr(stmt.value))
                 else:
                     self._line("return")
             case TThrowStmt():
-                if isinstance(stmt.expr, TVar) and stmt.expr.name in self._error_structs:
+                if (
+                    isinstance(stmt.expr, TVar)
+                    and stmt.expr.name in self._error_structs
+                ):
                     self._line("panic(&" + stmt.expr.name + "{})")
                 else:
                     self._line("panic(" + self._expr(stmt.expr) + ")")
@@ -1385,12 +1435,39 @@ class _GoEmitter(Emitter):
                 else:
                     self._line("var " + safe + " = " + go_type + "{}")
                 return
+            if isinstance(val, TNilLit):
+                self._line("var " + safe + " " + self._type(stmt.typ))
+                return
             if self._in_func:
                 self._line(safe + " := " + self._expr(val))
             else:
                 self._line("var " + safe + " = " + self._expr(val))
         else:
             self._line("var " + safe + " " + self._type(stmt.typ))
+
+    def _is_interface_field_access(self, expr: TFieldAccess) -> bool:
+        """Check if this is a field access on an interface-typed variable."""
+        if isinstance(expr.obj, TVar):
+            if expr.obj.annotations.get("scope.is_interface") == "true":
+                vt = self.var_types.get(expr.obj.name)
+                if (
+                    isinstance(vt, TIdentType)
+                    and vt.name in self._interface_common_fields
+                ):
+                    for fld in self._interface_common_fields[vt.name]:
+                        if fld.name == expr.field:
+                            return True
+        return False
+
+    def _is_empty_collection_return(self, expr: TExpr) -> bool:
+        """Check if expr is an empty Map()/Set()/list that needs ret type."""
+        if self._current_ret_type is None:
+            return False
+        if self._is_empty_map_or_set_call(expr):
+            return True
+        if isinstance(expr, TListLit) and not expr.elements:
+            return True
+        return False
 
     def _is_empty_map_or_set_call(self, expr: TExpr) -> bool:
         return (
@@ -2531,12 +2608,16 @@ class _GoEmitter(Emitter):
         # Use the first case's binding name as the switch variable
         for case in stmt.cases:
             if isinstance(case.pattern, TPatternType) and case.pattern.name:
-                return _restore_name(case.pattern.name, case.annotations)
+                name = _restore_name(case.pattern.name, case.annotations)
+                if name not in self.struct_names and name not in self._interface_names:
+                    return name
         # Fall back to default binding
         if stmt.default is not None:
             dname = stmt.default.name
             if dname is not None:
-                return _restore_name(dname, stmt.default.annotations)
+                name = _restore_name(dname, stmt.default.annotations)
+                if name not in self.struct_names and name not in self._interface_names:
+                    return name
         return "__v"
 
     def _emit_match_case_enum(self, case: TMatchCase, stmt: TMatchStmt) -> None:
@@ -2579,7 +2660,9 @@ class _GoEmitter(Emitter):
                     self._line(bname + " := " + switch_var)
             if isinstance(stmt.expr, TVar):
                 scrutinee = _restore_name(stmt.expr.name, stmt.expr.annotations)
-                if scrutinee != switch_var and _stmts_ref_var(case.body, stmt.expr.name):
+                if scrutinee != switch_var and _stmts_ref_var(
+                    case.body, stmt.expr.name
+                ):
                     self._line(scrutinee + " := " + switch_var)
             self._emit_stmts(case.body)
             self.indent -= 1
@@ -2835,6 +2918,24 @@ class _GoEmitter(Emitter):
             # Enum variant access: Color.Red → ColorRed
             if isinstance(expr.obj, TVar) and expr.obj.name in self._enum_names:
                 return expr.obj.name + expr.field
+            # Type assertion for narrowed interface variables
+            if isinstance(expr.obj, TVar):
+                narrowed = expr.obj.annotations.get("scope.narrowed_type", "")
+                if narrowed != "" and narrowed in self.struct_names:
+                    obj_s = self._expr(expr.obj)
+                    fname = (
+                        expr.field[0].upper() + expr.field[1:]
+                        if expr.field
+                        else expr.field
+                    )
+                    return obj_s + ".(*" + narrowed + ")." + fname
+            # Interface common field accessor
+            if self._is_interface_field_access(expr):
+                obj_s = self._expr(expr.obj)
+                fname = (
+                    expr.field[0].upper() + expr.field[1:] if expr.field else expr.field
+                )
+                return obj_s + ".Get" + fname + "()"
             obj_s = self._expr(expr.obj)
             fname = expr.field[0].upper() + expr.field[1:] if expr.field else expr.field
             return obj_s + "." + fname
@@ -3457,7 +3558,9 @@ class _GoEmitter(Emitter):
                 if i < len(ordered):
                     fname = ordered[i]
                     uf = fname[0].upper() + fname[1:]
-                    pairs.append(uf + ": " + self._struct_field_expr(name, fname, a.value))
+                    pairs.append(
+                        uf + ": " + self._struct_field_expr(name, fname, a.value)
+                    )
                 else:
                     pairs.append(self._expr(a.value))
             return prefix + name + "{" + ", ".join(pairs) + "}"
@@ -3466,7 +3569,9 @@ class _GoEmitter(Emitter):
             parts.append(self._expr(a.value))
         return prefix + name + "{" + ", ".join(parts) + "}"
 
-    def _struct_field_expr(self, struct_name: str, field_name: str, value: TExpr) -> str:
+    def _struct_field_expr(
+        self, struct_name: str, field_name: str, value: TExpr
+    ) -> str:
         """Emit an expression for a struct field, using field type for list/map inference."""
         field_decls = self.struct_field_types.get(struct_name, [])
         if isinstance(value, TListLit):
@@ -3489,7 +3594,9 @@ class _GoEmitter(Emitter):
                     if isinstance(fd.typ, TMapType):
                         kt = self._type(fd.typ.key)
                         vt = self._type(fd.typ.value)
-                        if is_empty_map_call or (isinstance(value, TMapLit) and not value.entries):
+                        if is_empty_map_call or (
+                            isinstance(value, TMapLit) and not value.entries
+                        ):
                             return "map[" + kt + "]" + vt + "{}"
                         if isinstance(value, TMapLit) and value.entries:
                             pairs: list[str] = []
@@ -4017,7 +4124,11 @@ class _GoEmitter(Emitter):
         if name == "Exit":
             return "os.Exit(" + self._a(args, 0) + ")"
         if name == "GetEnv":
-            return "func() *string { v, ok := os.LookupEnv(" + self._a(args, 0) + "); if ok { return &v }; return nil }()"
+            return (
+                "func() *string { v, ok := os.LookupEnv("
+                + self._a(args, 0)
+                + "); if ok { return &v }; return nil }()"
+            )
         if name == "ReadLine":
             return "func() string { r := bufio.NewReader(os.Stdin); s, _ := r.ReadString('\\n'); return strings.TrimRight(s, \"\\n\") }()"
         if name == "Format":
@@ -4343,9 +4454,11 @@ class _GoEmitter(Emitter):
         if len(args) >= len(non_self_params):
             return args
         filled = list(args)
-        for p in non_self_params[len(args):]:
+        for p in non_self_params[len(args) :]:
             if p.has_default and p.typ is not None:
-                filled.append(TArg(pos=p.pos, name=None, value=TNilLit(pos=p.pos, annotations={})))
+                filled.append(
+                    TArg(pos=p.pos, name=None, value=TNilLit(pos=p.pos, annotations={}))
+                )
             else:
                 break
         return filled
@@ -4358,7 +4471,11 @@ class _GoEmitter(Emitter):
         if params is not None:
             non_self = [p for p in params if p.typ is not None]
         for idx, a in enumerate(args):
-            ptype = non_self[idx].typ if non_self is not None and idx < len(non_self) else None
+            ptype = (
+                non_self[idx].typ
+                if non_self is not None and idx < len(non_self)
+                else None
+            )
             if (
                 isinstance(a.value, TListLit)
                 and not a.value.elements

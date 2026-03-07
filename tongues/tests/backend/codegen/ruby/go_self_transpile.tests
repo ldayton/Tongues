@@ -1,0 +1,15 @@
+=== nil to interface variable
+result = nil
+
+=== interface common field accessor
+return e.pos
+
+=== IsType narrows for field access
+if it.is_a?(Book)
+    return it.title
+
+=== type switch binding shadows type name
+if operand.is_a?(VInt)
+
+=== empty map in return statement
+return {}

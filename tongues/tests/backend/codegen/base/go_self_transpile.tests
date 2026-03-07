@@ -1,0 +1,91 @@
+=== nil to interface variable
+interface Animal {}
+struct Dog : Animal {
+    name: string
+}
+fn Search(xs: list[Animal], name: string) -> Animal? {
+    let result: Animal? = nil
+    for x in xs {
+        match x {
+            case d: Dog {
+                if d.name == name {
+                    result = d
+                }
+            }
+        }
+    }
+    return result
+}
+fn Main() -> void {
+    let r: Animal? = Search([Dog("Rex")], "Rex")
+    if r != nil {
+        WritelnOut("found")
+    }
+}
+
+=== interface common field accessor
+interface Expr {}
+struct Num : Expr {
+    value: int
+    pos: int
+}
+struct Add : Expr {
+    left: Expr
+    right: Expr
+    pos: int
+}
+fn GetPos(e: Expr) -> int {
+    return e.pos
+}
+fn Main() -> void {
+    let e: Expr = Num(value: 42, pos: 1)
+    WritelnOut(ToString(GetPos(e)))
+}
+
+=== IsType narrows for field access
+interface Item {}
+struct Book : Item {
+    title: string
+}
+struct DVD : Item {
+    title: string
+}
+fn GetTitle(it: Item) -> string {
+    if IsType(it, "Book") {
+        return it.title
+    }
+    return "unknown"
+}
+fn Main() -> void {
+    WritelnOut(GetTitle(Book(title: "Dune")))
+}
+
+=== type switch binding shadows type name
+interface Value {}
+struct VInt : Value {
+    n: int
+}
+struct VFloat : Value {
+    n: float
+}
+fn Negate(operand: Value) -> Value {
+    match operand {
+        case VInt: VInt {
+            return VInt(n: -VInt.n)
+        }
+        case VFloat: VFloat {
+            return VFloat(n: -VFloat.n)
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut("ok")
+}
+
+=== empty map in return statement
+fn Empty() -> map[string, int] {
+    return Map()
+}
+fn Main() -> void {
+    WritelnOut(ToString(Len(Empty())))
+}

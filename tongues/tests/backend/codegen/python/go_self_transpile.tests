@@ -1,0 +1,15 @@
+=== nil to interface variable
+result: Animal | None = None
+
+=== interface common field accessor
+return e.pos
+
+=== IsType narrows for field access
+if isinstance(it, Book):
+        return it.title
+
+=== type switch binding shadows type name
+if isinstance(operand, VInt):
+
+=== empty map in return statement
+return {}

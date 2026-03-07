@@ -1,0 +1,15 @@
+=== nil to interface variable
+var result Animal
+
+=== interface common field accessor
+GetPos() int
+
+=== IsType narrows for field access
+it.(*Book).Title
+
+=== type switch binding shadows type name
+switch __v := operand.(type) {
+case *VInt:
+
+=== empty map in return statement
+return map[string]int{}

@@ -636,3 +636,63 @@ Bump.params.p.is_reassigned = false
 Bump.params.p.is_modified = true
 Bump.params.p.is_const = true
 ---
+
+=== IsType narrowing in if condition
+interface Shape {}
+struct Circle : Shape {
+    radius: int
+}
+struct Rect : Shape {
+    w: int
+    h: int
+}
+fn Describe(s: Shape) -> string {
+    if IsType(s, "Circle") {
+        return ToString(s.radius)
+    }
+    return "other"
+}
+fn Main() -> void { WritelnOut(Describe(Circle(radius: 5))) }
+---
+Describe.vars.s.narrowed_type = Circle
+---
+
+=== IsType narrowing with else branch
+interface Value {}
+struct VInt : Value {
+    n: int
+}
+struct VStr : Value {
+    n: string
+}
+fn Show(v: Value) -> string {
+    if IsType(v, "VInt") {
+        return ToString(v.n)
+    } else {
+        return "not int"
+    }
+}
+fn Main() -> void { WritelnOut(Show(VInt(n: 42))) }
+---
+Show.vars.v.narrowed_type = VInt
+---
+
+=== IsType narrowing in chained and condition
+interface Expr {}
+struct Num : Expr {
+    value: int
+}
+struct Add : Expr {
+    left: Expr
+    right: Expr
+}
+fn IsZero(e: Expr) -> bool {
+    if IsType(e, "Num") && true {
+        return e.value == 0
+    }
+    return false
+}
+fn Main() -> void { WritelnOut(ToString(IsZero(Num(value: 0)))) }
+---
+IsZero.vars.e.narrowed_type = Num
+---

@@ -41,6 +41,7 @@ from ..taytsh.ast import (
     TSetLit,
     TSlice,
     TStmt,
+    TStringLit,
     TStructDecl,
     TThrowStmt,
     TTernary,
@@ -372,29 +373,46 @@ def _walk_assign_target_uses(target: TExpr, ctx: _ScopeCtx) -> None:
 
 
 def _walk_if_stmt(stmt: TIfStmt, ctx: _ScopeCtx) -> None:
-    """Handle if-stmt with potential nil narrowing."""
+    """Handle if-stmt with nil narrowing and IsType narrowing."""
     then_narrowings: dict[str, Type] = {}
     else_narrowings: dict[str, Type] = {}
 
-    if isinstance(stmt.cond, TBinaryOp):
+    _extract_condition_narrowings(stmt.cond, ctx, then_narrowings, else_narrowings)
+
+    then_ctx = _fork_ctx(ctx, then_narrowings)
+    _walk_stmts(stmt.then_body, then_ctx)
+
+    if stmt.else_body is not None:
+        else_ctx = _fork_ctx(ctx, else_narrowings)
+        _walk_stmts(stmt.else_body, else_ctx)
+
+
+def _extract_condition_narrowings(
+    cond: TExpr,
+    ctx: _ScopeCtx,
+    then_narrowings: dict[str, Type],
+    else_narrowings: dict[str, Type],
+) -> None:
+    """Extract narrowing info from a condition expression."""
+    # && chains: narrow from left side into then-branch
+    if isinstance(cond, TBinaryOp) and cond.op == "&&":
+        _extract_condition_narrowings(cond.left, ctx, then_narrowings, else_narrowings)
+        _extract_condition_narrowings(cond.right, ctx, then_narrowings, else_narrowings)
+        return
+
+    # Nil checks: x != nil / x == nil
+    if isinstance(cond, TBinaryOp) and cond.op in ("!=", "=="):
         var_node: TVar | None = None
         is_nil_check = False
         is_neq = False
-
-        if stmt.cond.op in ("!=", "=="):
-            if isinstance(stmt.cond.left, TVar) and isinstance(
-                stmt.cond.right, TNilLit
-            ):
-                var_node = stmt.cond.left
-                is_nil_check = True
-                is_neq = stmt.cond.op == "!="
-            elif isinstance(stmt.cond.right, TVar) and isinstance(
-                stmt.cond.left, TNilLit
-            ):
-                var_node = stmt.cond.right
-                is_nil_check = True
-                is_neq = stmt.cond.op == "!="
-
+        if isinstance(cond.left, TVar) and isinstance(cond.right, TNilLit):
+            var_node = cond.left
+            is_nil_check = True
+            is_neq = cond.op == "!="
+        elif isinstance(cond.right, TVar) and isinstance(cond.left, TNilLit):
+            var_node = cond.right
+            is_nil_check = True
+            is_neq = cond.op == "!="
         if is_nil_check and var_node is not None:
             name = var_node.name
             if name in ctx.bindings:
@@ -407,13 +425,19 @@ def _walk_if_stmt(stmt: TIfStmt, ctx: _ScopeCtx) -> None:
                     else:
                         then_narrowings[name] = NIL_T
                         else_narrowings[name] = non_nil
+        return
 
-    then_ctx = _fork_ctx(ctx, then_narrowings)
-    _walk_stmts(stmt.then_body, then_ctx)
-
-    if stmt.else_body is not None:
-        else_ctx = _fork_ctx(ctx, else_narrowings)
-        _walk_stmts(stmt.else_body, else_ctx)
+    # IsType(x, "TypeName") calls
+    if isinstance(cond, TCall) and isinstance(cond.func, TVar):
+        if cond.func.name == "IsType" and len(cond.args) == 2:
+            arg0 = cond.args[0].value
+            arg1 = cond.args[1].value
+            if isinstance(arg0, TVar) and isinstance(arg1, TStringLit):
+                name = arg0.name
+                type_name_str = arg1.value
+                narrowed = ctx.checker.types.get(type_name_str)
+                if narrowed is not None and name in ctx.bindings:
+                    then_narrowings[name] = narrowed
 
 
 # ============================================================

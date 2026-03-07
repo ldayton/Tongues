@@ -1,0 +1,14 @@
+=== nil to interface variable
+my $result = undef
+
+=== interface common field accessor
+return $e->{pos}
+
+=== IsType narrows for field access
+if ((defined($it) && $it->isa('Book')))
+
+=== type switch binding shadows type name
+if (eval { $operand->isa('VInt') })
+
+=== empty map in return statement
+return {}

@@ -1,0 +1,14 @@
+=== nil to interface variable
+let result = null
+
+=== interface common field accessor
+return e.pos
+
+=== IsType narrows for field access
+if (it instanceof Book)
+
+=== type switch binding shadows type name
+if (operand instanceof VInt)
+
+=== empty map in return statement
+return new Map()
