@@ -1560,6 +1560,15 @@ class _JavaScriptEmitter(Emitter):
             return isinstance(typ, TSetType)
         return False
 
+    def _is_list_expr(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann:
+            return ann.startswith("list[")
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TListType)
+        return isinstance(expr, TListLit)
+
     def _is_bytes_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
         if ann == "bytes":
@@ -1744,6 +1753,14 @@ class _JavaScriptEmitter(Emitter):
             return "boolean"
         return None
 
+    def _is_isinstance_call(self, expr: TExpr) -> bool:
+        """Check if expression is an IsType call (emits instanceof)."""
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "IsType"
+        )
+
     def _js_instance_type(self, type_name: str) -> str:
         """Map Python type names to JS constructor names for instanceof."""
         if type_name == "dict":
@@ -1898,6 +1915,14 @@ class _JavaScriptEmitter(Emitter):
 
     def _binary(self, expr: TBinaryOp) -> str:
         op = expr.op
+        if op == "+" and self._is_list_expr(expr.left):
+            return (
+                "[..."
+                + self._expr(expr.left)
+                + ", ..."
+                + self._expr(expr.right)
+                + "]"
+            )
         if (
             op == "/"
             and isinstance(expr.left, TFloatLit)
@@ -1982,6 +2007,8 @@ class _JavaScriptEmitter(Emitter):
                     return "!(" + self._expr(expr.operand) + ")"
                 return "!" + self._expr(expr.operand)
             if isinstance(expr.operand, (TTernary,)):
+                return "!(" + self._expr(expr.operand) + ")"
+            if self._is_isinstance_call(expr.operand):
                 return "!(" + self._expr(expr.operand) + ")"
             return "!" + self._expr(expr.operand)
         if isinstance(expr.operand, (TBinaryOp, TTernary)):
@@ -2656,6 +2683,14 @@ class _JavaScriptEmitter(Emitter):
                     + ", "
                     + self._a(args, 1)
                     + "])"
+                )
+            if self._is_list_expr(args[0].value):
+                return (
+                    "[..."
+                    + self._a(args, 0)
+                    + ", ..."
+                    + self._a(args, 1)
+                    + "]"
                 )
             left = self._maybe_paren(args[0].value, "+", True)
             right = self._maybe_paren(args[1].value, "+", False)
