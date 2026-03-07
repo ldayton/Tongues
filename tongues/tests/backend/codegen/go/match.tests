@@ -1,0 +1,40 @@
+=== match default binds scrutinee value
+switch n := value.(type) {
+case int:
+	return strconv.Itoa(n)
+default:
+
+=== unused match binding is omitted
+switch value.(type) {
+case int:
+	return "int"
+
+=== match on optional with nil case
+if x == nil {
+	return "absent"
+
+=== match on enum
+switch c {
+case ColorRed:
+	return "red"
+
+=== match on interface
+case *Circle:
+
+=== match on union with three types
+switch v.(type) {
+case int:
+
+=== match with default no binding
+default:
+	return false
+
+=== nil narrowing after check
+if x != nil {
+	return *x + 1
+
+=== nil check with early return
+if x == nil {
+	return 0
+}
+return *x * 2

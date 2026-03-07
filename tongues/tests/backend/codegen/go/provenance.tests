@@ -1,0 +1,147 @@
+=== not in operator (raised)
+if !slices.Contains(xs, 2)
+
+=== negative index via Len subtraction (raised)
+fmt.Println(strconv.Itoa(xs[len(xs)-1]))
+
+=== open-end slice (raised)
+tail := xs[1:]
+
+=== open-start slice (raised)
+head := xs[:3]
+
+=== truthiness check on list (raised)
+if len(xs) > 0
+
+=== truthiness check on string (raised)
+if s != ""
+
+=== chained comparison (raised)
+return 0 <= x && x <= 255
+
+=== list comprehension (raised)
+for _, x := range xs {
+	doubled = append(doubled, x*2)
+}
+
+=== list comprehension with filter (raised)
+for _, x := range xs {
+	if x%2 == 0 {
+		evens = append(evens, x)
+	}
+}
+
+=== dict comprehension (raised)
+for i, k := range keys {
+	m[k] = i
+}
+
+=== set comprehension (raised)
+for _, x := range xs {
+	unique[x] = true
+}
+
+=== truthiness check on map (raised)
+if len(m) > 0
+
+=== truthiness check on set (raised)
+if len(s) > 0
+
+=== negated condition (raised)
+if !done {
+
+=== negated while (raised)
+for !done {
+
+=== format string with interpolation (raised)
+fmt.Sprintf("hello, %s", name)
+
+=== nil coalesce (raised)
+if x != nil { return *x }
+return 0
+
+=== Get with default using defined-or (raised)
+v, ok := m["b"]; if !ok { v = 0 }
+
+=== star unpack two lists (raised)
+append(a, b...)
+
+=== star unpack element then starred (raised)
+append([]int{x}, rest...)
+
+=== star unpack starred then element (raised)
+append(xs, y)
+
+=== star unpack element starred element (raised)
+append(append([]int{x}, middle...), y)
+
+=== del dict key (raised)
+delete(d, "a")
+
+=== del list index (raised)
+xs = slices.Delete(xs, 0, 1)
+
+=== string partition (raised)
+strings.Index(s, sep)
+
+=== string rpartition (raised)
+strings.LastIndex(s, sep)
+
+=== string removeprefix (raised)
+strings.CutPrefix(s, p)
+
+=== string removesuffix (raised)
+strings.CutSuffix(s, p)
+
+=== reversed slice on list (raised)
+slices.Reverse(
+
+=== step slice on list (raised)
+for __i := 0; __i < len(xs); __i += 2 {
+
+=== step slice with start on list (raised)
+for __i := 1; __i < len(xs); __i += 2 {
+
+=== step slice with start >= step on list (raised)
+for __i := 3; __i < len(xs); __i += 2 {
+
+=== step slice on string (raised)
+for __i := 0; __i < len(s); __i += 2 {
+
+=== reversed slice on string (raised)
+func reverseString(
+
+=== reversed for loop (raised)
+for i := len(xs) - 1; i >= 0; i-- {
+
+=== reversed range for loop (raised)
+for i := 9; i >= 0; i-- {
+
+=== zip two lists for loop (raised)
+for __i := 0; __i < min(len(a), len(b)); __i++ {
+
+=== zip three lists for loop (raised)
+for __i := 0; __i < min(len(a), len(b), len(c)); __i++ {
+
+=== string iteration for loop (raised)
+for _, ch := range s {
+
+=== list repetition (raised)
+xs := make([]int, 5)
+
+=== isinstance with tuple of types (raised)
+switch v.(type) {
+case *A, *B:
+
+=== any call with generator (raised)
+for _, x := range xs {
+	if x > 0 {
+
+=== all call with generator (raised)
+for _, x := range xs {
+	if !(x > 0) {
+
+=== any call with filter (raised)
+for _, x := range xs {
+	if x%2 == 0 {
+		if x > 0 {

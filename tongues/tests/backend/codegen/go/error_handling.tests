@@ -1,0 +1,50 @@
+=== unused catch variable is omitted
+if _, ok := r.(*ValueError); ok {
+
+=== used catch variable is kept
+if e, ok := r.(*ValueError); ok {
+
+=== try with finally
+defer func() {
+	fmt.Println("finally")
+}()
+
+=== try with multiple catch clauses
+if _, ok := r.(*ValueError); ok {
+
+=== re-throw in catch
+panic(e)
+
+=== catch-all without type
+if r := recover(); r != nil {
+
+=== catch-all after typed catch
+if e, ok := r.(*ErrA); ok {
+	fmt.Println("got A")
+} else {
+
+=== throw and catch struct
+panic(&AppError{Message: "boom"})
+
+=== catch union of both error types
+switch r.(type) {
+case *ErrA, *ErrB:
+
+=== catch union of types
+switch r.(type) {
+case *ErrA, *ErrB:
+
+=== throw bare Exception
+panic(errors.New("something went wrong"))
+
+=== throw builtin ValueError
+panic(&ValueError{Message: "bad input"})
+
+=== catch builtin ValueError
+if e, ok := r.(*ValueError); ok {
+
+=== Assert with message
+if !(x > 0) { panic("must be positive") }
+
+=== Assert without message
+if !(x > 0) { panic("assertion failed") }

@@ -1,0 +1,22 @@
+=== struct construction and field access
+p := Point{X: 1, Y: 2}
+
+=== struct method call
+c.Inc()
+fmt.Println(strconv.Itoa(c.Value()))
+
+=== field assignment
+p.X = 10
+p.Y = 20
+
+=== nested struct access
+fmt.Println(strconv.Itoa(o.Inner.Value))
+
+=== struct with interface field
+return Eval(b.Left) + Eval(b.Right)
+
+=== enum comparison
+if c == ColorRed
+
+=== named struct construction
+Point{X: 1, Y: 2}

@@ -1,0 +1,53 @@
+=== if-else chain
+} else if x == 0 {
+	return "zero"
+} else {
+	return "negative"
+}
+
+=== while loop
+for n > 0 {
+	total += n
+	n -= 1
+}
+
+=== while true with break
+for {
+
+=== for range single arg
+for i := 0; i < 10; i++ {
+
+=== for range two args
+for i := 5; i < 10; i++ {
+
+=== for range three args
+for i := 10; i > 0; i-- {
+
+=== for over list single var
+for _, x := range xs {
+
+=== for over map keys
+for k := range m {
+
+=== for over map key-value pairs
+for k, v := range m {
+
+=== for over string characters
+for _, ch := range "hello" {
+
+=== for over set
+for v := range s {
+
+=== break and continue
+continue
+
+=== enumerate over list
+for i, v := range xs {
+
+=== negated condition
+if !done {
+
+=== ternary expression
+if x < lo {
+	return lo
+}

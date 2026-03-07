@@ -24,6 +24,7 @@ The transpiler currently supports these target languages:
 
 | Language   | Min Version  | Status |
 | ---------- | ------------ | ------ |
+| Go         | Go 1.21      | Alpha  |
 | Javascript | Node.js 21   | Alpha  |
 | Perl       | Perl 5.38    | Alpha  |
 | Python     | CPython 3.12 | Alpha  |
@@ -31,7 +32,6 @@ The transpiler currently supports these target languages:
 | C          | GCC 13       |        |
 | C#         | .NET 8       |        |
 | Dart       | Dart 3.2     |        |
-| Go         | Go 1.21      |        |
 | Java       | Temurin 21   |        |
 | Lua        | Lua 5.4      |        |
 | PHP        | PHP 8.3      |        |

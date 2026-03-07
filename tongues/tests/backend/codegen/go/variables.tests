@@ -1,0 +1,15 @@
+=== unused tuple target becomes underscore
+q := 17 / 5
+
+=== all tuple targets used
+q := 17 / 5
+r := 17 - q*5
+
+=== initial value suppressed when overwritten
+x, _ := strconv.ParseInt(
+
+=== initial value kept when read before overwrite
+x := 0
+
+=== Unwrap on optional
+v := *x

@@ -1,0 +1,23 @@
+=== in operator emits pythonic form
+if slices.Contains(xs, 2)
+
+=== not in operator
+if !slices.Contains(xs, 2)
+
+=== boolean operators
+fmt.Println(strconv.FormatBool(a && b))
+
+=== bitwise operators
+y := x & 15
+
+=== compound assignment operators
+x += 5
+
+=== chained comparison
+return 0 <= x && x <= 255
+
+=== truthiness check on list
+if len(xs) > 0
+
+=== truthiness check on string
+if s != ""

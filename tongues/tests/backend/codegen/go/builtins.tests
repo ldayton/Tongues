@@ -1,0 +1,58 @@
+=== math functions
+min(3, 7)
+
+=== float math functions
+r := int(math.Round(3.7))
+
+=== conversion functions
+f := float64(42)
+
+=== ParseInt and ParseFloat
+n, _ := strconv.ParseInt("42", 10, 64)
+
+=== FormatInt
+hex := strconv.FormatInt(255, 16)
+
+=== RuneToInt and RuneFromInt
+n := int('A')
+
+=== IsNaN and IsInf
+fmt.Println(strconv.FormatBool(math.IsNaN(x)))
+
+=== Len on various types
+fmt.Println(strconv.Itoa(len("hello")))
+
+=== DivMod
+q := 17 / 5
+r := 17 - q*5
+
+=== DivMod negative dividend
+q := -7 / 2
+r := -7 - q*2
+
+=== Sqrt function
+x := math.Sqrt(2.0)
+
+=== Floor function
+n := int(math.Floor(3.7))
+
+=== Ceil function
+n := int(math.Ceil(3.2))
+
+=== FloorDiv negative operands
+q := int(math.Floor(float64(-7) / float64(2)))
+
+=== PythonMod negative dividend
+r := ((-7 % 2) + 2) % 2
+
+=== RangeList
+for i := 0; i < 5; i++ {
+
+=== RangeList with step
+for i := 0; i < 10; i += 2 {
+
+=== ListFrom bytes
+for _, b := range data {
+
+=== IsNil check
+if x == nil {

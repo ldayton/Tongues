@@ -1,0 +1,40 @@
+=== IO functions
+fmt.Print("no newline")
+fmt.Println("with newline")
+fmt.Fprintln(os.Stderr, "error")
+
+=== ReadAll and ReadLine
+io.ReadAll(os.Stdin)
+
+=== ReadLine returns optional
+if line != nil {
+
+=== ReadFile emits open idiom
+os.ReadFile("input.txt")
+
+=== ReadFileBytes emits open idiom
+os.ReadFile("input.txt")
+
+=== WriteFile emits open idiom
+os.WriteFile("output.txt", []byte("hello"),
+
+=== ReadBytesN
+io.ReadFull(os.Stdin, chunk)
+
+=== Args and GetEnv
+args := os.Args[1:]
+
+=== Exit call
+os.Exit(1)
+
+=== Encode and Decode
+b := []byte("hello")
+
+=== bytes indexing
+b[0]
+
+=== bytes slicing
+part := b[1:3]
+
+=== Concat on bytes
+append(a, b...)

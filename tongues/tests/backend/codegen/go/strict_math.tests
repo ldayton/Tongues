@@ -1,0 +1,90 @@
+=== checked int add
+c := checkedAddI64(a, b)
+fmt.Println(strconv.Itoa(c))
+
+=== checked int sub
+c := checkedSubI64(a, b)
+fmt.Println(strconv.Itoa(c))
+
+=== checked int mul
+c := checkedMulI64(a, b)
+fmt.Println(strconv.Itoa(c))
+
+=== checked int negate
+y := checkedNegI64(x)
+fmt.Println(strconv.Itoa(y))
+
+=== checked left shift
+y := checkedShlI64(x, 4)
+fmt.Println(strconv.Itoa(y))
+
+=== checked right shift
+y := checkedShrI64(x, 4)
+fmt.Println(strconv.Itoa(y))
+
+=== logical right shift
+y := logicalShrI64(x, 1)
+fmt.Println(strconv.Itoa(y))
+
+=== wrapping add
+b := wrappingAdd(a, 1)
+fmt.Println(strconv.Itoa(b))
+
+=== wrapping sub
+b := wrappingSub(min_, 1)
+fmt.Println(strconv.Itoa(b))
+
+=== wrapping mul
+b := wrappingMul(max_, 2)
+fmt.Println(strconv.Itoa(b))
+
+=== checked pow
+x := checkedPowI64(2, 10)
+fmt.Println(strconv.Itoa(x))
+
+=== checked int compound add
+x = checkedAddI64(x, 5)
+fmt.Println(strconv.Itoa(x))
+
+=== checked int compound sub
+x = checkedSubI64(x, 3)
+fmt.Println(strconv.Itoa(x))
+
+=== checked int compound mul
+x = checkedMulI64(x, 3)
+fmt.Println(strconv.Itoa(x))
+
+=== float mod by zero traps
+caught := false
+func() {
+	defer func() { if recover() != nil { caught = true } }()
+	x := strictFmod(1.0, 0.0)
+	_ = x
+}()
+fmt.Println(strconv.FormatBool(caught))
+
+=== min with nan propagates
+nan := math.NaN()
+x := strictMinF64(nan, 1.0)
+fmt.Println(strconv.FormatBool(math.IsNaN(x)))
+
+=== max with nan propagates
+nan := math.NaN()
+x := strictMaxF64(nan, 1.0)
+fmt.Println(strconv.FormatBool(math.IsNaN(x)))
+
+=== sorted with nan traps
+nan := math.NaN()
+caught := false
+func() {
+	defer func() { if recover() != nil { caught = true } }()
+	xs := strictSortedF64([]float64{1.0, nan, 2.0})
+	_ = xs
+}()
+fmt.Println(strconv.FormatBool(caught))
+
+=== non-strict ops unchanged
+x := 1.5 + 2.5
+y := checkedDivI64(10, 3)
+z := checkedRemI64(10, 3)
+fmt.Println(strconv.Itoa(y))

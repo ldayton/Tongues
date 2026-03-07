@@ -1,0 +1,136 @@
+=== delete on map is missing-key safe
+delete(m, "k")
+
+=== Append on list
+xs = append(xs, 3)
+
+=== Get with default on map
+v, ok := m["b"]; if !ok { v = 0 }
+
+=== Get without default returns optional
+v := m["b"]
+
+=== Keys Values Items on map
+for k := range m {
+
+=== ListFrom map keys
+for k := range m {
+
+=== SetFromList map keys
+for k := range m {
+
+=== Contains on map
+if _, ok := m["a"]; ok {
+
+=== IndexOf on list
+idx := slices.Index(xs, 20)
+
+=== Pop and RemoveAt
+last := xs[len(xs)-1]
+xs = xs[:len(xs)-1]
+
+=== Insert on list
+xs = slices.Insert(xs, 1, 2)
+
+=== Add and Remove on set
+s[4] = true
+delete(s, 1)
+
+=== Merge maps
+for k, v := range b {
+
+=== set literal
+s := map[int]bool{1: true, 2: true, 3: true}
+
+=== map literal and index
+m := map[string]int{"a": 1, "b": 2}
+
+=== empty map and set via constructors
+m := map[string]int{}
+
+=== tuple construction and access
+pair := [2]any{1, "hello"}
+
+=== index assignment on list
+xs[0] = 99
+
+=== index assignment on map
+m["b"] = 2
+
+=== list slicing
+mid := xs[1:4]
+
+=== nested collection access
+m["a"][0]
+
+=== Sorted and Reversed
+s := slices.Clone(xs)
+slices.Sort(s)
+
+=== Sorted on string list
+slices.Sort(
+
+=== Sum on list
+for _, v := range xs {
+
+=== negative index via Len subtraction
+fmt.Println(strconv.Itoa(xs[len(xs)-1]))
+
+=== open-end slice
+tail := xs[1:]
+
+=== open-start slice
+head := xs[0:3]
+
+=== list comprehension
+doubled = append(doubled, x*2)
+
+=== list comprehension with filter
+evens = append(evens, x)
+
+=== dict comprehension
+m[k] = i
+
+=== Union on sets
+for k := range b {
+
+=== Intersection on sets
+if b[k] {
+
+=== Difference on sets
+if !b[k] {
+
+=== set comprehension
+unique[x] = true
+
+=== any with generator
+for _, x := range xs {
+	if x > 0 {
+
+=== all with generator
+for _, x := range xs {
+	if !(x > 0) {
+
+=== sorted with key lambda
+slices.SortFunc(
+
+=== min with key lambda
+slices.MinFunc(
+
+=== max with key lambda
+slices.MaxFunc(
+
+=== for over Reversed list
+for i := len(xs) - 1; i >= 0; i-- {
+
+=== Zip two lists
+for __i := 0; __i < min(len(a), len(b)); __i++ {
+
+=== Zip three lists
+for __i := 0; __i < min(len(a), len(b), len(c)); __i++ {
+
+=== Zip bytes
+for __i := 0; __i < min(len(a), len(b)); __i++ {
+
+=== for over string yields rune
+for _, ch := range s {
