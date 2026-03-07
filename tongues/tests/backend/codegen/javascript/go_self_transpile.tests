@@ -25,5 +25,8 @@ console.log(greet())
 === optional string field deref
 return c.name
 
+=== map get with string value type
+return (m.get(key) ?? "")
+
 === list literal with interface type in return
 return [new Leaf(1)]

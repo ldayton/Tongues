@@ -27,5 +27,8 @@ fmt.Println(Greet(""))
 === optional string field deref
 return *c.Name
 
+=== map get with string value type
+func() string { v, ok := m[key]; if !ok { return "" }; return v }()
+
 === list literal with interface type in return
 return []Node{&Leaf{V: 1}}

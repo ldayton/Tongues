@@ -27,5 +27,8 @@ puts(greet())
 === optional string field deref
 return c.name
 
+=== map get with string value type
+return m.fetch(key, "")
+
 === list literal with interface type in return
 return [Leaf.new(v: 1)]

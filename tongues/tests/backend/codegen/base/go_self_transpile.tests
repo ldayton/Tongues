@@ -146,6 +146,15 @@ fn Main() -> void {
     WritelnOut(GetName(Config(name: "test")))
 }
 
+=== map get with string value type
+fn Lookup(m: map[string, string], key: string) -> string {
+    return Get(m, key, "")
+}
+fn Main() -> void {
+    let m: map[string, string] = {"a": "hello"}
+    WritelnOut(Lookup(m, "a"))
+}
+
 === list literal with interface type in return
 interface Node {}
 struct Leaf : Node {

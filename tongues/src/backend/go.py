@@ -2242,7 +2242,7 @@ class _GoEmitter(Emitter):
         if ann.startswith("map["):
             comma = ann.index(",")
             inner = ann[comma + 2 : -1]
-            return self._type_str_to_go(inner)
+            return self._ann_type_to_go(inner)
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             if isinstance(typ, TMapType):
