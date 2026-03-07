@@ -1,0 +1,7 @@
+=== StrEnum declaration
+module Color
+    RED = 0
+
+=== IntEnum declaration
+module Priority
+    LOW = 0

@@ -1,0 +1,25 @@
+=== StrEnum declaration
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    GREEN = "green"
+    BLUE = "blue"
+def main() -> None:
+    c: Color = Color.RED
+    if c == Color.RED:
+        print(str(c))
+if __name__ == "__main__":
+    main()
+
+=== IntEnum declaration
+from enum import IntEnum
+class Priority(IntEnum):
+    LOW = 0
+    MEDIUM = 1
+    HIGH = 2
+def main() -> None:
+    p: Priority = Priority.LOW
+    if p == Priority.LOW:
+        print(str(p))
+if __name__ == "__main__":
+    main()

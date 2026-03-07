@@ -1,6 +1,7 @@
 """Ruby backend: Taytsh AST → Ruby source code."""
 
 from __future__ import annotations
+from typing import assert_never
 
 from .ordering import order_decls
 from .util import (
@@ -525,6 +526,16 @@ def _scan_stmt_for_needs(stmt: TStmt, flags: list[bool]) -> None:
                 _scan_stmts_for_needs(case.body, flags)
             if stmt.default:
                 _scan_stmts_for_needs(stmt.default.body, flags)
+        case (
+            TOpAssignStmt()
+            | TTupleAssignStmt()
+            | TThrowStmt()
+            | TBreakStmt()
+            | TContinueStmt()
+        ):
+            pass
+        case _:
+            assert_never(stmt)
 
 
 def _scan_expr_for_needs(expr: TExpr, flags: list[bool]) -> None:
@@ -651,6 +662,8 @@ class _RubyEmitter(Emitter):
                     self._emit_let(decl)
                 case TFnDecl():
                     self._emit_fn(decl)
+                case TInterfaceDecl():
+                    pass  # handled above via isinstance check
             need_blank = True
         # Insert require 'set' at top if needed
         if self._needs_set:
@@ -1234,6 +1247,8 @@ class _RubyEmitter(Emitter):
                 self._emit_try(stmt)
             case TMatchStmt():
                 self._emit_match(stmt)
+            case _:
+                assert_never(stmt)
 
     def _emit_let(self, stmt: TLetStmt) -> None:
         safe = self._decl_name(stmt.name, stmt.annotations)

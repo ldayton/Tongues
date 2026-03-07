@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import assert_never
+
 from .ordering import order_decls
 from .util import (
     STRICT_INT_BINARY,
@@ -402,6 +404,8 @@ class _PythonEmitter(Emitter):
                     self._emit_let(decl)
                 case TFnDecl():
                     self._emit_fn(decl)
+                case TInterfaceDecl():
+                    pass  # handled above via isinstance check
             need_blank = True
 
     # ── Enum ──────────────────────────────────────────────────
@@ -922,6 +926,8 @@ class _PythonEmitter(Emitter):
                 self._emit_try(stmt)
             case TMatchStmt():
                 self._emit_match(stmt)
+            case _:
+                assert_never(stmt)
 
     def _emit_let(self, stmt: TLetStmt) -> None:
         safe = _restore_name(stmt.name, stmt.annotations)

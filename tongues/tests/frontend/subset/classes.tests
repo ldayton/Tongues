@@ -124,6 +124,30 @@ class Point:
 ok
 ---
 
+=== StrEnum class allowed
+from enum import StrEnum
+class Color(StrEnum):
+    RED = "red"
+    GREEN = "green"
+    BLUE = "blue"
+def f() -> Color:
+    return Color.RED
+---
+ok
+---
+
+=== IntEnum class allowed
+from enum import IntEnum
+class Priority(IntEnum):
+    LOW = 0
+    MEDIUM = 1
+    HIGH = 2
+def f() -> Priority:
+    return Priority.LOW
+---
+ok
+---
+
 === __init__ allowed
 class Foo:
     def __init__(self) -> None:

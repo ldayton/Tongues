@@ -1,12 +1,15 @@
 """Callgraph serialization — JSON output for already-annotated AST nodes."""
 
 from __future__ import annotations
+from typing import assert_never
 
 from ..frontend.types import JDict, JStr, JsonValue
 from ..taytsh.ast import (
     TAssignStmt,
     TBinaryOp,
+    TBreakStmt,
     TCall,
+    TContinueStmt,
     TExpr,
     TExprStmt,
     TFieldAccess,
@@ -101,6 +104,10 @@ def _sc_collect_calls_stmt(
                 _sc_collect_calls_stmts(catch.body, calls, checker)
             if stmt.finally_body is not None:
                 _sc_collect_calls_stmts(stmt.finally_body, calls, checker)
+        case TBreakStmt() | TContinueStmt():
+            pass
+        case _:
+            assert_never(stmt)
 
 
 def _sc_collect_calls_expr(

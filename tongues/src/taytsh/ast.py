@@ -1,6 +1,7 @@
 """Taytsh AST — parse-time node definitions."""
 
 from __future__ import annotations
+from typing import assert_never
 
 from dataclasses import dataclass
 
@@ -747,6 +748,10 @@ def _sa_collect_vars_stmt(
                 _sa_collect_vars_stmts(catch.body, result, pfx, plen)
             if stmt.finally_body is not None:
                 _sa_collect_vars_stmts(stmt.finally_body, result, pfx, plen)
+        case TBreakStmt() | TContinueStmt():
+            pass
+        case _:
+            assert_never(stmt)
 
 
 def _sa_collect_vars_stmts(
@@ -1008,6 +1013,8 @@ def _expr_json(e: TExpr) -> JsonValue:
             d["params"] = JList(plist)
             d["ret"] = _type_json(e.ret)
             d["body"] = _stmts_json(e.body)
+        case _:
+            assert_never(e)
     d["annotations"] = _ann_json(e.annotations)
     return JDict(d)
 
@@ -1071,6 +1078,8 @@ def _stmt_json(s: TStmt) -> JsonValue:
             d["finally_body"] = (
                 _stmts_json(s.finally_body) if s.finally_body is not None else JNull()
             )
+        case _:
+            assert_never(s)
     d["annotations"] = _ann_json(s.annotations)
     return JDict(d)
 
@@ -1233,6 +1242,70 @@ def _sa_serialize_fn(fn: TFnDecl, pfx: str, plen: int) -> dict[str, JsonValue]:
         if escapes:
             d["escapes"] = JDict(escapes)
     return d
+
+
+# ============================================================
+# Concrete union type aliases (closed unions for exhaustiveness checking)
+# ============================================================
+
+type ConcreteStmt = (
+    TLetStmt
+    | TAssignStmt
+    | TOpAssignStmt
+    | TTupleAssignStmt
+    | TReturnStmt
+    | TBreakStmt
+    | TContinueStmt
+    | TThrowStmt
+    | TExprStmt
+    | TIfStmt
+    | TWhileStmt
+    | TForStmt
+    | TMatchStmt
+    | TTryStmt
+)
+
+type ConcreteExpr = (
+    TRange
+    | TIntLit
+    | TFloatLit
+    | TByteLit
+    | TStringLit
+    | TRuneLit
+    | TBytesLit
+    | TBoolLit
+    | TNilLit
+    | TVar
+    | TBinaryOp
+    | TUnaryOp
+    | TTernary
+    | TFieldAccess
+    | TTupleAccess
+    | TIndex
+    | TSlice
+    | TCall
+    | TListLit
+    | TMapLit
+    | TSetLit
+    | TTupleLit
+    | TFnLit
+)
+
+type ConcreteDecl = TFnDecl | TStructDecl | TInterfaceDecl | TEnumDecl
+
+type ConcreteType = (
+    TPrimitive
+    | TListType
+    | TMapType
+    | TSetType
+    | TTupleType
+    | TFuncType
+    | TIdentType
+    | TUnionType
+    | TOptionalType
+)
+
+type ConcretePattern = TPatternType | TPatternEnum | TPatternNil
 
 
 def serialize_annotations(module: TModule, prefix: str) -> dict[str, JsonValue]:

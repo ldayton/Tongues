@@ -6,6 +6,7 @@ interface detection, and function reference detection.
 """
 
 from __future__ import annotations
+from typing import assert_never
 
 from dataclasses import dataclass
 
@@ -14,7 +15,9 @@ from ..taytsh.ast import (
     Ann,
     TAssignStmt,
     TBinaryOp,
+    TBreakStmt,
     TCall,
+    TContinueStmt,
     TExpr,
     TExprStmt,
     TFieldAccess,
@@ -346,6 +349,10 @@ def _walk_stmt(stmt: TStmt, ctx: _ScopeCtx) -> None:
             _walk_match_stmt(stmt, ctx)
         case TTryStmt():
             _walk_try_stmt(stmt, ctx)
+        case TBreakStmt() | TContinueStmt():
+            pass
+        case _:
+            assert_never(stmt)
 
 
 def _walk_assign_target_uses(target: TExpr, ctx: _ScopeCtx) -> None:

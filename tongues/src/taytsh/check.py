@@ -1,6 +1,7 @@
 """Taytsh typechecker — validates a parsed TModule against the spec's type rules."""
 
 from __future__ import annotations
+from typing import assert_never
 
 from dataclasses import dataclass
 
@@ -2258,6 +2259,8 @@ class Checker:
                         self.narrow(scrutinee_expr.name, case_type)
                 self.check_stmts(case.body)
                 self.exit_scope()
+            case _:
+                assert_never(pat)
 
     def _get_scrutinee_enum(self, scrutinee: Type) -> EnumT | None:
         """Get the enum type from the scrutinee (direct or optional)."""

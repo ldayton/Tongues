@@ -4084,20 +4084,41 @@ def _bi_list_from(rt: Runtime, args: list[Value]) -> Value:
         return VList(list(xs.elements), xs.typ)
     if isinstance(xs, VSet):
         return VList(list(xs.elements), ListT(kind="list", element=xs.typ.element))
-    raise TaytshRuntimeFault("ListFrom expects list or set", None)
+    if isinstance(xs, VBytes):
+        return _coerce_to_list(xs)
+    raise TaytshRuntimeFault("ListFrom expects list, set, or bytes", None)
+
+
+def _coerce_to_list(v: Value) -> VList:
+    if isinstance(v, VBytes):
+        elems: list[Value] = []
+        for b in v.value:
+            elems.append(VInt(b))
+        return VList(elems, ListT(kind="list", element=INT_T))
+    if isinstance(v, VList):
+        return v
+    raise TaytshRuntimeFault("expected list or bytes", None)
 
 
 def _bi_zip(rt: Runtime, args: list[Value]) -> Value:
-    a = args[0]
-    b = args[1]
-    if not isinstance(a, VList) or not isinstance(b, VList):
-        raise TaytshRuntimeFault("Zip expects two lists", None)
-    min_len = min(len(a.elements), len(b.elements))
-    elem_ty = TupleT(kind="tuple", elements=[a.typ.element, b.typ.element])
+    lists: list[VList] = []
+    for arg in args:
+        lists.append(_coerce_to_list(arg))
+    min_len: int = len(lists[0].elements)
+    for lst in lists:
+        if len(lst.elements) < min_len:
+            min_len = len(lst.elements)
+    elem_types: list[Type] = []
+    for lst in lists:
+        elem_types.append(lst.typ.element)
+    elem_ty = TupleT(kind="tuple", elements=elem_types)
     result: list[Value] = []
     i = 0
     while i < min_len:
-        result.append(VTuple([a.elements[i], b.elements[i]], elem_ty))
+        row: list[Value] = []
+        for lst in lists:
+            row.append(lst.elements[i])
+        result.append(VTuple(row, elem_ty))
         i += 1
     return VList(result, ListT(kind="list", element=elem_ty))
 

@@ -1,0 +1,5 @@
+=== StrEnum declaration
+use constant RED => 0;
+
+=== IntEnum declaration
+use constant LOW => 0;
