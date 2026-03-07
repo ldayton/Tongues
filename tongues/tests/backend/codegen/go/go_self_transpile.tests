@@ -30,5 +30,8 @@ return *c.Name
 === map get with string value type
 func() string { v, ok := m[key]; if !ok { return "" }; return v }()
 
+=== map keys with string key type
+[]string { var r []string; for k := range m
+
 === list literal with interface type in return
 return []Node{&Leaf{V: 1}}

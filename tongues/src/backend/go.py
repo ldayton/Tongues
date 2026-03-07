@@ -2230,7 +2230,7 @@ class _GoEmitter(Emitter):
         ann: str = expr.annotations.get("type", "")
         if ann.startswith("map["):
             comma = ann.index(",")
-            return self._type_str_to_go(ann[4:comma])
+            return self._ann_type_to_go(ann[4:comma])
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             if isinstance(typ, TMapType):

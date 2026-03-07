@@ -155,6 +155,15 @@ fn Main() -> void {
     WritelnOut(Lookup(m, "a"))
 }
 
+=== map keys with string key type
+fn GetKeys(m: map[string, int]) -> list[string] {
+    return Keys(m)
+}
+fn Main() -> void {
+    let m: map[string, int] = {"a": 1, "b": 2}
+    WritelnOut(ToString(Len(GetKeys(m))))
+}
+
 === list literal with interface type in return
 interface Node {}
 struct Leaf : Node {

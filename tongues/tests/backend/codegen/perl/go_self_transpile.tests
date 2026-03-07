@@ -28,5 +28,8 @@ return $c->{name}
 === map get with string value type
 return (exists $m->{$key} ? $m->{$key} : "")
 
+=== map keys with string key type
+return [sort keys %{$m}]
+
 === list literal with interface type in return
 return [Leaf->new(1)]

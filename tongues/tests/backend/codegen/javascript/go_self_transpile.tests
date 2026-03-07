@@ -28,5 +28,8 @@ return c.name
 === map get with string value type
 return (m.get(key) ?? "")
 
+=== map keys with string key type
+return [...m.keys()]
+
 === list literal with interface type in return
 return [new Leaf(1)]
