@@ -5,10 +5,10 @@ m.delete("k");
 xs.push(3);
 
 === Get with default on map
-let v = m.get("b") ?? 0;
+let v = (m.get("b") ?? 0);
 
 === Get without default returns optional
-let v = m.get("b") ?? null;
+let v = (m.get("b") ?? null);
 
 === Keys Values Items on map
 let ks = [...m.keys()];
@@ -104,7 +104,7 @@ unique.add(x);
 
 === any with generator
 let result = false;
-for (const x of xs) {
+for (let x of xs) {
     if (x > 0) {
         result = true;
         break;
@@ -113,7 +113,7 @@ for (const x of xs) {
 
 === all with generator
 let result = true;
-for (const x of xs) {
+for (let x of xs) {
     if (!(x > 0)) {
         result = false;
         break;
@@ -130,7 +130,7 @@ xs.reduce((a, b) => a.length <= b.length ? a : b);
 xs.reduce((a, b) => a.length >= b.length ? a : b);
 
 === for over Reversed list
-for (const x of [...xs].reverse()) {
+for (let x of [...xs].reverse()) {
 
 === Zip two lists
 for (let __i = 0; __i < Math.min(a.length, b.length); __i++) {
@@ -149,4 +149,4 @@ for (let __i = 0; __i < Math.min(a.length, b.length); __i++) {
     const y = b[__i];
 
 === for over string yields rune
-for (const ch of s) {
+for (let ch of s) {

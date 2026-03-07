@@ -50,7 +50,7 @@ while (!done) {
 return x ?? 0;
 
 === Get with default using defined-or (raised)
-m.get("b") ?? 0
+(m.get("b") ?? 0)
 
 === star unpack two lists (raised)
 [...a, ...b]
@@ -101,7 +101,7 @@ let r = [...s].filter((_, i) => i % 2 === 0).join("");
 let r = [...s].reverse().join("");
 
 === reversed for loop (raised)
-for (const x of [...xs].reverse()) {
+for (let x of [...xs].reverse()) {
 
 === reversed range for loop (raised)
 for (let i = 9; i >= 0; i--) {
@@ -113,7 +113,7 @@ for (let __i = 0; __i < Math.min(a.length, b.length); __i++) {
 for (let __i = 0; __i < Math.min(a.length, b.length, c.length); __i++) {
 
 === string iteration for loop (raised)
-for (const ch of s) {
+for (let ch of s) {
 
 === list repetition (raised)
 let xs = Array(5).fill(0);

@@ -458,7 +458,8 @@ class _JavaScriptEmitter(Emitter):
         self.indent += 1
         params: list[str] = []
         for fld in decl.fields:
-            params.append(_safe_name(fld.name))
+            safe = _safe_name(fld.name)
+            params.append(safe + " = " + self._field_default(fld))
         self._line("constructor(" + ", ".join(params) + ") {")
         self.indent += 1
         msg_field: TFieldDecl | None = None
@@ -492,7 +493,8 @@ class _JavaScriptEmitter(Emitter):
         self.indent += 1
         params: list[str] = []
         for fld in decl.fields:
-            params.append(_safe_name(fld.name))
+            safe = _safe_name(fld.name)
+            params.append(safe + " = " + self._field_default(fld))
         if decl.fields or decl.parent is not None:
             self._line("constructor(" + ", ".join(params) + ") {")
             self.indent += 1
@@ -518,7 +520,8 @@ class _JavaScriptEmitter(Emitter):
         if decl.fields:
             params: list[str] = []
             for fld in decl.fields:
-                params.append(_safe_name(fld.name))
+                safe = _safe_name(fld.name)
+                params.append(safe + " = " + self._field_default(fld))
             self._line("constructor(" + ", ".join(params) + ") {")
             self.indent += 1
             for fld in decl.fields:
@@ -553,7 +556,12 @@ class _JavaScriptEmitter(Emitter):
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
         params = self._params(decl.params)
-        self._line(_safe_name(_to_lower_camel(decl.name)) + "(" + params + ") {")
+        method_name = decl.name
+        if method_name in ("__repr__", "__str__"):
+            method_name = "toString"
+        else:
+            method_name = _safe_name(_to_lower_camel(method_name))
+        self._line(method_name + "(" + params + ") {")
         self.indent += 1
         old_self = self.self_name
         if decl.params and decl.params[0].typ is None:
@@ -588,6 +596,22 @@ class _JavaScriptEmitter(Emitter):
             if typ.kind == "bytes":
                 return "Buffer.alloc(0)"
         return "null"
+
+    def _field_default(self, fld: TFieldDecl) -> str:
+        typ = fld.typ
+        if isinstance(typ, TListType):
+            return "[]"
+        if isinstance(typ, TMapType):
+            return "new Map()"
+        if isinstance(typ, TSetType):
+            return "new Set()"
+        if (
+            fld.has_default
+            and isinstance(typ, TIdentType)
+            and typ.name in self.struct_names
+        ):
+            return "new " + typ.name + "()"
+        return self._zero_value(typ)
 
     # ── Statements ────────────────────────────────────────────
 
@@ -1268,23 +1292,20 @@ class _JavaScriptEmitter(Emitter):
         binding = stmt.binding
         ann = stmt.annotations
         prov = ann.get("provenance", "")
+        zip_bind_lines: list[str] = []
         if isinstance(stmt.iterable, TRange):
             self._emit_for_range(stmt, binding, ann, prov)
         elif self._is_zip_for(stmt):
-            self._emit_for_zip(stmt, binding, ann)
+            zip_bind_lines = self._emit_for_zip(stmt, binding, ann)
         elif len(binding) == 1:
             b = _restore_name(binding[0], ann)
             iterable = self._for_iterable(stmt.iterable)
             if self._is_map_type(stmt.iterable):
                 self._line(
-                    "for (const "
-                    + b
-                    + " of "
-                    + self._expr(stmt.iterable)
-                    + ".keys()) {"
+                    "for (let " + b + " of " + self._expr(stmt.iterable) + ".keys()) {"
                 )
             else:
-                self._line("for (const " + b + " of " + iterable + ") {")
+                self._line("for (let " + b + " of " + iterable + ") {")
         elif len(binding) == 2:
             iter_is_map = self._is_map_for(stmt)
             is_enumerate = self._is_enumerate_for(stmt)
@@ -1292,7 +1313,7 @@ class _JavaScriptEmitter(Emitter):
             b1 = _restore_name(binding[1], ann)
             if iter_is_map:
                 self._line(
-                    "for (const ["
+                    "for (let ["
                     + b0
                     + ", "
                     + b1
@@ -1302,7 +1323,7 @@ class _JavaScriptEmitter(Emitter):
                 )
             elif is_enumerate:
                 self._line(
-                    "for (const ["
+                    "for (let ["
                     + b0
                     + ", "
                     + b1
@@ -1316,7 +1337,7 @@ class _JavaScriptEmitter(Emitter):
                     binder_parts.append(_restore_name(b, ann))
                 binders = ", ".join(binder_parts)
                 self._line(
-                    "for (const ["
+                    "for (let ["
                     + binders
                     + "] of "
                     + self._for_iterable(stmt.iterable)
@@ -1328,13 +1349,15 @@ class _JavaScriptEmitter(Emitter):
                 binder_parts.append(_restore_name(b, ann))
             binders = ", ".join(binder_parts)
             self._line(
-                "for (const ["
+                "for (let ["
                 + binders
                 + "] of "
                 + self._for_iterable(stmt.iterable)
                 + ") {"
             )
         self.indent += 1
+        for bl in zip_bind_lines:
+            self._line(bl)
         self._emit_stmts(stmt.body)
         self.indent -= 1
         self._line("}")
@@ -1476,17 +1499,19 @@ class _JavaScriptEmitter(Emitter):
             stmt.iterable, "Zip"
         )
 
-    def _emit_for_zip(self, stmt: TForStmt, binding: list[str], ann: Ann) -> None:
+    def _emit_for_zip(self, stmt: TForStmt, binding: list[str], ann: Ann) -> list[str]:
+        """Emit zip for header, return binding lines to emit inside body."""
         assert isinstance(stmt.iterable, TCall)
         zip_args = stmt.iterable.args
         arr_exprs = [self._expr(a.value) for a in zip_args]
         min_parts = [e + ".length" for e in arr_exprs]
         min_expr = "Math.min(" + ", ".join(min_parts) + ")"
         self._line("for (let __i = 0; __i < " + min_expr + "; __i++) {")
-        self.indent += 1
+        bind_lines: list[str] = []
         for j, b in enumerate(binding):
             bname = _restore_name(b, ann)
-            self._line("const " + bname + " = " + arr_exprs[j] + "[__i];")
+            bind_lines.append("const " + bname + " = " + arr_exprs[j] + "[__i];")
+        return bind_lines
 
     def _for_iterable(self, iterable: TExpr) -> str:
         if self._is_builtin_call(iterable, "Reversed") and isinstance(iterable, TCall):
@@ -1497,9 +1522,7 @@ class _JavaScriptEmitter(Emitter):
 
     def _emit_for_keys(self, stmt: TForStmt, binding: list[str], ann: Ann) -> None:
         b = _restore_name(binding[0], ann)
-        self._line(
-            "for (const " + b + " of " + self._expr(stmt.iterable) + ".keys()) {"
-        )
+        self._line("for (let " + b + " of " + self._expr(stmt.iterable) + ".keys()) {")
 
     def _static_int(self, expr: TExpr) -> int | None:
         if isinstance(expr, TIntLit):
@@ -1679,7 +1702,12 @@ class _JavaScriptEmitter(Emitter):
                 self._line(keyword + " (typeof " + expr_str + ' === "' + prim + '") {')
             else:
                 self._line(
-                    keyword + " (" + expr_str + " instanceof " + type_name + ") {"
+                    keyword
+                    + " ("
+                    + expr_str
+                    + " instanceof "
+                    + self._js_instance_type(type_name)
+                    + ") {"
                 )
             self.indent += 1
             unused = pat.annotations.get("liveness.match_var_unused") == "true"
@@ -1715,6 +1743,16 @@ class _JavaScriptEmitter(Emitter):
         if type_name == "bool":
             return "boolean"
         return None
+
+    def _js_instance_type(self, type_name: str) -> str:
+        """Map Python type names to JS constructor names for instanceof."""
+        if type_name == "dict":
+            return "Map"
+        if type_name == "list":
+            return "Array"
+        if type_name == "set":
+            return "Set"
+        return type_name
 
     def _emit_match_default(
         self, default: TDefault, expr_str: str, first: bool
@@ -1892,7 +1930,9 @@ class _JavaScriptEmitter(Emitter):
             types: list[str] = []
             obj = self._flatten_isinstance_tuple(expr, types)
             if obj is not None:
-                parts = [obj + " instanceof " + t for t in types]
+                parts = [
+                    obj + " instanceof " + self._js_instance_type(t) for t in types
+                ]
                 return " || ".join(parts)
         # chained comparison: keep desugared form for JS
         if op == "&&" and expr.annotations.get("provenance") == "chained_comparison":
@@ -1969,24 +2009,10 @@ class _JavaScriptEmitter(Emitter):
         cond = expr.cond
         if isinstance(cond, TBinaryOp) and cond.op == "!=":
             if isinstance(cond.right, TNilLit):
-                return (
-                    "("
-                    + self._expr(cond.left)
-                    + " ?? "
-                    + self._expr(expr.else_expr)
-                    + ")"
-                )
+                return self._expr(cond.left) + " ?? " + self._expr(expr.else_expr)
             if isinstance(cond.left, TNilLit):
-                return (
-                    "("
-                    + self._expr(cond.right)
-                    + " ?? "
-                    + self._expr(expr.else_expr)
-                    + ")"
-                )
-        return (
-            "(" + self._expr(expr.then_expr) + " ?? " + self._expr(expr.else_expr) + ")"
-        )
+                return self._expr(cond.right) + " ?? " + self._expr(expr.else_expr)
+        return self._expr(expr.then_expr) + " ?? " + self._expr(expr.else_expr)
 
     def _partition_ternary(self, expr: TTernary, prov: str) -> str:
         pt_cond = expr.cond
@@ -2664,7 +2690,7 @@ class _JavaScriptEmitter(Emitter):
             prim = self._js_typeof(type_name)
             if prim is not None:
                 return "typeof " + self._a(args, 0) + ' === "' + prim + '"'
-            return self._a(args, 0) + " instanceof " + type_name
+            return self._a(args, 0) + " instanceof " + self._js_instance_type(type_name)
         if name in ("Bytes", "BytesFrom"):
             return "Buffer.from(" + self._a(args, 0) + ")"
         if name == "WrappingAdd":

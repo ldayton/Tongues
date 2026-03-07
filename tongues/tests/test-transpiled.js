@@ -275,8 +275,13 @@ function runPhaseTests(testDir, phaseName, cfg) {
                     } catch {}
                 }
             }
-            const err = check_expected(entry.expected, phaseResult.errors, phaseResult.warnings,
-                phaseResult.data, reveals, phaseName, lenient);
+            let err;
+            try {
+                err = check_expected(entry.expected, phaseResult.errors, phaseResult.warnings,
+                    phaseResult.data, reveals, phaseName, lenient);
+            } catch (exc) {
+                err = "harness crash: " + (exc instanceof Error ? exc.message : String(exc));
+            }
             results.push([err === "" ? "pass" : "fail", testId, err === "" ? null : err]);
         }
     }

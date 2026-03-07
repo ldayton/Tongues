@@ -24,25 +24,25 @@ for (let i = 5; i < 10; i++) {
 for (let i = 10; i > 0; i--) {
 
 === for over list single var
-for (const x of xs) {
+for (let x of xs) {
 
 === for over map keys
-for (const k of m.keys()) {
+for (let k of m.keys()) {
 
 === for over map key-value pairs
-for (const [k, v] of m) {
+for (let [k, v] of m) {
 
 === for over string characters
-for (const ch of "hello") {
+for (let ch of "hello") {
 
 === for over set
-for (const v of s) {
+for (let v of s) {
 
 === break and continue
 continue;
 
 === enumerate over list
-for (const [i, v] of xs.entries()) {
+for (let [i, v] of xs.entries()) {
 
 === negated condition
 if (!done) {
