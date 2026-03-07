@@ -68,6 +68,7 @@ from ..taytsh.ast import (
     TTupleAssignStmt,
     TTupleLit,
     TTryStmt,
+    TTupleType,
     TType,
     TUnaryOp,
     TVar,
@@ -360,6 +361,7 @@ class _JavaScriptEmitter(Emitter):
         self.var_types: dict[str, TType] = {}
         self.module_let_names: set[str] = set()
         self._current_struct: str = ""
+        self._struct_field_decls: dict[str, list[TFieldDecl]] = {}
         self._needs_read_all: bool = False
         self.fn_names: set[str] = set()
 
@@ -439,6 +441,8 @@ class _JavaScriptEmitter(Emitter):
     # ── Struct ────────────────────────────────────────────────
 
     def _emit_struct(self, decl: TStructDecl) -> None:
+        old_struct = self._current_struct
+        self._current_struct = decl.name
         is_error = decl.name in BUILTIN_STRUCTS
         if not is_error and decl.parent is not None:
             if decl.parent in BUILTIN_STRUCTS:
@@ -449,6 +453,7 @@ class _JavaScriptEmitter(Emitter):
             self._emit_error_struct(decl)
         else:
             self._emit_data_struct(decl)
+        self._current_struct = old_struct
 
     def _emit_error_struct(self, decl: TStructDecl) -> None:
         parent = "Error"
@@ -473,7 +478,7 @@ class _JavaScriptEmitter(Emitter):
             self._line("super();")
         for fld in decl.fields:
             safe = _safe_name(fld.name)
-            self._line("this." + safe + " = " + safe + ";")
+            self._emit_field_assign(fld, safe)
         self.indent -= 1
         self._line("}")
         for method in decl.methods:
@@ -502,7 +507,7 @@ class _JavaScriptEmitter(Emitter):
                 self._line("super();")
             for fld in decl.fields:
                 safe = _safe_name(fld.name)
-                self._line("this." + safe + " = " + safe + ";")
+                self._emit_field_assign(fld, safe)
             self.indent -= 1
             self._line("}")
         for i, method in enumerate(decl.methods):
@@ -526,7 +531,7 @@ class _JavaScriptEmitter(Emitter):
             self.indent += 1
             for fld in decl.fields:
                 safe = _safe_name(fld.name)
-                self._line("this." + safe + " = " + safe + ";")
+                self._emit_field_assign(fld, safe)
             self.indent -= 1
             self._line("}")
         self.indent -= 1
@@ -555,6 +560,10 @@ class _JavaScriptEmitter(Emitter):
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
+            elif p.typ is None and self._current_struct:
+                self.var_types[p.name] = TIdentType(
+                    pos=decl.pos, name=self._current_struct
+                )
         params = self._params(decl.params)
         method_name = decl.name
         if method_name in ("__repr__", "__str__"):
@@ -612,6 +621,23 @@ class _JavaScriptEmitter(Emitter):
         ):
             return "new " + typ.name + "()"
         return self._zero_value(typ)
+
+    def _needs_null_guard(self, fld: TFieldDecl) -> bool:
+        """True if field needs ?? guard because null might be passed explicitly."""
+        typ = fld.typ
+        return isinstance(typ, (TListType, TMapType, TSetType)) or (
+            fld.has_default
+            and isinstance(typ, TIdentType)
+            and typ.name in self.struct_names
+        )
+
+    def _emit_field_assign(self, fld: TFieldDecl, safe: str) -> None:
+        if self._needs_null_guard(fld):
+            self._line(
+                "this." + safe + " = " + safe + " ?? " + self._field_default(fld) + ";"
+            )
+        else:
+            self._line("this." + safe + " = " + safe + ";")
 
     # ── Statements ────────────────────────────────────────────
 
@@ -992,7 +1018,7 @@ class _JavaScriptEmitter(Emitter):
                     self._line(
                         self._expr(stmt.target.obj)
                         + ".set("
-                        + self._expr(stmt.target.index)
+                        + self._map_key_for(stmt.target.obj, stmt.target.index)
                         + ", "
                         + self._expr(stmt.value)
                         + ");"
@@ -1154,20 +1180,12 @@ class _JavaScriptEmitter(Emitter):
                 return
             if name == "Delete":
                 args = expr.args
-                if stmt.annotations.get("provenance") == "del_subscript":
-                    self._line(
-                        self._expr(args[0].value)
-                        + ".delete("
-                        + self._expr(args[1].value)
-                        + ");"
-                    )
-                else:
-                    self._line(
-                        self._expr(args[0].value)
-                        + ".delete("
-                        + self._expr(args[1].value)
-                        + ");"
-                    )
+                self._line(
+                    self._expr(args[0].value)
+                    + ".delete("
+                    + self._map_key_for(args[0].value, args[1].value)
+                    + ");"
+                )
                 return
             if name == "RemoveAt":
                 args = expr.args
@@ -1551,6 +1569,45 @@ class _JavaScriptEmitter(Emitter):
             return isinstance(typ, TMapType)
         return False
 
+    def _has_tuple_key(self, map_expr: TExpr) -> bool:
+        """Check if map expression has tuple keys (need string conversion)."""
+        if isinstance(map_expr, TVar):
+            typ = self.var_types.get(map_expr.name)
+            if isinstance(typ, TMapType) and isinstance(typ.key, TTupleType):
+                return True
+        if isinstance(map_expr, TFieldAccess):
+            ann = map_expr.annotations.get("type", "")
+            if ann.startswith("map[tuple["):
+                return True
+            obj_type: TType | None = None
+            if isinstance(map_expr.obj, TVar):
+                obj_type = self.var_types.get(map_expr.obj.name)
+            if obj_type is not None and isinstance(obj_type, TIdentType):
+                ftype = self._get_field_type(obj_type.name, map_expr.field)
+                if isinstance(ftype, TMapType) and isinstance(ftype.key, TTupleType):
+                    return True
+        return False
+
+    def _get_field_type(self, struct_name: str, field: str) -> TType | None:
+        """Get the type of a field on a struct."""
+        decls = self._struct_field_decls.get(struct_name)
+        if decls is None:
+            return None
+        for f in decls:
+            if f.name == field:
+                return f.typ
+        return None
+
+    def _map_key(self, key_expr: TExpr) -> str:
+        """Emit a map key, converting tuples to strings if needed."""
+        return self._expr(key_expr)
+
+    def _map_key_for(self, map_expr: TExpr, key_expr: TExpr) -> str:
+        """Emit a map key, converting tuples to strings for tuple-keyed maps."""
+        if self._has_tuple_key(map_expr):
+            return self._expr(key_expr) + '.join("\\0")'
+        return self._expr(key_expr)
+
     def _is_set_type(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
         if ann:
@@ -1761,6 +1818,14 @@ class _JavaScriptEmitter(Emitter):
             and expr.func.name == "IsType"
         )
 
+    def _is_isnil_call(self, expr: TExpr) -> bool:
+        """Check if expression is an IsNil call (emits === null)."""
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "IsNil"
+        )
+
     def _js_instance_type(self, type_name: str) -> str:
         """Map Python type names to JS constructor names for instanceof."""
         if type_name == "dict":
@@ -1835,7 +1900,7 @@ class _JavaScriptEmitter(Emitter):
                 if neg is not None:
                     return self._expr(expr.obj) + "[" + neg + "]"
             if self._is_map_type(expr.obj):
-                return self._expr(expr.obj) + ".get(" + self._expr(expr.index) + ")"
+                return self._expr(expr.obj) + ".get(" + self._map_key_for(expr.obj, expr.index) + ")"
             return self._expr(expr.obj) + "[" + self._expr(expr.index) + "]"
         if isinstance(expr, TSlice):
             return self._slice(expr)
@@ -2009,6 +2074,8 @@ class _JavaScriptEmitter(Emitter):
             if isinstance(expr.operand, (TTernary,)):
                 return "!(" + self._expr(expr.operand) + ")"
             if self._is_isinstance_call(expr.operand):
+                return "!(" + self._expr(expr.operand) + ")"
+            if self._is_isnil_call(expr.operand):
                 return "!(" + self._expr(expr.operand) + ")"
             return "!" + self._expr(expr.operand)
         if isinstance(expr.operand, (TBinaryOp, TTernary)):
@@ -2396,19 +2463,21 @@ class _JavaScriptEmitter(Emitter):
         if name == "Remove":
             return self._a(args, 0) + ".delete(" + self._a(args, 1) + ")"
         if name == "Get":
+            map_arg = args[0].value
+            key_str = self._map_key_for(map_arg, args[1].value)
             if len(args) == 3:
                 return (
                     "("
                     + self._a(args, 0)
                     + ".get("
-                    + self._a(args, 1)
+                    + key_str
                     + ") ?? "
                     + self._a(args, 2)
                     + ")"
                 )
-            return "(" + self._a(args, 0) + ".get(" + self._a(args, 1) + ") ?? null)"
+            return "(" + self._a(args, 0) + ".get(" + key_str + ") ?? null)"
         if name == "Delete":
-            return self._a(args, 0) + ".delete(" + self._a(args, 1) + ")"
+            return self._a(args, 0) + ".delete(" + self._map_key_for(args[0].value, args[1].value) + ")"
         if name == "Union":
             return "new Set([..." + self._a(args, 0) + ", ..." + self._a(args, 1) + "])"
         if name == "Intersection":
@@ -2654,7 +2723,7 @@ class _JavaScriptEmitter(Emitter):
         if name == "Args":
             return "process.argv.slice(2)"
         if name == "GetEnv":
-            return "process.env[" + self._a(args, 0) + "]"
+            return "(process.env[" + self._a(args, 0) + "] ?? null)"
         if name == "Exit":
             return "process.exit(" + self._a(args, 0) + ")"
         # Operator forms
@@ -2671,7 +2740,7 @@ class _JavaScriptEmitter(Emitter):
         if name == "Contains":
             inner = args[0].value
             if self._is_map_type(inner):
-                return self._a(args, 0) + ".has(" + self._a(args, 1) + ")"
+                return self._a(args, 0) + ".has(" + self._map_key_for(inner, args[1].value) + ")"
             if self._is_set_type(inner):
                 return self._a(args, 0) + ".has(" + self._a(args, 1) + ")"
             return self._a(args, 0) + ".includes(" + self._a(args, 1) + ")"
@@ -2842,6 +2911,7 @@ class _JavaScriptEmitter(Emitter):
 def emit_javascript(module: TModule) -> str:
     struct_names: set[str] = set(BUILTIN_STRUCTS.keys())
     struct_fields: dict[str, list[str]] = {}
+    struct_field_decls: dict[str, list[TFieldDecl]] = {}
     for decl in module.decls:
         match decl:
             case TStructDecl():
@@ -2850,6 +2920,7 @@ def emit_javascript(module: TModule) -> str:
                 for f in decl.fields:
                     fnames.append(_safe_name(f.name))
                 struct_fields[decl.name] = fnames
+                struct_field_decls[decl.name] = decl.fields
             case TInterfaceDecl():
                 struct_names.add(decl.name)
                 if decl.fields:
@@ -2857,8 +2928,10 @@ def emit_javascript(module: TModule) -> str:
                     for f in decl.fields:
                         ifnames.append(_safe_name(f.name))
                     struct_fields[decl.name] = ifnames
+                    struct_field_decls[decl.name] = decl.fields
     emitter = _JavaScriptEmitter(
         struct_names, struct_fields, module.strict_math, module.strict_tostring
     )
+    emitter._struct_field_decls = struct_field_decls
     emitter.emit_module(module)
     return emitter.output()

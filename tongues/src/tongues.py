@@ -1418,7 +1418,7 @@ TAYTSH_PHASES: list[str] = [
     "callgraph",
 ]
 
-TAYTSH_EMIT_TARGETS: list[str] = ["python", "perl", "ruby", "taytsh"]
+TAYTSH_EMIT_TARGETS: list[str] = ["javascript", "python", "perl", "ruby", "taytsh"]
 
 
 def taytsh_pipeline(argv: list[str]) -> int:
@@ -1535,7 +1535,9 @@ def taytsh_pipeline(argv: list[str]) -> int:
         analyze_scope(module, checker)
         analyze_liveness(module, checker)
         result = ""
-        if emit_target == "python":
+        if emit_target == "javascript":
+            result = emit_javascript(module)
+        elif emit_target == "python":
             result = emit_python(module)
         elif emit_target == "perl":
             result = emit_perl(module)
