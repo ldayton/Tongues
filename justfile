@@ -17,6 +17,7 @@ quick-check:
             just lang-perl & pids+=($!)
             just lang-python & pids+=($!)
             just lang-javascript & pids+=($!)
+            just lang-go & pids+=($!)
             for pid in "${pids[@]}"; do wait "$pid" || rc=1; done
         fi
     } 2>&1 | tee "$log"
@@ -140,7 +141,7 @@ fmt *ARGS:
 _self-transpile target="python":
     #!/usr/bin/env bash
     set -euo pipefail
-    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js [taytsh]=ty)
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js [go]=go [taytsh]=ty)
     mkdir -p tongues/.out
     cd tongues && uv run bin/tongues --target {{target}} -o ".out/tongues.${ext[{{target}}]}" src
     if [ "{{target}}" = "python" ]; then
@@ -168,6 +169,18 @@ lang-javascript:
         "$(<tests/shared/test_harness.py)" "$(<src/lib/json.py)" \
         | uv run bin/tongues --project --target javascript -o .out/test_harness.js
     node tests/test-transpiled.js ".out/tongues.js"
+
+# Self-transpile, compile, and test against transpiled Go binary
+lang-go:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _self-transpile go
+    cd tongues
+    go build -o .out/tongues-go .out/tongues.go
+    uv run pytest tests/test_frontend.py tests/test_middleend.py \
+        tests/test_backend_codegen.py tests/test_backend_target.py tests/test_taytsh_app.py \
+        tests/test_frontend_linker.py \
+        --transpiled ".out/tongues-go" -v
 
 # Self-transpile and test against transpiled Ruby binary
 lang-ruby:
@@ -337,6 +350,7 @@ test:
     _st javascript & pid_js=$!
     _st ruby & pid_rb=$!
     _st perl & pid_pl=$!
+    _st go & pid_go=$!
     _st taytsh-treewalker & pid_ty_tw=$!
     _st taytsh-vm & pid_ty_vm=$!
     just fixed-point & pid_fp=$!
@@ -344,6 +358,7 @@ test:
     wait $pid_js && results[lang-javascript]=✅ || { results[lang-javascript]=❌; failed=1; }
     wait $pid_rb && results[lang-ruby]=✅ || { results[lang-ruby]=❌; failed=1; }
     wait $pid_pl && results[lang-perl]=✅ || { results[lang-perl]=❌; failed=1; }
+    wait $pid_go && results[lang-go]=✅ || { results[lang-go]=❌; failed=1; }
     wait $pid_ty_tw && results[lang-taytsh-tw]=✅ || { results[lang-taytsh-tw]=❌; failed=1; }
     wait $pid_ty_vm && results[lang-taytsh-vm]=✅ || { results[lang-taytsh-vm]=❌; failed=1; }
     wait $pid_fp && results[fixed-point]=✅ || { results[fixed-point]=❌; failed=1; }
@@ -353,7 +368,7 @@ test:
     echo "══════════════════════════════════════"
     printf "%-16s %s\n" "TARGET" "STATUS"
     printf "%-16s %s\n" "──────" "──────"
-    for t in versions tests lang-python lang-javascript lang-ruby lang-perl lang-taytsh-tw lang-taytsh-vm fixed-point; do
+    for t in versions tests lang-python lang-javascript lang-ruby lang-perl lang-go lang-taytsh-tw lang-taytsh-vm fixed-point; do
         printf "%-16s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"

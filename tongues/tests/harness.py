@@ -533,7 +533,8 @@ def _transpiled_runtime() -> list[str]:
     ext = Path(TRANSPILED_BINARY).suffix
     lang = EXT_TO_LANG.get(ext)
     if lang is None:
-        pytest.fail(f"Unknown transpiled binary extension: {ext}")
+        # Compiled binary (e.g. Go) — run directly
+        return [TRANSPILED_BINARY]
     return RUNTIMES[lang]
 
 
@@ -1337,6 +1338,35 @@ def _available_targets() -> list[str]:
         if target == "python" or shutil.which(cmd[0]):
             available.append(target)
     return available
+
+
+LANG_EXTENSIONS = {"go": ".go"}
+
+
+def run_target_code(
+    code: str, target: str, *, timeout: int = 30
+) -> subprocess.CompletedProcess:
+    """Run transpiled code for the given target language."""
+    ext = LANG_EXTENSIONS.get(target)
+    if ext is not None:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=ext, delete=False) as tmp:
+            tmp.write(code)
+            tmp.flush()
+            runtime = RUNTIMES[target]
+            result = subprocess.run(
+                [*runtime, tmp.name],
+                capture_output=True,
+                timeout=timeout,
+            )
+            Path(tmp.name).unlink(missing_ok=True)
+        return result
+    runtime = RUNTIMES[target]
+    return subprocess.run(
+        runtime,
+        input=code.encode(),
+        capture_output=True,
+        timeout=timeout,
+    )
 
 
 def _cli_needs_backend(spec: dict) -> bool:

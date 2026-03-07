@@ -1,15 +1,14 @@
 """Target test phase: app execution + ordering execution."""
 
-import subprocess
 from pathlib import Path
 
 import pytest
 
 from tests.harness import (
-    RUNTIMES,
     TESTS_DIR,
     _available_targets,
     discover_app_tests,
+    run_target_code,
     transpile_app,
     transpile_code,
 )
@@ -50,13 +49,7 @@ def test_app(app_source: Path, app_target: str) -> None:
     output, err = transpile_app(source, app_target)
     if err is not None:
         pytest.fail(f"Transpile error ({app_target}): {err}")
-    runtime = RUNTIMES[app_target]
-    result = subprocess.run(
-        runtime,
-        input=output.encode(),
-        capture_output=True,
-        timeout=30,
-    )
+    result = run_target_code(output, app_target, timeout=30)
     if result.returncode != 0:
         stderr = result.stderr.decode(errors="replace")
         stdout = result.stdout.decode(errors="replace")
@@ -71,13 +64,7 @@ def test_ordering(ordering_source: Path, ordering_target: str) -> None:
     output, err = transpile_code(source, ordering_target)
     if err is not None:
         pytest.fail(f"Transpile error ({ordering_target}): {err}")
-    runtime = RUNTIMES[ordering_target]
-    result = subprocess.run(
-        runtime,
-        input=output.encode(),
-        capture_output=True,
-        timeout=30,
-    )
+    result = run_target_code(output, ordering_target, timeout=30)
     if result.returncode != 0:
         stderr = result.stderr.decode(errors="replace")
         stdout = result.stdout.decode(errors="replace")

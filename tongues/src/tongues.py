@@ -1423,7 +1423,14 @@ TAYTSH_PHASES: list[str] = [
     "callgraph",
 ]
 
-TAYTSH_EMIT_TARGETS: list[str] = ["javascript", "python", "perl", "ruby", "taytsh"]
+TAYTSH_EMIT_TARGETS: list[str] = [
+    "go",
+    "javascript",
+    "python",
+    "perl",
+    "ruby",
+    "taytsh",
+]
 
 
 def taytsh_pipeline(argv: list[str]) -> int:
