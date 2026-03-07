@@ -3,3 +3,6 @@ eval { $a->isa('Dog') }
 
 === isinstance with tuple of types
 (defined($a) && $a->isa('Dog')) || (defined($a) && $a->isa('Cat'))
+
+=== negated isinstance guard
+if (!(defined($v) && $v->isa('VTuple')))

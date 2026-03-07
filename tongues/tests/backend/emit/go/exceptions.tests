@@ -1,0 +1,12 @@
+=== user-defined exception class
+func (e *ParseError) Error() string {
+
+=== raise bare Exception
+panic(errors.New("something went wrong"))
+
+=== raise ValueError
+panic(&ValueError{Message: "bad input"})
+
+=== catch bare Exception
+defer func() {
+if r := recover(); r != nil {

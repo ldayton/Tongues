@@ -1,0 +1,10 @@
+=== isinstance check
+switch a.(type) {
+case *Dog:
+
+=== isinstance with tuple of types
+switch a.(type) {
+case *Dog, *Cat:
+
+=== negated isinstance guard
+_, ok := v.(*VTuple); return ok

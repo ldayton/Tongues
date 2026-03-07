@@ -1,0 +1,3 @@
+=== interface with fields
+GetName() string
+GetLegs() int

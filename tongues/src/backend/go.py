@@ -4300,12 +4300,19 @@ class _GoEmitter(Emitter):
     def _isinstance_call(self, args: list[TArg]) -> str:
         obj = self._a(args, 0)
         type_arg = args[1].value
+        type_name = ""
         if isinstance(type_arg, TVar):
+            type_name = type_arg.name
+        elif isinstance(type_arg, TStringLit):
+            type_name = type_arg.value
+        if type_name:
+            ptr = "*" if type_name not in self._interface_names else ""
             return (
                 "func() bool { _, ok := "
                 + obj
-                + ".(*"
-                + type_arg.name
+                + ".("
+                + ptr
+                + type_name
                 + "); return ok }()"
             )
         return obj + " != nil"

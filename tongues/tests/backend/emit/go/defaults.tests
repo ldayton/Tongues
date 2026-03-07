@@ -1,0 +1,2 @@
+=== method with default bool param
+func (self *Parser) parse(strict bool) string {

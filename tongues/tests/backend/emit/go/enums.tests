@@ -1,0 +1,9 @@
+=== StrEnum declaration
+type Color int
+const (
+ColorRED Color = iota
+
+=== IntEnum declaration
+type Priority int
+const (
+PriorityLOW Priority = iota

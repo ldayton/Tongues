@@ -1,0 +1,17 @@
+=== strip default whitespace
+strings.Trim(s, " \t\n\r\v\f")
+
+=== strip custom chars
+strings.Trim(s, "xy")
+
+=== lstrip default whitespace
+strings.TrimLeft(s, " \t\n\r\v\f")
+
+=== rstrip default whitespace
+strings.TrimRight(s, " \t\n\r\v\f")
+
+=== fstring repr conversion
+ToRepr(x)
+
+=== fstring str conversion
+strconv.Itoa(x)

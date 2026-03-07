@@ -1,0 +1,47 @@
+=== set from dict items
+for _, v := range func() [][2]any {
+
+=== list from dict
+for k := range d { r = append(r, k) }
+
+=== set from dict
+for k := range d { s[k] = true }
+
+=== list from dict keys method
+for k := range d { r = append(r, k) }
+
+=== set from dict keys method
+for k := range d { r = append(r, k) }
+
+=== star unpack two lists
+c := append(a, b...)
+
+=== star unpack element then starred
+c := append([]int{x}, rest...)
+
+=== star unpack starred then element
+c := append(xs, y)
+
+=== star unpack element starred element
+c := append(append([]int{x}, middle...), y)
+
+=== reversed list for loop
+for i := len(xs) - 1; i >= 0; i-- {
+
+=== reversed range for loop
+for i := 5 - 1; i >= 0; i-- {
+
+=== zip two lists for loop
+for __i := 0; __i < min(len(a), len(b)); __i++ {
+
+=== zip three lists for loop
+for __i := 0; __i < min(len(a), len(b), len(c)); __i++ {
+
+=== zip bytes for loop
+a := []byte{1, 2, 3}
+
+=== string iteration for loop
+for _, ch := range s {
+
+=== list repetition with annotation
+slots := make([]int, 5)

@@ -1,0 +1,23 @@
+=== any with generator expression
+__comp_0__ := false
+for _, x := range xs {
+if x > 0 {
+__comp_0__ = true
+break
+
+=== all with generator expression
+__comp_0__ := true
+for _, x := range xs {
+if !(x > 0) {
+__comp_0__ = false
+break
+
+=== any with generator expression and condition
+if ((x % 2) + 2) % 2 == 0 {
+
+=== any with equality comparison
+if x == target {
+__comp_0__ = true
+
+=== any assigns to variable
+found := __comp_0__

@@ -1,0 +1,8 @@
+=== module-level constant
+var GREETING = "hello"
+
+=== module-level frozenset constant
+var WORDS =
+
+=== module-level struct instance (hierarchy root)
+var DEFAULT_KIND = &SubKind{Tag: "base", Value: 0}

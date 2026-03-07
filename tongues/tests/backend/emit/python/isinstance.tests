@@ -3,3 +3,6 @@ isinstance(a, Dog)
 
 === isinstance with tuple of types
 isinstance(a, (Dog, Cat))
+
+=== negated isinstance guard
+if not isinstance(v, VTuple):

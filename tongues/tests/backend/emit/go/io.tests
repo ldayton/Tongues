@@ -1,0 +1,2 @@
+=== read file binary mode
+b, _ := os.ReadFile(path)

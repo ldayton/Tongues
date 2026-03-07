@@ -28,3 +28,21 @@ def main() -> None:
         print("yes")
 if __name__ == "__main__":
     main()
+
+=== negated isinstance guard
+import sys
+class Value:
+    pass
+class VTuple(Value):
+    elements: list[Value]
+class VInt(Value):
+    n: int
+def check(v: Value) -> bool:
+    if not isinstance(v, VTuple):
+        return False
+    return True
+def main() -> None:
+    t: VTuple = VTuple(elements=[])
+    print(str(check(t)))
+if __name__ == "__main__":
+    main()
