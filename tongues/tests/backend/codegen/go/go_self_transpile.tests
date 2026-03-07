@@ -33,5 +33,8 @@ func() string { v, ok := m[key]; if !ok { return "" }; return v }()
 === map keys with string key type
 []string { var r []string; for k := range m
 
+=== optional return forwarding no double wrap
+return MaybeFirst(xs)
+
 === list literal with interface type in return
 return []Node{&Leaf{V: 1}}

@@ -31,5 +31,8 @@ return (exists $m->{$key} ? $m->{$key} : "")
 === map keys with string key type
 return [sort keys %{$m}]
 
+=== optional return forwarding no double wrap
+return maybe_first($xs)
+
 === list literal with interface type in return
 return [Leaf->new(1)]

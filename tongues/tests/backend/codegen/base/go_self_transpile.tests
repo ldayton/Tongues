@@ -164,6 +164,23 @@ fn Main() -> void {
     WritelnOut(ToString(Len(GetKeys(m))))
 }
 
+=== optional return forwarding no double wrap
+fn MaybeFirst(xs: list[string]) -> string? {
+    if Len(xs) > 0 {
+        return xs[0]
+    }
+    return nil
+}
+fn Wrap(xs: list[string]) -> string? {
+    return MaybeFirst(xs)
+}
+fn Main() -> void {
+    let r: string? = Wrap(["hi"])
+    if r != nil {
+        WritelnOut(r)
+    }
+}
+
 === list literal with interface type in return
 interface Node {}
 struct Leaf : Node {

@@ -34,5 +34,8 @@ return m.get(key, "")
 === map keys with string key type
 return list(m.keys())
 
+=== optional return forwarding no double wrap
+return MaybeFirst(xs)
+
 === list literal with interface type in return
 return [Leaf(1)]

@@ -1092,9 +1092,16 @@ class _GoEmitter(Emitter):
         if isinstance(value, TNilLit):
             return False
         rt = self._current_ret_type
-        if isinstance(rt, TOptionalType) and isinstance(rt.inner, TPrimitive):
-            return True
-        return False
+        if not (isinstance(rt, TOptionalType) and isinstance(rt.inner, TPrimitive)):
+            return False
+        # Don't wrap if the value already produces a pointer type
+        ann = value.annotations.get("type", "")
+        if ann.endswith("?") or "nil" in ann.split(" | "):
+            return False
+        # Don't wrap field access on optional primitive fields (already dereffed)
+        if isinstance(value, TFieldAccess) and self._is_optional_primitive_field(value):
+            return False
+        return True
 
     def _return_type(self, decl: TFnDecl) -> str:
         if decl.ret is None:

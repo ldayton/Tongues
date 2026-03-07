@@ -33,5 +33,8 @@ return m.fetch(key, "")
 === map keys with string key type
 return m.keys
 
+=== optional return forwarding no double wrap
+return maybe_first(xs)
+
 === list literal with interface type in return
 return [Leaf.new(v: 1)]
