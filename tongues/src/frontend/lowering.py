@@ -1106,7 +1106,12 @@ def _lower_constant(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
     if isinstance(val, JBool):
         return TBoolLit(pos, val.value, {})
     if isinstance(val, JInt):
-        return TIntLit(pos, val.value, str(val.value), {})
+        int_raw_node = node.get("_int_raw")
+        if isinstance(int_raw_node, JStr):
+            raw = int_raw_node.value
+        else:
+            raw = str(val.value)
+        return TIntLit(pos, val.value, raw, {})
     if isinstance(val, JFloat):
         return TFloatLit(pos, val.value, repr(val.value), {})
     if isinstance(val, JStr):

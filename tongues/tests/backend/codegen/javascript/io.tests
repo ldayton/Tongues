@@ -1,0 +1,38 @@
+=== IO functions
+process.stdout.write("no newline");
+
+=== ReadAll and ReadLine
+fs.readFileSync("/dev/stdin", "utf-8")
+
+=== ReadLine returns optional
+if (line !== null) {
+
+=== ReadFile emits open idiom
+fs.readFileSync("input.txt", "utf-8")
+
+=== ReadFileBytes emits open idiom
+fs.readFileSync("input.txt")
+
+=== WriteFile emits open idiom
+fs.writeFileSync("output.txt", "hello")
+
+=== ReadBytesN
+let chunk = process.stdin.read(1024);
+
+=== Args and GetEnv
+let args = process.argv.slice(2);
+
+=== Exit call
+process.exit(1);
+
+=== Encode and Decode
+let b = Buffer.from("hello", "utf-8");
+
+=== bytes indexing
+b[0]
+
+=== bytes slicing
+let part = b.slice(1, 3);
+
+=== Concat on bytes
+let c = Buffer.concat([a, b]);

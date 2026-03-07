@@ -20,25 +20,25 @@ If it needs syscalls, networking, or threads—-Tongues isn't your tool. If you'
 
 ## Status
 
-The transpiler currently supports these target languages, although output isn't yet idiomatic:
+The transpiler currently supports these target languages:
 
-| Language   | Min Version  | Status    |
-| ---------- | ------------ | --------- |
-| C          | GCC 13       | Prototype |
-| C#         | .NET 8       | Prototype |
-| Dart       | Dart 3.2     | Prototype |
-| Go         | Go 1.21      | Prototype |
-| Java       | Temurin 21   | Prototype |
-| Javascript | Node.js 21   | Prototype |
-| Lua        | Lua 5.4      | Prototype |
-| Perl       | Perl 5.38    | Prototype |
-| PHP        | PHP 8.3      | Prototype |
-| Python     | CPython 3.12 | Prototype |
-| Ruby       | Ruby 3.2     | Prototype |
-| Rust       | Rust 1.75    | Prototype |
-| Swift      | Swift 6.0    | Prototype |
-| Typescript | tsc 5.3      | Prototype |
-| Zig        | Zig 0.14     | Prototype |
+| Language   | Min Version  | Status |
+| ---------- | ------------ | ------ |
+| Javascript | Node.js 21   | Alpha  |
+| Perl       | Perl 5.38    | Alpha  |
+| Python     | CPython 3.12 | Alpha  |
+| Ruby       | Ruby 3.2     | Alpha  |
+| C          | GCC 13       |        |
+| C#         | .NET 8       |        |
+| Dart       | Dart 3.2     |        |
+| Go         | Go 1.21      |        |
+| Java       | Temurin 21   |        |
+| Lua        | Lua 5.4      |        |
+| PHP        | PHP 8.3      |        |
+| Rust       | Rust 1.75    |        |
+| Swift      | Swift 6.0    |        |
+| Typescript | tsc 5.3      |        |
+| Zig        | Zig 0.14     |        |
 
 We target language versions from ~3 years ago. New enough for modern idioms, old enough to be everywhere—LTS distros, corporate environments, CI images. No bleeding-edge features, no legacy baggage.
 

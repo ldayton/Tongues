@@ -1,0 +1,51 @@
+=== unused catch variable is omitted
+} catch (_e) {
+    if (_e instanceof ValueError) {
+
+=== used catch variable is kept
+} catch (e) {
+
+=== try with finally
+} finally {
+    console.log("finally");
+}
+
+=== try with multiple catch clauses
+if (e instanceof ValueError) {
+
+=== re-throw in catch
+throw e;
+
+=== catch-all without type
+} catch (e) {
+
+=== catch-all after typed catch
+if (e instanceof ErrA) {
+    console.log("got A");
+} else {
+    console.log(e.message);
+}
+
+=== throw and catch struct
+throw new AppError("boom");
+
+=== catch union of both error types
+if (e instanceof ErrA || e instanceof ErrB) {
+
+=== catch union of types
+if (e instanceof ErrA || e instanceof ErrB) {
+
+=== throw bare Exception
+throw new Error("something went wrong");
+
+=== throw builtin ValueError
+throw new ValueError("bad input");
+
+=== catch builtin ValueError
+if (e instanceof ValueError) {
+
+=== Assert with message
+if (!(x > 0)) { throw new Error("must be positive"); }
+
+=== Assert without message
+if (!(x > 0)) { throw new Error("assertion failed"); }

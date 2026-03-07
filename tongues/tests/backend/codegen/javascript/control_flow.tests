@@ -1,0 +1,51 @@
+=== if-else chain
+} else if (x === 0) {
+    return "zero";
+} else {
+    return "negative";
+}
+
+=== while loop
+while (n > 0) {
+    total += n;
+    n -= 1;
+}
+
+=== while true with break
+while (true) {
+
+=== for range single arg
+for (let i = 0; i < 10; i++) {
+
+=== for range two args
+for (let i = 5; i < 10; i++) {
+
+=== for range three args
+for (let i = 10; i > 0; i--) {
+
+=== for over list single var
+for (let x of xs) {
+
+=== for over map keys
+for (let k of m.keys()) {
+
+=== for over map key-value pairs
+for (let [k, v] of m) {
+
+=== for over string characters
+for (let ch of "hello") {
+
+=== for over set
+for (let v of s) {
+
+=== break and continue
+continue;
+
+=== enumerate over list
+for (let [i, v] of xs.entries()) {
+
+=== negated condition
+if (!done) {
+
+=== ternary expression
+return x < lo ? lo : (x > hi ? hi : x)

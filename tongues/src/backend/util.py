@@ -79,7 +79,12 @@ _STRING_ESCAPE_MAP: dict[str, str] = {
 
 
 def escape_string(value: str) -> str:
-    """Escape a string for use in a string literal (without quotes)."""
+    """Escape a string for use in a string literal (without quotes).
+
+    Non-ASCII characters are emitted as \\uXXXX (BMP) or \\UXXXXXXXX (supplementary).
+    On JS targets, strings are UTF-16 so characters above U+FFFF appear as surrogate
+    pairs; this function detects and recombines them into full code points.
+    """
     out: list[str] = []
     i: int = 0
     while i < len(value):
@@ -89,6 +94,11 @@ def escape_string(value: str) -> str:
             out.append(esc)
         elif ord(c) < 32 or ord(c) > 126:
             cp = ord(c)
+            if 0xD800 <= cp <= 0xDBFF and i + 1 < len(value):
+                lo = ord(value[i + 1 : i + 2])
+                if 0xDC00 <= lo <= 0xDFFF:
+                    cp = 0x10000 + (cp - 0xD800) * 0x400 + (lo - 0xDC00)
+                    i += 1
             if cp <= 0xFFFF:
                 h = hex(cp)[2:]
                 out.append("\\u" + "0" * (4 - len(h)) + h)

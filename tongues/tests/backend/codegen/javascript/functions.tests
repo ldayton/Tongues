@@ -1,0 +1,13 @@
+=== function as value
+return f(x);
+
+=== function literal expression body
+let result = apply((x) => x * 2, 10);
+
+=== Main emits as lowercase main
+function main(
+
+=== function literal block body
+apply((x) => {
+    console.log(String(x));
+}, 42);

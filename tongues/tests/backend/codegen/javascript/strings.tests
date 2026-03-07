@@ -1,0 +1,50 @@
+=== string multiply via Repeat
+let s = "ab".repeat(3);
+
+=== list multiply via Repeat
+let xs = Array(5).fill(0);
+
+=== Contains on string
+if (s.includes("world"))
+
+=== Split and Join
+let parts = "a,b,c".split(",");
+
+=== string Find
+let idx = "hello world".indexOf("world");
+
+=== Replace on string
+let s = "aabbcc".replaceAll("bb", "XX");
+
+=== Upper and Lower
+console.log("hello".toUpperCase());
+
+=== StartsWith and EndsWith
+console.log(String(s.startsWith("hello")));
+
+=== Trim functions
+let s = "  hello  ".replace(/^[ ]+|[ ]+$/g, "");
+
+=== Count and RFind on string
+let c = "abcabc".split("abc").length - 1;
+
+=== SplitN and SplitWhitespace
+let words = "  hello   world  ".trim().split(/\s+/);
+
+=== Concat strings
+let s = "hello" + " world";
+
+=== string indexing and slicing
+let sub = s.slice(1, 4);
+
+=== format string becomes f-string
+return `hello, ${name}`;
+
+=== Reverse on string
+[..."hello"].reverse().join("");
+
+=== format string with quotes in expression
+return `result: ${items.join(", ")}`;
+
+=== string classification functions
+console.log(String(/^\d+$/.test("123")));

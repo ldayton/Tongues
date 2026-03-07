@@ -1,0 +1,15 @@
+=== unused tuple target becomes underscore
+q = Math.trunc(17 / 5)
+
+=== all tuple targets used
+q = Math.trunc(17 / 5)
+r = 17 - q * 5
+
+=== initial value suppressed when overwritten
+x = parseInt(input, 10)
+
+=== initial value kept when read before overwrite
+let x = 0
+
+=== Unwrap on optional
+let v = x

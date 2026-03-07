@@ -1,0 +1,22 @@
+=== struct construction and field access
+let p = new Point(1, 2);
+
+=== struct method call
+c.inc();
+console.log(String(c.value()));
+
+=== field assignment
+p.x = 10;
+p.y = 20;
+
+=== nested struct access
+console.log(String(o.inner.value));
+
+=== struct with interface field
+return eval_(b.left) + eval_(b.right);
+
+=== enum comparison
+if (c === Color.Red)
+
+=== named struct construction
+new Point(1, 2)

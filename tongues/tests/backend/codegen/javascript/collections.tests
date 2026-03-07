@@ -1,0 +1,152 @@
+=== delete on map is missing-key safe
+m.delete("k");
+
+=== Append on list
+xs.push(3);
+
+=== Get with default on map
+let v = (m.get("b") ?? 0);
+
+=== Get without default returns optional
+let v = (m.get("b") ?? null);
+
+=== Keys Values Items on map
+let ks = [...m.keys()];
+
+=== ListFrom map keys
+let ks = [...m.keys()];
+
+=== SetFromList map keys
+let s = new Set(m.keys());
+
+=== Contains on map
+if (m.has("a"))
+
+=== IndexOf on list
+let idx = xs.indexOf(20);
+
+=== Pop and RemoveAt
+let last = xs.pop();
+xs.splice(0, 1);
+
+=== Insert on list
+xs.splice(1, 0, 2);
+
+=== Add and Remove on set
+s.add(4);
+s.delete(1);
+
+=== Merge maps
+let c = new Map([...a, ...b]);
+
+=== set literal
+let s = new Set([1, 2, 3]);
+
+=== map literal and index
+let m = new Map([["a", 1], ["b", 2]]);
+
+=== empty map and set via constructors
+let m = new Map();
+
+=== tuple construction and access
+let pair = [1, "hello"];
+
+=== index assignment on list
+xs[0] = 99;
+
+=== index assignment on map
+m.set("b", 2);
+
+=== list slicing
+let mid = xs.slice(1, 4);
+
+=== nested collection access
+m.get("a")[0]
+
+=== Sorted and Reversed
+let s = [...xs].sort((a, b) => a - b);
+
+=== Sorted on string list
+let s = [...xs].sort();
+
+=== Sum on list
+console.log(String(xs.reduce((a, b) => a + b, 0)));
+
+=== negative index via Len subtraction
+console.log(String(xs[xs.length - 1]));
+
+=== open-end slice
+let tail = xs.slice(1, xs.length);
+
+=== open-start slice
+let head = xs.slice(0, 3);
+
+=== list comprehension
+doubled.push(x * 2);
+
+=== list comprehension with filter
+evens.push(x);
+
+=== dict comprehension
+m.set(k, i);
+
+=== Union on sets
+let c = new Set([...a, ...b]);
+
+=== Intersection on sets
+let c = new Set([...a].filter(x => b.has(x)));
+
+=== Difference on sets
+let c = new Set([...a].filter(x => !b.has(x)));
+
+=== set comprehension
+unique.add(x);
+
+=== any with generator
+let result = false;
+for (let x of xs) {
+    if (x > 0) {
+        result = true;
+        break;
+    }
+}
+
+=== all with generator
+let result = true;
+for (let x of xs) {
+    if (!(x > 0)) {
+        result = false;
+        break;
+    }
+}
+
+=== sorted with key lambda
+[...xs].sort((a, b) => Math.abs(a) - Math.abs(b));
+
+=== min with key lambda
+xs.reduce((a, b) => a.length <= b.length ? a : b);
+
+=== max with key lambda
+xs.reduce((a, b) => a.length >= b.length ? a : b);
+
+=== for over Reversed list
+for (let x of [...xs].reverse()) {
+
+=== Zip two lists
+for (let __i = 0; __i < Math.min(a.length, b.length); __i++) {
+    const x = a[__i];
+    const y = b[__i];
+
+=== Zip three lists
+for (let __i = 0; __i < Math.min(a.length, b.length, c.length); __i++) {
+    const x = a[__i];
+    const y = b[__i];
+    const z = c[__i];
+
+=== Zip bytes
+for (let __i = 0; __i < Math.min(a.length, b.length); __i++) {
+    const x = a[__i];
+    const y = b[__i];
+
+=== for over string yields rune
+for (let ch of s) {

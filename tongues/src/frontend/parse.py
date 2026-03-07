@@ -3697,7 +3697,65 @@ def make_constant_from_token(tok: Token) -> ASTNode:
         jval = JStr(svalue)
     node = make_node("Constant", tok.lineno, tok.col, {"value": jval})
     node["end_col_offset"] = JInt(tok.col + len(tok.value))
+    if isinstance(jval, JInt):
+        raw_tok = tok.value.replace("_", "")
+        node["_int_raw"] = JStr(_int_to_decimal(raw_tok))
     return node
+
+
+def _decimal_mul_add(dec: str, mul: int, add: int) -> str:
+    """Multiply decimal string by small int and add small int, using string arithmetic."""
+    carry = add
+    result: list[str] = []
+    i = len(dec) - 1
+    while i >= 0:
+        v = (ord(dec[i]) - 48) * mul + carry
+        carry = v // 10
+        result.append(chr(48 + v % 10))
+        i -= 1
+    while carry > 0:
+        result.append(chr(48 + carry % 10))
+        carry = carry // 10
+    result.reverse()
+    return "".join(result)
+
+
+def _int_to_decimal(s: str) -> str:
+    """Convert an integer literal string (hex/oct/bin/dec) to its exact decimal representation."""
+    if s.startswith(("0x", "0X")):
+        digits = s[2:]
+        result = "0"
+        i = 0
+        while i < len(digits):
+            c = digits[i]
+            if "0" <= c <= "9":
+                d = ord(c) - 48
+            elif "a" <= c <= "f":
+                d = ord(c) - 87
+            elif "A" <= c <= "F":
+                d = ord(c) - 55
+            else:
+                d = 0
+            result = _decimal_mul_add(result, 16, d)
+            i += 1
+        return result
+    if s.startswith(("0o", "0O")):
+        digits = s[2:]
+        result = "0"
+        i = 0
+        while i < len(digits):
+            result = _decimal_mul_add(result, 8, ord(digits[i]) - 48)
+            i += 1
+        return result
+    if s.startswith(("0b", "0B")):
+        digits = s[2:]
+        result = "0"
+        i = 0
+        while i < len(digits):
+            result = _decimal_mul_add(result, 2, ord(digits[i]) - 48)
+            i += 1
+        return result
+    return s
 
 
 def parse_number_value(s: str) -> JsonValue:

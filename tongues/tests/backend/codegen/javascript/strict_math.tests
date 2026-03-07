@@ -1,0 +1,90 @@
+=== checked int add
+let c = checked_add_i64(a, b);
+console.log(String(c));
+
+=== checked int sub
+let c = checked_sub_i64(a, b);
+console.log(String(c));
+
+=== checked int mul
+let c = checked_mul_i64(a, b);
+console.log(String(c));
+
+=== checked int negate
+let y = checked_neg_i64(x);
+console.log(String(y));
+
+=== checked left shift
+let y = checked_shl_i64(x, 4);
+console.log(String(y));
+
+=== checked right shift
+let y = checked_shr_i64(x, 4);
+console.log(String(y));
+
+=== logical right shift
+let y = logical_shr_i64(x, 1);
+console.log(String(y));
+
+=== wrapping add
+let b = wrappingAdd(a, 1);
+console.log(String(b));
+
+=== wrapping sub
+let b = wrappingSub(min, 1);
+console.log(String(b));
+
+=== wrapping mul
+let b = wrappingMul(max, 2);
+console.log(String(b));
+
+=== checked pow
+let x = checked_pow_i64(2, 10);
+console.log(String(x));
+
+=== checked int compound add
+x = checked_add_i64(x, 5);
+console.log(String(x));
+
+=== checked int compound sub
+x = checked_sub_i64(x, 3);
+console.log(String(x));
+
+=== checked int compound mul
+x = checked_mul_i64(x, 3);
+console.log(String(x));
+
+=== float mod by zero traps
+let caught = false;
+try {
+    let x = strict_fmod(1.0, 0.0);
+} catch (_) {
+    caught = true;
+}
+console.log(String(caught));
+
+=== min with nan propagates
+let nan = NaN;
+let x = strict_min_f64(nan, 1.0);
+console.log(String(Number.isNaN(x)));
+
+=== max with nan propagates
+let nan = NaN;
+let x = strict_max_f64(nan, 1.0);
+console.log(String(Number.isNaN(x)));
+
+=== sorted with nan traps
+let nan = NaN;
+let caught = false;
+try {
+    let xs = strict_sorted_f64([1.0, nan, 2.0]);
+} catch (_) {
+    caught = true;
+}
+console.log(String(caught));
+
+=== non-strict ops unchanged
+let x = 1.5 + 2.5;
+let y = checked_div_i64(10, 3);
+let z = checked_rem_i64(10, 3);
+console.log(String(y));

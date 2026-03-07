@@ -1,0 +1,131 @@
+=== not in operator (raised)
+if (!xs.includes(2))
+
+=== negative index via Len subtraction (raised)
+console.log(String(xs[xs.length - 1]));
+
+=== open-end slice (raised)
+let tail = xs.slice(1);
+
+=== open-start slice (raised)
+let head = xs.slice(0, 3);
+
+=== truthiness check on list (raised)
+if (xs.length)
+
+=== truthiness check on string (raised)
+if (s)
+
+=== chained comparison (raised)
+return 0 <= x && x <= 255;
+
+=== list comprehension (raised)
+let doubled = xs.map(x => x * 2);
+
+=== list comprehension with filter (raised)
+let evens = xs.filter(x => x % 2 === 0);
+
+=== dict comprehension (raised)
+let m = new Map(keys.map((k, i) => [k, i]));
+
+=== set comprehension (raised)
+let unique = new Set(xs);
+
+=== truthiness check on map (raised)
+if (m.size)
+
+=== truthiness check on set (raised)
+if (s.size)
+
+=== negated condition (raised)
+if (!done) {
+
+=== negated while (raised)
+while (!done) {
+
+=== format string with interpolation (raised)
+`hello, ${name}`
+
+=== nil coalesce (raised)
+return x ?? 0;
+
+=== Get with default using defined-or (raised)
+(m.get("b") ?? 0)
+
+=== star unpack two lists (raised)
+[...a, ...b]
+
+=== star unpack element then starred (raised)
+[x, ...rest]
+
+=== star unpack starred then element (raised)
+[...xs, y]
+
+=== star unpack element starred element (raised)
+[x, ...middle, y]
+
+=== del dict key (raised)
+d.delete("a");
+
+=== del list index (raised)
+xs.splice(0, 1);
+
+=== string partition (raised)
+let __idx = s.indexOf(sep);
+
+=== string rpartition (raised)
+let __idx = s.lastIndexOf(sep);
+
+=== string removeprefix (raised)
+return s.startsWith(p) ? s.slice(p.length) : s;
+
+=== string removesuffix (raised)
+return s.endsWith(p) ? s.slice(0, s.length - p.length) : s;
+
+=== reversed slice on list (raised)
+let r = [...xs].reverse();
+
+=== step slice on list (raised)
+let evens = xs.filter((_, i) => i % 2 === 0);
+
+=== step slice with start on list (raised)
+let odds = xs.filter((_, i) => i % 2 === 1);
+
+=== step slice with start >= step on list (raised)
+let r = xs.filter((_, i) => i >= 3 && (i - 3) % 2 === 0);
+
+=== step slice on string (raised)
+let r = [...s].filter((_, i) => i % 2 === 0).join("");
+
+=== reversed slice on string (raised)
+let r = [...s].reverse().join("");
+
+=== reversed for loop (raised)
+for (let x of [...xs].reverse()) {
+
+=== reversed range for loop (raised)
+for (let i = 9; i >= 0; i--) {
+
+=== zip two lists for loop (raised)
+for (let __i = 0; __i < Math.min(a.length, b.length); __i++) {
+
+=== zip three lists for loop (raised)
+for (let __i = 0; __i < Math.min(a.length, b.length, c.length); __i++) {
+
+=== string iteration for loop (raised)
+for (let ch of s) {
+
+=== list repetition (raised)
+let xs = Array(5).fill(0);
+
+=== isinstance with tuple of types (raised)
+return v instanceof A || v instanceof B;
+
+=== any call with generator (raised)
+let result = xs.some(x => x > 0);
+
+=== all call with generator (raised)
+let result = xs.every(x => x > 0);
+
+=== any call with filter (raised)
+let result = xs.some(x => x % 2 === 0 && x > 0);
