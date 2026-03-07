@@ -13,3 +13,13 @@ if operand.is_a?(VInt)
 
 === empty map in return statement
 return {}
+
+=== match case binding shadows type in body
+if v.is_a?(VInt)
+    v_int = v
+
+=== map literal with interface value in return
+return {"a" => Leaf.new(v: 1)}
+
+=== list literal with interface type in return
+return [Leaf.new(v: 1)]

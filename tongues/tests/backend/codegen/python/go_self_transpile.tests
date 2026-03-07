@@ -13,3 +13,14 @@ if isinstance(operand, VInt):
 
 === empty map in return statement
 return {}
+
+=== match case binding shadows type in body
+if isinstance(v, VInt):
+        VInt = v
+        return str(VInt.n)
+
+=== map literal with interface value in return
+return {"a": Leaf(1)}
+
+=== list literal with interface type in return
+return [Leaf(1)]

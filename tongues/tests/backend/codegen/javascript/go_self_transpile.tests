@@ -12,3 +12,12 @@ if (operand instanceof VInt)
 
 === empty map in return statement
 return new Map()
+
+=== match case binding shadows type in body
+if (v instanceof VInt)
+
+=== map literal with interface value in return
+return new Map([["a", new Leaf(1)]])
+
+=== list literal with interface type in return
+return [new Leaf(1)]

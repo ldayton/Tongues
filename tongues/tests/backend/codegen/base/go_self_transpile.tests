@@ -89,3 +89,49 @@ fn Empty() -> map[string, int] {
 fn Main() -> void {
     WritelnOut(ToString(Len(Empty())))
 }
+
+=== match case binding shadows type in body
+interface Value {}
+struct VInt : Value {
+    n: int
+}
+struct VStr : Value {
+    s: string
+}
+fn Describe(v: Value) -> string {
+    match v {
+        case VInt: VInt {
+            return ToString(VInt.n)
+        }
+        case VStr: VStr {
+            return VStr.s
+        }
+    }
+}
+fn Main() -> void {
+    WritelnOut(Describe(VInt(n: 42)))
+}
+
+=== map literal with interface value in return
+interface Node {}
+struct Leaf : Node {
+    v: int
+}
+fn MakeMap() -> map[string, Node] {
+    return {"a": Leaf(v: 1)}
+}
+fn Main() -> void {
+    WritelnOut(ToString(Len(MakeMap())))
+}
+
+=== list literal with interface type in return
+interface Node {}
+struct Leaf : Node {
+    v: int
+}
+fn Nodes() -> list[Node] {
+    return [Leaf(v: 1)]
+}
+fn Main() -> void {
+    WritelnOut(ToString(Len(Nodes())))
+}

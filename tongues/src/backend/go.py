@@ -686,6 +686,7 @@ class _GoEmitter(Emitter):
         self._interface_common_fields: dict[str, list[TFieldDecl]] = {}
         self._error_structs: set[str] = set()
         self._pointer_structs: set[str] = set()
+        self._var_aliases: dict[str, str] = {}
         self._need_reverse_string: bool = False
         self._in_func: bool = False
         self._current_ret_type: TType | None = None
@@ -2654,10 +2655,15 @@ class _GoEmitter(Emitter):
                 self._line("case " + type_str + ":")
             self.indent += 1
             pat_unused = pat.annotations.get("liveness.match_var_unused") == "true"
+            aliases_added: list[str] = []
             if pat.name is not None and not pat_unused:
                 bname = _restore_name(pat.name, case.annotations)
                 if bname != switch_var:
-                    self._line(bname + " := " + switch_var)
+                    if bname in self.struct_names or bname in self._interface_names:
+                        self._var_aliases[bname] = switch_var
+                        aliases_added.append(bname)
+                    else:
+                        self._line(bname + " := " + switch_var)
             if isinstance(stmt.expr, TVar):
                 scrutinee = _restore_name(stmt.expr.name, stmt.expr.annotations)
                 if scrutinee != switch_var and _stmts_ref_var(
@@ -2665,6 +2671,8 @@ class _GoEmitter(Emitter):
                 ):
                     self._line(scrutinee + " := " + switch_var)
             self._emit_stmts(case.body)
+            for alias in aliases_added:
+                del self._var_aliases[alias]
             self.indent -= 1
         elif isinstance(pat, TPatternNil):
             self._line("case nil:")
@@ -2910,6 +2918,7 @@ class _GoEmitter(Emitter):
             if expr.name == self.self_name:
                 return "self"
             name = _restore_name(expr.name, expr.annotations)
+            name = self._var_aliases.get(name, name)
             # Check if variable needs optional dereference
             if self._needs_deref(expr):
                 return "*" + name
@@ -2990,7 +2999,11 @@ class _GoEmitter(Emitter):
         ann = expr.annotations.get("type", "")
         if ann.startswith("list["):
             inner = ann[5:-1]
-            return self._type_str_to_go(inner)
+            if inner in self._interface_names or inner in self.struct_names:
+                return "[]" + inner
+            go_inner = self._type_str_to_go(inner)
+            if go_inner != "[]any":
+                return go_inner
         if expr.elements:
             first = expr.elements[0]
             if isinstance(first, TIntLit):
@@ -3111,6 +3124,8 @@ class _GoEmitter(Emitter):
         if ann.startswith("list["):
             inner = ann[5:-1]
             return "[]" + self._ann_type_to_go(inner)
+        if ann in self._interface_names or ann in self.struct_names:
+            return ann
         return "any"
 
     def _infer_go_type(self, expr: TExpr) -> str:
