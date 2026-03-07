@@ -15,6 +15,8 @@ quick-check:
             just test-backend & pids+=($!)
             just lang-ruby & pids+=($!)
             just lang-perl & pids+=($!)
+            just lang-python & pids+=($!)
+            just lang-javascript & pids+=($!)
             for pid in "${pids[@]}"; do wait "$pid" || rc=1; done
         fi
     } 2>&1 | tee "$log"

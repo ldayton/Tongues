@@ -1,5 +1,6 @@
 === unused catch variable is omitted
-} catch {
+} catch (_e) {
+    if (_e instanceof ValueError) {
 
 === used catch variable is kept
 } catch (e) {

@@ -102,7 +102,10 @@ function runInprocess(argv, stdinData) {
     const exitSentinel = Symbol("exit");
     process.exit = (code) => { throw { [exitSentinel]: true, code: code || 0 }; };
     nodeFs.readFileSync = (p, enc) => {
-        if (p === "/dev/stdin" || p === 0) return stdinData;
+        if (p === "/dev/stdin" || p === 0) {
+            if (enc) return typeof stdinData === "string" ? stdinData : stdinData.toString(enc);
+            return typeof stdinData === "string" ? Buffer.from(stdinData, "utf-8") : stdinData;
+        }
         return origReadFileSync.call(nodeFs, p, enc);
     };
     try {
@@ -213,7 +216,7 @@ function runCliTests(testDir) {
             }
             let stdinData;
             if (spec.stdin_hex !== "") {
-                stdinData = Buffer.from(spec.stdin_hex, "hex").toString("binary");
+                stdinData = Buffer.from(spec.stdin_hex, "hex");
             } else {
                 stdinData = spec.stdin;
             }

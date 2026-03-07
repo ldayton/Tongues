@@ -283,6 +283,65 @@ def _scan_imports(
     return needs_fs, needs_process, needs_buffer
 
 
+def _check_error_ref(expr: TExpr, refs: set[str], builtin_names: set[str]) -> None:
+    if isinstance(expr, TCall):
+        if isinstance(expr.func, TVar) and expr.func.name in builtin_names:
+            refs.add(expr.func.name)
+
+
+def _walk_error_refs_stmt(stmt: TStmt, refs: set[str], builtin_names: set[str]) -> None:
+    if isinstance(stmt, TTryStmt):
+        _walk_error_refs_stmts(stmt.body, refs, builtin_names)
+        for c in stmt.catches:
+            for t in c.types:
+                if isinstance(t, TIdentType) and t.name in builtin_names:
+                    refs.add(t.name)
+            _walk_error_refs_stmts(c.body, refs, builtin_names)
+        if stmt.finally_body is not None:
+            _walk_error_refs_stmts(stmt.finally_body, refs, builtin_names)
+    elif isinstance(stmt, TIfStmt):
+        _walk_error_refs_stmts(stmt.then_body, refs, builtin_names)
+        if stmt.else_body is not None:
+            _walk_error_refs_stmts(stmt.else_body, refs, builtin_names)
+    elif isinstance(stmt, (TWhileStmt, TForStmt)):
+        _walk_error_refs_stmts(stmt.body, refs, builtin_names)
+    elif isinstance(stmt, TMatchStmt):
+        for case in stmt.cases:
+            _walk_error_refs_stmts(case.body, refs, builtin_names)
+        if stmt.default is not None:
+            _walk_error_refs_stmts(stmt.default.body, refs, builtin_names)
+    if isinstance(stmt, TThrowStmt):
+        _check_error_ref(stmt.expr, refs, builtin_names)
+    elif isinstance(stmt, TLetStmt) and stmt.value is not None:
+        _check_error_ref(stmt.value, refs, builtin_names)
+    elif isinstance(stmt, TAssignStmt):
+        _check_error_ref(stmt.value, refs, builtin_names)
+    elif isinstance(stmt, TReturnStmt) and stmt.value is not None:
+        _check_error_ref(stmt.value, refs, builtin_names)
+
+
+def _walk_error_refs_stmts(
+    stmts: list[TStmt], refs: set[str], builtin_names: set[str]
+) -> None:
+    for stmt in stmts:
+        _walk_error_refs_stmt(stmt, refs, builtin_names)
+
+
+def _collect_error_refs(module: TModule) -> set[str]:
+    """Collect references to built-in error types used in catch/throw."""
+    refs: set[str] = set()
+    builtin_names = set(BUILTIN_STRUCTS.keys())
+    for decl in module.decls:
+        if isinstance(decl, TFnDecl):
+            _walk_error_refs_stmts(decl.body, refs, builtin_names)
+        elif isinstance(decl, TStructDecl):
+            for m in decl.methods:
+                _walk_error_refs_stmts(m.body, refs, builtin_names)
+        elif isinstance(decl, TStmt):
+            _walk_error_refs_stmt(decl, refs, builtin_names)
+    return refs
+
+
 def _scan_decl_builtins(decl: TDecl) -> tuple[bool, bool, bool]:
     needs_fs = False
     needs_process = False
@@ -406,6 +465,25 @@ class _JavaScriptEmitter(Emitter):
         if self.strict_math:
             for pline in _STRICT_MATH_PREAMBLE.strip().split("\n"):
                 self._line(pline)
+            self._line()
+        declared_structs: set[str] = set()
+        for decl in module.decls:
+            if isinstance(decl, TStructDecl):
+                declared_structs.add(decl.name)
+        error_refs = _collect_error_refs(module)
+        if "Decode" in all_builtins:
+            error_refs.add("ValueError")
+        referenced_errors = list(error_refs - declared_structs)
+        referenced_errors.sort()
+        for ename in referenced_errors:
+            self._line(
+                "class "
+                + ename
+                + " extends Error { constructor(message = "
+                + '""'
+                + ") { super(message); this.message = message; } }"
+            )
+        if referenced_errors:
             self._line()
         need_blank = False
         for decl in order_decls(module.decls):
@@ -1687,9 +1765,24 @@ class _JavaScriptEmitter(Emitter):
                     self._emit_multi_catch(stmt.catches, cname)
                     self.indent -= 1
                 elif has_types and unused:
-                    self._line("} catch {")
+                    self._line("} catch (_e) {")
+                    self.indent += 1
+                    types: list[str] = []
+                    for t in catch.types:
+                        if isinstance(t, TIdentType):
+                            types.append(t.name)
+                        else:
+                            types.append("Error")
+                    cond = " || ".join("_e instanceof " + tn for tn in types)
+                    self._line("if (" + cond + ") {")
                     self.indent += 1
                     self._emit_stmts(catch.body)
+                    self.indent -= 1
+                    self._line("} else {")
+                    self.indent += 1
+                    self._line("throw _e;")
+                    self.indent -= 1
+                    self._line("}")
                     self.indent -= 1
                 elif unused:
                     self._line("} catch (_) {")
@@ -1847,6 +1940,50 @@ class _JavaScriptEmitter(Emitter):
             and isinstance(expr.func, TVar)
             and expr.func.name == "IsNil"
         )
+
+    def _escape_regex_class(self, s: str) -> str:
+        """Escape characters for use inside a regex character class."""
+        out: list[str] = []
+        i = 0
+        while i < len(s):
+            c = s[i]
+            if c in ("\\", "]", "^", "-"):
+                out.append("\\" + c)
+            else:
+                out.append(c)
+            i += 1
+        return "".join(out)
+
+    def _emit_trim(self, args: list[TArg], mode: str) -> str:
+        """Emit trim/trimStart/trimEnd with optional char set."""
+        chars_expr = args[1].value
+        if isinstance(chars_expr, TStringLit) and chars_expr.value == " \t\n\r\x0b\x0c":
+            if mode == "both":
+                return self._a(args, 0) + ".trim()"
+            if mode == "start":
+                return self._a(args, 0) + ".trimStart()"
+            return self._a(args, 0) + ".trimEnd()"
+        if isinstance(chars_expr, TStringLit):
+            escaped = self._escape_regex_class(chars_expr.value)
+            cls = "[" + escaped + "]+"
+            if mode == "both":
+                pat = "/^" + cls + "|" + cls + "$/g"
+            elif mode == "start":
+                pat = "/^" + cls + "/"
+            else:
+                pat = "/" + cls + "$/"
+            return self._a(args, 0) + ".replace(" + pat + ', "")'
+        obj = self._a(args, 0)
+        chars = self._a(args, 1)
+        if mode == "both":
+            pat = (
+                'new RegExp("^[" + ' + chars + ' + "]+|[" + ' + chars + ' + "]+$", "g")'
+            )
+        elif mode == "start":
+            pat = 'new RegExp("^[" + ' + chars + ' + "]+")'
+        else:
+            pat = 'new RegExp("[" + ' + chars + ' + "]+$")'
+        return obj + ".replace(" + pat + ', "")'
 
     def _js_instance_type(self, type_name: str) -> str:
         """Map Python type names to JS constructor names for instanceof."""
@@ -2419,11 +2556,11 @@ class _JavaScriptEmitter(Emitter):
         if name == "Lower":
             return self._a(args, 0) + ".toLowerCase()"
         if name == "Trim":
-            return self._a(args, 0) + ".trim()"
+            return self._emit_trim(args, "both")
         if name == "TrimStart":
-            return self._a(args, 0) + ".trimStart()"
+            return self._emit_trim(args, "start")
         if name == "TrimEnd":
-            return self._a(args, 0) + ".trimEnd()"
+            return self._emit_trim(args, "end")
         if name == "Split":
             return self._a(args, 0) + ".split(" + self._a(args, 1) + ")"
         if name == "SplitN":
@@ -2474,13 +2611,24 @@ class _JavaScriptEmitter(Emitter):
         if name == "IsSpace":
             return "/^\\s+$/.test(" + self._a(args, 0) + ")"
         if name == "IsUpper":
-            return self._a(args, 0) + " === " + self._a(args, 0) + ".toUpperCase()"
+            a = self._a(args, 0)
+            return (
+                "(/[a-zA-Z]/.test(" + a + ") && " + a + " === " + a + ".toUpperCase())"
+            )
         if name == "IsLower":
-            return self._a(args, 0) + " === " + self._a(args, 0) + ".toLowerCase()"
+            a = self._a(args, 0)
+            return (
+                "(/[a-zA-Z]/.test(" + a + ") && " + a + " === " + a + ".toLowerCase())"
+            )
         if name == "Encode":
             return "Buffer.from(" + self._a(args, 0) + ', "utf-8")'
         if name == "Decode":
-            return self._a(args, 0) + '.toString("utf-8")'
+            a = self._a(args, 0)
+            return (
+                '(() => { try { return new TextDecoder("utf-8", {fatal: true}).decode('
+                + a
+                + "); } catch (_) { throw new ValueError(_.message); } })()"
+            )
         if name == "Add":
             return self._a(args, 0) + ".add(" + self._a(args, 1) + ")"
         if name == "Remove":
@@ -2692,6 +2840,9 @@ class _JavaScriptEmitter(Emitter):
         if name == "ToRepr":
             return "JSON.stringify(" + self._a(args, 0) + ")"
         if name == "ParseInt":
+            base_expr = args[1].value
+            if isinstance(base_expr, TIntLit) and base_expr.value == 0:
+                return "Number(BigInt(" + self._a(args, 0) + "))"
             return "parseInt(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "ParseFloat":
             return "parseFloat(" + self._a(args, 0) + ")"
