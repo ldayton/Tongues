@@ -1030,7 +1030,27 @@ class _JavaScriptEmitter(Emitter):
             case TTupleAssignStmt():
                 self._emit_tuple_assign(stmt)
             case TOpAssignStmt():
-                if (
+                if isinstance(stmt.target, TIndex) and self._is_map_type(
+                    stmt.target.obj
+                ):
+                    base_op = stmt.op.rstrip("=")
+                    key_str = self._map_key_for(stmt.target.obj, stmt.target.index)
+                    obj_str = self._expr(stmt.target.obj)
+                    self._line(
+                        obj_str
+                        + ".set("
+                        + key_str
+                        + ", "
+                        + obj_str
+                        + ".get("
+                        + key_str
+                        + ") "
+                        + base_op
+                        + " "
+                        + self._expr(stmt.value)
+                        + ");"
+                    )
+                elif (
                     self.strict_math
                     and stmt.op in STRICT_INT_COMPOUND
                     and self._is_int_expr(stmt.target)
@@ -1900,7 +1920,12 @@ class _JavaScriptEmitter(Emitter):
                 if neg is not None:
                     return self._expr(expr.obj) + "[" + neg + "]"
             if self._is_map_type(expr.obj):
-                return self._expr(expr.obj) + ".get(" + self._map_key_for(expr.obj, expr.index) + ")"
+                return (
+                    self._expr(expr.obj)
+                    + ".get("
+                    + self._map_key_for(expr.obj, expr.index)
+                    + ")"
+                )
             return self._expr(expr.obj) + "[" + self._expr(expr.index) + "]"
         if isinstance(expr, TSlice):
             return self._slice(expr)
@@ -1982,11 +2007,7 @@ class _JavaScriptEmitter(Emitter):
         op = expr.op
         if op == "+" and self._is_list_expr(expr.left):
             return (
-                "[..."
-                + self._expr(expr.left)
-                + ", ..."
-                + self._expr(expr.right)
-                + "]"
+                "[..." + self._expr(expr.left) + ", ..." + self._expr(expr.right) + "]"
             )
         if (
             op == "/"
@@ -2080,7 +2101,10 @@ class _JavaScriptEmitter(Emitter):
             return "!" + self._expr(expr.operand)
         if isinstance(expr.operand, (TBinaryOp, TTernary)):
             return op + "(" + self._expr(expr.operand) + ")"
-        return op + self._expr(expr.operand)
+        inner = self._expr(expr.operand)
+        if op == "-" and inner.startswith("-"):
+            return "-(" + inner + ")"
+        return op + inner
 
     def _ternary(self, expr: TTernary) -> str:
         prov = expr.annotations.get("provenance", "")
@@ -2327,12 +2351,9 @@ class _JavaScriptEmitter(Emitter):
         else:
             parts.append(expr)
 
-    _STRUCT_NAME_MAP: dict[str, str] = {
-        "Exception": "Error",
-    }
-
     def _struct_call(self, name: str, args: list[TArg]) -> str:
-        name = self._STRUCT_NAME_MAP.get(name, name)
+        if name == "Exception":
+            name = "Error"
         has_named = False
         for a in args:
             if a.name is not None:
@@ -2477,7 +2498,12 @@ class _JavaScriptEmitter(Emitter):
                 )
             return "(" + self._a(args, 0) + ".get(" + key_str + ") ?? null)"
         if name == "Delete":
-            return self._a(args, 0) + ".delete(" + self._map_key_for(args[0].value, args[1].value) + ")"
+            return (
+                self._a(args, 0)
+                + ".delete("
+                + self._map_key_for(args[0].value, args[1].value)
+                + ")"
+            )
         if name == "Union":
             return "new Set([..." + self._a(args, 0) + ", ..." + self._a(args, 1) + "])"
         if name == "Intersection":
@@ -2740,7 +2766,12 @@ class _JavaScriptEmitter(Emitter):
         if name == "Contains":
             inner = args[0].value
             if self._is_map_type(inner):
-                return self._a(args, 0) + ".has(" + self._map_key_for(inner, args[1].value) + ")"
+                return (
+                    self._a(args, 0)
+                    + ".has("
+                    + self._map_key_for(inner, args[1].value)
+                    + ")"
+                )
             if self._is_set_type(inner):
                 return self._a(args, 0) + ".has(" + self._a(args, 1) + ")"
             return self._a(args, 0) + ".includes(" + self._a(args, 1) + ")"
@@ -2754,13 +2785,7 @@ class _JavaScriptEmitter(Emitter):
                     + "])"
                 )
             if self._is_list_expr(args[0].value):
-                return (
-                    "[..."
-                    + self._a(args, 0)
-                    + ", ..."
-                    + self._a(args, 1)
-                    + "]"
-                )
+                return "[..." + self._a(args, 0) + ", ..." + self._a(args, 1) + "]"
             left = self._maybe_paren(args[0].value, "+", True)
             right = self._maybe_paren(args[1].value, "+", False)
             return left + " + " + right
