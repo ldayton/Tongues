@@ -50,6 +50,7 @@ from .middleend.ownership import analyze_ownership
 from .middleend.returns import analyze_returns
 from .middleend.scope import analyze_scope
 from .middleend.strings import analyze_strings
+from .backend.javascript import emit_javascript
 from .backend.python import emit_python
 from .backend.perl import emit_perl
 from .backend.ruby import emit_ruby
@@ -1271,6 +1272,8 @@ def _pipeline_post_parse(
         return (0, to_json(module_to_dict(module)))
     if target == "python":
         return (0, emit_python(module))
+    if target == "javascript":
+        return (0, emit_javascript(module))
     if target == "perl":
         return (0, emit_perl(module))
     if target == "ruby":

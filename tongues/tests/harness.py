@@ -223,6 +223,7 @@ def check_cli_assertions(
             )
 
 
+from src.backend.javascript import emit_javascript as emit_javascript
 from src.backend.perl import emit_perl as emit_perl
 from src.backend.python import emit_python as emit_python
 from src.backend.ruby import emit_ruby as emit_ruby
@@ -263,6 +264,7 @@ EMITTERS = {
     "python": emit_python,
     "perl": emit_perl,
     "ruby": emit_ruby,
+    "javascript": emit_javascript,
 }
 
 RUNTIMES = {
