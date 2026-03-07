@@ -1,0 +1,2838 @@
+"""Java backend: Taytsh AST → Java source code."""
+
+from __future__ import annotations
+
+
+from .util import (
+    Emitter,
+    collect_builtin_calls,
+    escape_string,
+)
+
+JAVA_STRICT_INT_BINARY: dict[str, str] = {
+    "+": "Math.addExact",
+    "-": "Math.subtractExact",
+    "*": "Math.multiplyExact",
+    "/": "checkedDiv",
+    "%": "checkedRem",
+    "<<": "checkedShl",
+    ">>": "checkedShr",
+    ">>>": ">>>",
+}
+
+JAVA_STRICT_INT_COMPOUND: dict[str, str] = {
+    "+=": "Math.addExact",
+    "-=": "Math.subtractExact",
+    "*=": "Math.multiplyExact",
+}
+from ..taytsh.ast import (
+    Ann,
+    TArg,
+    TAssignStmt,
+    TBinaryOp,
+    TBoolLit,
+    TBreakStmt,
+    TByteLit,
+    TBytesLit,
+    TCall,
+    TCatch,
+    TContinueStmt,
+    TDecl,
+    TEnumDecl,
+    TExpr,
+    TExprStmt,
+    TFieldAccess,
+    TFieldDecl,
+    TFnDecl,
+    TFnLit,
+    TFloatLit,
+    TForStmt,
+    TFuncType,
+    TIdentType,
+    TIfStmt,
+    TIndex,
+    TIntLit,
+    TInterfaceDecl,
+    TLetStmt,
+    TListLit,
+    TListType,
+    TMapLit,
+    TMapType,
+    TMatchStmt,
+    TModule,
+    TNilLit,
+    TOpAssignStmt,
+    TOptionalType,
+    TParam,
+    TPatternEnum,
+    TPatternNil,
+    TPatternType,
+    TPrimitive,
+    TRange,
+    TReturnStmt,
+    TRuneLit,
+    TSetLit,
+    TSetType,
+    TSlice,
+    TStmt,
+    TStringLit,
+    TStructDecl,
+    TTernary,
+    TThrowStmt,
+    TTupleAccess,
+    TTupleAssignStmt,
+    TTupleLit,
+    TTupleType,
+    TTryStmt,
+    TType,
+    TUnaryOp,
+    TUnionType,
+    TVar,
+    TWhileStmt,
+)
+from ..taytsh.check import (
+    BUILTIN_NAMES,
+    BUILTIN_STRUCTS,
+)
+
+# ============================================================
+# JAVA RESERVED WORDS
+# ============================================================
+
+_JAVA_RESERVED = frozenset(
+    {
+        "abstract",
+        "assert",
+        "boolean",
+        "break",
+        "byte",
+        "case",
+        "catch",
+        "char",
+        "class",
+        "const",
+        "continue",
+        "default",
+        "do",
+        "double",
+        "else",
+        "enum",
+        "extends",
+        "final",
+        "finally",
+        "float",
+        "for",
+        "goto",
+        "if",
+        "implements",
+        "import",
+        "instanceof",
+        "int",
+        "interface",
+        "long",
+        "native",
+        "new",
+        "null",
+        "package",
+        "private",
+        "protected",
+        "public",
+        "return",
+        "short",
+        "static",
+        "strictfp",
+        "super",
+        "switch",
+        "synchronized",
+        "this",
+        "throw",
+        "throws",
+        "transient",
+        "try",
+        "void",
+        "volatile",
+        "while",
+        "yield",
+        # Common clashes
+        "System",
+        "String",
+        "Object",
+        "Math",
+        "Integer",
+        "Double",
+        "Boolean",
+        "Character",
+        "Arrays",
+        "List",
+        "Map",
+        "Set",
+        "HashMap",
+        "HashSet",
+        "ArrayList",
+        "Collections",
+        "Collectors",
+        "IntStream",
+        "Path",
+        "Files",
+        "Comparator",
+        "StandardCharsets",
+    }
+)
+
+
+def _safe_name(name: str) -> str:
+    if name in _JAVA_RESERVED:
+        return name + "_"
+    return name
+
+
+def _restore_name(name: str, annotations: Ann) -> str:
+    key = "name.original." + name
+    if key in annotations:
+        return _safe_name(annotations[key])
+    return _safe_name(name)
+
+
+def _lower1(s: str) -> str:
+    """Lowercase first character."""
+    if not s:
+        return s
+    return s[0].lower() + s[1:]
+
+
+_EXCEPTION_MAP: dict[str, str] = {
+    "Exception": "RuntimeException",
+    "BaseException": "RuntimeException",
+    "RuntimeError": "RuntimeException",
+}
+
+
+# ============================================================
+# OPERATOR MAPS
+# ============================================================
+
+_PRECEDENCE: dict[str, int] = {
+    "||": 1,
+    "&&": 2,
+    "==": 3,
+    "!=": 3,
+    "<": 3,
+    ">": 3,
+    "<=": 3,
+    ">=": 3,
+    "|": 4,
+    "^": 5,
+    "&": 6,
+    "<<": 7,
+    ">>": 7,
+    ">>>": 7,
+    "+": 8,
+    "-": 8,
+    "*": 9,
+    "/": 9,
+    "%": 9,
+}
+
+_CMP_OPS = frozenset(["==", "!=", "<", ">", "<=", ">="])
+
+
+def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
+    child_prec = _PRECEDENCE.get(child_op, 0)
+    parent_prec = _PRECEDENCE.get(parent_op, 0)
+    if child_prec < parent_prec:
+        return True
+    if not is_left and child_prec == parent_prec:
+        return True
+    if child_op in _CMP_OPS and parent_op in _CMP_OPS:
+        return True
+    return False
+
+
+# ============================================================
+# IMPORT SCANNING
+# ============================================================
+
+_FS_IMPORTS = frozenset({"ReadFile", "ReadFileBytes", "WriteFile"})
+_IO_IMPORTS = frozenset(
+    {
+        "ReadAll",
+        "ReadLine",
+        "ReadBytes",
+        "ReadBytesN",
+        "WriteOut",
+        "WriteErr",
+        "WritelnErr",
+    }
+)
+_SYSTEM_IMPORTS = frozenset({"Args", "GetEnv", "Exit"})
+
+
+def _scan_imports(module: TModule) -> dict[str, bool]:
+    """Scan module for import requirements."""
+    raise NotImplementedError
+
+
+# ============================================================
+# TYPE EMISSION
+# ============================================================
+
+# Java needs explicit types. This maps Taytsh types to Java types:
+#   int -> long
+#   float -> double
+#   bool -> boolean
+#   str -> String
+#   rune -> int (codepoint)
+#   byte -> int (unsigned 0-255)
+#   bytes -> byte[]
+#   list[T] -> List<T> (ArrayList)
+#   map[K, V] -> HashMap<K, V>
+#   set[T] -> HashSet<T>
+#   T? -> T (nullable, boxed if primitive)
+#   tuple[A, B] -> Object[]
+#   func(A) -> B -> Function<A, B> / IntFunction / etc.
+
+
+# ============================================================
+# STRICT MATH HELPERS
+# ============================================================
+
+_STRICT_MATH_HELPERS: dict[str, str] = {
+    # Methods that need helper functions emitted in the preamble.
+    # Math.addExact etc. are built-in to Java, but shift checks are not.
+    "checkedShl": ...,  # TODO
+    "checkedShr": ...,  # TODO
+    "checkedDiv": ...,  # TODO
+    "checkedRem": ...,  # TODO
+    "checkedPow": ...,  # TODO
+    "strictFmod": ...,  # TODO
+    "strictMinF64": ...,  # TODO
+    "strictMaxF64": ...,  # TODO
+    "strictSortedF64": ...,  # TODO
+}
+
+
+# ============================================================
+# EMITTER
+# ============================================================
+
+
+class _JavaEmitter(Emitter):
+    def __init__(
+        self,
+        struct_names: set[str],
+        struct_fields: dict[str, list[str]],
+        strict_math: bool = False,
+        strict_tostring: bool = False,
+    ) -> None:
+        self.struct_names = struct_names
+        self.struct_fields = struct_fields
+        self.strict_math = strict_math
+        self.strict_tostring = strict_tostring
+        self.indent: int = 0
+        self.lines: list[str] = []
+        self.self_name: str | None = None
+        self.var_types: dict[str, TType] = {}
+        self.module_let_names: set[str] = set()
+        self._needs_read_all: bool = False
+        self._module_decls: list[TDecl] = []
+        self._current_struct: str = ""
+        self._struct_field_decls: dict[str, list[TFieldDecl]] = {}
+        self._enum_names: set[str] = set()
+        self._interface_names: set[str] = set()
+        self._error_struct_names: set[str] = set()
+        self.fn_names: set[str] = set()
+        self._needs_strict_helpers: set[str] = set()
+
+    # ── Type emission ────────────────────────────────────────
+
+    def _type(self, typ: TType) -> str:
+        """Emit a Java type from a Taytsh type node."""
+        if isinstance(typ, TPrimitive):
+            if typ.kind == "int":
+                if self.strict_math:
+                    return "long"
+                return "int"
+            if typ.kind == "float":
+                return "double"
+            if typ.kind == "bool":
+                return "boolean"
+            if typ.kind == "string":
+                return "String"
+            if typ.kind == "rune":
+                return "int"
+            if typ.kind == "byte":
+                return "int"
+            if typ.kind == "bytes":
+                return "byte[]"
+        if isinstance(typ, TIdentType):
+            if typ.name in self._enum_names:
+                return typ.name
+            return typ.name
+        if isinstance(typ, TListType):
+            return "List<" + self._boxed_type(typ.element) + ">"
+        if isinstance(typ, TMapType):
+            return (
+                "HashMap<"
+                + self._boxed_type(typ.key)
+                + ", "
+                + self._boxed_type(typ.value)
+                + ">"
+            )
+        if isinstance(typ, TSetType):
+            return "HashSet<" + self._boxed_type(typ.element) + ">"
+        if isinstance(typ, TOptionalType):
+            return self._boxed_type(typ.inner)
+        if isinstance(typ, TTupleType):
+            return "Object[]"
+        if isinstance(typ, TFuncType):
+            return "Function"
+        if isinstance(typ, TUnionType):
+            return "Object"
+        return "Object"
+
+    def _boxed_type(self, typ: TType) -> str:
+        """Emit boxed Java type (Integer instead of int, etc.)."""
+        if isinstance(typ, TPrimitive):
+            if typ.kind == "int":
+                if self.strict_math:
+                    return "Long"
+                return "Integer"
+            if typ.kind == "float":
+                return "Double"
+            if typ.kind == "bool":
+                return "Boolean"
+            if typ.kind == "string":
+                return "String"
+            if typ.kind in ("rune", "byte"):
+                return "Integer"
+            if typ.kind == "bytes":
+                return "byte[]"
+        return self._type(typ)
+
+    def _zero_value(self, typ: TType) -> str:
+        if isinstance(typ, TPrimitive):
+            if typ.kind in ("int", "byte", "rune"):
+                return "0"
+            if typ.kind == "float":
+                return "0.0"
+            if typ.kind == "bool":
+                return "false"
+            if typ.kind == "string":
+                return '""'
+            if typ.kind == "bytes":
+                return "new byte[0]"
+        return "null"
+
+    def _field_default(self, fld: TFieldDecl) -> str:
+        raise NotImplementedError
+
+    # ── Module ───────────────────────────────────────────────
+
+    def emit_module(self, module: TModule) -> None:
+        self._module_decls = module.decls
+        for decl in module.decls:
+            if isinstance(decl, TLetStmt):
+                self.module_let_names.add(decl.name)
+            if isinstance(decl, TFnDecl):
+                self.fn_names.add(decl.name)
+            if isinstance(decl, TStructDecl):
+                for m in decl.methods:
+                    self.fn_names.add(m.name)
+        all_builtins: set[str] = set()
+        for decl in module.decls:
+            if isinstance(decl, TFnDecl):
+                all_builtins |= collect_builtin_calls(decl.body)
+                for m in decl.methods if isinstance(decl, TStructDecl) else []:
+                    all_builtins |= collect_builtin_calls(m.body)
+            elif isinstance(decl, TStmt):
+                all_builtins |= collect_builtin_calls([decl])
+        self._needs_read_all = "ReadAll" in all_builtins
+        self._emit_imports(module)
+        self._line("public class Main {")
+        self.indent += 1
+        for decl in module.decls:
+            match decl:
+                case TEnumDecl():
+                    self._line()
+                    self._emit_enum(decl)
+                case TStructDecl():
+                    self._line()
+                    self._emit_struct(decl)
+                case TInterfaceDecl():
+                    self._line()
+                    self._emit_interface(decl)
+        for decl in module.decls:
+            if isinstance(decl, TFnDecl):
+                self._line()
+                self._emit_fn(decl)
+        top_stmts: list[TStmt] = []
+        for decl in module.decls:
+            if isinstance(decl, TStmt) and not isinstance(decl, TLetStmt):
+                top_stmts.append(decl)
+        if top_stmts:
+            self._line()
+            self._line("public static void main(String[] args) throws Exception {")
+            self.indent += 1
+            if self._needs_read_all:
+                self._line(
+                    "String input = new String(System.in.readAllBytes(), StandardCharsets.UTF_8);"
+                )
+            self._emit_stmts(top_stmts)
+            self.indent -= 1
+            self._line("}")
+        self.indent -= 1
+        self._line("}")
+
+    # ── Imports ──────────────────────────────────────────────
+
+    def _emit_imports(self, module: TModule) -> None:
+        self._line("import java.util.*;")
+        self._line("import java.util.stream.*;")
+        self._line("import java.io.*;")
+        self._line("import java.nio.file.*;")
+        self._line("import java.nio.charset.*;")
+        self._line()
+
+    # ── Declarations ─────────────────────────────────────────
+
+    def _emit_enum(self, decl: TEnumDecl) -> None:
+        name = _safe_name(decl.name)
+        variants = ", ".join(decl.variants)
+        self._line("enum " + name + " { " + variants + " }")
+
+    def _emit_struct(self, decl: TStructDecl) -> None:
+        name = _safe_name(decl.name)
+        parent = decl.parent
+        if parent == "Error" or decl.name in self._error_struct_names:
+            self._emit_error_struct(decl)
+            return
+        extends = ""
+        if parent is not None:
+            kw = "implements" if parent in self._interface_names else "extends"
+            extends = " " + kw + " " + _safe_name(parent)
+        self._line("static class " + name + extends + " {")
+        self.indent += 1
+        for f in decl.fields:
+            self._line(self._type(f.typ) + " " + _safe_name(f.name) + ";")
+        if decl.fields:
+            params = ", ".join(
+                self._type(f.typ) + " " + _safe_name(f.name) for f in decl.fields
+            )
+            self._line(name + "(" + params + ") {")
+            self.indent += 1
+            for f in decl.fields:
+                safe = _safe_name(f.name)
+                self._line("this." + safe + " = " + safe + ";")
+            self.indent -= 1
+            self._line("}")
+        for m in decl.methods:
+            self._line()
+            self._emit_method(m)
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_error_struct(self, decl: TStructDecl) -> None:
+        name = _safe_name(decl.name)
+        self._line("static class " + name + " extends Exception {")
+        self.indent += 1
+        has_msg = any(f.name == "message" for f in decl.fields)
+        extra_fields = [f for f in decl.fields if f.name != "message"]
+        for f in extra_fields:
+            self._line(self._type(f.typ) + " " + _safe_name(f.name) + ";")
+        params = ", ".join(
+            self._type(f.typ) + " " + _safe_name(f.name) for f in decl.fields
+        )
+        self._line(name + "(" + params + ") {")
+        self.indent += 1
+        if has_msg:
+            self._line("super(message);")
+        for f in extra_fields:
+            safe = _safe_name(f.name)
+            self._line("this." + safe + " = " + safe + ";")
+        self.indent -= 1
+        self._line("}")
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_interface(self, decl: TInterfaceDecl) -> None:
+        name = _safe_name(decl.name)
+        self._line("interface " + name + " {")
+        self.indent += 1
+        for f in decl.fields:
+            self._line(self._type(f.typ) + " " + _safe_name(f.name) + "();")
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_fn(self, decl: TFnDecl) -> None:
+        old_var_types = self.var_types.copy()
+        for p in decl.params:
+            if p.typ is not None:
+                self.var_types[p.name] = p.typ
+        if decl.name == "Main":
+            self._line("public static void main(String[] args) throws Exception {")
+        else:
+            ret = "void"
+            if decl.ret is not None:
+                ret = self._type(decl.ret)
+            params = self._params(decl.params)
+            fname = _lower1(_safe_name(decl.name))
+            self._line(
+                "public static "
+                + ret
+                + " "
+                + fname
+                + "("
+                + params
+                + ") throws Exception {"
+            )
+        self.indent += 1
+        if decl.name == "Main" and self._needs_read_all:
+            self._line(
+                "String input = new String(System.in.readAllBytes(), StandardCharsets.UTF_8);"
+            )
+        self._emit_stmts(decl.body)
+        self.indent -= 1
+        self._line("}")
+        self.var_types = old_var_types
+
+    def _emit_method(self, decl: TFnDecl) -> None:
+        old_var_types = self.var_types.copy()
+        old_self = self.self_name
+        self.self_name = decl.params[0].name if decl.params else None
+        method_params = decl.params[1:]
+        for p in method_params:
+            if p.typ is not None:
+                self.var_types[p.name] = p.typ
+        ret = "void"
+        if decl.ret is not None:
+            ret = self._type(decl.ret)
+        params = self._params(method_params)
+        fname = _safe_name(decl.name).lower()
+        self._line(ret + " " + fname + "(" + params + ") throws Exception {")
+        self.indent += 1
+        self._emit_stmts(decl.body)
+        self.indent -= 1
+        self._line("}")
+        self.self_name = old_self
+        self.var_types = old_var_types
+
+    def _params(self, params: list[TParam]) -> str:
+        parts: list[str] = []
+        for p in params:
+            if p.typ is None:
+                continue
+            name = _restore_name(p.name, p.annotations)
+            parts.append(self._type(p.typ) + " " + name)
+        return ", ".join(parts)
+
+    # ── Statements ───────────────────────────────────────────
+
+    def _emit_stmts(self, stmts: list[TStmt]) -> None:
+        i = 0
+        while i < len(stmts):
+            stmt = stmts[i]
+            if (
+                i + 1 < len(stmts)
+                and isinstance(stmt, TLetStmt)
+                and isinstance(stmts[i + 1], TForStmt)
+            ):
+                next_stmt = stmts[i + 1]
+                assert isinstance(next_stmt, TForStmt)
+                prov = next_stmt.annotations.get("provenance", "")
+                if prov in ("any_call", "all_call"):
+                    result = self._try_any_all(stmt, next_stmt, prov)
+                    if result is not None:
+                        self._line(result)
+                        i += 2
+                        continue
+                if prov in (
+                    "list_comprehension",
+                    "dict_comprehension",
+                    "set_comprehension",
+                    "step_slice",
+                ):
+                    stream = self._try_comprehension_stream(stmt, next_stmt, prov)
+                    if stream is not None:
+                        self._line(stream)
+                        i += 2
+                        continue
+            self._emit_stmt(stmt)
+            i += 1
+
+    def _emit_stmt(self, stmt: TStmt) -> None:
+        match stmt:
+            case TLetStmt():
+                self._emit_let(stmt)
+            case TAssignStmt():
+                if isinstance(stmt.target, TIndex):
+                    self._emit_index_assign(stmt.target, stmt.value)
+                else:
+                    self._line(
+                        self._expr(stmt.target) + " = " + self._expr(stmt.value) + ";"
+                    )
+            case TTupleAssignStmt():
+                self._emit_tuple_assign(stmt)
+            case TOpAssignStmt():
+                if (
+                    self.strict_math
+                    and stmt.op in JAVA_STRICT_INT_COMPOUND
+                    and self._is_int_expr(stmt.target)
+                ):
+                    fn = JAVA_STRICT_INT_COMPOUND[stmt.op]
+                    self._line(
+                        self._expr(stmt.target)
+                        + " = "
+                        + fn
+                        + "("
+                        + self._expr(stmt.target)
+                        + ", "
+                        + self._expr(stmt.value)
+                        + ");"
+                    )
+                else:
+                    self._line(
+                        self._expr(stmt.target)
+                        + " "
+                        + stmt.op
+                        + " "
+                        + self._expr(stmt.value)
+                        + ";"
+                    )
+            case TExprStmt():
+                self._emit_expr_stmt(stmt)
+            case TReturnStmt():
+                if stmt.value is not None:
+                    prov = stmt.value.annotations.get("provenance", "")
+                    if prov in ("partition", "rpartition") and isinstance(
+                        stmt.value, TTernary
+                    ):
+                        self._emit_partition_return_impl(stmt.value, prov)
+                    else:
+                        self._line("return " + self._expr(stmt.value) + ";")
+                else:
+                    self._line("return;")
+            case TThrowStmt():
+                self._line("throw " + self._expr(stmt.expr) + ";")
+            case TBreakStmt():
+                self._line("break;")
+            case TContinueStmt():
+                self._line("continue;")
+            case TIfStmt():
+                self._emit_if(stmt)
+            case TWhileStmt():
+                self._emit_while(stmt)
+            case TForStmt():
+                self._emit_for(stmt)
+            case TTryStmt():
+                self._emit_try(stmt)
+            case TMatchStmt():
+                self._emit_match(stmt)
+
+    _COLLECTION_OPS: dict[str, str] = {
+        "Merge": "putAll",
+        "Union": "addAll",
+        "Intersection": "retainAll",
+        "Difference": "removeAll",
+    }
+
+    def _emit_let(self, stmt: TLetStmt) -> None:
+        safe = _restore_name(stmt.name, stmt.annotations)
+        self.var_types[stmt.name] = stmt.typ
+        unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
+        jtype = self._type(stmt.typ)
+        if stmt.value is not None and not unused:
+            if (
+                isinstance(stmt.value, TCall)
+                and isinstance(stmt.value.func, TVar)
+                and stmt.value.func.name == "Concat"
+                and stmt.value.annotations.get("provenance") == "star_unpack"
+            ):
+                self._emit_star_unpack_let(safe, jtype, stmt.value)
+                return
+            if (
+                isinstance(stmt.value, TCall)
+                and isinstance(stmt.value.func, TVar)
+                and stmt.value.func.name == "Concat"
+                and self._is_bytes_expr(stmt.value.args[0].value)
+            ):
+                a = self._expr(stmt.value.args[0].value)
+                b = self._expr(stmt.value.args[1].value)
+                self._line(
+                    "byte[] "
+                    + safe
+                    + " = new byte["
+                    + a
+                    + ".length + "
+                    + b
+                    + ".length];"
+                )
+                self._line(
+                    "System.arraycopy(" + a + ", 0, " + safe + ", 0, " + a + ".length);"
+                )
+                self._line(
+                    "System.arraycopy("
+                    + b
+                    + ", 0, "
+                    + safe
+                    + ", "
+                    + a
+                    + ".length, "
+                    + b
+                    + ".length);"
+                )
+                return
+            if (
+                isinstance(stmt.value, TCall)
+                and isinstance(stmt.value.func, TVar)
+                and stmt.value.func.name in self._COLLECTION_OPS
+            ):
+                op_name = stmt.value.func.name
+                method = self._COLLECTION_OPS[op_name]
+                a = self._expr(stmt.value.args[0].value)
+                b = self._expr(stmt.value.args[1].value)
+                raw = jtype.split("<")[0]
+                self._line(jtype + " " + safe + " = new " + raw + "<>(" + a + ");")
+                self._line(safe + "." + method + "(" + b + ");")
+                return
+            self._line(jtype + " " + safe + " = " + self._expr(stmt.value) + ";")
+        else:
+            self._line(jtype + " " + safe + ";")
+
+    def _emit_tuple_assign(self, stmt: TTupleAssignStmt) -> None:
+        unused_str = stmt.annotations.get("liveness.tuple_unused_indices", "")
+        unused_indices: set[int] = set()
+        if unused_str:
+            for s in unused_str.split(","):
+                if s:
+                    unused_indices.add(int(s))
+        if self._is_divmod_call(stmt.value):
+            self._emit_divmod_assign(stmt, unused_indices)
+            return
+        tmp = "__tmp"
+        self._line("var " + tmp + " = " + self._expr(stmt.value) + ";")
+        for i, t in enumerate(stmt.targets):
+            if i in unused_indices:
+                continue
+            self._line(self._expr(t) + " = " + tmp + "[" + str(i) + "];")
+
+    def _emit_expr_stmt(self, stmt: TExprStmt) -> None:
+        expr = stmt.expr
+        if (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "Assert"
+        ):
+            msg = self._a(expr.args, 1) if len(expr.args) > 1 else '"assertion failed"'
+            self._line(
+                "if (!("
+                + self._a(expr.args, 0)
+                + ")) { throw new AssertionError("
+                + msg
+                + "); }"
+            )
+            return
+        if (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "RemoveAt"
+            and stmt.annotations.get("provenance") == "del_subscript"
+        ):
+            self._line(
+                self._expr(expr.args[0].value)
+                + ".remove("
+                + self._expr(expr.args[1].value)
+                + ");"
+            )
+            return
+        self._line(self._expr(expr) + ";")
+
+    def _emit_if(self, stmt: TIfStmt) -> None:
+        prov = stmt.annotations.get("provenance", "")
+        truth = self._truthiness_expr(stmt.cond, raised=prov == "truthiness")
+        cond = truth if truth is not None else self._expr(stmt.cond)
+        self._line("if (" + cond + ") {")
+        self.indent += 1
+        self._emit_stmts(stmt.then_body)
+        self.indent -= 1
+        self._emit_else_body(stmt.else_body)
+
+    def _emit_else_body(self, else_body: list[TStmt] | None) -> None:
+        if else_body is None:
+            self._line("}")
+            return
+        if len(else_body) == 1 and isinstance(else_body[0], TIfStmt):
+            elif_stmt = else_body[0]
+            prov = elif_stmt.annotations.get("provenance", "")
+            truth = self._truthiness_expr(elif_stmt.cond, raised=prov == "truthiness")
+            cond = truth if truth is not None else self._expr(elif_stmt.cond)
+            self._line("} else if (" + cond + ") {")
+            self.indent += 1
+            self._emit_stmts(else_body[0].then_body)
+            self.indent -= 1
+            self._emit_else_body(else_body[0].else_body)
+        else:
+            self._line("} else {")
+            self.indent += 1
+            self._emit_stmts(else_body)
+            self.indent -= 1
+            self._line("}")
+
+    def _emit_while(self, stmt: TWhileStmt) -> None:
+        self._line("while (" + self._expr(stmt.cond) + ") {")
+        self.indent += 1
+        self._emit_stmts(stmt.body)
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_for(self, stmt: TForStmt) -> None:
+        ann = stmt.annotations
+        binding = [_restore_name(b, ann) for b in stmt.binding]
+        if isinstance(stmt.iterable, TRange):
+            self._emit_for_range(binding[0], stmt.iterable, stmt.body, ann)
+            return
+        if self._is_enumerate_for(stmt):
+            idx = binding[0]
+            val = binding[1]
+            iterable = self._expr(stmt.iterable)
+            self._line(
+                "for (int "
+                + idx
+                + " = 0; "
+                + idx
+                + " < "
+                + iterable
+                + ".size(); "
+                + idx
+                + "++) {"
+            )
+            self.indent += 1
+            self._line("var " + val + " = " + iterable + ".get(" + idx + ");")
+            self._emit_stmts(stmt.body)
+            self.indent -= 1
+            self._line("}")
+            return
+        if (
+            isinstance(stmt.iterable, TCall)
+            and isinstance(stmt.iterable.func, TVar)
+            and stmt.iterable.func.name == "Reversed"
+        ):
+            inner = self._expr(stmt.iterable.args[0].value)
+            self._line("for (var " + binding[0] + " : " + inner + ".reversed()) {")
+            self.indent += 1
+            self._emit_stmts(stmt.body)
+            self.indent -= 1
+            self._line("}")
+            return
+        if (
+            isinstance(stmt.iterable, TCall)
+            and isinstance(stmt.iterable.func, TVar)
+            and stmt.iterable.func.name == "Zip"
+        ):
+            self._emit_for_zip_impl(stmt, binding)
+            return
+        iterable_expr = self._expr(stmt.iterable)
+        iter_type = ann.get("iter_type", "")
+        is_string = (
+            iter_type == "string"
+            or isinstance(stmt.iterable, TStringLit)
+            or (
+                isinstance(stmt.iterable, TVar)
+                and isinstance(self.var_types.get(stmt.iterable.name), TPrimitive)
+                and self.var_types[stmt.iterable.name].kind == "string"
+            )
+        )
+        is_map = self._is_map_type(stmt.iterable)
+        if is_string:
+            self._line(
+                "for (int "
+                + binding[0]
+                + " : "
+                + iterable_expr
+                + ".codePoints().toArray()) {"
+            )
+        elif is_map and len(binding) == 2:
+            self._line("for (var __entry : " + iterable_expr + ".entrySet()) {")
+            self.indent += 1
+            self._line("var " + binding[0] + " = __entry.getKey();")
+            self._line("var " + binding[1] + " = __entry.getValue();")
+            self._emit_stmts(stmt.body)
+            self.indent -= 1
+            self._line("}")
+            return
+        elif is_map and len(binding) == 1:
+            self._line(
+                "for (var " + binding[0] + " : " + iterable_expr + ".keySet()) {"
+            )
+        else:
+            elem_type = self._for_elem_type(stmt.iterable)
+            self._line(
+                "for (" + elem_type + " " + binding[0] + " : " + iterable_expr + ") {"
+            )
+        self.indent += 1
+        self._emit_stmts(stmt.body)
+        self.indent -= 1
+        self._line("}")
+
+    def _try_any_all(
+        self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
+    ) -> str | None:
+        """Try to emit any/all as stream expression."""
+        acc = _safe_name(let_stmt.name)
+        binder = _safe_name(for_stmt.binding[0])
+        iterable = self._expr(for_stmt.iterable)
+        func = "anyMatch" if prov == "any_call" else "allMatch"
+        body = for_stmt.body
+        if len(body) != 1 or not isinstance(body[0], TIfStmt):
+            return None
+        outer_if: TIfStmt = body[0]
+        if (
+            len(outer_if.then_body) == 2
+            and isinstance(outer_if.then_body[0], TAssignStmt)
+            and isinstance(outer_if.then_body[1], TBreakStmt)
+        ):
+            cond = (
+                self._strip_not(outer_if.cond) if prov == "all_call" else outer_if.cond
+            )
+            cond_s = self._expr(cond)
+            return (
+                "boolean "
+                + acc
+                + " = "
+                + iterable
+                + ".stream()."
+                + func
+                + "("
+                + binder
+                + " -> "
+                + cond_s
+                + ");"
+            )
+        if len(outer_if.then_body) == 1 and isinstance(outer_if.then_body[0], TIfStmt):
+            inner_if = outer_if.then_body[0]
+            assert isinstance(inner_if, TIfStmt)
+            if (
+                len(inner_if.then_body) == 2
+                and isinstance(inner_if.then_body[0], TAssignStmt)
+                and isinstance(inner_if.then_body[1], TBreakStmt)
+            ):
+                filter_s = self._expr(outer_if.cond)
+                cond = (
+                    self._strip_not(inner_if.cond)
+                    if prov == "all_call"
+                    else inner_if.cond
+                )
+                cond_s = self._expr(cond)
+                return (
+                    "boolean "
+                    + acc
+                    + " = "
+                    + iterable
+                    + ".stream()."
+                    + func
+                    + "("
+                    + binder
+                    + " -> "
+                    + filter_s
+                    + " && "
+                    + cond_s
+                    + ");"
+                )
+        return None
+
+    def _try_comprehension_stream(
+        self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
+    ) -> str | None:
+        """Try to emit list/set/dict comprehension as stream expression."""
+        acc = _safe_name(let_stmt.name)
+        binder = _safe_name(for_stmt.binding[0])
+        iterable = self._expr(for_stmt.iterable)
+        body = for_stmt.body
+        type_str = self._let_type(let_stmt)
+        if prov == "list_comprehension":
+            append = self._extract_append(body)
+            if append is not None:
+                map_expr = self._expr(append)
+                return (
+                    type_str
+                    + " "
+                    + acc
+                    + " = "
+                    + iterable
+                    + ".stream().map("
+                    + binder
+                    + " -> "
+                    + map_expr
+                    + ").collect(Collectors.toList());"
+                )
+            filtered = self._extract_filtered_append(body)
+            if filtered is not None:
+                filter_cond, val_expr = filtered
+                filter_s = self._expr(filter_cond)
+                val_s = self._expr(val_expr)
+                if val_s == binder:
+                    return (
+                        type_str
+                        + " "
+                        + acc
+                        + " = "
+                        + iterable
+                        + ".stream().filter("
+                        + binder
+                        + " -> "
+                        + filter_s
+                        + ").collect(Collectors.toList());"
+                    )
+                return (
+                    type_str
+                    + " "
+                    + acc
+                    + " = "
+                    + iterable
+                    + ".stream().filter("
+                    + binder
+                    + " -> "
+                    + filter_s
+                    + ").map("
+                    + binder
+                    + " -> "
+                    + val_s
+                    + ").collect(Collectors.toList());"
+                )
+        if prov == "set_comprehension":
+            append = self._extract_set_add(body)
+            if append is not None:
+                val_s2 = self._expr(append)
+                if val_s2 == binder:
+                    return type_str + " " + acc + " = new HashSet<>(" + iterable + ");"
+                return (
+                    type_str
+                    + " "
+                    + acc
+                    + " = "
+                    + iterable
+                    + ".stream().map("
+                    + binder
+                    + " -> "
+                    + val_s2
+                    + ").collect(Collectors.toCollection(HashSet::new));"
+                )
+        if prov == "dict_comprehension":
+            return self._try_dict_comprehension(let_stmt, for_stmt)
+        if prov == "step_slice":
+            return self._try_step_slice(let_stmt, for_stmt)
+        return None
+
+    def _try_dict_comprehension(
+        self, let_stmt: TLetStmt, for_stmt: TForStmt
+    ) -> str | None:
+        """Emit dict comprehension as IntStream.range().collect(toMap(...))."""
+        acc = _safe_name(let_stmt.name)
+        type_str = self._let_type(let_stmt)
+        body = for_stmt.body
+        if len(body) != 1 or not isinstance(body[0], TAssignStmt):
+            return None
+        assign = body[0]
+        if not isinstance(assign.target, TIndex):
+            return None
+        binding = [_safe_name(b) for b in for_stmt.binding]
+        if len(binding) != 2:
+            return None
+        idx_var = binding[0]
+        val_var = binding[1]
+        iterable = self._expr(for_stmt.iterable)
+        key_expr = self._expr(assign.target.index)
+        val_expr = self._expr(assign.value)
+        key_fn: str
+        if key_expr == val_var:
+            key_fn = iterable + "::get"
+        else:
+            key_fn = val_var + " -> " + key_expr
+        val_fn = idx_var + " -> " + val_expr
+        return (
+            type_str
+            + " "
+            + acc
+            + " = IntStream.range(0, "
+            + iterable
+            + ".size()).boxed().collect(Collectors.toMap("
+            + key_fn
+            + ", "
+            + val_fn
+            + ", (a, b) -> b, HashMap::new));"
+        )
+
+    def _try_step_slice(self, let_stmt: TLetStmt, for_stmt: TForStmt) -> str | None:
+        """Emit step-slice as IntStream expression."""
+        if not isinstance(for_stmt.iterable, TRange):
+            return None
+        rng = for_stmt.iterable
+        start_val = self._static_int(rng.args[0])
+        step_val = self._static_int(rng.args[2]) if len(rng.args) >= 3 else None
+        if step_val is None:
+            return None
+        acc = _safe_name(let_stmt.name)
+        type_str = self._let_type(let_stmt)
+        size_expr = self._expr(rng.args[1])
+        is_string = (
+            isinstance(let_stmt.typ, TPrimitive) and let_stmt.typ.kind == "string"
+        )
+        if start_val is not None and start_val == 0:
+            filter_expr = "i -> i % " + str(step_val) + " == 0"
+        elif start_val is not None and start_val < step_val:
+            filter_expr = "i -> i % " + str(step_val) + " == " + str(start_val)
+        elif start_val is not None:
+            filter_expr = (
+                "i -> i >= "
+                + str(start_val)
+                + " && (i - "
+                + str(start_val)
+                + ") % "
+                + str(step_val)
+                + " == 0"
+            )
+        else:
+            return None
+        if is_string:
+            src = self._find_string_source(for_stmt.body)
+            if src is not None:
+                return (
+                    type_str
+                    + " "
+                    + acc
+                    + " = IntStream.range(0, "
+                    + size_expr
+                    + ").filter("
+                    + filter_expr
+                    + ").mapToObj(i -> String.valueOf("
+                    + src
+                    + ".charAt(i))).collect(Collectors.joining());"
+                )
+        body = for_stmt.body
+        append = self._extract_append(body)
+        if append is None:
+            return None
+        if isinstance(append, TIndex) and isinstance(append.obj, TVar):
+            src_name = self._expr(append.obj)
+            return (
+                type_str
+                + " "
+                + acc
+                + " = IntStream.range(0, "
+                + size_expr
+                + ").filter("
+                + filter_expr
+                + ").mapToObj("
+                + src_name
+                + "::get).collect(Collectors.toList());"
+            )
+        return None
+
+    def _find_string_source(self, body: list[TStmt]) -> str | None:
+        """Find the source string var in: r = Concat(r, ToString(s[__i]))."""
+        if len(body) != 1 or not isinstance(body[0], TAssignStmt):
+            return None
+        val = body[0].value
+        if not (
+            isinstance(val, TCall)
+            and isinstance(val.func, TVar)
+            and val.func.name == "Concat"
+        ):
+            return None
+        to_str = val.args[1].value
+        if not (
+            isinstance(to_str, TCall)
+            and isinstance(to_str.func, TVar)
+            and to_str.func.name == "ToString"
+        ):
+            return None
+        idx = to_str.args[0].value
+        if isinstance(idx, TIndex) and isinstance(idx.obj, TVar):
+            return self._expr(idx.obj)
+        return None
+
+    def _extract_append(self, body: list[TStmt]) -> TExpr | None:
+        """Extract the value from Append(acc, value) in a single-stmt body."""
+        if len(body) != 1 or not isinstance(body[0], TExprStmt):
+            return None
+        call = body[0].expr
+        if (
+            isinstance(call, TCall)
+            and isinstance(call.func, TVar)
+            and call.func.name == "Append"
+            and len(call.args) == 2
+        ):
+            return call.args[1].value
+        return None
+
+    def _extract_set_add(self, body: list[TStmt]) -> TExpr | None:
+        """Extract the value from Add(acc, value) in a single-stmt body."""
+        if len(body) != 1 or not isinstance(body[0], TExprStmt):
+            return None
+        call = body[0].expr
+        if (
+            isinstance(call, TCall)
+            and isinstance(call.func, TVar)
+            and call.func.name == "Add"
+            and len(call.args) == 2
+        ):
+            return call.args[1].value
+        return None
+
+    def _extract_filtered_append(self, body: list[TStmt]) -> tuple[TExpr, TExpr] | None:
+        """Extract (filter_cond, value) from: if cond { Append(acc, val) }."""
+        if len(body) != 1 or not isinstance(body[0], TIfStmt):
+            return None
+        if_stmt: TIfStmt = body[0]
+        append = self._extract_append(if_stmt.then_body)
+        if append is not None:
+            return (if_stmt.cond, append)
+        return None
+
+    def _let_type(self, stmt: TLetStmt) -> str:
+        if stmt.typ is not None:
+            return self._type(stmt.typ)
+        return "var"
+
+    def _emit_for_range(
+        self,
+        var_name: str,
+        iterable: TRange,
+        body: list[TStmt],
+        ann: Ann,
+    ) -> None:
+        nargs = len(iterable.args)
+        if nargs == 1:
+            high = self._expr(iterable.args[0])
+            self._line(
+                "for (int "
+                + var_name
+                + " = 0; "
+                + var_name
+                + " < "
+                + high
+                + "; "
+                + var_name
+                + "++) {"
+            )
+        elif nargs == 2:
+            low = self._expr(iterable.args[0])
+            high = self._expr(iterable.args[1])
+            self._line(
+                "for (int "
+                + var_name
+                + " = "
+                + low
+                + "; "
+                + var_name
+                + " < "
+                + high
+                + "; "
+                + var_name
+                + "++) {"
+            )
+        else:
+            low = self._expr(iterable.args[0])
+            high = self._expr(iterable.args[1])
+            step = iterable.args[2]
+            step_val = self._static_int(step)
+            if step_val is not None and step_val == -1:
+                prov = ann.get("provenance", "")
+                if prov == "reversed_range":
+                    high_val = self._static_int(iterable.args[1])
+                    if high_val is not None:
+                        self._line(
+                            "for (int "
+                            + var_name
+                            + " = "
+                            + low
+                            + "; "
+                            + var_name
+                            + " >= "
+                            + str(high_val + 1)
+                            + "; "
+                            + var_name
+                            + "--) {"
+                        )
+                    else:
+                        self._line(
+                            "for (int "
+                            + var_name
+                            + " = "
+                            + low
+                            + "; "
+                            + var_name
+                            + " > "
+                            + high
+                            + "; "
+                            + var_name
+                            + "--) {"
+                        )
+                else:
+                    self._line(
+                        "for (int "
+                        + var_name
+                        + " = "
+                        + low
+                        + "; "
+                        + var_name
+                        + " > "
+                        + high
+                        + "; "
+                        + var_name
+                        + "--) {"
+                    )
+            elif step_val is not None and step_val == 1:
+                self._line(
+                    "for (int "
+                    + var_name
+                    + " = "
+                    + low
+                    + "; "
+                    + var_name
+                    + " < "
+                    + high
+                    + "; "
+                    + var_name
+                    + "++) {"
+                )
+            elif step_val is not None and step_val < 0:
+                step_str = self._expr(step)
+                self._line(
+                    "for (int "
+                    + var_name
+                    + " = "
+                    + low
+                    + "; "
+                    + var_name
+                    + " > "
+                    + high
+                    + "; "
+                    + var_name
+                    + " += "
+                    + step_str
+                    + ") {"
+                )
+            else:
+                step_str = self._expr(step)
+                self._line(
+                    "for (int "
+                    + var_name
+                    + " = "
+                    + low
+                    + "; "
+                    + var_name
+                    + " < "
+                    + high
+                    + "; "
+                    + var_name
+                    + " += "
+                    + step_str
+                    + ") {"
+                )
+        self.indent += 1
+        self._emit_stmts(body)
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_try(self, stmt: TTryStmt) -> None:
+        self._line("try {")
+        self.indent += 1
+        self._emit_stmts(stmt.body)
+        self.indent -= 1
+        for catch in stmt.catches:
+            self._emit_catch(catch)
+        if stmt.finally_body is not None:
+            self._line("} finally {")
+            self.indent += 1
+            self._emit_stmts(stmt.finally_body)
+            self.indent -= 1
+        self._line("}")
+
+    def _emit_catch(self, catch: TCatch) -> None:
+        unused = catch.annotations.get("liveness.catch_var_unused") == "true"
+        name = "_" + _safe_name(catch.name) if unused else _safe_name(catch.name)
+        if not catch.types:
+            type_str = "Exception"
+        elif len(catch.types) == 1:
+            type_str = self._type(catch.types[0])
+        else:
+            type_str = " | ".join(self._type(t) for t in catch.types)
+        self._line("} catch (" + type_str + " " + name + ") {")
+        self.indent += 1
+        self._emit_stmts(catch.body)
+        self.indent -= 1
+
+    def _emit_match(self, stmt: TMatchStmt) -> None:
+        expr_str = self._expr(stmt.expr)
+        if stmt.cases and isinstance(stmt.cases[0].pattern, TPatternEnum):
+            self._emit_match_enum(stmt, expr_str)
+        elif stmt.cases and isinstance(stmt.cases[0].pattern, TPatternType):
+            pat0 = stmt.cases[0].pattern
+            assert isinstance(pat0, TPatternType)
+            first_type = pat0.type_name
+            if (
+                isinstance(first_type, TIdentType)
+                and first_type.name in self.struct_names
+            ):
+                if any(isinstance(d, TInterfaceDecl) for d in self._module_decls):
+                    self._emit_match_switch(stmt, expr_str)
+                    return
+            self._emit_match_instanceof(stmt, expr_str)
+        else:
+            self._emit_match_instanceof(stmt, expr_str)
+
+    def _emit_match_enum(self, stmt: TMatchStmt, expr_str: str) -> None:
+        self._line("switch (" + expr_str + ") {")
+        self.indent += 1
+        for case in stmt.cases:
+            pat = case.pattern
+            if isinstance(pat, TPatternEnum):
+                self._emit_switch_case("case " + pat.variant, case.body)
+        if stmt.default:
+            self._emit_switch_case("default", stmt.default.body)
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_switch_case(self, header: str, body: list[TStmt]) -> None:
+        if len(body) == 1:
+            old_lines = self.lines
+            self.lines = []
+            self._emit_stmts(body)
+            inner = " ".join(l.strip() for l in self.lines)
+            self.lines = old_lines
+            self._line(header + " -> { " + inner + " }")
+        else:
+            self._line(header + " -> {")
+            self.indent += 1
+            self._emit_stmts(body)
+            self.indent -= 1
+            self._line("}")
+
+    def _emit_match_switch(self, stmt: TMatchStmt, expr_str: str) -> None:
+        self._line("switch (" + expr_str + ") {")
+        self.indent += 1
+        for case in stmt.cases:
+            pat = case.pattern
+            if isinstance(pat, TPatternType):
+                type_name = self._type(pat.type_name)
+                binding = _safe_name(pat.name)
+                self._emit_switch_case("case " + type_name + " " + binding, case.body)
+        if stmt.default:
+            self._emit_switch_case("default", stmt.default.body)
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_match_instanceof(self, stmt: TMatchStmt, expr_str: str) -> None:
+        first = True
+        for case in stmt.cases:
+            pat = case.pattern
+            if isinstance(pat, TPatternType):
+                type_name = self._boxed_type(pat.type_name)
+                binding = _safe_name(pat.name)
+                unused = pat.annotations.get("liveness.match_var_unused") == "true"
+                if first:
+                    if unused:
+                        self._line(
+                            "if (" + expr_str + " instanceof " + type_name + ") {"
+                        )
+                    else:
+                        self._line(
+                            "if ("
+                            + expr_str
+                            + " instanceof "
+                            + type_name
+                            + " "
+                            + binding
+                            + ") {"
+                        )
+                else:
+                    if unused:
+                        self._line(
+                            "} else if ("
+                            + expr_str
+                            + " instanceof "
+                            + type_name
+                            + ") {"
+                        )
+                    else:
+                        self._line(
+                            "} else if ("
+                            + expr_str
+                            + " instanceof "
+                            + type_name
+                            + " "
+                            + binding
+                            + ") {"
+                        )
+            elif isinstance(pat, TPatternNil):
+                if first:
+                    self._line("if (" + expr_str + " == null) {")
+                else:
+                    self._line("} else if (" + expr_str + " == null) {")
+            first = False
+            self.indent += 1
+            self._emit_stmts(case.body)
+            self.indent -= 1
+        if stmt.default:
+            binding = stmt.default.name
+            if first:
+                self._line("{")
+            else:
+                self._line("} else {")
+            self.indent += 1
+            if binding is not None:
+                self._line("var " + _safe_name(binding) + " = " + expr_str + ";")
+            self._emit_stmts(stmt.default.body)
+            self.indent -= 1
+            self._line("}")
+        elif not first:
+            self._line("}")
+
+    def _emit_partition_return_impl(self, expr: TTernary, prov: str) -> None:
+        """Emit partition/rpartition as temp var + ternary return."""
+        cond = expr.cond
+        if not isinstance(cond, TBinaryOp) or cond.op != ">=":
+            self._line("return " + self._expr(expr) + ";")
+            return
+        find_call = cond.left
+        if not (isinstance(find_call, TCall) and isinstance(find_call.func, TVar)):
+            self._line("return " + self._expr(expr) + ";")
+            return
+        method = "indexOf" if find_call.func.name == "Find" else "lastIndexOf"
+        s_arg = self._expr(find_call.args[0].value)
+        sep_arg = self._expr(find_call.args[1].value)
+        self._line("int __idx = " + s_arg + "." + method + "(" + sep_arg + ");")
+        true_str = (
+            "new Object[]{"
+            + s_arg
+            + ".substring(0, __idx), "
+            + sep_arg
+            + ", "
+            + s_arg
+            + ".substring(__idx + "
+            + sep_arg
+            + ".length())}"
+        )
+        false_str: str
+        if prov == "partition":
+            false_str = "new Object[]{" + s_arg + ', "", ""}'
+        else:
+            false_str = 'new Object[]{"", "", ' + s_arg + "}"
+        self._line("return __idx >= 0 ? " + true_str + " : " + false_str + ";")
+
+    def _emit_star_unpack_let(self, safe: str, jtype: str, call: TCall) -> None:
+        """Emit star-unpack Concat as ArrayList + addAll/add."""
+        parts: list[TExpr] = []
+        self._flatten_concat(call, parts)
+        first = True
+        for part in parts:
+            if isinstance(part, TListLit) and len(part.elements) == 1:
+                elem = self._expr(part.elements[0])
+                if first:
+                    self._line(jtype + " " + safe + " = new ArrayList<>();")
+                    first = False
+                self._line(safe + ".add(" + elem + ");")
+            else:
+                src = self._expr(part)
+                if first:
+                    self._line(jtype + " " + safe + " = new ArrayList<>(" + src + ");")
+                    first = False
+                else:
+                    self._line(safe + ".addAll(" + src + ");")
+
+    def _flatten_concat(self, expr: TExpr, parts: list[TExpr]) -> None:
+        """Flatten nested Concat(Concat(a, b), c) into [a, b, c]."""
+        if (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "Concat"
+            and expr.annotations.get("provenance") == "star_unpack"
+        ):
+            self._flatten_concat(expr.args[0].value, parts)
+            self._flatten_concat(expr.args[1].value, parts)
+        else:
+            parts.append(expr)
+
+    # ── Comprehension / any / all ────────────────────────────
+
+    def _emit_any_all(
+        self,
+        let_stmt: TLetStmt,
+        for_stmt: TForStmt,
+        is_any: bool,
+    ) -> None:
+        """Emit xs.stream().anyMatch/allMatch (provenance) or loop form."""
+        raise NotImplementedError
+
+    # ── Expressions ──────────────────────────────────────────
+
+    def _expr(self, expr: TExpr) -> str:
+        if isinstance(expr, TIntLit):
+            return self._int_lit(expr)
+        if isinstance(expr, TFloatLit):
+            return expr.raw
+        if isinstance(expr, TStringLit):
+            return '"' + escape_string(expr.value) + '"'
+        if isinstance(expr, TBoolLit):
+            return "true" if expr.value else "false"
+        if isinstance(expr, TNilLit):
+            return "null"
+        if isinstance(expr, TByteLit):
+            return expr.raw
+        if isinstance(expr, TBytesLit):
+            return self._bytes_lit(expr)
+        if isinstance(expr, TRuneLit):
+            return '"' + escape_string(expr.value) + '"'
+        if isinstance(expr, TVar):
+            if expr.name == self.self_name:
+                return "this"
+            n = _restore_name(expr.name, expr.annotations)
+            if expr.name in self.fn_names:
+                return _lower1(n)
+            return n
+        if isinstance(expr, TFieldAccess):
+            obj = self._expr(expr.obj)
+            field = _safe_name(expr.field)
+            if field == "message":
+                return obj + ".getMessage()"
+            return obj + "." + field
+        if isinstance(expr, TTupleAccess):
+            return self._expr(expr.obj) + "[" + str(expr.index) + "]"
+        if isinstance(expr, TIndex):
+            if expr.annotations.get("provenance") == "negative_index":
+                neg = self._negative_index(expr)
+                if neg is not None:
+                    return neg
+            return self._index_expr(expr)
+        if isinstance(expr, TSlice):
+            return self._slice(expr)
+        if isinstance(expr, TBinaryOp):
+            return self._binary(expr)
+        if isinstance(expr, TUnaryOp):
+            return self._unary(expr)
+        if isinstance(expr, TTernary):
+            return self._ternary(expr)
+        if isinstance(expr, TListLit):
+            if not expr.elements:
+                return "new ArrayList<>()"
+            elems = self._join_exprs(expr.elements, ", ")
+            return "new ArrayList<>(List.of(" + elems + "))"
+        if isinstance(expr, TMapLit):
+            if not expr.entries:
+                return "new HashMap<>()"
+            if len(expr.entries) <= 10:
+                pairs = ", ".join(
+                    self._expr(k) + ", " + self._expr(v) for k, v in expr.entries
+                )
+                return "new HashMap<>(Map.of(" + pairs + "))"
+            return "new HashMap<>()"
+        if isinstance(expr, TSetLit):
+            if not expr.elements:
+                return "new HashSet<>()"
+            elems = self._join_exprs(expr.elements, ", ")
+            return "new HashSet<>(Set.of(" + elems + "))"
+        if isinstance(expr, TTupleLit):
+            elems = self._join_exprs(expr.elements, ", ")
+            return "new Object[]{" + elems + "}"
+        if isinstance(expr, TFnLit):
+            return self._fn_lit(expr)
+        if isinstance(expr, TCall):
+            return self._call(expr)
+        return "null"
+
+    def _int_lit(self, expr: TIntLit) -> str:
+        raw = expr.raw
+        if raw.startswith(("0x", "0X", "0o", "0O", "0b", "0B")):
+            return raw
+        return str(expr.value)
+
+    def _bytes_lit(self, expr: TBytesLit) -> str:
+        elems = ", ".join("(byte) 0x" + hex(b)[2:].zfill(2) for b in expr.value)
+        return "new byte[]{" + elems + "}"
+
+    def _slice(self, expr: TSlice) -> str:
+        obj = self._expr(expr.obj)
+        lo = (
+            self._expr(expr.low)
+            if not isinstance(expr.low, TIntLit) or expr.low.value != 0
+            else "0"
+        )
+        hi_expr = expr.high
+        ann = expr.obj.annotations.get("type", "")
+        hi_is_len = (
+            isinstance(hi_expr, TCall)
+            and isinstance(hi_expr.func, TVar)
+            and hi_expr.func.name == "Len"
+        )
+        if ann == "bytes" or self._is_bytes_expr(expr.obj):
+            hi = obj + ".length" if hi_is_len else self._expr(hi_expr)
+            return "Arrays.copyOfRange(" + obj + ", " + lo + ", " + hi + ")"
+        if ann == "string" or self._is_string_expr(expr.obj):
+            if hi_is_len:
+                return obj + ".substring(" + lo + ")"
+            return obj + ".substring(" + lo + ", " + self._expr(hi_expr) + ")"
+        hi = obj + ".size()" if hi_is_len else self._expr(hi_expr)
+        return "new ArrayList<>(" + obj + ".subList(" + lo + ", " + hi + "))"
+
+    def _emit_index_assign(self, target: TIndex, value: TExpr) -> None:
+        obj = self._expr(target.obj)
+        idx = self._expr(target.index)
+        val = self._expr(value)
+        ann = target.obj.annotations.get("type", "")
+        if ann.startswith("map[") or self._is_map_type(target.obj):
+            self._line(obj + ".put(" + idx + ", " + val + ");")
+        elif ann == "bytes" or self._is_bytes_expr(target.obj):
+            self._line(obj + "[" + idx + "] = " + val + ";")
+        else:
+            self._line(obj + ".set(" + idx + ", " + val + ");")
+
+    def _index_expr(self, expr: TIndex) -> str:
+        obj = self._expr(expr.obj)
+        idx = self._expr(expr.index)
+        ann = expr.obj.annotations.get("type", "")
+        if ann.startswith("map[") or self._is_map_type(expr.obj):
+            return obj + ".get(" + idx + ")"
+        if ann == "bytes" or self._is_bytes_expr(expr.obj):
+            return obj + "[" + idx + "]"
+        if ann == "string" or self._is_string_expr(expr.obj):
+            return obj + ".codePointAt(" + idx + ")"
+        return obj + ".get(" + idx + ")"
+
+    def _is_string_expr(self, expr: TExpr) -> bool:
+        if isinstance(expr, TStringLit):
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TPrimitive) and typ.kind == "string"
+        return False
+
+    def _negative_index(self, expr: TIndex) -> str | None:
+        """Detect x[Len(x)-n] pattern, emit xs.getLast() or xs.get(xs.size()-n)."""
+        idx = expr.index
+        if isinstance(idx, TBinaryOp) and idx.op == "-":
+            if (
+                isinstance(idx.left, TCall)
+                and isinstance(idx.left.func, TVar)
+                and idx.left.func.name == "Len"
+            ):
+                n = self._static_int(idx.right)
+                obj = self._expr(expr.obj)
+                if n == 1:
+                    return obj + ".getLast()"
+                return obj + ".get(" + obj + ".size() - " + self._expr(idx.right) + ")"
+        return None
+
+    def _binary(self, expr: TBinaryOp) -> str:
+        op = expr.op
+        if (
+            op == "/"
+            and isinstance(expr.left, TFloatLit)
+            and expr.left.value == 0.0
+            and isinstance(expr.right, TFloatLit)
+            and expr.right.value == 0.0
+        ):
+            return "Double.NaN"
+        if self.strict_math:
+            if op in JAVA_STRICT_INT_BINARY and self._is_int_expr(expr.left):
+                fn = JAVA_STRICT_INT_BINARY[op]
+                if fn == ">>>":
+                    return self._expr(expr.left) + " >>> " + self._expr(expr.right)
+                return (
+                    fn
+                    + "("
+                    + self._expr(expr.left)
+                    + ", "
+                    + self._expr(expr.right)
+                    + ")"
+                )
+            if op == "%" and self._is_float_expr(expr.left):
+                return (
+                    "strictFmod("
+                    + self._expr(expr.left)
+                    + ", "
+                    + self._expr(expr.right)
+                    + ")"
+                )
+        left = self._maybe_paren(expr.left, op, True)
+        right = self._maybe_paren(expr.right, op, False)
+        return left + " " + op + " " + right
+
+    def _unary(self, expr: TUnaryOp) -> str:
+        operand = self._expr(expr.operand)
+        if expr.op in ("not", "!"):
+            if isinstance(expr.operand, (TBinaryOp, TUnaryOp)):
+                return "!(" + operand + ")"
+            return "!" + operand
+        if self.strict_math and expr.op == "-" and self._is_int_expr(expr.operand):
+            return "Math.negateExact(" + operand + ")"
+        return expr.op + operand
+
+    def _ternary(self, expr: TTernary) -> str:
+        else_str = self._expr(expr.else_expr)
+        if isinstance(expr.else_expr, TTernary):
+            else_str = "(" + else_str + ")"
+        return (
+            self._expr(expr.cond)
+            + " ? "
+            + self._expr(expr.then_expr)
+            + " : "
+            + else_str
+        )
+
+    def _none_coalesce(self, expr: TTernary) -> str:
+        raise NotImplementedError
+
+    def _partition_ternary(self, expr: TTernary, prov: str) -> str:
+        raise NotImplementedError
+
+    def _remove_affix_ternary(self, expr: TTernary, prov: str) -> str:
+        raise NotImplementedError
+
+    def _maybe_paren(self, expr: TExpr, parent_op: str, is_left: bool) -> str:
+        s = self._expr(expr)
+        if isinstance(expr, TBinaryOp) and _needs_parens(expr.op, parent_op, is_left):
+            return "(" + s + ")"
+        return s
+
+    def _fn_lit(self, expr: TFnLit) -> str:
+        """Emit lambda: (x) -> expr  or  (x) -> { stmts }"""
+        params = ", ".join(_safe_name(p.name) for p in expr.params)
+        if (
+            len(expr.body) == 1
+            and isinstance(expr.body[0], TReturnStmt)
+            and expr.body[0].value is not None
+        ):
+            return "(" + params + ") -> " + self._expr(expr.body[0].value)
+        if (
+            len(expr.body) == 1
+            and isinstance(expr.body[0], TExprStmt)
+            and expr.annotations.get("fn_lit.arrow") == "true"
+        ):
+            return "(" + params + ") -> " + self._expr(expr.body[0].expr)
+        lines_buf: list[str] = []
+        old_lines = self.lines
+        self.lines = lines_buf
+        self._emit_stmts(expr.body)
+        self.lines = old_lines
+        pad = "    " * self.indent
+        result = "(" + params + ") -> {\n"
+        for line in lines_buf:
+            result += pad + "    " + line.strip() + "\n"
+        result += pad + "}"
+        return result
+
+    def _call(self, expr: TCall) -> str:
+        func = expr.func
+        args = expr.args
+        if isinstance(func, TVar) and func.name == "not" and len(args) == 1:
+            operand = args[0].value
+            inner = self._expr(operand)
+            if isinstance(operand, (TBinaryOp, TCall, TUnaryOp)):
+                return "!(" + inner + ")"
+            return "!" + inner
+        if isinstance(func, TVar) and func.name in BUILTIN_NAMES:
+            return self._builtin_call(func.name, args, expr.annotations)
+        if isinstance(func, TVar) and func.name in self.struct_names:
+            return self._struct_call(func.name, args)
+        if isinstance(func, TFieldAccess):
+            return self._method_call(func, args)
+        fn_name = self._expr(func)
+        arg_strs = self._join_args(args, ", ")
+        if isinstance(func, TVar):
+            typ = self.var_types.get(func.name)
+            if isinstance(typ, TFuncType):
+                return fn_name + ".apply(" + arg_strs + ")"
+        return fn_name + "(" + arg_strs + ")"
+
+    def _struct_call(self, name: str, args: list[TArg]) -> str:
+        """Emit: new StructName(args)"""
+        safe = _EXCEPTION_MAP.get(name, _safe_name(name))
+        if name in self._struct_field_decls and any(a.name for a in args):
+            field_order = [f.name for f in self._struct_field_decls[name]]
+            ordered = self._reorder_named_args(args, field_order)
+            arg_strs = ", ".join(self._expr(a.value) for a in ordered)
+        else:
+            arg_strs = self._join_args(args, ", ")
+        return "new " + safe + "(" + arg_strs + ")"
+
+    def _reorder_named_args(
+        self, args: list[TArg], field_order: list[str]
+    ) -> list[TArg]:
+        named = {a.name: a for a in args if a.name}
+        if not named:
+            return args
+        result: list[TArg] = []
+        for fname in field_order:
+            if fname in named:
+                result.append(named[fname])
+        return result
+
+    def _method_call(self, func: TFieldAccess, args: list[TArg]) -> str:
+        obj = self._expr(func.obj)
+        method = _safe_name(func.field).lower()
+        arg_strs = self._join_args(args, ", ")
+        return obj + "." + method + "(" + arg_strs + ")"
+
+    def _builtin_call(self, name: str, args: list[TArg], ann: Ann | None = None) -> str:
+        if ann is None:
+            ann = {}
+        if name == "WritelnOut":
+            return "System.out.println(" + self._a(args, 0) + ")"
+        if name == "WriteOut":
+            return "System.out.print(" + self._a(args, 0) + ")"
+        if name == "WritelnErr":
+            return "System.err.println(" + self._a(args, 0) + ")"
+        if name == "WriteErr":
+            return "System.err.print(" + self._a(args, 0) + ")"
+        if name == "ToString":
+            return "String.valueOf(" + self._a(args, 0) + ")"
+        if name == "ParseInt":
+            return (
+                "Integer.parseInt(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+            )
+        if name == "ReadAll":
+            return "input"
+        if name == "Unwrap":
+            return self._a(args, 0)
+        if name == "DivMod":
+            return self._a(args, 0) + " / " + self._a(args, 1)
+        if name == "Format":
+            return self._format_call(args)
+        if name == "RuneToInt":
+            return self._a(args, 0) + ".codePointAt(0)"
+        if name == "RuneFromInt":
+            return "new String(Character.toChars(" + self._a(args, 0) + "))"
+        if name == "Len":
+            return self._len_expr(args[0].value)
+        if name == "Abs":
+            return "Math.abs(" + self._a(args, 0) + ")"
+        if name == "Min":
+            if len(args) == 2 and isinstance(args[1].value, TFnLit):
+                return (
+                    "Collections.min("
+                    + self._a(args, 0)
+                    + ", "
+                    + self._comparator(args[1].value)
+                    + ")"
+                )
+            if (
+                self.strict_math
+                and len(args) == 2
+                and self._is_float_expr(args[0].value)
+            ):
+                return (
+                    "strictMinF64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                )
+            return "Math.min(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+        if name == "Max":
+            if len(args) == 2 and isinstance(args[1].value, TFnLit):
+                return (
+                    "Collections.max("
+                    + self._a(args, 0)
+                    + ", "
+                    + self._comparator(args[1].value)
+                    + ")"
+                )
+            if (
+                self.strict_math
+                and len(args) == 2
+                and self._is_float_expr(args[0].value)
+            ):
+                return (
+                    "strictMaxF64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                )
+            return "Math.max(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+        if name == "Pow":
+            if self.strict_math and self._is_int_expr(args[0].value):
+                return "checkedPow(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+            return "(long) Math.pow(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+        if name == "Sorted" and self.strict_math and self._is_float_list(args[0].value):
+            return "strictSortedF64(" + self._a(args, 0) + ")"
+        if name == "Exit":
+            return "System.exit(" + self._a(args, 0) + ")"
+        if name == "IntToFloat":
+            return self._a(args, 0)
+        if name == "FloatToInt":
+            return "(int) " + self._a(args, 0)
+        if name == "ByteToInt":
+            return self._a(args, 0)
+        if name == "IntToByte":
+            return self._a(args, 0)
+        if name == "IsNil":
+            return self._a(args, 0) + " == null"
+        if name == "IsNaN":
+            return "Double.isNaN(" + self._a(args, 0) + ")"
+        if name == "WrappingAdd":
+            return self._a(args, 0) + " + " + self._a(args, 1)
+        if name == "WrappingSub":
+            return self._a(args, 0) + " - " + self._a(args, 1)
+        if name == "WrappingMul":
+            return self._a(args, 0) + " * " + self._a(args, 1)
+        if name == "Sqrt":
+            return "Math.sqrt(" + self._a(args, 0) + ")"
+        if name == "Floor":
+            return "(int) Math.floor(" + self._a(args, 0) + ")"
+        if name == "Ceil":
+            return "(int) Math.ceil(" + self._a(args, 0) + ")"
+        if name == "Round":
+            return "(int) Math.round(" + self._a(args, 0) + ")"
+        if name == "FloorDiv":
+            return "Math.floorDiv(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+        if name == "PythonMod":
+            return "Math.floorMod(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+        if name == "IsInf":
+            return "Double.isInfinite(" + self._a(args, 0) + ")"
+        if name == "Append":
+            return self._a(args, 0) + ".add(" + self._a(args, 1) + ")"
+        if name == "Insert":
+            return (
+                self._a(args, 0)
+                + ".add("
+                + self._a(args, 1)
+                + ", "
+                + self._a(args, 2)
+                + ")"
+            )
+        if name == "Pop":
+            return self._a(args, 0) + ".removeLast()"
+        if name == "RemoveAt":
+            idx_val = self._static_int(args[1].value)
+            if idx_val == 0:
+                return self._a(args, 0) + ".removeFirst()"
+            return self._a(args, 0) + ".remove(" + self._a(args, 1) + ")"
+        if name == "Get":
+            if len(args) == 3:
+                return (
+                    self._a(args, 0)
+                    + ".getOrDefault("
+                    + self._a(args, 1)
+                    + ", "
+                    + self._a(args, 2)
+                    + ")"
+                )
+            return self._a(args, 0) + ".get(" + self._a(args, 1) + ")"
+        if name == "Add":
+            return self._a(args, 0) + ".add(" + self._a(args, 1) + ")"
+        if name == "Delete":
+            return self._a(args, 0) + ".remove(" + self._a(args, 1) + ")"
+        if name == "Contains":
+            obj = args[0].value
+            if self._is_map_type(obj):
+                return self._a(args, 0) + ".containsKey(" + self._a(args, 1) + ")"
+            ann = obj.annotations.get("type", "")
+            if ann == "string" or self._is_string_expr(obj):
+                return self._a(args, 0) + ".contains(" + self._a(args, 1) + ")"
+            return self._a(args, 0) + ".contains(" + self._a(args, 1) + ")"
+        if name == "Keys":
+            return "new ArrayList<>(" + self._a(args, 0) + ".keySet())"
+        if name == "IndexOf":
+            return self._a(args, 0) + ".indexOf(" + self._a(args, 1) + ")"
+        if name == "Concat":
+            ann = args[0].value.annotations.get("type", "")
+            if ann == "string" or self._is_string_expr(args[0].value):
+                return self._a(args, 0) + " + " + self._a(args, 1)
+            return self._a(args, 0) + " + " + self._a(args, 1)
+        if name == "Merge":
+            a = self._a(args, 0)
+            b = self._a(args, 1)
+            return "new HashMap<>(" + a + ") {{ putAll(" + b + "); }}"
+        if name == "Union":
+            return (
+                "new HashSet<>("
+                + self._a(args, 0)
+                + ") {{ addAll("
+                + self._a(args, 1)
+                + "); }}"
+            )
+        if name == "Intersection":
+            return (
+                "new HashSet<>("
+                + self._a(args, 0)
+                + ") {{ retainAll("
+                + self._a(args, 1)
+                + "); }}"
+            )
+        if name == "Difference":
+            return (
+                "new HashSet<>("
+                + self._a(args, 0)
+                + ") {{ removeAll("
+                + self._a(args, 1)
+                + "); }}"
+            )
+        if name == "SetFromList":
+            inner = args[0].value
+            if (
+                isinstance(inner, TCall)
+                and isinstance(inner.func, TVar)
+                and inner.func.name == "Keys"
+            ):
+                return "new HashSet<>(" + self._expr(inner.args[0].value) + ".keySet())"
+            return "new HashSet<>(" + self._a(args, 0) + ")"
+        if name == "ListFrom":
+            inner = args[0].value
+            if (
+                isinstance(inner, TCall)
+                and isinstance(inner.func, TVar)
+                and inner.func.name == "Keys"
+            ):
+                return (
+                    "new ArrayList<>(" + self._expr(inner.args[0].value) + ".keySet())"
+                )
+            if (
+                isinstance(inner, TCall)
+                and isinstance(inner.func, TVar)
+                and inner.func.name == "Values"
+            ):
+                return (
+                    "new ArrayList<>(" + self._expr(inner.args[0].value) + ".values())"
+                )
+            if self._is_bytes_expr(inner):
+                src = self._expr(inner)
+                return (
+                    "IntStream.range(0, "
+                    + src
+                    + ".length).map(i -> "
+                    + src
+                    + "[i] & 0xFF).boxed().collect(Collectors.toList())"
+                )
+            return "new ArrayList<>(" + self._a(args, 0) + ")"
+        if name == "Sorted":
+            if len(args) == 2 and isinstance(args[1].value, TFnLit):
+                return (
+                    self._a(args, 0)
+                    + ".stream().sorted("
+                    + self._comparator(args[1].value)
+                    + ").collect(Collectors.toList())"
+                )
+            return self._a(args, 0) + ".stream().sorted().collect(Collectors.toList())"
+        if name == "Reversed":
+            return "new ArrayList<>(" + self._a(args, 0) + ".reversed())"
+        if name == "Reverse":
+            ann = args[0].value.annotations.get("type", "")
+            if ann == "string" or self._is_string_expr(args[0].value):
+                return (
+                    "new StringBuilder(" + self._a(args, 0) + ").reverse().toString()"
+                )
+            return "java.util.Collections.reverse(" + self._a(args, 0) + ")"
+        if name == "Sum":
+            return self._a(args, 0) + ".stream().mapToInt(Integer::intValue).sum()"
+        if name == "Map":
+            return "new HashMap<>()"
+        if name == "Set":
+            return "new HashSet<>()"
+        if name == "Zip":
+            raise NotImplementedError("builtin: Zip")
+        if name == "Repeat":
+            first = args[0].value
+            ann = first.annotations.get("type", "")
+            if ann == "string" or self._is_string_expr(first):
+                return self._a(args, 0) + ".repeat(" + self._a(args, 1) + ")"
+            if isinstance(first, TListLit) and len(first.elements) == 1:
+                elem = self._expr(first.elements[0])
+                return (
+                    "new ArrayList<>(Collections.nCopies("
+                    + self._a(args, 1)
+                    + ", "
+                    + elem
+                    + "))"
+                )
+            return (
+                "new ArrayList<>(Collections.nCopies("
+                + self._a(args, 1)
+                + ", "
+                + self._a(args, 0)
+                + "))"
+            )
+        if name == "RangeList":
+            if len(args) == 1:
+                return (
+                    "IntStream.range(0, "
+                    + self._a(args, 0)
+                    + ").boxed().collect(Collectors.toList())"
+                )
+            if len(args) == 3:
+                step_val = self._static_int(args[2].value)
+                if step_val == 1:
+                    return (
+                        "IntStream.range("
+                        + self._a(args, 0)
+                        + ", "
+                        + self._a(args, 1)
+                        + ").boxed().collect(Collectors.toList())"
+                    )
+                return (
+                    "IntStream.iterate("
+                    + self._a(args, 0)
+                    + ", i -> i < "
+                    + self._a(args, 1)
+                    + ", i -> i + "
+                    + self._a(args, 2)
+                    + ").boxed().collect(Collectors.toList())"
+                )
+            return (
+                "IntStream.range("
+                + self._a(args, 0)
+                + ", "
+                + self._a(args, 1)
+                + ").boxed().collect(Collectors.toList())"
+            )
+        if name == "Split":
+            return "List.of(" + self._a(args, 0) + ".split(" + self._a(args, 1) + "))"
+        if name == "SplitN":
+            return (
+                "new ArrayList<>(List.of("
+                + self._a(args, 0)
+                + ".split("
+                + self._a(args, 1)
+                + ", "
+                + self._a(args, 2)
+                + ")))"
+            )
+        if name == "Join":
+            return "String.join(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+        if name == "Replace":
+            return (
+                self._a(args, 0)
+                + ".replace("
+                + self._a(args, 1)
+                + ", "
+                + self._a(args, 2)
+                + ")"
+            )
+        if name == "Upper":
+            return self._a(args, 0) + ".toUpperCase()"
+        if name == "Lower":
+            return self._a(args, 0) + ".toLowerCase()"
+        if name == "StartsWith":
+            return self._a(args, 0) + ".startsWith(" + self._a(args, 1) + ")"
+        if name == "EndsWith":
+            return self._a(args, 0) + ".endsWith(" + self._a(args, 1) + ")"
+        if name == "Trim":
+            return self._emit_trim(args, "both")
+        if name == "TrimStart":
+            return self._emit_trim(args, "start")
+        if name == "TrimEnd":
+            return self._emit_trim(args, "end")
+        if name == "Find":
+            return self._a(args, 0) + ".indexOf(" + self._a(args, 1) + ")"
+        if name == "RFind":
+            return self._a(args, 0) + ".lastIndexOf(" + self._a(args, 1) + ")"
+        if name == "Count":
+            return self._a(args, 0) + ".split(" + self._a(args, 1) + ", -1).length - 1"
+        if name == "FormatInt":
+            return (
+                "Integer.toString(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+            )
+        if name == "ParseFloat":
+            return "Double.parseDouble(" + self._a(args, 0) + ")"
+        if name == "Assert":
+            raise NotImplementedError("builtin: Assert")
+        if name == "Args":
+            return "new ArrayList<>(List.of(args))"
+        if name == "GetEnv":
+            return "System.getenv(" + self._a(args, 0) + ")"
+        if name == "ReadLine":
+            return "new java.io.BufferedReader(new java.io.InputStreamReader(System.in)).readLine()"
+        if name == "ReadFile":
+            return "Files.readString(Path.of(" + self._a(args, 0) + "))"
+        if name == "ReadFileBytes":
+            return "Files.readAllBytes(Path.of(" + self._a(args, 0) + "))"
+        if name == "WriteFile":
+            return (
+                "Files.writeString(Path.of("
+                + self._a(args, 0)
+                + "), "
+                + self._a(args, 1)
+                + ")"
+            )
+        if name == "ReadBytesN":
+            return "System.in.readNBytes(" + self._a(args, 0) + ")"
+        if name == "Encode":
+            return self._a(args, 0) + ".getBytes(StandardCharsets.UTF_8)"
+        if name == "Decode":
+            return "new String(" + self._a(args, 0) + ", StandardCharsets.UTF_8)"
+        if name == "Bytes":
+            return "new byte[" + self._a(args, 0) + "]"
+        if name == "IsDigit":
+            return self._a(args, 0) + ".chars().allMatch(Character::isDigit)"
+        if name == "IsAlpha":
+            return self._a(args, 0) + ".chars().allMatch(Character::isLetter)"
+        if name == "IsAlphanumeric":
+            return self._a(args, 0) + ".chars().allMatch(Character::isLetterOrDigit)"
+        if name == "IsUpper":
+            return self._a(args, 0) + ".chars().allMatch(Character::isUpperCase)"
+        if name == "IsLower":
+            return self._a(args, 0) + ".chars().allMatch(Character::isLowerCase)"
+        if name == "IsSpace":
+            return self._a(args, 0) + ".chars().allMatch(Character::isWhitespace)"
+        if name == "IsType":
+            type_arg = args[1].value
+            if isinstance(type_arg, TStringLit):
+                return self._a(args, 0) + " instanceof " + _safe_name(type_arg.value)
+            return self._a(args, 0) + " instanceof " + self._expr(type_arg)
+        if name == "Values":
+            return "new ArrayList<>(" + self._a(args, 0) + ".values())"
+        if name == "Items":
+            return self._a(args, 0) + ".entrySet()"
+        if name == "Remove":
+            return self._a(args, 0) + ".remove(" + self._a(args, 1) + ")"
+        if name == "SplitWhitespace":
+            return "List.of(" + self._a(args, 0) + '.trim().split("\\\\s+"))'
+        if name == "IsAlnum":
+            return self._a(args, 0) + ".chars().allMatch(Character::isLetterOrDigit)"
+        raise NotImplementedError("builtin: " + name)
+
+    def _star_unpack(self, expr: TCall) -> str:
+        """Emit list concatenation via addAll pattern."""
+        raise NotImplementedError
+
+    def _flatten_star_unpack(self, expr: TExpr, parts: list[TExpr]) -> None:
+        raise NotImplementedError
+
+    # ── Truthiness / Len / helpers ───────────────────────────
+
+    def _truthiness_expr(self, cond: TExpr, *, raised: bool = False) -> str | None:
+        """Emit idiomatic truthiness checks.
+        - s != "" always becomes !s.isEmpty()
+        - Len(x) > 0 becomes !x.isEmpty() only when raised (provenance=truthiness)
+        """
+        if isinstance(cond, TBinaryOp):
+            if (
+                raised
+                and cond.op == ">"
+                and isinstance(cond.right, TIntLit)
+                and cond.right.value == 0
+                and isinstance(cond.left, TCall)
+                and isinstance(cond.left.func, TVar)
+                and cond.left.func.name == "Len"
+            ):
+                inner = cond.left.args[0].value
+                return "!" + self._expr(inner) + ".isEmpty()"
+            if (
+                cond.op == "!="
+                and isinstance(cond.right, TStringLit)
+                and not cond.right.value
+            ):
+                return "!" + self._expr(cond.left) + ".isEmpty()"
+        return None
+
+    def _len_expr(self, expr: TExpr) -> str:
+        """Emit .size() / .length() / .length as appropriate."""
+        e = self._expr(expr)
+        ann = expr.annotations.get("type", "")
+        if ann == "string":
+            return e + ".length()"
+        if ann == "bytes":
+            return e + ".length"
+        if ann.startswith("list[") or ann.startswith("map[") or ann.startswith("set["):
+            return e + ".size()"
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            if isinstance(typ, (TListType, TMapType, TSetType)):
+                return e + ".size()"
+            if isinstance(typ, TIdentType) and typ.name == "bytes":
+                return e + ".length"
+            if isinstance(typ, TPrimitive) and typ.kind == "string":
+                return e + ".length()"
+        if isinstance(expr, TStringLit):
+            return e + ".length()"
+        return e + ".size()"
+
+    def _is_map_type(self, expr: TExpr) -> bool:
+        ann = expr.annotations.get("type", "")
+        if ann.startswith("map["):
+            return True
+        if isinstance(expr, TMapLit):
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TMapType)
+        return False
+
+    def _is_set_type(self, expr: TExpr) -> bool:
+        raise NotImplementedError
+
+    def _is_list_expr(self, expr: TExpr) -> bool:
+        raise NotImplementedError
+
+    def _is_bytes_expr(self, expr: TExpr) -> bool:
+        ann = expr.annotations.get("type", "")
+        if ann == "bytes":
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TIdentType) and typ.name == "bytes"
+        return False
+
+    def _is_int_list(self, expr: TExpr) -> bool:
+        raise NotImplementedError
+
+    def _is_isinstance_call(self, expr: TExpr) -> bool:
+        raise NotImplementedError
+
+    def _is_isnil_call(self, expr: TExpr) -> bool:
+        raise NotImplementedError
+
+    def _is_divmod_call(self, expr: TExpr) -> bool:
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "DivMod"
+        )
+
+    def _has_tuple_key(self, map_expr: TExpr) -> bool:
+        raise NotImplementedError
+
+    def _map_key(self, key_expr: TExpr) -> str:
+        raise NotImplementedError
+
+    def _map_key_for(self, map_expr: TExpr, key_expr: TExpr) -> str:
+        raise NotImplementedError
+
+    def _get_field_type(self, struct_name: str, field: str) -> TType | None:
+        raise NotImplementedError
+
+    def _pattern_type_name(self, typ: TType) -> str:
+        raise NotImplementedError
+
+    # ── Sorted / Min / Max with key ──────────────────────────
+
+    def _sorted_with_key(self, collection: TExpr, key_fn: TFnLit) -> str:
+        """Emit: xs.stream().sorted(Comparator.comparingInt(lambda)).collect(...)"""
+        raise NotImplementedError
+
+    def _min_max_key_cmp(self, key_fn: TFnLit, cmp_op: str) -> str:
+        """Emit: Collections.min/max(xs, Comparator.comparingInt(...))"""
+        raise NotImplementedError
+
+    # ── Emit helpers ─────────────────────────────────────────
+
+    def _emit_field_assign(self, fld: TFieldDecl, safe: str) -> None:
+        raise NotImplementedError
+
+    def _needs_null_guard(self, fld: TFieldDecl) -> bool:
+        raise NotImplementedError
+
+    def _static_int(self, expr: TExpr) -> int | None:
+        if isinstance(expr, TIntLit):
+            return expr.value
+        if (
+            isinstance(expr, TUnaryOp)
+            and expr.op == "-"
+            and isinstance(expr.operand, TIntLit)
+        ):
+            return -expr.operand.value
+        return None
+
+    def _flatten_isinstance_tuple(self, expr: TExpr, types: list[str]) -> str | None:
+        raise NotImplementedError
+
+    def _emit_partition_return(self, expr: TTernary) -> None:
+        raise NotImplementedError
+
+    def _emit_divmod_assign(self, stmt: TTupleAssignStmt, unused: set[int]) -> None:
+        assert isinstance(stmt.value, TCall)
+        call: TCall = stmt.value
+        a = self._expr(call.args[0].value)
+        b = self._expr(call.args[1].value)
+        q = self._expr(stmt.targets[0])
+        r = self._expr(stmt.targets[1])
+        if 0 not in unused:
+            self._line(q + " = " + a + " / " + b + ";")
+        if 1 not in unused:
+            self._line(r + " = " + a + " - " + q + " * " + b + ";")
+
+    def _escape_regex_class(self, s: str) -> str:
+        raise NotImplementedError
+
+    def _emit_trim(self, args: list[TArg], mode: str) -> str:
+        s = self._a(args, 0)
+        if len(args) < 2:
+            if mode == "both":
+                return s + ".strip()"
+            if mode == "start":
+                return s + ".stripLeading()"
+            return s + ".stripTrailing()"
+        chars_expr = args[1].value
+        if isinstance(chars_expr, TStringLit) and len(chars_expr.value) == 1:
+            ch = chars_expr.value
+            esc = ch.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+            if mode == "both":
+                return s + '.replaceAll("^[' + esc + "]+|[" + esc + ']+$", "")'
+            if mode == "start":
+                return s + '.replaceAll("^[' + esc + ']+", "")'
+            return s + '.replaceAll("[' + esc + ']+$", "")'
+        chars = self._a(args, 1)
+        if mode == "both":
+            return (
+                s
+                + '.replaceAll("^[" + '
+                + chars
+                + ' + "]+|[" + '
+                + chars
+                + ' + "]+$", "")'
+            )
+        if mode == "start":
+            return s + '.replaceAll("^[" + ' + chars + ' + "]+", "")'
+        return s + '.replaceAll("[" + ' + chars + ' + "]+$", "")'
+
+    def _format_int(self, args: list[TArg]) -> str:
+        raise NotImplementedError
+
+    def _format_call(self, args: list[TArg]) -> str:
+        template_expr = args[0].value
+        if not isinstance(template_expr, TStringLit):
+            return "String.format(" + self._join_args(args, ", ") + ")"
+        template = template_expr.value
+        fmt_args = args[1:]
+        parts: list[str] = []
+        remaining = template
+        arg_idx = 0
+        while "{}" in remaining and arg_idx < len(fmt_args):
+            before, remaining = remaining.split("{}", 1)
+            if before:
+                parts.append('"' + escape_string(before) + '"')
+            parts.append(self._expr(fmt_args[arg_idx].value))
+            arg_idx += 1
+        if remaining:
+            parts.append('"' + escape_string(remaining) + '"')
+        if not parts:
+            return '""'
+        return " + ".join(parts)
+
+    def _for_elem_type(self, iterable: TExpr) -> str:
+        """Resolve the element type of a for-each iterable."""
+        typ: TType | None = None
+        if isinstance(iterable, TVar):
+            typ = self.var_types.get(iterable.name)
+        if isinstance(typ, TListType):
+            return self._type(typ.element)
+        if isinstance(typ, TSetType):
+            return self._type(typ.element)
+        return "var"
+
+    def _comparator(self, fn_lit: TExpr) -> str:
+        assert isinstance(fn_lit, TFnLit)
+        param = _safe_name(fn_lit.params[0].name)
+        body = fn_lit.body
+        inner: TExpr | None = None
+        if (
+            len(body) == 1
+            and isinstance(body[0], TReturnStmt)
+            and body[0].value is not None
+        ):
+            inner = body[0].value
+        elif len(body) == 1 and isinstance(body[0], TExprStmt):
+            inner = body[0].expr
+        if inner is not None:
+            ref = self._try_method_ref(fn_lit.params[0], inner)
+            if ref is not None:
+                return "Comparator.comparingInt(" + ref + ")"
+            return "Comparator.comparingInt(" + param + " -> " + self._expr(inner) + ")"
+        return "Comparator.comparingInt(" + self._fn_lit(fn_lit) + ")"
+
+    def _try_method_ref(self, param: TParam, body_expr: TExpr) -> str | None:
+        """Try to emit a method reference like String::length."""
+        if not (isinstance(body_expr, TCall) and isinstance(body_expr.func, TVar)):
+            return None
+        if body_expr.func.name != "Len" or len(body_expr.args) != 1:
+            return None
+        arg = body_expr.args[0].value
+        if not (isinstance(arg, TVar) and arg.name == param.name):
+            return None
+        if (
+            param.typ is not None
+            and isinstance(param.typ, TPrimitive)
+            and param.typ.kind == "string"
+        ):
+            return "String::length"
+        return None
+
+    def _join_args(self, args: list[TArg], sep: str) -> str:
+        return sep.join(self._expr(a.value) for a in args)
+
+    def _join_exprs(self, exprs: list[TExpr], sep: str) -> str:
+        return sep.join(self._expr(e) for e in exprs)
+
+    def _fold_temp_assign(
+        self,
+        stmts: list[TStmt],
+        i: int,
+    ) -> bool:
+        raise NotImplementedError
+
+    def _strip_not(self, expr: TExpr) -> TExpr:
+        if isinstance(expr, TUnaryOp) and expr.op in ("!", "not"):
+            return expr.operand
+        if (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "not"
+            and len(expr.args) == 1
+        ):
+            return expr.args[0].value
+        return expr
+
+    # ── Zip / Reversed / Map iteration ───────────────────────
+
+    def _emit_for_zip_impl(self, stmt: TForStmt, binding: list[str]) -> None:
+        assert isinstance(stmt.iterable, TCall)
+        zip_args = stmt.iterable.args
+        sources = [self._expr(a.value) for a in zip_args]
+        size_exprs: list[str] = []
+        for i, a in enumerate(zip_args):
+            if self._is_bytes_expr(a.value):
+                size_exprs.append(sources[i] + ".length")
+            else:
+                size_exprs.append(sources[i] + ".size()")
+        if len(size_exprs) == 1:
+            limit = size_exprs[0]
+        else:
+            limit = size_exprs[-1]
+            for s in reversed(size_exprs[:-1]):
+                limit = "Math.min(" + s + ", " + limit + ")"
+        self._line("for (int __i = 0; __i < " + limit + "; __i++) {")
+        self.indent += 1
+        for i, b in enumerate(binding):
+            ann = stmt.annotations
+            elem_type = ann.get("zip_type_" + str(i), "")
+            type_str = self._zip_elem_type(zip_args[i].value, elem_type)
+            if self._is_bytes_expr(zip_args[i].value):
+                self._line(type_str + " " + b + " = " + sources[i] + "[__i];")
+            else:
+                self._line(type_str + " " + b + " = " + sources[i] + ".get(__i);")
+        self._emit_stmts(stmt.body)
+        self.indent -= 1
+        self._line("}")
+
+    def _zip_elem_type(self, source: TExpr, type_hint: str) -> str:
+        if self._is_bytes_expr(source):
+            return "int"
+        if type_hint == "int":
+            return "int"
+        if type_hint == "float":
+            return "double"
+        if type_hint == "bool":
+            return "boolean"
+        if type_hint == "string":
+            return "String"
+        return self._type_from_ann(source) or "var"
+
+    def _type_from_ann(self, expr: TExpr) -> str | None:
+        ann = expr.annotations.get("type", "")
+        if ann.startswith("list["):
+            inner = ann[5:-1]
+            m = {"int": "int", "float": "double", "bool": "boolean", "string": "String"}
+            return m.get(inner)
+        return None
+
+    def _is_zip_for(self, stmt: TForStmt) -> bool:
+        raise NotImplementedError
+
+    def _emit_for_zip(self, stmt: TForStmt, binding: list[str], ann: Ann) -> list[str]:
+        raise NotImplementedError
+
+    def _for_iterable(self, iterable: TExpr) -> str:
+        raise NotImplementedError
+
+    def _emit_for_keys(self, stmt: TForStmt, binding: list[str], ann: Ann) -> None:
+        raise NotImplementedError
+
+    def _is_map_for(self, stmt: TForStmt) -> bool:
+        raise NotImplementedError
+
+    def _is_builtin_call(self, expr: TExpr, name: str) -> bool:
+        raise NotImplementedError
+
+    def _step_slice_source(self, stmt: TStmt, acc_name: str) -> TExpr | None:
+        raise NotImplementedError
+
+    def _step_slice_is_string(self, stmt: TStmt, acc_name: str) -> bool:
+        raise NotImplementedError
+
+    def _is_len_of(self, expr: TExpr, obj: TExpr) -> bool:
+        raise NotImplementedError
+
+
+# ============================================================
+# PUBLIC API
+# ============================================================
+
+
+def _visit_thrown_types(stmts: list[TStmt], names: set[str]) -> None:
+    for stmt in stmts:
+        if isinstance(stmt, TThrowStmt):
+            if isinstance(stmt.expr, TCall) and isinstance(stmt.expr.func, TVar):
+                names.add(stmt.expr.func.name)
+        elif isinstance(stmt, TTryStmt):
+            _visit_thrown_types(stmt.body, names)
+            for catch in stmt.catches:
+                for t in catch.types:
+                    if isinstance(t, TIdentType):
+                        names.add(t.name)
+                _visit_thrown_types(catch.body, names)
+            if stmt.finally_body is not None:
+                _visit_thrown_types(stmt.finally_body, names)
+        elif isinstance(stmt, TIfStmt):
+            _visit_thrown_types(stmt.then_body, names)
+            if stmt.else_body is not None:
+                _visit_thrown_types(stmt.else_body, names)
+        elif isinstance(stmt, TWhileStmt):
+            _visit_thrown_types(stmt.body, names)
+        elif isinstance(stmt, TForStmt):
+            _visit_thrown_types(stmt.body, names)
+
+
+def _collect_thrown_types(module: TModule) -> set[str]:
+    """Find struct names used in throw or catch statements."""
+    names: set[str] = set()
+    for decl in module.decls:
+        if isinstance(decl, TFnDecl):
+            _visit_thrown_types(decl.body, names)
+        if isinstance(decl, TStructDecl):
+            for m in decl.methods:
+                _visit_thrown_types(m.body, names)
+    return names
+
+
+def emit_java(module: TModule) -> str:
+    struct_names: set[str] = set(BUILTIN_STRUCTS.keys())
+    struct_fields: dict[str, list[str]] = {}
+    struct_field_decls: dict[str, list[TFieldDecl]] = {}
+    enum_names: set[str] = set()
+    interface_names: set[str] = set()
+    error_struct_names: set[str] = set()
+    for decl in module.decls:
+        match decl:
+            case TStructDecl():
+                struct_names.add(decl.name)
+                fnames: list[str] = []
+                for f in decl.fields:
+                    fnames.append(_safe_name(f.name))
+                struct_fields[decl.name] = fnames
+                struct_field_decls[decl.name] = decl.fields
+                if decl.parent is not None:
+                    error_struct_names.add(decl.name)
+            case TInterfaceDecl():
+                struct_names.add(decl.name)
+                interface_names.add(decl.name)
+                if decl.fields:
+                    ifnames: list[str] = []
+                    for f in decl.fields:
+                        ifnames.append(_safe_name(f.name))
+                    struct_fields[decl.name] = ifnames
+                    struct_field_decls[decl.name] = decl.fields
+            case TEnumDecl():
+                enum_names.add(decl.name)
+    user_struct_names = {d.name for d in module.decls if isinstance(d, TStructDecl)}
+    error_struct_names |= _collect_thrown_types(module) & user_struct_names
+    emitter = _JavaEmitter(
+        struct_names, struct_fields, module.strict_math, module.strict_tostring
+    )
+    emitter._struct_field_decls = struct_field_decls
+    emitter._enum_names = enum_names
+    emitter._interface_names = interface_names
+    emitter._error_struct_names = error_struct_names
+    emitter.emit_module(module)
+    return emitter.output()

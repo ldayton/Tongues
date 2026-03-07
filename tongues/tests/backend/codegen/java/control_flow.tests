@@ -24,7 +24,7 @@ for (int i = 5; i < 10; i++) {
 for (int i = 10; i > 0; i--) {
 
 === for over list single var
-for (var x : xs) {
+for (int x : xs) {
 
 === for over map keys
 for (var k : m.keySet()) {
@@ -38,7 +38,7 @@ for (var __entry : m.entrySet()) {
 for (int ch : "hello".codePoints().toArray()) {
 
 === for over set
-for (var v : s) {
+for (int v : s) {
 
 === break and continue
 continue;

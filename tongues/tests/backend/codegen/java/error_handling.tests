@@ -10,7 +10,7 @@ catch (ValueError e) {
 }
 
 === try with multiple catch clauses
-catch (ValueError e) {
+catch (ValueError _e) {
 
 === re-throw in catch
 throw e;
@@ -19,7 +19,7 @@ throw e;
 catch (Exception e) {
 
 === catch-all after typed catch
-catch (ErrA e) {
+catch (ErrA _e) {
     System.out.println("got A");
 } catch (Exception e) {
     System.out.println(e.getMessage());

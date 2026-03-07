@@ -29,9 +29,7 @@ switch (s) {
 if (v instanceof Integer n) {
 
 === match with default no binding
-} else {
-    return false;
-}
+default -> { return false; }
 
 === nil narrowing after check
 if (x != null) {
