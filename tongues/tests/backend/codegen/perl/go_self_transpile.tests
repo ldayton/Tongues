@@ -34,5 +34,8 @@ return [sort keys %{$m}]
 === optional return forwarding no double wrap
 return maybe_first($xs)
 
+=== empty struct list return
+return $list->()
+
 === list literal with interface type in return
 return [Leaf->new(1)]

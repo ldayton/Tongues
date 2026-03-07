@@ -181,6 +181,17 @@ fn Main() -> void {
     }
 }
 
+=== empty struct list return
+struct Item {
+    name: string
+}
+fn Empty() -> list[Item] {
+    return List()
+}
+fn Main() -> void {
+    WritelnOut(ToString(Len(Empty())))
+}
+
 === list literal with interface type in return
 interface Node {}
 struct Leaf : Node {

@@ -1469,12 +1469,14 @@ class _GoEmitter(Emitter):
         return False
 
     def _is_empty_collection_return(self, expr: TExpr) -> bool:
-        """Check if expr is an empty Map()/Set()/list that needs ret type."""
+        """Check if expr is an empty Map()/Set()/List()/list that needs ret type."""
         if self._current_ret_type is None:
             return False
         if self._is_empty_map_or_set_call(expr):
             return True
         if isinstance(expr, TListLit) and not expr.elements:
+            return True
+        if self._is_empty_list_call(expr):
             return True
         return False
 
@@ -1483,6 +1485,14 @@ class _GoEmitter(Emitter):
             isinstance(expr, TCall)
             and isinstance(expr.func, TVar)
             and expr.func.name in ("Map", "Set")
+            and not expr.args
+        )
+
+    def _is_empty_list_call(self, expr: TExpr) -> bool:
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "List"
             and not expr.args
         )
 

@@ -36,5 +36,8 @@ return m.keys
 === optional return forwarding no double wrap
 return maybe_first(xs)
 
+=== empty struct list return
+return list.call
+
 === list literal with interface type in return
 return [Leaf.new(v: 1)]

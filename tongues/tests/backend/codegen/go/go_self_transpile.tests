@@ -36,5 +36,8 @@ func() string { v, ok := m[key]; if !ok { return "" }; return v }()
 === optional return forwarding no double wrap
 return MaybeFirst(xs)
 
+=== empty struct list return
+return []*Item{}
+
 === list literal with interface type in return
 return []Node{&Leaf{V: 1}}
