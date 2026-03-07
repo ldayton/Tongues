@@ -1385,11 +1385,7 @@ class _JavaEmitter(Emitter):
         is_map = self._is_map_type(stmt.iterable)
         if is_string:
             self._line(
-                "for (char "
-                + binding[0]
-                + " : "
-                + iterable_expr
-                + ".toCharArray()) {"
+                "for (char " + binding[0] + " : " + iterable_expr + ".toCharArray()) {"
             )
         elif is_map and len(binding) == 2:
             self._line("for (var __entry : " + iterable_expr + ".entrySet()) {")
@@ -2297,12 +2293,76 @@ class _JavaEmitter(Emitter):
         return obj + ".get(" + idx + ")"
 
     def _is_string_expr(self, expr: TExpr) -> bool:
+        ann = expr.annotations.get("type", "")
+        if ann == "string":
+            return True
         if isinstance(expr, TStringLit):
             return True
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TPrimitive) and typ.kind == "string"
         return False
+
+    def _is_rune_expr(self, expr: TExpr) -> bool:
+        ann = expr.annotations.get("type", "")
+        if ann == "rune":
+            return True
+        if isinstance(expr, TRuneLit):
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TPrimitive) and typ.kind == "rune"
+        return False
+
+    def _string_eq(self, str_expr: TExpr, other: TExpr, op: str) -> str | None:
+        """Emit idiomatic equality for a string-typed expression.
+
+        Optimizes ToString(rune_expr) == "x" → rune_expr == 'x'.
+        Falls back to .equals() for string comparisons.
+        """
+        char_op = "==" if op == "==" else "!="
+        rune_inner = self._unwrap_tostring_rune(str_expr)
+        if rune_inner is not None:
+            if isinstance(other, TStringLit) and len(other.value) == 1:
+                return (
+                    self._expr(rune_inner)
+                    + " "
+                    + char_op
+                    + " '"
+                    + _escape_java_char(other.value)
+                    + "'"
+                )
+            rune_other = self._unwrap_tostring_rune(other)
+            if rune_other is not None:
+                return (
+                    self._expr(rune_inner)
+                    + " "
+                    + char_op
+                    + " "
+                    + self._expr(rune_other)
+                )
+        a = self._expr(str_expr)
+        b = self._expr(other)
+        if op == "==":
+            return a + ".equals(" + b + ")"
+        return "!" + a + ".equals(" + b + ")"
+
+    def _unwrap_tostring_rune(self, expr: TExpr) -> TExpr | None:
+        """If expr is ToString(rune_expr), return the rune_expr."""
+        if (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "ToString"
+            and len(expr.args) == 1
+        ):
+            inner = expr.args[0].value
+            if self._is_rune_expr(inner):
+                return inner
+            if isinstance(inner, TIndex):
+                inner_type = inner.obj.annotations.get("type", "")
+                if inner_type == "string" or self._is_string_expr(inner.obj):
+                    return inner
+        return None
 
     def _negative_index(self, expr: TIndex) -> str | None:
         """Detect x[Len(x)-n] pattern, emit xs.getLast() or xs.get(xs.size()-n)."""
@@ -2360,6 +2420,14 @@ class _JavaEmitter(Emitter):
                 + op
                 + " 0"
             )
+        if op in ("==", "!=") and self._is_string_expr(expr.left):
+            result = self._string_eq(expr.left, expr.right, op)
+            if result is not None:
+                return result
+        if op in ("==", "!=") and self._is_string_expr(expr.right):
+            result = self._string_eq(expr.right, expr.left, op)
+            if result is not None:
+                return result
         left = self._maybe_paren(expr.left, op, True)
         right = self._maybe_paren(expr.right, op, False)
         return left + " " + op + " " + right
