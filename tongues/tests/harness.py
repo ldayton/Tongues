@@ -223,6 +223,7 @@ def check_cli_assertions(
             )
 
 
+from src.backend.go import emit_go as emit_go
 from src.backend.javascript import emit_javascript as emit_javascript
 from src.backend.perl import emit_perl as emit_perl
 from src.backend.python import emit_python as emit_python
@@ -265,12 +266,14 @@ EMITTERS = {
     "perl": emit_perl,
     "ruby": emit_ruby,
     "javascript": emit_javascript,
+    "go": emit_go,
 }
 
 RUNTIMES = {
     "python": [sys.executable],
     "perl": ["perl"],
     "ruby": ["ruby"],
+    "go": ["go", "run"],
 }
 
 
@@ -1082,6 +1085,9 @@ def _transpile_with_emitter(source: str, emitter) -> tuple[str | None, str | Non
         analyze_returns(module, checker)
         analyze_scope(module, checker)
         analyze_liveness(module, checker)
+        if emitter is emit_go:
+            analyze_strings(module, checker)
+            analyze_hoisting(module, checker)
         return (emitter(module), None)
     except Exception as e:
         return (None, str(e))

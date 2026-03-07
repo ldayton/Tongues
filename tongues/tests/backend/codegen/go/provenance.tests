@@ -21,12 +21,12 @@ return 0 <= x && x <= 255
 
 === list comprehension (raised)
 for _, x := range xs {
-	doubled = append(doubled, x*2)
+	doubled = append(doubled, x * 2)
 }
 
 === list comprehension with filter (raised)
 for _, x := range xs {
-	if x%2 == 0 {
+	if x % 2 == 0 {
 		evens = append(evens, x)
 	}
 }
@@ -143,5 +143,5 @@ for _, x := range xs {
 
 === any call with filter (raised)
 for _, x := range xs {
-	if x%2 == 0 {
+	if x % 2 == 0 {
 		if x > 0 {

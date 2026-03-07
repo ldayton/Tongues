@@ -50,6 +50,7 @@ from .middleend.ownership import analyze_ownership
 from .middleend.returns import analyze_returns
 from .middleend.scope import analyze_scope
 from .middleend.strings import analyze_strings
+from .backend.go import emit_go
 from .backend.javascript import emit_javascript
 from .backend.python import emit_python
 from .backend.perl import emit_perl
@@ -1270,6 +1271,10 @@ def _pipeline_post_parse(
     analyze_liveness(module, checker)
     if stop_at == "analyze":
         return (0, to_json(module_to_dict(module)))
+    if target == "go":
+        analyze_strings(module, checker)
+        analyze_hoisting(module, checker)
+        return (0, emit_go(module))
     if target == "python":
         return (0, emit_python(module))
     if target == "javascript":
@@ -1534,8 +1539,13 @@ def taytsh_pipeline(argv: list[str]) -> int:
         analyze_returns(module, checker)
         analyze_scope(module, checker)
         analyze_liveness(module, checker)
+        if emit_target == "go":
+            analyze_strings(module, checker)
+            analyze_hoisting(module, checker)
         result = ""
-        if emit_target == "javascript":
+        if emit_target == "go":
+            result = emit_go(module)
+        elif emit_target == "javascript":
             result = emit_javascript(module)
         elif emit_target == "python":
             result = emit_python(module)

@@ -83,7 +83,7 @@ tail := xs[1:]
 head := xs[0:3]
 
 === list comprehension
-doubled = append(doubled, x*2)
+doubled = append(doubled, x * 2)
 
 === list comprehension with filter
 evens = append(evens, x)

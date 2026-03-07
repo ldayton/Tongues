@@ -2,12 +2,12 @@
 return f(x)
 
 === function literal expression body
-result := apply(func(x int) int { return x * 2 }, 10)
+result := Apply(func(x int) int { return x * 2 }, 10)
 
 === Main emits as lowercase main
 func main(
 
 === function literal block body
-apply(func(x int) {
+Apply(func(x int) {
 	fmt.Println(strconv.Itoa(x))
 }, 42)
