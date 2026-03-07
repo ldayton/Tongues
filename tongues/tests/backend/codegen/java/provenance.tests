@@ -1,0 +1,137 @@
+=== not in operator (raised)
+if (!xs.contains(2))
+
+=== negative index via Len subtraction (raised)
+System.out.println(String.valueOf(xs.getLast()));
+
+=== open-end slice (raised)
+List<Integer> tail = new ArrayList<>(xs.subList(1, xs.size()));
+
+=== open-start slice (raised)
+List<Integer> head = new ArrayList<>(xs.subList(0, 3));
+
+=== truthiness check on list (raised)
+if (!xs.isEmpty())
+
+=== truthiness check on string (raised)
+if (!s.isEmpty())
+
+=== chained comparison (raised)
+return 0 <= x && x <= 255;
+
+=== list comprehension (raised)
+List<Integer> doubled = xs.stream().map(x -> x * 2).collect(Collectors.toList());
+
+=== list comprehension with filter (raised)
+List<Integer> evens = xs.stream().filter(x -> x % 2 == 0).collect(Collectors.toList());
+
+=== dict comprehension (raised)
+HashMap<String, Integer> m = IntStream.range(0, keys.size()).boxed().collect(Collectors.toMap(keys::get, i -> i, (a, b) -> b, HashMap::new));
+
+=== set comprehension (raised)
+HashSet<Integer> unique = new HashSet<>(xs);
+
+=== truthiness check on map (raised)
+if (!m.isEmpty())
+
+=== truthiness check on set (raised)
+if (!s.isEmpty())
+
+=== negated condition (raised)
+if (!done) {
+
+=== negated while (raised)
+while (!done) {
+
+=== format string with interpolation (raised)
+"hello, " + name
+
+=== nil coalesce (raised)
+return x != null ? x : 0;
+
+=== Get with default using defined-or (raised)
+m.getOrDefault("b", 0)
+
+=== star unpack two lists (raised)
+List<Integer> c = new ArrayList<>(a);
+c.addAll(b);
+
+=== star unpack element then starred (raised)
+List<Integer> c = new ArrayList<>();
+c.add(x);
+c.addAll(rest);
+
+=== star unpack starred then element (raised)
+List<Integer> c = new ArrayList<>(xs);
+c.add(y);
+
+=== star unpack element starred element (raised)
+c.add(x);
+c.addAll(middle);
+c.add(y);
+
+=== del dict key (raised)
+d.remove("a");
+
+=== del list index (raised)
+xs.remove(0);
+
+=== string partition (raised)
+int __idx = s.indexOf(sep);
+
+=== string rpartition (raised)
+int __idx = s.lastIndexOf(sep);
+
+=== string removeprefix (raised)
+return s.startsWith(p) ? s.substring(p.length()) : s;
+
+=== string removesuffix (raised)
+return s.endsWith(p) ? s.substring(0, s.length() - p.length()) : s;
+
+=== reversed slice on list (raised)
+List<Integer> r = new ArrayList<>(xs.reversed());
+
+=== step slice on list (raised)
+List<Integer> evens = IntStream.range(0, xs.size()).filter(i -> i % 2 == 0).mapToObj(xs::get).collect(Collectors.toList());
+
+=== step slice with start on list (raised)
+List<Integer> odds = IntStream.range(0, xs.size()).filter(i -> i % 2 == 1).mapToObj(xs::get).collect(Collectors.toList());
+
+=== step slice with start >= step on list (raised)
+List<Integer> r = IntStream.range(0, xs.size()).filter(i -> i >= 3 && (i - 3) % 2 == 0).mapToObj(xs::get).collect(Collectors.toList());
+
+=== step slice on string (raised)
+String r = IntStream.range(0, s.length()).filter(i -> i % 2 == 0).mapToObj(i -> String.valueOf(s.charAt(i))).collect(Collectors.joining());
+
+=== reversed slice on string (raised)
+String r = new StringBuilder(s).reverse().toString();
+
+=== reversed for loop (raised)
+for (var x : xs.reversed()) {
+
+=== reversed range for loop (raised)
+for (int i = 9; i >= 0; i--) {
+
+=== zip two lists for loop (raised)
+for (int __i = 0; __i < Math.min(a.size(), b.size()); __i++) {
+
+=== zip three lists for loop (raised)
+for (int __i = 0; __i < Math.min(a.size(), Math.min(b.size(), c.size())); __i++) {
+
+=== string iteration for loop (raised)
+for (int ch : s.codePoints().toArray()) {
+
+=== list repetition (raised)
+List<Integer> xs = new ArrayList<>(Collections.nCopies(5, 0));
+
+=== isinstance with tuple of types (raised)
+return v instanceof A || v instanceof B;
+
+=== any call with generator (raised)
+boolean result = xs.stream().anyMatch(x -> x > 0);
+
+=== all call with generator (raised)
+boolean result = xs.stream().allMatch(x -> x > 0);
+
+=== any call with filter (raised)
+boolean result = xs.stream().anyMatch(x -> x % 2 == 0 && x > 0);

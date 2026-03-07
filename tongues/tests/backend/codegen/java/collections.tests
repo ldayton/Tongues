@@ -1,0 +1,157 @@
+=== delete on map is missing-key safe
+m.remove("k");
+
+=== Append on list
+xs.add(3);
+
+=== Get with default on map
+int v = m.getOrDefault("b", 0);
+
+=== Get without default returns optional
+Integer v = m.get("b");
+
+=== Keys Values Items on map
+List<String> ks = new ArrayList<>(m.keySet());
+
+=== ListFrom map keys
+List<String> ks = new ArrayList<>(m.keySet());
+
+=== SetFromList map keys
+Set<String> s = new HashSet<>(m.keySet());
+
+=== Contains on map
+if (m.containsKey("a"))
+
+=== IndexOf on list
+int idx = xs.indexOf(20);
+
+=== Pop and RemoveAt
+int last = xs.removeLast();
+xs.removeFirst();
+
+=== Insert on list
+xs.add(1, 2);
+
+=== Add and Remove on set
+s.add(4);
+s.remove(1);
+
+=== Merge maps
+HashMap<String, Integer> c = new HashMap<>(a);
+c.putAll(b);
+
+=== set literal
+new HashSet<>(Set.of(1, 2, 3));
+
+=== map literal and index
+new HashMap<>(Map.of("a", 1, "b", 2));
+
+=== empty map and set via constructors
+HashMap<String, Integer> m = new HashMap<>();
+HashSet<Integer> s = new HashSet<>();
+
+=== tuple construction and access
+Object[] pair = new Object[]{1, "hello"};
+
+=== index assignment on list
+xs.set(0, 99);
+
+=== index assignment on map
+m.put("b", 2);
+
+=== list slicing
+List<Integer> mid = new ArrayList<>(xs.subList(1, 4));
+
+=== nested collection access
+m.get("a").get(0)
+
+=== Sorted and Reversed
+List<Integer> s = xs.stream().sorted().collect(Collectors.toList());
+
+=== Sorted on string list
+List<String> s = xs.stream().sorted().collect(Collectors.toList());
+
+=== Sum on list
+xs.stream().mapToInt(Integer::intValue).sum()
+
+=== negative index via Len subtraction
+xs.get(xs.size() - 1)
+
+=== open-end slice
+List<Integer> tail = new ArrayList<>(xs.subList(1, xs.size()));
+
+=== open-start slice
+List<Integer> head = new ArrayList<>(xs.subList(0, 3));
+
+=== list comprehension
+doubled.add(x * 2);
+
+=== list comprehension with filter
+evens.add(x);
+
+=== dict comprehension
+m.put(k, i);
+
+=== Union on sets
+HashSet<Integer> c = new HashSet<>(a);
+c.addAll(b);
+
+=== Intersection on sets
+HashSet<Integer> c = new HashSet<>(a);
+c.retainAll(b);
+
+=== Difference on sets
+HashSet<Integer> c = new HashSet<>(a);
+c.removeAll(b);
+
+=== set comprehension
+unique.add(x);
+
+=== any with generator
+boolean result = false;
+for (int x : xs) {
+    if (x > 0) {
+        result = true;
+        break;
+    }
+}
+
+=== all with generator
+boolean result = true;
+for (int x : xs) {
+    if (!(x > 0)) {
+        result = false;
+        break;
+    }
+}
+
+=== sorted with key lambda
+xs.stream().sorted(Comparator.comparingInt(x -> Math.abs(x))).collect(Collectors.toList());
+
+=== min with key lambda
+Collections.min(xs, Comparator.comparingInt(String::length));
+
+=== max with key lambda
+Collections.max(xs, Comparator.comparingInt(String::length));
+
+=== for over Reversed list
+for (var x : xs.reversed()) {
+
+=== Zip two lists
+for (int __i = 0; __i < Math.min(a.size(), b.size()); __i++) {
+    int x = a.get(__i);
+    String y = b.get(__i);
+
+=== Zip three lists
+for (int __i = 0; __i < Math.min(a.size(), Math.min(b.size(), c.size())); __i++) {
+    int x = a.get(__i);
+    String y = b.get(__i);
+    double z = c.get(__i);
+
+=== Zip bytes
+for (int __i = 0; __i < Math.min(a.length, b.length); __i++) {
+    int x = a[__i];
+    int y = b[__i];
+
+=== for over string yields rune
+for (int ch : s.codePoints().toArray()) {

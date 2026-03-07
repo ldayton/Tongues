@@ -1,0 +1,44 @@
+=== match default binds scrutinee value
+if (value instanceof Integer n) {
+    return String.valueOf(n);
+} else {
+    var x = value;
+    return String.valueOf(x);
+}
+
+=== unused match binding is omitted
+if (value instanceof Integer) {
+    return "int";
+
+=== match on optional with nil case
+} else if (x == null) {
+    return "absent";
+
+=== match on enum
+switch (c) {
+    case Red -> { return "red"; }
+    case Green -> { return "green"; }
+    case Blue -> { return "blue"; }
+}
+
+=== match on interface
+switch (s) {
+    case Circle c -> { return 3.14159 * c.radius * c.radius; }
+
+=== match on union with three types
+if (v instanceof Integer n) {
+
+=== match with default no binding
+} else {
+    return false;
+}
+
+=== nil narrowing after check
+if (x != null) {
+    return x + 1;
+
+=== nil check with early return
+if (x == null) {
+    return 0;
+}
+return x * 2;

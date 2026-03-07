@@ -1,0 +1,50 @@
+=== unused catch variable is omitted
+catch (ValueError _e) {
+
+=== used catch variable is kept
+catch (ValueError e) {
+
+=== try with finally
+} finally {
+    System.out.println("finally");
+}
+
+=== try with multiple catch clauses
+catch (ValueError e) {
+
+=== re-throw in catch
+throw e;
+
+=== catch-all without type
+catch (Exception e) {
+
+=== catch-all after typed catch
+catch (ErrA e) {
+    System.out.println("got A");
+} catch (Exception e) {
+    System.out.println(e.getMessage());
+}
+
+=== throw and catch struct
+throw new AppError("boom");
+
+=== catch union of both error types
+catch (ErrA | ErrB e) {
+
+=== catch union of types
+catch (ErrA | ErrB e) {
+
+=== throw bare Exception
+throw new RuntimeException("something went wrong");
+
+=== throw builtin ValueError
+throw new ValueError("bad input");
+
+=== catch builtin ValueError
+catch (ValueError e) {
+
+=== Assert with message
+if (!(x > 0)) { throw new AssertionError("must be positive"); }
+
+=== Assert without message
+if (!(x > 0)) { throw new AssertionError("assertion failed"); }
