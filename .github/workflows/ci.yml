@@ -133,7 +133,7 @@ jobs:
       - run: docker build -t tongues-python docker/python
       - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _pyright
 
-  treewalker-python:
+  treewalker-apptests-python:
     runs-on: ubuntu-latest
     needs: transpile-python
     steps:
@@ -145,7 +145,7 @@ jobs:
       - run: docker build -t tongues-python docker/python
       - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _treewalker python
 
-  vm-python:
+  vm-apptests-python:
     runs-on: ubuntu-latest
     needs: transpile-python
     steps:
@@ -198,7 +198,7 @@ jobs:
       - run: docker build -t tongues-ruby docker/ruby
       - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile.v2 fixed-point ruby
 
-  treewalker-ruby:
+  treewalker-apptests-ruby:
     runs-on: ubuntu-latest
     needs: transpile-ruby
     steps:
@@ -210,7 +210,7 @@ jobs:
       - run: docker build -t tongues-ruby docker/ruby
       - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile.v2 _treewalker ruby
 
-  vm-ruby:
+  vm-apptests-ruby:
     runs-on: ubuntu-latest
     needs: transpile-ruby
     steps:
@@ -263,7 +263,7 @@ jobs:
       - run: docker build -t tongues-perl docker/perl
       - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile.v2 fixed-point perl
 
-  treewalker-perl:
+  treewalker-apptests-perl:
     runs-on: ubuntu-latest
     needs: transpile-perl
     steps:
@@ -275,7 +275,7 @@ jobs:
       - run: docker build -t tongues-perl docker/perl
       - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile.v2 _treewalker perl
 
-  vm-perl:
+  vm-apptests-perl:
     runs-on: ubuntu-latest
     needs: transpile-perl
     steps:
@@ -316,7 +316,7 @@ jobs:
       - run: docker build -t tongues-javascript docker/javascript
       - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile.v2 fixed-point javascript
 
-  treewalker-javascript:
+  treewalker-apptests-javascript:
     runs-on: ubuntu-latest
     needs: transpile-javascript
     steps:
@@ -328,7 +328,7 @@ jobs:
       - run: docker build -t tongues-javascript docker/javascript
       - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile.v2 _treewalker javascript
 
-  vm-javascript:
+  vm-apptests-javascript:
     runs-on: ubuntu-latest
     needs: transpile-javascript
     steps:
@@ -392,23 +392,23 @@ jobs:
       - test-tongues-python
       - retranspile-python
       - fixed-point-python
-      - treewalker-python
-      - vm-python
+      - treewalker-apptests-python
+      - vm-apptests-python
       - pyright
       - test-tongues-ruby
       - retranspile-ruby
       - fixed-point-ruby
-      - treewalker-ruby
-      - vm-ruby
+      - treewalker-apptests-ruby
+      - vm-apptests-ruby
       - test-tongues-perl
       - retranspile-perl
       - fixed-point-perl
-      - treewalker-perl
-      - vm-perl
+      - treewalker-apptests-perl
+      - vm-apptests-perl
       - test-tongues-javascript
       - fixed-point-javascript
-      - treewalker-javascript
-      - vm-javascript
+      - treewalker-apptests-javascript
+      - vm-apptests-javascript
     runs-on: ubuntu-latest
     steps:
       - run: |
@@ -419,23 +419,23 @@ jobs:
             "${{ needs.test-tongues-python.result }}" \
             "${{ needs.retranspile-python.result }}" \
             "${{ needs.fixed-point-python.result }}" \
-            "${{ needs.treewalker-python.result }}" \
-            "${{ needs.vm-python.result }}" \
+            "${{ needs.treewalker-apptests-python.result }}" \
+            "${{ needs.vm-apptests-python.result }}" \
             "${{ needs.pyright.result }}" \
             "${{ needs.test-tongues-ruby.result }}" \
             "${{ needs.retranspile-ruby.result }}" \
             "${{ needs.fixed-point-ruby.result }}" \
-            "${{ needs.treewalker-ruby.result }}" \
-            "${{ needs.vm-ruby.result }}" \
+            "${{ needs.treewalker-apptests-ruby.result }}" \
+            "${{ needs.vm-apptests-ruby.result }}" \
             "${{ needs.test-tongues-perl.result }}" \
             "${{ needs.retranspile-perl.result }}" \
             "${{ needs.fixed-point-perl.result }}" \
-            "${{ needs.treewalker-perl.result }}" \
-            "${{ needs.vm-perl.result }}" \
+            "${{ needs.treewalker-apptests-perl.result }}" \
+            "${{ needs.vm-apptests-perl.result }}" \
             "${{ needs.test-tongues-javascript.result }}" \
             "${{ needs.fixed-point-javascript.result }}" \
-            "${{ needs.treewalker-javascript.result }}" \
-            "${{ needs.vm-javascript.result }}"; do
+            "${{ needs.treewalker-apptests-javascript.result }}" \
+            "${{ needs.vm-apptests-javascript.result }}"; do
             if [ "$result" != "success" ]; then
               echo "One or more jobs failed"
               exit 1
