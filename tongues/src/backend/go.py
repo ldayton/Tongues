@@ -510,6 +510,28 @@ def _expr_ref_var(expr: TExpr, name: str) -> bool:
     if isinstance(expr, TSlice):
         if _expr_ref_var(expr.obj, name):
             return True
+    if isinstance(expr, TTernary):
+        return (
+            _expr_ref_var(expr.cond, name)
+            or _expr_ref_var(expr.then_expr, name)
+            or _expr_ref_var(expr.else_expr, name)
+        )
+    if isinstance(expr, TTupleAccess):
+        return _expr_ref_var(expr.obj, name)
+    if isinstance(expr, TMapLit):
+        for k, v in expr.entries:
+            if _expr_ref_var(k, name) or _expr_ref_var(v, name):
+                return True
+    if isinstance(expr, (TSetLit, TTupleLit)):
+        for e in expr.elements:
+            if _expr_ref_var(e, name):
+                return True
+    if isinstance(expr, TRange):
+        for a in expr.args:
+            if _expr_ref_var(a, name):
+                return True
+    if isinstance(expr, TFnLit):
+        return _stmts_ref_var(expr.body, name)
     return False
 
 
@@ -2017,6 +2039,37 @@ class _GoEmitter(Emitter):
             name = expr.func.name
             if name == "Assert":
                 args = expr.args
+                inner = args[0].value
+                if (
+                    isinstance(inner, TCall)
+                    and isinstance(inner.func, TVar)
+                    and inner.func.name == "IsInstance"
+                    and isinstance(inner.args[0].value, TVar)
+                ):
+                    obj_var = inner.args[0].value
+                    assert isinstance(obj_var, TVar)
+                    type_arg = inner.args[1].value
+                    type_name = ""
+                    if isinstance(type_arg, TVar):
+                        type_name = type_arg.name
+                    elif isinstance(type_arg, TStringLit):
+                        type_name = type_arg.value
+                    if type_name and type_name not in self._interface_names:
+                        vt = self.var_types.get(obj_var.name)
+                        go_t = self._type(vt).lstrip("*") if vt is not None else "any"
+                        if go_t in self._interface_names or go_t == "any":
+                            obj_go = _restore_name(obj_var.name, obj_var.annotations)
+                            obj_go = self._var_aliases.get(obj_go, obj_go)
+                            alias = obj_go + "_assert"
+                            self._line(
+                                alias + " := " + obj_go + ".(*" + type_name + ")"
+                            )
+                            self._var_aliases[obj_go] = alias
+                            self.var_types[obj_var.name] = TIdentType(
+                                pos=obj_var.pos,
+                                name=type_name,
+                            )
+                            return
                 cond = self._expr(args[0].value)
                 if len(args) > 1:
                     msg = self._expr(args[1].value)
