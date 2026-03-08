@@ -14,6 +14,9 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - uses: extractions/setup-just@v3
       - run: just -f justfile.v2 style
 
@@ -112,7 +115,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-python
-          path: tongues/.out
+          path: .
       - run: python3 tongues/tests/test-transpiled.py tongues/.out/tongues.py
 
   retranspile-python:
@@ -127,7 +130,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-python
-          path: tongues/.out
+          path: .
       - uses: extractions/setup-just@v3
       - run: just -f justfile.v2 _retranspile python
 
@@ -143,7 +146,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-python
-          path: tongues/.out
+          path: .
       - uses: extractions/setup-just@v3
       - run: just -f justfile.v2 fixed-point python
 
@@ -159,7 +162,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-python
-          path: tongues/.out
+          path: .
       - uses: extractions/setup-just@v3
       - run: just -f justfile.v2 _pyright
 
@@ -178,7 +181,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-ruby
-          path: tongues/.out
+          path: .
       - run: ruby tongues/tests/test-transpiled.rb tongues/.out/tongues.rb
 
   retranspile-ruby:
@@ -196,7 +199,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-ruby
-          path: tongues/.out
+          path: .
       - uses: extractions/setup-just@v3
       - run: just -f justfile.v2 _retranspile ruby
 
@@ -215,7 +218,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-ruby
-          path: tongues/.out
+          path: .
       - uses: extractions/setup-just@v3
       - run: just -f justfile.v2 fixed-point ruby
 
@@ -228,13 +231,10 @@ jobs:
     needs: transpile-perl
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-perl
-          path: tongues/.out
+          path: .
       - run: perl tongues/tests/test-transpiled.pl tongues/.out/tongues.pl
 
   retranspile-perl:
@@ -249,7 +249,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-perl
-          path: tongues/.out
+          path: .
       - uses: extractions/setup-just@v3
       - run: just -f justfile.v2 _retranspile perl
 
@@ -265,7 +265,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-perl
-          path: tongues/.out
+          path: .
       - uses: extractions/setup-just@v3
       - run: just -f justfile.v2 fixed-point perl
 
@@ -284,7 +284,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-javascript
-          path: tongues/.out
+          path: .
       - run: node tongues/tests/test-transpiled.js tongues/.out/tongues.js
 
   fixed-point-javascript:
@@ -302,7 +302,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-javascript
-          path: tongues/.out
+          path: .
       - uses: extractions/setup-just@v3
       - run: just -f justfile.v2 fixed-point javascript
 
