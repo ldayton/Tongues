@@ -15,3 +15,6 @@ sprintf("%s", ("" . $x))
 
 === fstring str conversion
 sprintf("%s", ("" . $x))
+
+=== strip regex special chars
+\]\-

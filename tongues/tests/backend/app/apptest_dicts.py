@@ -649,6 +649,22 @@ def test_dict_comprehension_overwrite() -> None:
     assert len(d) == 2
 
 
+def test_dict_get_falsy_values() -> None:
+    """get() with falsy values must return the actual value, not default."""
+    d: dict[str, int] = {"a": 0, "b": 1}
+    assert d.get("a", 99) == 0
+    d2: dict[str, str] = {"x": "", "y": "hi"}
+    assert d2.get("x", "default") == ""
+
+
+def test_dict_any_all_items() -> None:
+    """any/all with dict items tuple unpacking."""
+    d: dict[str, int] = {"a": 1, "b": 20, "c": 3}
+    assert any(v > 10 for k, v in d.items())
+    assert all(v > 0 for k, v in d.items())
+    assert not all(v > 10 for k, v in d.items())
+
+
 def main() -> int:
     passed: int = 0
     failed: int = 0
@@ -727,6 +743,8 @@ def main() -> int:
         ("test_dict_empty_string_key", test_dict_empty_string_key),
         ("test_dict_zero_key", test_dict_zero_key),
         ("test_dict_comprehension_overwrite", test_dict_comprehension_overwrite),
+        ("test_dict_get_falsy_values", test_dict_get_falsy_values),
+        ("test_dict_any_all_items", test_dict_any_all_items),
     ]
     for name, fn in tests:
         try:

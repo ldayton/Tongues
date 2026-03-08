@@ -19,6 +19,34 @@ def f() -> float:
 return 3.14
 ---
 
+=== float literal zero
+def f() -> float:
+    return 0.0
+---
+return 0.0
+---
+
+=== float literal large fixed point
+def f() -> float:
+    return 1e15
+---
+return 1000000000000000.0
+---
+
+=== float literal stays scientific
+def f() -> float:
+    return 1e16
+---
+return 1e+16
+---
+
+=== float literal small scientific
+def f() -> float:
+    return 1e-5
+---
+return 1e-05
+---
+
 === string literal
 def f() -> str:
     return "hello"

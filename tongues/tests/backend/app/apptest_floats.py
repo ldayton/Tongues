@@ -383,6 +383,13 @@ def test_float_exponent_notation() -> None:
     assert big * small == 1.0
 
 
+def test_float_str_boundaries() -> None:
+    """str() of floats at representation boundaries."""
+    assert str(0.0) == "0.0"
+    assert str(1e15).startswith("1000000000000000")
+    assert str(1e-5) == "1e-05"
+
+
 def test_float_not_exact() -> None:
     """Some float operations are not exact."""
     # 0.1 + 0.2 may not equal 0.3 exactly in binary float
@@ -435,6 +442,7 @@ def main() -> int:
         ("test_float_from_string_special", test_float_from_string_special),
         ("test_float_str_repr", test_float_str_repr),
         ("test_float_exponent_notation", test_float_exponent_notation),
+        ("test_float_str_boundaries", test_float_str_boundaries),
         ("test_float_not_exact", test_float_not_exact),
     ]
     for name, fn in tests:
