@@ -3918,10 +3918,23 @@ def _lower_any_all(fname: str, node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExp
     target = get_node(gen, "target")
     iter_node = get_node(gen, "iter")
     binding, b_ann = _extract_binding(target)
-    iter_expr = _lower_extend_arg(iter_node, env, ctx)
+    is_items = False
+    if _is_ast(iter_node, "Call"):
+        iter_func = get_node(iter_node, "func")
+        if _is_ast(iter_func, "Attribute") and get_str(iter_func, "attr") == "items":
+            is_items = True
     comp_env = env.copy()
     for b in binding:
         comp_env.declared.add(b)
+    if is_items:
+        dict_node = get_node(get_node(iter_node, "func"), "value")
+        dict_type = _infer_expr_type(dict_node, env, ctx)
+        if isinstance(dict_type, MapType) and len(binding) == 2:
+            comp_env.var_types[binding[0]] = dict_type.key
+            comp_env.var_types[binding[1]] = dict_type.value
+        iter_expr = _lower_expr(dict_node, env, ctx)
+    else:
+        iter_expr = _lower_extend_arg(iter_node, env, ctx)
     elt_expr = _lower_expr(elt, comp_env, ctx)
     cid = ctx.comp_counter
     ctx.comp_counter = cid + 1
@@ -3946,6 +3959,8 @@ def _lower_any_all(fname: str, node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExp
         body = [TIfStmt(pos, cond, inner_body, None, {})]
     for_ann: Ann = {}
     for_ann.update(b_ann)
+    if is_items:
+        for_ann["for.items"] = "true"
     for_ann["provenance"] = "any_call" if is_any else "all_call"
     iter_type = _infer_expr_type(iter_node, env, ctx)
     if len(binding) == 1 and _is_type_dict(iter_type, ["bytes"]):

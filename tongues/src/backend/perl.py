@@ -1073,13 +1073,24 @@ class _PerlEmitter(Emitter):
         self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
     ) -> tuple[str, str] | None:
         """Try to reconstruct any/all from a let + for pair. Returns (lhs, rhs)."""
+        ann = for_stmt.annotations
         # Perl's $_ can't destructure tuples, so bail on multi-binding
+        # unless it's a dict .items() iteration
         if len(for_stmt.binding) > 1:
-            return None
+            if ann.get("for.items") != "true" or len(for_stmt.binding) != 2:
+                return None
         acc = "$" + _restore_name(let_stmt.name, let_stmt.annotations)
         iterable = self._expr(for_stmt.iterable)
         binding_name = for_stmt.binding[0] if for_stmt.binding else None
-        if self._is_set_expr(for_stmt.iterable):
+        iter_is_map = ann.get("for.items") == "true"
+        if iter_is_map and len(for_stmt.binding) == 2:
+            safe = self._deref_safe(iterable)
+            iter_spread = (
+                "@{(do { my $__m = "
+                + safe
+                + "; [map { [$_, $__m->{$_}] } sort keys %{$__m}] })}"
+            )
+        elif self._is_set_expr(for_stmt.iterable):
             iter_spread = "keys %{" + iterable + "}"
         else:
             iter_spread = "@{" + iterable + "}"
@@ -1098,10 +1109,16 @@ class _PerlEmitter(Emitter):
             cond = (
                 self._strip_not(outer_if.cond) if prov == "all_call" else outer_if.cond
             )
-            if binding_name is not None:
+            if iter_is_map and len(for_stmt.binding) == 2:
+                self.var_alias[for_stmt.binding[0]] = "$_->[0]"
+                self.var_alias[for_stmt.binding[1]] = "$_->[1]"
+            elif binding_name is not None:
                 self.var_alias[binding_name] = "$_"
             cond_s = self._expr(cond)
-            if binding_name is not None:
+            if iter_is_map and len(for_stmt.binding) == 2:
+                self.var_alias.pop(for_stmt.binding[0])
+                self.var_alias.pop(for_stmt.binding[1])
+            elif binding_name is not None:
                 self.var_alias.pop(binding_name)
             return (acc, func + " { " + cond_s + " } " + iter_spread)
         if len(outer_if.then_body) == 1:
@@ -1117,11 +1134,17 @@ class _PerlEmitter(Emitter):
                     if prov == "all_call"
                     else inner_if.cond
                 )
-                if binding_name is not None:
+                if iter_is_map and len(for_stmt.binding) == 2:
+                    self.var_alias[for_stmt.binding[0]] = "$_->[0]"
+                    self.var_alias[for_stmt.binding[1]] = "$_->[1]"
+                elif binding_name is not None:
                     self.var_alias[binding_name] = "$_"
                 filter_s = self._expr(outer_if.cond)
                 cond_s = self._expr(cond)
-                if binding_name is not None:
+                if iter_is_map and len(for_stmt.binding) == 2:
+                    self.var_alias.pop(for_stmt.binding[0])
+                    self.var_alias.pop(for_stmt.binding[1])
+                elif binding_name is not None:
                     self.var_alias.pop(binding_name)
                 return (
                     acc,
