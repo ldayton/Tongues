@@ -1169,38 +1169,41 @@ class _JavaEmitter(Emitter):
                         self._line(stream)
                         i += 2
                         continue
+            guard: tuple[str, str] | None = None
             if isinstance(stmt, TIfStmt) and i + 1 < len(stmts):
                 guard = self._detect_isinstance_guard(stmt)
-                if guard is not None:
-                    self._emit_stmt(stmt)
-                    var_name, type_name = guard
-                    cast_name = _binding_name(var_name)
-                    self._line(
-                        type_name
-                        + " "
-                        + cast_name
-                        + " = ("
-                        + type_name
-                        + ") "
-                        + var_name
-                        + ";"
-                    )
-                    old_aliases = self._var_aliases.copy()
-                    self._var_aliases[var_name] = cast_name
-                    self._emit_stmts(stmts[i + 1 :])
-                    self._var_aliases = old_aliases
-                    return
+            if guard is None and i + 1 < len(stmts):
+                guard = self._detect_assert_isinstance(stmt)
+            if guard is not None:
+                self._emit_stmt(stmt)
+                var_name, type_name = guard
+                cast_name = _binding_name(var_name)
+                self._line(
+                    type_name
+                    + " "
+                    + cast_name
+                    + " = ("
+                    + type_name
+                    + ") "
+                    + var_name
+                    + ";"
+                )
+                old_aliases = self._var_aliases.copy()
+                self._var_aliases[var_name] = cast_name
+                self._emit_stmts(stmts[i + 1 :])
+                self._var_aliases = old_aliases
+                return
             self._emit_stmt(stmt)
             i += 1
 
     def _detect_isinstance_guard(self, stmt: TIfStmt) -> tuple[str, str] | None:
-        """Detect `if not isinstance(x, T): return/throw` guard pattern."""
+        """Detect `if not isinstance(x, T): <early exit>` guard pattern."""
         if stmt.else_body is not None:
             return None
-        if len(stmt.then_body) != 1:
+        if not stmt.then_body:
             return None
-        body_stmt = stmt.then_body[0]
-        if not isinstance(body_stmt, (TReturnStmt, TThrowStmt)):
+        last = stmt.then_body[-1]
+        if not isinstance(last, (TReturnStmt, TThrowStmt, TContinueStmt)):
             return None
         cond = stmt.cond
         if not isinstance(cond, TUnaryOp):
@@ -1208,6 +1211,19 @@ class _JavaEmitter(Emitter):
         if cond.op not in ("not", "!"):
             return None
         return self._isinstance_info(cond.operand)
+
+    def _detect_assert_isinstance(self, stmt: TStmt) -> tuple[str, str] | None:
+        """Detect `assert isinstance(x, T)` pattern."""
+        if not isinstance(stmt, TExprStmt):
+            return None
+        expr = stmt.expr
+        if not isinstance(expr, TCall):
+            return None
+        if not isinstance(expr.func, TVar) or expr.func.name != "Assert":
+            return None
+        if not expr.args:
+            return None
+        return self._isinstance_info(expr.args[0].value)
 
     def _emit_stmt(self, stmt: TStmt) -> None:
         match stmt:
