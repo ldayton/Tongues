@@ -424,6 +424,9 @@ class _JavaEmitter(Emitter):
         self._needs_concat_lists: bool = False
         self._needs_concat_bytes: bool = False
         self._needs_zfill: bool = False
+        self._needs_bytes_helpers: bool = False
+        self._needs_hex_helper: bool = False
+        self._needs_argv: bool = False
         self._ret_is_void: bool = True
         self._var_aliases: dict[str, str] = {}
         self._narrowed_types: dict[str, str] = {}
@@ -597,6 +600,29 @@ class _JavaEmitter(Emitter):
         }
         if ann in _BOXED_CAST:
             return _BOXED_CAST[ann]
+        if ann.startswith("list["):
+            inner = ann[5:-1]
+            inner_j = self._java_boxed_from_ann(inner)
+            if inner_j is not None:
+                return "ArrayList<" + inner_j + ">"
+            return "ArrayList"
+        if ann.startswith("map["):
+            inner = ann[4:-1]
+            comma = self._find_top_level_comma(inner)
+            if comma >= 0:
+                k = inner[:comma].strip()
+                v = inner[comma + 1 :].strip()
+                kj = self._java_boxed_from_ann(k)
+                vj = self._java_boxed_from_ann(v)
+                if kj is not None and vj is not None:
+                    return "HashMap<" + kj + ", " + vj + ">"
+            return "HashMap"
+        if ann.startswith("set["):
+            inner = ann[4:-1]
+            inner_j = self._java_boxed_from_ann(inner)
+            if inner_j is not None:
+                return "HashSet<" + inner_j + ">"
+            return "HashSet"
         result = self._java_type_for_ann(ann)
         if result is not None:
             return result
@@ -818,6 +844,8 @@ class _JavaEmitter(Emitter):
             self._line()
             self._line("public static void main(String[] args) throws Exception {")
             self.indent += 1
+            if self._needs_argv:
+                self._line("_argv = Arrays.asList(args);")
             if self._needs_read_all:
                 self._line(
                     "String input = new String(System.in.readAllBytes(), StandardCharsets.UTF_8);"
@@ -825,6 +853,8 @@ class _JavaEmitter(Emitter):
             self._emit_stmts(top_stmts)
             self.indent -= 1
             self._line("}")
+        if self._needs_argv:
+            self._line("static List<String> _argv = new ArrayList<>();")
         if self._needs_replace_slice:
             self._line()
             self._line(
@@ -896,14 +926,141 @@ class _JavaEmitter(Emitter):
             self._line("return sb.toString();")
             self.indent -= 1
             self._line("}")
+        if self._needs_bytes_helpers:
+            self._emit_bytes_helpers()
+        if self._needs_hex_helper:
+            self._line()
+            self._line("static String _bytesHex(byte[] data) {")
+            self.indent += 1
+            self._line("StringBuilder sb = new StringBuilder();")
+            self._line(
+                'for (byte b : data) sb.append(String.format("%02x", b & 0xFF));'
+            )
+            self._line("return sb.toString();")
+            self.indent -= 1
+            self._line("}")
         self.indent -= 1
         self._line("}")
+
+    def _emit_bytes_helpers(self) -> None:
+        helpers = [
+            "static int _bytesIndexOf(byte[] data, byte[] pat) {",
+            "    for (int i = 0; i <= data.length - pat.length; i++) {",
+            "        boolean m = true;",
+            "        for (int j = 0; j < pat.length; j++) { if (data[i+j] != pat[j]) { m = false; break; } }",
+            "        if (m) return i;",
+            "    }",
+            "    return -1;",
+            "}",
+            "static int _bytesLastIndexOf(byte[] data, byte[] pat) {",
+            "    for (int i = data.length - pat.length; i >= 0; i--) {",
+            "        boolean m = true;",
+            "        for (int j = 0; j < pat.length; j++) { if (data[i+j] != pat[j]) { m = false; break; } }",
+            "        if (m) return i;",
+            "    }",
+            "    return -1;",
+            "}",
+            "static byte[] _bytesReplace(byte[] data, byte[] old, byte[] rep) {",
+            "    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();",
+            "    int i = 0;",
+            "    while (i <= data.length - old.length) {",
+            "        int idx = _bytesIndexOf(Arrays.copyOfRange(data, i, data.length), old);",
+            "        if (idx < 0) break;",
+            "        out.write(data, i, idx);",
+            "        out.write(rep, 0, rep.length);",
+            "        i += idx + old.length;",
+            "    }",
+            "    out.write(data, i, data.length - i);",
+            "    return out.toByteArray();",
+            "}",
+            "static List<byte[]> _bytesSplit(byte[] data, byte[] sep) {",
+            "    List<byte[]> result = new ArrayList<>();",
+            "    int start = 0;",
+            "    while (start <= data.length) {",
+            "        int idx = _bytesIndexOf(Arrays.copyOfRange(data, start, data.length), sep);",
+            "        if (idx < 0) { result.add(Arrays.copyOfRange(data, start, data.length)); break; }",
+            "        result.add(Arrays.copyOfRange(data, start, start + idx));",
+            "        start += idx + sep.length;",
+            "    }",
+            "    return result;",
+            "}",
+            "static List<byte[]> _bytesSplitN(byte[] data, byte[] sep, int n) {",
+            "    List<byte[]> result = new ArrayList<>();",
+            "    int start = 0;",
+            "    while (start <= data.length && result.size() < n - 1) {",
+            "        int idx = _bytesIndexOf(Arrays.copyOfRange(data, start, data.length), sep);",
+            "        if (idx < 0) break;",
+            "        result.add(Arrays.copyOfRange(data, start, start + idx));",
+            "        start += idx + sep.length;",
+            "    }",
+            "    result.add(Arrays.copyOfRange(data, start, data.length));",
+            "    return result;",
+            "}",
+            "static byte[] _bytesJoin(byte[] sep, List<byte[]> parts) {",
+            "    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();",
+            "    for (int i = 0; i < parts.size(); i++) {",
+            "        if (i > 0) out.write(sep, 0, sep.length);",
+            "        out.write(parts.get(i), 0, parts.get(i).length);",
+            "    }",
+            "    return out.toByteArray();",
+            "}",
+            "static byte[] _bytesUpper(byte[] data) {",
+            "    byte[] r = Arrays.copyOf(data, data.length);",
+            "    for (int i = 0; i < r.length; i++) if (r[i] >= 97 && r[i] <= 122) r[i] -= 32;",
+            "    return r;",
+            "}",
+            "static byte[] _bytesLower(byte[] data) {",
+            "    byte[] r = Arrays.copyOf(data, data.length);",
+            "    for (int i = 0; i < r.length; i++) if (r[i] >= 65 && r[i] <= 90) r[i] += 32;",
+            "    return r;",
+            "}",
+            "static boolean _bytesStartsWith(byte[] data, byte[] prefix) {",
+            "    if (prefix.length > data.length) return false;",
+            "    return Arrays.equals(data, 0, prefix.length, prefix, 0, prefix.length);",
+            "}",
+            "static boolean _bytesEndsWith(byte[] data, byte[] suffix) {",
+            "    if (suffix.length > data.length) return false;",
+            "    return Arrays.equals(data, data.length - suffix.length, data.length, suffix, 0, suffix.length);",
+            "}",
+            "static boolean _bytesContains(byte[] data, byte[] pat) {",
+            "    return _bytesIndexOf(data, pat) >= 0;",
+            "}",
+            "static int _bytesCount(byte[] data, byte[] pat) {",
+            "    int count = 0; int start = 0;",
+            "    while (start <= data.length - pat.length) {",
+            "        int idx = _bytesIndexOf(Arrays.copyOfRange(data, start, data.length), pat);",
+            "        if (idx < 0) break;",
+            "        count++; start += idx + pat.length;",
+            "    }",
+            "    return count;",
+            "}",
+            "static byte[] _bytesTrim(byte[] data) {",
+            "    int s = 0, e = data.length;",
+            "    while (s < e && (data[s] & 0xFF) <= 32) s++;",
+            "    while (e > s && (data[e-1] & 0xFF) <= 32) e--;",
+            "    return Arrays.copyOfRange(data, s, e);",
+            "}",
+            "static byte[] _bytesTrimStart(byte[] data) {",
+            "    int s = 0;",
+            "    while (s < data.length && (data[s] & 0xFF) <= 32) s++;",
+            "    return Arrays.copyOfRange(data, s, data.length);",
+            "}",
+            "static byte[] _bytesTrimEnd(byte[] data) {",
+            "    int e = data.length;",
+            "    while (e > 0 && (data[e-1] & 0xFF) <= 32) e--;",
+            "    return Arrays.copyOfRange(data, 0, e);",
+            "}",
+        ]
+        for line in helpers:
+            self._line()
+            self._line(line)
 
     # ── Imports ──────────────────────────────────────────────
 
     def _emit_imports(self, module: TModule) -> None:
         self._line("import java.util.*;")
         self._line("import java.util.stream.*;")
+        self._line("import java.util.function.*;")
         self._line("import java.io.*;")
         self._line("import java.nio.file.*;")
         self._line("import java.nio.charset.*;")
@@ -1055,6 +1212,10 @@ class _JavaEmitter(Emitter):
         if decl.name == "Main":
             self._ret_is_void = True
             self._line("public static void main(String[] args) throws Exception {")
+            if self._needs_argv:
+                self.indent += 1
+                self._line("_argv = Arrays.asList(args);")
+                self.indent -= 1
         else:
             ret = "void"
             if decl.ret is not None:
@@ -1280,7 +1441,8 @@ class _JavaEmitter(Emitter):
                 if prov in ("any_call", "all_call"):
                     result = self._try_any_all(stmt, next_stmt, prov)
                     if result is not None:
-                        self._line(result)
+                        lhs, rhs = result
+                        self._line(lhs + " = " + rhs + ";")
                         i += 2
                         continue
                 if prov in (
@@ -1730,11 +1892,29 @@ class _JavaEmitter(Emitter):
             return [cond]
         return []
 
+    def _body_reassigns_alias(self, body: list[TStmt], alias: str) -> bool:
+        """Check if body contains assignment to the aliased variable."""
+        for stmt in body:
+            if isinstance(stmt, TAssignStmt) and isinstance(stmt.target, TFieldAccess):
+                continue
+            if isinstance(stmt, TAssignStmt) and isinstance(stmt.target, TVar):
+                if stmt.target.name == alias:
+                    return True
+            if isinstance(stmt, TIfStmt):
+                if self._body_reassigns_alias(stmt.then_body, alias):
+                    return True
+                if stmt.else_body is not None and self._body_reassigns_alias(
+                    stmt.else_body, alias
+                ):
+                    return True
+        return False
+
     def _emit_if_with_bindings(
         self, cond_expr: TExpr, cond_str: str, body: list[TStmt]
     ) -> None:
         raw_checks = self._collect_isinstance_raw(cond_expr)
         old_aliases = self._var_aliases.copy()
+        deferred_casts: list[tuple[str, str, str]] = []
         if raw_checks:
             parts: list[str] = []
             for check_expr in raw_checks:
@@ -1743,8 +1923,15 @@ class _JavaEmitter(Emitter):
                     self._var_aliases[var_name] = var_name
                     continue
                 cast_name = _binding_name(var_name + "_" + type_name)
-                parts.append(var_name + " instanceof " + type_name + " " + cast_name)
-                self._var_aliases[var_name] = cast_name
+                if self._body_reassigns_alias(body, cast_name):
+                    parts.append(var_name + " instanceof " + type_name)
+                    deferred_casts.append((type_name, cast_name, var_name))
+                    self._var_aliases[var_name] = cast_name
+                else:
+                    parts.append(
+                        var_name + " instanceof " + type_name + " " + cast_name
+                    )
+                    self._var_aliases[var_name] = cast_name
             remaining = self._strip_isinstance_parts(cond_expr)
             if remaining is not None:
                 parts.append(self._maybe_paren(remaining, "&&", False))
@@ -1755,6 +1942,8 @@ class _JavaEmitter(Emitter):
         else:
             self._line("if (" + cond_str + ") {")
         self.indent += 1
+        for dc in deferred_casts:
+            self._line(dc[0] + " " + dc[1] + " = (" + dc[0] + ") " + dc[2] + ";")
         self._emit_stmts(body)
         self.indent -= 1
         self._var_aliases = old_aliases
@@ -1890,6 +2079,22 @@ class _JavaEmitter(Emitter):
             or self._is_string_expr(stmt.iterable)
         )
         is_map = self._is_map_type(stmt.iterable)
+        is_items = (
+            isinstance(stmt.iterable, TCall)
+            and isinstance(stmt.iterable.func, TVar)
+            and stmt.iterable.func.name == "Items"
+        )
+        if is_items and len(binding) == 2:
+            entry_var = "__entry" + str(self._tmp_counter)
+            self._tmp_counter += 1
+            self._line("for (var " + entry_var + " : " + iterable_expr + ") {")
+            self.indent += 1
+            self._line("var " + binding[0] + " = " + entry_var + ".getKey();")
+            self._line("var " + binding[1] + " = " + entry_var + ".getValue();")
+            self._emit_stmts(stmt.body)
+            self.indent -= 1
+            self._line("}")
+            return
         if len(binding) >= 2 and not is_map and not is_string:
             tuple_types = self._iterable_tuple_types(stmt.iterable)
             entry_var = "__entry" + str(self._tmp_counter)
@@ -1957,8 +2162,8 @@ class _JavaEmitter(Emitter):
 
     def _try_any_all(
         self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
-    ) -> str | None:
-        """Try to emit any/all as stream expression."""
+    ) -> tuple[str, str] | None:
+        """Try to emit any/all as stream expression. Returns (lhs, rhs) or None."""
         acc = _safe_name(let_stmt.name)
         binder = _safe_name(for_stmt.binding[0])
         iterable = self._expr(for_stmt.iterable)
@@ -1969,6 +2174,10 @@ class _JavaEmitter(Emitter):
         outer_if = body[0]
         if not isinstance(outer_if, TIfStmt):
             return None
+        iter_ann = self._expr_type_ann(for_stmt.iterable)
+        if iter_ann == "string":
+            return None
+        stream_src = iterable + ".stream()"
         if (
             len(outer_if.then_body) == 2
             and isinstance(outer_if.then_body[0], TAssignStmt)
@@ -1978,19 +2187,9 @@ class _JavaEmitter(Emitter):
                 self._strip_not(outer_if.cond) if prov == "all_call" else outer_if.cond
             )
             cond_s = self._expr(cond)
-            return (
-                "boolean "
-                + acc
-                + " = "
-                + iterable
-                + ".stream()."
-                + func
-                + "("
-                + binder
-                + " -> "
-                + cond_s
-                + ");"
-            )
+            lhs = "boolean " + acc
+            rhs = stream_src + "." + func + "(" + binder + " -> " + cond_s + ")"
+            return (lhs, rhs)
         if len(outer_if.then_body) == 1 and isinstance(outer_if.then_body[0], TIfStmt):
             inner_if = outer_if.then_body[0]
             if not isinstance(inner_if, TIfStmt):
@@ -2007,12 +2206,10 @@ class _JavaEmitter(Emitter):
                     else inner_if.cond
                 )
                 cond_s = self._expr(cond)
-                return (
-                    "boolean "
-                    + acc
-                    + " = "
-                    + iterable
-                    + ".stream()."
+                lhs = "boolean " + acc
+                rhs = (
+                    stream_src
+                    + "."
                     + func
                     + "("
                     + binder
@@ -2020,8 +2217,9 @@ class _JavaEmitter(Emitter):
                     + filter_s
                     + " && "
                     + cond_s
-                    + ");"
+                    + ")"
                 )
+                return (lhs, rhs)
         return None
 
     def _try_comprehension_stream(
@@ -3261,12 +3459,27 @@ class _JavaEmitter(Emitter):
                 result.append(named[fname])
         return result
 
+    _PY_TO_JAVA_METHOD: dict[str, str] = {
+        "startswith": "startsWith",
+        "endswith": "endsWith",
+        "replaceall": "replaceAll",
+        "append": "add",
+    }
+
     def _method_call(self, func: TFieldAccess, args: list[TArg]) -> str:
         obj = self._expr(func.obj)
         method = _safe_name(func.field).lower()
         if method == "zfill":
             self._needs_zfill = True
             return "_zfill(" + obj + ", " + self._a(args, 0) + ")"
+        if method == "keys":
+            return "new ArrayList<>(" + obj + ".keySet())"
+        if method == "hex" and self._is_bytes_expr(func.obj):
+            self._needs_hex_helper = True
+            return "_bytesHex(" + obj + ")"
+        method = self._PY_TO_JAVA_METHOD.get(method, method)
+        if method in ("size", "length") and self._is_bytes_expr(func.obj):
+            return obj + ".length"
         arg_strs = self._join_args(args, ", ")
         return obj + "." + method + "(" + arg_strs + ")"
 
@@ -3350,6 +3563,9 @@ class _JavaEmitter(Emitter):
         if name == "IntToFloat":
             return self._a(args, 0)
         if name == "FloatToInt":
+            arg = args[0].value
+            if isinstance(arg, (TBinaryOp, TUnaryOp)):
+                return "(int)(" + self._a(args, 0) + ")"
             return "(int) " + self._a(args, 0)
         if name == "ByteToInt":
             return self._a(args, 0)
@@ -3374,8 +3590,20 @@ class _JavaEmitter(Emitter):
         if name == "Round":
             return "(int) Math.round(" + self._a(args, 0) + ")"
         if name == "FloorDiv":
+            if self._is_float_expr(args[0].value):
+                return (
+                    "(int) Math.floor("
+                    + self._a(args, 0)
+                    + " / "
+                    + self._a(args, 1)
+                    + ")"
+                )
             return "Math.floorDiv(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "PythonMod":
+            if self._is_float_expr(args[0].value):
+                a = self._a(args, 0)
+                b = self._a(args, 1)
+                return "(" + a + " - Math.floor(" + a + " / " + b + ") * " + b + ")"
             return "Math.floorMod(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "IsInf":
             return "Double.isInfinite(" + self._a(args, 0) + ")"
@@ -3416,8 +3644,22 @@ class _JavaEmitter(Emitter):
             obj = args[0].value
             if self._is_map_type(obj):
                 return self._a(args, 0) + ".containsKey(" + self._a(args, 1) + ")"
+            if self._is_bytes_expr(obj):
+                self._needs_bytes_helpers = True
+                return (
+                    "_bytesContains(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                )
             type_ann = obj.annotations.get("type", "")
             if type_ann == "string" or self._is_string_expr(obj):
+                arg1 = args[1].value
+                a1_ann = self._expr_type_ann(arg1)
+                if a1_ann == "rune":
+                    return (
+                        self._a(args, 0)
+                        + ".contains(String.valueOf("
+                        + self._a(args, 1)
+                        + "))"
+                    )
                 return self._a(args, 0) + ".contains(" + self._a(args, 1) + ")"
             return self._a(args, 0) + ".contains(" + self._a(args, 1) + ")"
         if name == "Keys":
@@ -3588,8 +3830,22 @@ class _JavaEmitter(Emitter):
                 + ").boxed().collect(Collectors.toList())"
             )
         if name == "Split":
+            if self._is_bytes_expr(args[0].value):
+                self._needs_bytes_helpers = True
+                return "_bytesSplit(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             return "List.of(" + self._a(args, 0) + ".split(" + self._a(args, 1) + "))"
         if name == "SplitN":
+            if self._is_bytes_expr(args[0].value):
+                self._needs_bytes_helpers = True
+                return (
+                    "_bytesSplitN("
+                    + self._a(args, 0)
+                    + ", "
+                    + self._a(args, 1)
+                    + ", "
+                    + self._a(args, 2)
+                    + ")"
+                )
             return (
                 "new ArrayList<>(List.of("
                 + self._a(args, 0)
@@ -3600,8 +3856,22 @@ class _JavaEmitter(Emitter):
                 + ")))"
             )
         if name == "Join":
+            if self._is_bytes_expr(args[0].value):
+                self._needs_bytes_helpers = True
+                return "_bytesJoin(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             return "String.join(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Replace":
+            if self._is_bytes_expr(args[0].value):
+                self._needs_bytes_helpers = True
+                return (
+                    "_bytesReplace("
+                    + self._a(args, 0)
+                    + ", "
+                    + self._a(args, 1)
+                    + ", "
+                    + self._a(args, 2)
+                    + ")"
+                )
             return (
                 self._a(args, 0)
                 + ".replace("
@@ -3624,24 +3894,70 @@ class _JavaEmitter(Emitter):
                 + ")"
             )
         if name == "Upper":
+            if self._is_bytes_expr(args[0].value):
+                self._needs_bytes_helpers = True
+                return "_bytesUpper(" + self._a(args, 0) + ")"
             return self._a(args, 0) + ".toUpperCase()"
         if name == "Lower":
+            if self._is_bytes_expr(args[0].value):
+                self._needs_bytes_helpers = True
+                return "_bytesLower(" + self._a(args, 0) + ")"
             return self._a(args, 0) + ".toLowerCase()"
         if name == "StartsWith":
+            if self._is_bytes_expr(args[0].value):
+                self._needs_bytes_helpers = True
+                return (
+                    "_bytesStartsWith("
+                    + self._a(args, 0)
+                    + ", "
+                    + self._a(args, 1)
+                    + ")"
+                )
             return self._a(args, 0) + ".startsWith(" + self._a(args, 1) + ")"
         if name == "EndsWith":
+            if self._is_bytes_expr(args[0].value):
+                self._needs_bytes_helpers = True
+                return (
+                    "_bytesEndsWith(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                )
             return self._a(args, 0) + ".endsWith(" + self._a(args, 1) + ")"
         if name == "Trim":
+            if self._is_bytes_expr(args[0].value):
+                self._needs_bytes_helpers = True
+                return "_bytesTrim(" + self._a(args, 0) + ")"
             return self._emit_trim(args, "both")
         if name == "TrimStart":
+            if self._is_bytes_expr(args[0].value):
+                self._needs_bytes_helpers = True
+                return "_bytesTrimStart(" + self._a(args, 0) + ")"
             return self._emit_trim(args, "start")
         if name == "TrimEnd":
+            if self._is_bytes_expr(args[0].value):
+                self._needs_bytes_helpers = True
+                return "_bytesTrimEnd(" + self._a(args, 0) + ")"
             return self._emit_trim(args, "end")
         if name == "Find":
+            if self._is_bytes_expr(args[0].value):
+                self._needs_bytes_helpers = True
+                return (
+                    "_bytesIndexOf(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                )
             return self._a(args, 0) + ".indexOf(" + self._a(args, 1) + ")"
         if name == "RFind":
+            if self._is_bytes_expr(args[0].value):
+                self._needs_bytes_helpers = True
+                return (
+                    "_bytesLastIndexOf("
+                    + self._a(args, 0)
+                    + ", "
+                    + self._a(args, 1)
+                    + ")"
+                )
             return self._a(args, 0) + ".lastIndexOf(" + self._a(args, 1) + ")"
         if name == "Count":
+            if self._is_bytes_expr(args[0].value):
+                self._needs_bytes_helpers = True
+                return "_bytesCount(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             return self._a(args, 0) + ".split(" + self._a(args, 1) + ", -1).length - 1"
         if name == "FormatInt":
             return (
@@ -3652,7 +3968,8 @@ class _JavaEmitter(Emitter):
         if name == "Assert":
             raise NotImplementedError("builtin: Assert")
         if name == "Args":
-            return "new ArrayList<>(List.of(args))"
+            self._needs_argv = True
+            return "new ArrayList<String>(_argv)"
         if name == "GetEnv":
             return "System.getenv(" + self._a(args, 0) + ")"
         if name == "ReadLine":
@@ -3662,6 +3979,14 @@ class _JavaEmitter(Emitter):
         if name == "ReadFileBytes":
             return "Files.readAllBytes(Path.of(" + self._a(args, 0) + "))"
         if name == "WriteFile":
+            if self._is_bytes_expr(args[1].value):
+                return (
+                    "Files.write(Path.of("
+                    + self._a(args, 0)
+                    + "), "
+                    + self._a(args, 1)
+                    + ")"
+                )
             return (
                 "Files.writeString(Path.of("
                 + self._a(args, 0)
@@ -3680,16 +4005,28 @@ class _JavaEmitter(Emitter):
         if name == "Bytes":
             return "new byte[" + self._a(args, 0) + "]"
         if name == "IsDigit":
+            if self._is_rune_expr(args[0].value):
+                return "Character.isDigit(" + self._a(args, 0) + ")"
             return self._a(args, 0) + ".chars().allMatch(Character::isDigit)"
         if name == "IsAlpha":
+            if self._is_rune_expr(args[0].value):
+                return "Character.isLetter(" + self._a(args, 0) + ")"
             return self._a(args, 0) + ".chars().allMatch(Character::isLetter)"
         if name == "IsAlphanumeric":
+            if self._is_rune_expr(args[0].value):
+                return "Character.isLetterOrDigit(" + self._a(args, 0) + ")"
             return self._a(args, 0) + ".chars().allMatch(Character::isLetterOrDigit)"
         if name == "IsUpper":
+            if self._is_rune_expr(args[0].value):
+                return "Character.isUpperCase(" + self._a(args, 0) + ")"
             return self._a(args, 0) + ".chars().allMatch(Character::isUpperCase)"
         if name == "IsLower":
+            if self._is_rune_expr(args[0].value):
+                return "Character.isLowerCase(" + self._a(args, 0) + ")"
             return self._a(args, 0) + ".chars().allMatch(Character::isLowerCase)"
         if name == "IsSpace":
+            if self._is_rune_expr(args[0].value):
+                return "Character.isWhitespace(" + self._a(args, 0) + ")"
             return self._a(args, 0) + ".chars().allMatch(Character::isWhitespace)"
         if name == "IsType":
             type_arg = args[1].value
@@ -3707,6 +4044,8 @@ class _JavaEmitter(Emitter):
         if name == "SplitWhitespace":
             return "List.of(" + self._a(args, 0) + '.trim().split("\\\\s+"))'
         if name == "IsAlnum":
+            if self._is_rune_expr(args[0].value):
+                return "Character.isLetterOrDigit(" + self._a(args, 0) + ")"
             return self._a(args, 0) + ".chars().allMatch(Character::isLetterOrDigit)"
         if name == "BytesFrom":
             self._needs_to_byte_array = True
@@ -4117,11 +4456,36 @@ class _JavaEmitter(Emitter):
     def _is_builtin_call(self, expr: TExpr, name: str) -> bool:
         raise NotImplementedError
 
-    def _step_slice_source(self, stmt: TStmt, acc_name: str) -> TExpr | None:
-        raise NotImplementedError
+    def _step_slice_source(
+        self, stmt: TStmt, acc_name: str
+    ) -> tuple[bool, TExpr | None]:
+        """Extract (is_string, source_obj) from a step_slice loop body."""
+        if isinstance(stmt, TExprStmt):
+            call = stmt.expr
+            if isinstance(call, TCall) and self._is_append_to(call, acc_name):
+                elem = call.args[1].value
+                if isinstance(elem, TIndex):
+                    return False, elem.obj
+        if isinstance(stmt, TAssignStmt) and isinstance(stmt.target, TVar):
+            if stmt.target.name == acc_name and isinstance(stmt.value, TCall):
+                if (
+                    isinstance(stmt.value.func, TVar)
+                    and stmt.value.func.name == "Concat"
+                ):
+                    second = stmt.value.args[1].value
+                    if (
+                        isinstance(second, TCall)
+                        and isinstance(second.func, TVar)
+                        and second.func.name == "ToString"
+                    ):
+                        inner = second.args[0].value
+                        if isinstance(inner, TIndex):
+                            return True, inner.obj
+        return False, None
 
     def _step_slice_is_string(self, stmt: TStmt, acc_name: str) -> bool:
-        raise NotImplementedError
+        is_string, _ = self._step_slice_source(stmt, acc_name)
+        return is_string
 
     def _is_len_of(self, expr: TExpr, obj: TExpr) -> bool:
         raise NotImplementedError
