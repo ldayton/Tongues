@@ -90,6 +90,7 @@ lang target:
     fi
     just -f {{justfile()}} fixed-point {{target}} & pids+=($!)
     just -f {{justfile()}} _treewalker {{target}} & pids+=($!)
+    just -f {{justfile()}} _vm {{target}} & pids+=($!)
     start=$SECONDS
     cd tongues
     ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} .out/tongues.${ext[{{target}}]}; rc=$?
@@ -179,6 +180,32 @@ _treewalker target:
         printf '\033[32m[treewalker:{{target}}] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
     else
         printf '\033[31m[treewalker:{{target}}] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
+        exit 1
+    fi
+
+# Run taytsh app tests through the VM in target language
+_vm target:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
+    declare -A runner=([python]=python3 [ruby]=ruby [perl]=perl [javascript]=node)
+    start=$SECONDS
+    passed=0; failed=0
+    cd tongues
+    for f in tests/taytsh/app/*.ty; do
+        name=$(basename "$f" .ty)
+        if ${runner[{{target}}]} ".out/tongues.${ext[{{target}}]}" taytsh --vm "$f" >/dev/null 2>&1; then
+            passed=$((passed + 1))
+        else
+            echo "  FAIL $name"
+            failed=$((failed + 1))
+        fi
+    done
+    elapsed=$((SECONDS - start))
+    if [ $failed -eq 0 ]; then
+        printf '\033[32m[vm:{{target}}] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
+    else
+        printf '\033[31m[vm:{{target}}] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
         exit 1
     fi
 
