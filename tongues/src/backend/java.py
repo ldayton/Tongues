@@ -690,6 +690,8 @@ class _JavaEmitter(Emitter):
                 continue
             if java_name in _JAVA_STDLIB_EXCEPTIONS:
                 continue
+            if name in self.fn_names:
+                continue
             self._line()
             self._line("static class " + java_name + " extends RuntimeException {")
             self.indent += 1
@@ -1309,13 +1311,34 @@ class _JavaEmitter(Emitter):
                 elif isinstance(throw_val, TCall):
                     throw_func = throw_val.func
                     if isinstance(throw_func, TVar):
+                        fname = throw_func.name
                         exc_name = _EXCEPTION_MAP.get(
-                            throw_func.name, _safe_name(throw_func.name)
+                            fname, _safe_name(fname)
                         )
                         exc_args = ", ".join(
                             self._expr(a.value) for a in throw_val.args
                         )
-                        self._line("throw new " + exc_name + "(" + exc_args + ");")
+                        if fname in self.fn_names and (
+                            fname not in self.struct_names
+                            or fname not in self._struct_field_decls
+                            or len(throw_val.args)
+                            != len(self._struct_field_decls[fname])
+                        ):
+                            self._line(
+                                "throw "
+                                + exc_name
+                                + "("
+                                + exc_args
+                                + ");"
+                            )
+                        else:
+                            self._line(
+                                "throw new "
+                                + exc_name
+                                + "("
+                                + exc_args
+                                + ");"
+                            )
                     else:
                         self._line("throw " + self._expr(stmt.expr) + ";")
                 else:
@@ -2929,6 +2952,12 @@ class _JavaEmitter(Emitter):
                     arg_strs = self._join_args(args, ", ")
                     return fn_name + "(" + arg_strs + ")"
             return self._struct_call(func.name, args)
+        if isinstance(func, TVar) and func.name == "oct" and len(args) == 1:
+            return '"0o" + Integer.toOctalString(' + self._a(args, 0) + ")"
+        if isinstance(func, TVar) and func.name == "bin" and len(args) == 1:
+            return '"0b" + Integer.toBinaryString(' + self._a(args, 0) + ")"
+        if isinstance(func, TVar) and func.name == "hex" and len(args) == 1:
+            return '"0x" + Integer.toHexString(' + self._a(args, 0) + ")"
         if isinstance(func, TFieldAccess):
             return self._method_call(func, args)
         fn_name = self._expr(func)
