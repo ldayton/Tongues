@@ -440,6 +440,31 @@ def _stmts_ref_var(stmts: list[TStmt], name: str) -> bool:
         elif isinstance(s, TThrowStmt):
             if _expr_ref_var(s.expr, name):
                 return True
+        elif isinstance(s, TMatchStmt):
+            if _expr_ref_var(s.expr, name):
+                return True
+            for c in s.cases:
+                if _stmts_ref_var(c.body, name):
+                    return True
+            if s.default is not None and _stmts_ref_var(s.default.body, name):
+                return True
+        elif isinstance(s, TTryStmt):
+            if _stmts_ref_var(s.body, name):
+                return True
+            for c in s.catches:
+                if _stmts_ref_var(c.body, name):
+                    return True
+            if s.finally_body is not None and _stmts_ref_var(s.finally_body, name):
+                return True
+        elif isinstance(s, TOpAssignStmt):
+            if _expr_ref_var(s.target, name) or _expr_ref_var(s.value, name):
+                return True
+        elif isinstance(s, TTupleAssignStmt):
+            if _expr_ref_var(s.value, name):
+                return True
+            for t in s.targets:
+                if _expr_ref_var(t, name):
+                    return True
     return False
 
 
