@@ -43,6 +43,7 @@ from .taytsh.emit import to_source
 from .taytsh.parse import Parser as TaytshParser
 from .taytsh.tokens import tokenize as taytsh_tokenize
 from .middleend.callgraph import analyze_callgraph
+from .middleend.error_types import patch_error_types
 from .middleend.callgraph_serial import serialize_callgraph
 from .middleend.hoisting import analyze_hoisting
 from .middleend.liveness import analyze_liveness
@@ -1266,6 +1267,7 @@ def _pipeline_post_parse(
         err_strs: list[str] = [str(e) for e in checker.errors]
         _print_errors(err_strs)
         return (1, "")
+    patch_error_types(module)
     analyze_returns(module, checker)
     analyze_scope(module, checker)
     analyze_liveness(module, checker)
@@ -1421,7 +1423,14 @@ TAYTSH_PHASES: list[str] = [
     "callgraph",
 ]
 
-TAYTSH_EMIT_TARGETS: list[str] = ["javascript", "python", "perl", "ruby", "taytsh"]
+TAYTSH_EMIT_TARGETS: list[str] = [
+    "java",
+    "javascript",
+    "python",
+    "perl",
+    "ruby",
+    "taytsh",
+]
 
 
 def taytsh_pipeline(argv: list[str]) -> int:
@@ -1501,6 +1510,7 @@ def taytsh_pipeline(argv: list[str]) -> int:
         print(to_json(JDict({"reveals": reveals_out})))
         return 0
     if stop_at == "returns":
+        patch_error_types(module)
         analyze_returns(module, checker)
         print(to_json(JDict(serialize_annotations(module, "returns"))))
         return 0
@@ -1534,6 +1544,7 @@ def taytsh_pipeline(argv: list[str]) -> int:
         print(to_json(JDict(serialize_callgraph(module, checker))))
         return 0
     if emit_target is not None:
+        patch_error_types(module)
         analyze_returns(module, checker)
         analyze_scope(module, checker)
         analyze_liveness(module, checker)

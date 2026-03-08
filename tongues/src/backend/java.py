@@ -563,17 +563,26 @@ class _JavaEmitter(Emitter):
                         break
         elif isinstance(iterable, TVar):
             typ = self.var_types.get(iterable.name)
-        if typ is None:
-            return []
-        if not isinstance(typ, TListType):
-            return []
-        elem = typ.element
-        if not isinstance(elem, TTupleType):
-            return []
-        result: list[str] = []
-        for et in elem.elements:
-            result.append(self._type(et))
-        return result
+        if typ is not None:
+            if not isinstance(typ, TListType):
+                return []
+            elem = typ.element
+            if not isinstance(elem, TTupleType):
+                return []
+            return [self._type(et) for et in elem.elements]
+        ann = iterable.annotations.get("type", "")
+        if ann.startswith("list[") and ann.endswith("]"):
+            inner = ann[5:-1]
+            if inner.startswith("(") and inner.endswith(")"):
+                parts = self._split_ann_top_level(inner[1:-1], ", ")
+                result: list[str] = []
+                for p in parts:
+                    j = self._java_boxed_from_ann(p)
+                    if j is None:
+                        return []
+                    result.append(j)
+                return result
+        return []
 
     def _tuple_cast_type(self, ann: str) -> str | None:
         """Return the boxed Java cast type for extracting from Object[]."""
@@ -1150,22 +1159,6 @@ class _JavaEmitter(Emitter):
 
     # ── Statements ───────────────────────────────────────────
 
-    def _find_assign_type_ann(self, name: str, stmts: list[TStmt]) -> str:
-        """Search stmts for the first assignment to name and return the RHS type annotation."""
-        for stmt in stmts:
-            if isinstance(stmt, TAssignStmt):
-                if isinstance(stmt.target, TVar) and stmt.target.name == name:
-                    return stmt.value.annotations.get("type", "")
-            if isinstance(stmt, TIfStmt):
-                result = self._find_assign_type_ann(name, stmt.then_body)
-                if len(result) > 0:
-                    return result
-                if stmt.else_body is not None:
-                    result = self._find_assign_type_ann(name, stmt.else_body)
-                    if len(result) > 0:
-                        return result
-        return ""
-
     _TYPE_ANN_TO_JAVA: dict[str, str] = {
         "int": "int",
         "float": "double",
@@ -1250,6 +1243,28 @@ class _JavaEmitter(Emitter):
                 return i
         return -1
 
+    def _split_ann_top_level(self, s: str, sep: str) -> list[str]:
+        """Split annotation string on sep at bracket/paren depth 0."""
+        parts: list[str] = []
+        depth = 0
+        start = 0
+        i = 0
+        sep_len = len(sep)
+        while i < len(s):
+            c = s[i]
+            if c in ("[", "("):
+                depth += 1
+            elif c in ("]", ")"):
+                depth -= 1
+            elif depth == 0 and s[i : i + sep_len] == sep:
+                parts.append(s[start:i].strip())
+                i += sep_len
+                start = i
+                continue
+            i += 1
+        parts.append(s[start:].strip())
+        return parts
+
     def _emit_stmts(self, stmts: list[TStmt]) -> None:
         i = 0
         while i < len(stmts):
@@ -1303,14 +1318,7 @@ class _JavaEmitter(Emitter):
                 self._emit_stmts(stmts[i + 1 :])
                 self._var_aliases = old_aliases
                 return
-            if (
-                isinstance(stmt, TLetStmt)
-                and isinstance(stmt.typ, TPrimitive)
-                and stmt.typ.kind == "error"
-            ):
-                self._emit_let(stmt, stmts[i + 1 :])
-            else:
-                self._emit_stmt(stmt)
+            self._emit_stmt(stmt)
             i += 1
 
     def _detect_isinstance_guard(self, stmt: TIfStmt) -> tuple[str, str] | None:
@@ -1529,29 +1537,11 @@ class _JavaEmitter(Emitter):
         else:
             self._line("static " + jtype + " " + safe + ";")
 
-    def _emit_let(self, stmt: TLetStmt, following: list[TStmt] | None = None) -> None:
+    def _emit_let(self, stmt: TLetStmt) -> None:
         safe = _restore_name(stmt.name, stmt.annotations)
         self.var_types[stmt.name] = stmt.typ
         unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
         jtype = self._type(stmt.typ)
-        if (
-            jtype == "Object"
-            and isinstance(stmt.typ, TPrimitive)
-            and stmt.typ.kind == "error"
-        ):
-            val_ann = ""
-            if stmt.value is not None:
-                val_ann = stmt.value.annotations.get("type", "")
-            if len(val_ann) > 0:
-                resolved = self._java_type_from_ann(val_ann)
-                if resolved is not None:
-                    jtype = resolved
-            if jtype == "Object" and following is not None:
-                ann = self._find_assign_type_ann(stmt.name, following)
-                if len(ann) > 0:
-                    resolved = self._java_type_from_ann(ann)
-                    if resolved is not None:
-                        jtype = resolved
         if stmt.value is not None and not unused:
             if (
                 isinstance(stmt.value, TCall)
@@ -1710,6 +1700,15 @@ class _JavaEmitter(Emitter):
         assert result is not None
         return result
 
+    def _instanceof_is_redundant(self, var_name: str, type_name_str: str) -> bool:
+        """Check if var already has the target type (instanceof would erase generics)."""
+        var_type = self.var_types.get(var_name)
+        if var_type is None:
+            return False
+        var_java = self._type(var_type)
+        raw = var_java.split("<")[0] if "<" in var_java else var_java
+        return raw == type_name_str
+
     def _collect_isinstance_checks(self, cond: TExpr) -> list[tuple[str, str]]:
         """Collect all IsType checks from a condition (including &&-joined)."""
         if isinstance(cond, TBinaryOp) and cond.op in ("&&", "and"):
@@ -1740,13 +1739,19 @@ class _JavaEmitter(Emitter):
             parts: list[str] = []
             for check_expr in raw_checks:
                 var_name, type_name = self._isinstance_info_checked(check_expr)
+                if self._instanceof_is_redundant(var_name, type_name):
+                    self._var_aliases[var_name] = var_name
+                    continue
                 cast_name = _binding_name(var_name + "_" + type_name)
                 parts.append(var_name + " instanceof " + type_name + " " + cast_name)
                 self._var_aliases[var_name] = cast_name
             remaining = self._strip_isinstance_parts(cond_expr)
             if remaining is not None:
                 parts.append(self._maybe_paren(remaining, "&&", False))
-            self._line("if (" + " && ".join(parts) + ") {")
+            if parts:
+                self._line("if (" + " && ".join(parts) + ") {")
+            else:
+                self._line("if (" + cond_str + ") {")
         else:
             self._line("if (" + cond_str + ") {")
         self.indent += 1
@@ -1928,9 +1933,22 @@ class _JavaEmitter(Emitter):
                 "for (var " + binding[0] + " : " + iterable_expr + ".keySet()) {"
             )
         else:
+            loop_var = binding[0]
             elem_type = self._for_elem_type(stmt.iterable)
+            if loop_var in self.var_types:
+                tmp = "__loop_" + str(self._tmp_counter)
+                self._tmp_counter += 1
+                self._line(
+                    "for (" + elem_type + " " + tmp + " : " + iterable_expr + ") {"
+                )
+                self.indent += 1
+                self._line(loop_var + " = " + tmp + ";")
+                self._emit_stmts(stmt.body)
+                self.indent -= 1
+                self._line("}")
+                return
             self._line(
-                "for (" + elem_type + " " + binding[0] + " : " + iterable_expr + ") {"
+                "for (" + elem_type + " " + loop_var + " : " + iterable_expr + ") {"
             )
         self.indent += 1
         self._emit_stmts(stmt.body)
@@ -3101,6 +3119,8 @@ class _JavaEmitter(Emitter):
                 if info is not None:
                     return "!(" + info[0] + " instanceof " + info[1] + ")"
         rendered = self._expr(operand)
+        if " instanceof " in rendered:
+            return "!(" + rendered + ")"
         if isinstance(operand, (TVar, TBoolLit, TFieldAccess, TIndex, TCall)):
             return "!" + rendered
         return "!(" + rendered + ")"
@@ -3115,6 +3135,9 @@ class _JavaEmitter(Emitter):
             old_aliases = self._var_aliases.copy()
             for check_expr in raw_checks:
                 var_name, type_name_str = self._isinstance_info_checked(check_expr)
+                if self._instanceof_is_redundant(var_name, type_name_str):
+                    self._var_aliases[var_name] = var_name
+                    continue
                 cast_name = _binding_name(var_name + "_" + type_name_str)
                 parts.append(
                     var_name + " instanceof " + type_name_str + " " + cast_name
@@ -3123,7 +3146,7 @@ class _JavaEmitter(Emitter):
             remaining = self._strip_isinstance_parts(expr.cond)
             if remaining is not None:
                 parts.append(self._maybe_paren(remaining, "&&", False))
-            cond_str = " && ".join(parts)
+            cond_str = " && ".join(parts) if parts else "true"
             then_str = self._expr(expr.then_expr)
             self._var_aliases = old_aliases
             return cond_str + " ? " + then_str + " : " + else_str
