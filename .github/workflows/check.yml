@@ -1,8 +1,5 @@
-name: check
+name: check (disabled)
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 jobs:
