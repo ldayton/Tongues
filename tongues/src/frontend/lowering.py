@@ -676,6 +676,17 @@ def _is_struct_type(td: TypeNode) -> bool:
     return False
 
 
+def _is_class_type(td: TypeNode | None) -> bool:
+    """Check if type is a struct or interface (needs structural equality)."""
+    if td is None:
+        return False
+    if isinstance(td, PointerType):
+        return isinstance(td.target, (StructRef, InterfaceRef))
+    if isinstance(td, (StructRef, InterfaceRef)):
+        return True
+    return False
+
+
 def _struct_name(td: TypeNode) -> str:
     """Get struct name from TypeNode."""
     if isinstance(td, PointerType):
@@ -1740,7 +1751,11 @@ def _lower_single_compare(
     left = _lower_expr(left_node, env, ctx)
     right = _lower_expr(comp_node, env, ctx)
     left, right = _coerce_compare(pos, left, right, left_type, right_type)
-    return _make_compare_expr(pos, left, op_node, right)
+    result = _make_compare_expr(pos, left, op_node, right)
+    if op_type in ("Eq", "NotEq") and isinstance(result, TBinaryOp):
+        if _is_class_type(left_type) or _is_class_type(right_type):
+            result.annotations["struct_eq"] = "true"
+    return result
 
 
 def _maybe_promote_rune_compare(
@@ -6417,10 +6432,61 @@ def _build_struct(
     ancestor_methods = _collect_ancestor_methods(name, own_method_names, ctx)
     for am in ancestor_methods:
         methods.append(am)
+    # Synthesize __eq__ for structural equality (needed by non-Python backends)
+    if "__eq__" not in own_method_names and not any(
+        m.name == "__eq__" for m in ancestor_methods
+    ):
+        eq_method = _synthesize_eq_method(pos, name, fields)
+        methods.append(eq_method)
     ann: Ann = {}
     if is_exception:
         ann["_is_exception"] = "true"
     return TStructDecl(pos, name, parent, fields, methods, ann)
+
+
+def _synthesize_eq_method(
+    pos: Pos, class_name: str, fields: list[TFieldDecl]
+) -> TFnDecl:
+    """Synthesize __eq__(this, other) for structural equality."""
+    self_param = TParam(pos, "this", None, {})
+    other_param = TParam(pos, "other", TIdentType(pos, class_name), {})
+    params = [self_param, other_param]
+    other_var = TVar(pos, "other", {})
+    # if not isinstance(other, ClassName): return False
+    isinstance_check = _make_call(
+        pos, "IsType", [other_var, TStringLit(pos, class_name, {})]
+    )
+    guard = TIfStmt(
+        pos,
+        TUnaryOp(pos, "!", isinstance_check, {}),
+        [TReturnStmt(pos, TBoolLit(pos, False, {}), {})],
+        None,
+        {},
+    )
+    # return this.f1 == other.f1 and this.f2 == other.f2 and ...
+    self_var = TVar(pos, "this", {})
+    if fields:
+        cmp: TExpr = TBinaryOp(
+            pos,
+            "==",
+            TFieldAccess(pos, self_var, fields[0].name, {}),
+            TFieldAccess(pos, other_var, fields[0].name, {}),
+            {},
+        )
+        for fld in fields[1:]:
+            right_cmp = TBinaryOp(
+                pos,
+                "==",
+                TFieldAccess(pos, self_var, fld.name, {}),
+                TFieldAccess(pos, other_var, fld.name, {}),
+                {},
+            )
+            cmp = TBinaryOp(pos, "&&", cmp, right_cmp, {})
+    else:
+        cmp = TBoolLit(pos, True, {})
+    ret = TReturnStmt(pos, cmp, {})
+    body: list[TStmt] = [guard, ret]
+    return TFnDecl(pos, "__eq__", params, TPrimitive(pos, "bool"), body, {})
 
 
 def _build_class_constants(class_node: ASTNode, ctx: _LowerCtx) -> list[TModuleItem]:

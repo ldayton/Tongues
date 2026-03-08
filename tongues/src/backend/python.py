@@ -470,15 +470,20 @@ class _PythonEmitter(Emitter):
         else:
             self._line("class " + decl.name + ":")
         self.indent += 1
-        if not decl.fields and not decl.methods:
+        has_non_eq = any(m.name != "__eq__" for m in decl.methods)
+        if not decl.fields and not has_non_eq:
             self._line("pass")
         self._current_struct = decl.name
         for fld in decl.fields:
             self._emit_field(fld)
         self._current_struct = ""
-        for i, method in enumerate(decl.methods):
-            if i > 0 or decl.fields:
+        first_method = True
+        for method in decl.methods:
+            if method.name == "__eq__":
+                continue
+            if not first_method or decl.fields:
                 self._line()
+            first_method = False
             self._emit_method(method)
         self.indent -= 1
 

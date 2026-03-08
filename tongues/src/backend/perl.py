@@ -729,14 +729,23 @@ class _PerlEmitter(Emitter):
             self._line("use parent -norequire, '" + decl.parent + "';")
             self._line()
         str_method = ""
+        has_eq = False
         for method in decl.methods:
             if method.name == "to_string":
                 str_method = "to_string"
-                break
-            if method.name == "__repr__":
+            elif method.name == "__repr__" and not str_method:
                 str_method = "__repr__"
-        if str_method:
-            self._line("use overload '\"\"' => \\&" + str_method + ", fallback => 1;")
+            elif method.name == "__eq__":
+                has_eq = True
+        if str_method or has_eq:
+            parts: list[str] = []
+            if str_method:
+                parts.append("'\"\"' => \\&" + str_method)
+            if has_eq:
+                parts.append("'==' => \\&__eq__")
+                parts.append("'eq' => \\&__eq__")
+            parts.append("fallback => 1")
+            self._line("use overload " + ", ".join(parts) + ";")
             self._line()
         self._emit_constructor(decl)
         for method in decl.methods:

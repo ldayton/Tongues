@@ -2197,6 +2197,13 @@ class _JavaScriptEmitter(Emitter):
             return self._maybe_paren(expr.right, op, is_left=False) + " === null"
         if op == "!=" and isinstance(expr.left, TNilLit):
             return self._maybe_paren(expr.right, op, is_left=False) + " !== null"
+        if expr.annotations.get("struct_eq") == "true":
+            left_str = self._expr(expr.left)
+            right_str = self._expr(expr.right)
+            call = left_str + ".__eq__(" + right_str + ")"
+            if op == "!=":
+                return "!" + call
+            return call
         js_op = op
         if op == "==":
             js_op = "==="
