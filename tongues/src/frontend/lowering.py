@@ -172,6 +172,128 @@ TAYTSH_KEYWORDS: set[str] = {
 _CONTEXT_ONLY_FUNCS: frozenset[str] = frozenset({"range", "enumerate", "reversed"})
 
 
+def _fixed_exponent(s: str) -> int:
+    """Compute the base-10 exponent from a fixed-point decimal string."""
+    if s.startswith("-"):
+        s = s[1:]
+    if "." in s:
+        dp: int = s.index(".")
+        int_part: str = s[:dp]
+        frac_part: str = s[dp + 1 :]
+    else:
+        int_part = s
+        frac_part = ""
+    # Strip leading zeros from int_part.
+    stripped: str = int_part.lstrip("0")
+    if stripped:
+        return len(stripped) - 1
+    # All integer digits are zero; count leading zeros in frac_part.
+    lead: int = 0
+    while lead < len(frac_part) and frac_part[lead] == "0":
+        lead += 1
+    return -(lead + 1)
+
+
+def _float_repr(value: float) -> str:
+    """Format a float literal the way Python's repr() does, portable across runtimes.
+
+    Python uses fixed-point when -4 <= exponent < 16, scientific otherwise.
+    Scientific notation: no trailing .0 in mantissa, exponent has sign + min 2 digits.
+    """
+    r: str = repr(value)
+    if "e" not in r and "E" not in r:
+        # Some runtimes stringify 0.0 as "0" — ensure decimal point is present.
+        if "." not in r and "inf" not in r and "nan" not in r:
+            r = r + ".0"
+        # Some runtimes use fixed-point where Python would use scientific.
+        # Detect and convert: Python uses scientific when exp < -4 or exp >= 16.
+        # Compute exponent from string: count integer digits (ignoring leading zeros).
+        if value != 0.0 and "inf" not in r and "nan" not in r:
+            exp_check: int = _fixed_exponent(r)
+            if exp_check >= 16 or exp_check < -4:
+                # Re-format as scientific to fall through to normalization below.
+                neg: str = ""
+                s: str = r
+                if s.startswith("-"):
+                    neg = "-"
+                    s = s[1:]
+                # Strip the decimal point and find significant digits.
+                if "." in s:
+                    dp: int = s.index(".")
+                    all_d: str = s[:dp] + s[dp + 1 :]
+                else:
+                    all_d = s
+                    dp = len(s)
+                # Remove leading zeros to find first significant digit.
+                first_sig: int = 0
+                while first_sig < len(all_d) and all_d[first_sig] == "0":
+                    first_sig += 1
+                if first_sig >= len(all_d):
+                    return r
+                sci_exp: int = dp - first_sig - 1
+                sig_digits: str = all_d[first_sig:]
+                # Strip trailing zeros but keep at least one.
+                while len(sig_digits) > 1 and sig_digits[-1] == "0":
+                    sig_digits = sig_digits[:-1]
+                if len(sig_digits) == 1:
+                    mantissa_s: str = sig_digits
+                else:
+                    mantissa_s = sig_digits[0] + "." + sig_digits[1:]
+                r = neg + mantissa_s + "e" + str(sci_exp)
+                # Fall through to normalization below.
+            else:
+                return r
+        else:
+            return r
+    # Normalize to lowercase, parse mantissa and exponent.
+    low: str = r.lower()
+    e_pos: int = low.index("e")
+    mantissa: str = low[:e_pos]
+    exp_str: str = low[e_pos + 1 :]
+    exp: int = int(exp_str)
+    # Python uses fixed-point for -4 <= exp < 16.
+    if -4 <= exp < 16:
+        # Expand to fixed-point form.
+        sign: str = ""
+        m: str = mantissa
+        if m.startswith("-"):
+            sign = "-"
+            m = m[1:]
+        if "." in m:
+            dot_pos: int = m.index(".")
+            digits: str = m[:dot_pos] + m[dot_pos + 1 :]
+        else:
+            digits = m
+            dot_pos = len(m)
+        new_dot: int = dot_pos + exp
+        while len(digits) < new_dot:
+            digits = digits + "0"
+        while new_dot <= 0:
+            digits = "0" + digits
+            new_dot += 1
+        frac: str = digits[new_dot:]
+        if frac == "":
+            frac = "0"
+        result: str = digits[:new_dot] + "." + frac
+        while result.endswith("0") and not result.endswith(".0"):
+            result = result[:-1]
+        return sign + result
+    # Keep scientific notation but normalize to Python's format:
+    # strip trailing .0 from mantissa, format exponent as +/-DD.
+    while mantissa.endswith("0") and "." in mantissa and not mantissa.endswith(".0"):
+        mantissa = mantissa[:-1]
+    if mantissa.endswith(".0"):
+        mantissa = mantissa[:-2]
+    exp_digits: str = str(abs(exp))
+    if len(exp_digits) < 2:
+        exp_digits = "0" + exp_digits
+    if exp >= 0:
+        exp_part: str = "e+" + exp_digits
+    else:
+        exp_part = "e-" + exp_digits
+    return mantissa + exp_part
+
+
 def _safe_name(name: str) -> str:
     """Rename if name collides with a Taytsh keyword."""
     if name in TAYTSH_KEYWORDS:
@@ -676,6 +798,17 @@ def _is_struct_type(td: TypeNode) -> bool:
     return False
 
 
+def _is_class_type(td: TypeNode | None) -> bool:
+    """Check if type is a struct or interface (needs structural equality)."""
+    if td is None:
+        return False
+    if isinstance(td, PointerType):
+        return isinstance(td.target, (StructRef, InterfaceRef))
+    if isinstance(td, (StructRef, InterfaceRef)):
+        return True
+    return False
+
+
 def _struct_name(td: TypeNode) -> str:
     """Get struct name from TypeNode."""
     if isinstance(td, PointerType):
@@ -1113,7 +1246,7 @@ def _lower_constant(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             raw = str(val.value)
         return TIntLit(pos, val.value, raw, {})
     if isinstance(val, JFloat):
-        return TFloatLit(pos, val.value, repr(val.value), {})
+        return TFloatLit(pos, val.value, _float_repr(val.value), {})
     if isinstance(val, JStr):
         if get_bool(node, "_is_bytes"):
             byte_vals: list[int] = []
@@ -1740,7 +1873,11 @@ def _lower_single_compare(
     left = _lower_expr(left_node, env, ctx)
     right = _lower_expr(comp_node, env, ctx)
     left, right = _coerce_compare(pos, left, right, left_type, right_type)
-    return _make_compare_expr(pos, left, op_node, right)
+    result = _make_compare_expr(pos, left, op_node, right)
+    if op_type in ("Eq", "NotEq") and isinstance(result, TBinaryOp):
+        if _is_class_type(left_type) or _is_class_type(right_type):
+            result.annotations["struct_eq"] = "true"
+    return result
 
 
 def _maybe_promote_rune_compare(
@@ -2171,6 +2308,20 @@ def _lower_conversion_call(
                 pos,
                 "FormatInt",
                 [int_arg, TIntLit(pos, 16, "16", {})],
+            )
+    if fname == "oct":
+        if args and isinstance(args[0], dict):
+            return _make_call(
+                pos,
+                "FormatInt",
+                [_lower_expr(args[0], env, ctx), TIntLit(pos, 8, "8", {})],
+            )
+    if fname == "bin":
+        if args and isinstance(args[0], dict):
+            return _make_call(
+                pos,
+                "FormatInt",
+                [_lower_expr(args[0], env, ctx), TIntLit(pos, 2, "2", {})],
             )
     return None
 
@@ -3569,12 +3720,12 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             if argv_idx is not None and argv_idx >= 1:
                 idx = TIntLit(pos, argv_idx - 1, str(argv_idx - 1), {})
                 return TIndex(pos, args_call, idx, {})
-    # hex(x)[2:] → FormatInt(x, 16) (hex() includes "0x" prefix, FormatInt does not)
+    # hex/oct/bin(x)[2:] → FormatInt(x, base) (builtins include prefix, FormatInt does not)
     if (
         _is_ast(slice_node, "Slice")
         and _is_ast(obj_node, "Call")
         and _is_ast(get_node(obj_node, "func"), "Name")
-        and get_str(get_node(obj_node, "func"), "id") == "hex"
+        and get_str(get_node(obj_node, "func"), "id") in ("hex", "oct", "bin")
     ):
         lower_jv = slice_node.get("lower")
         upper_jv = slice_node.get("upper")
@@ -3828,10 +3979,23 @@ def _lower_any_all(fname: str, node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExp
     target = get_node(gen, "target")
     iter_node = get_node(gen, "iter")
     binding, b_ann = _extract_binding(target)
-    iter_expr = _lower_extend_arg(iter_node, env, ctx)
+    is_items = False
+    if _is_ast(iter_node, "Call"):
+        iter_func = get_node(iter_node, "func")
+        if _is_ast(iter_func, "Attribute") and get_str(iter_func, "attr") == "items":
+            is_items = True
     comp_env = env.copy()
     for b in binding:
         comp_env.declared.add(b)
+    if is_items:
+        dict_node = get_node(get_node(iter_node, "func"), "value")
+        dict_type = _infer_expr_type(dict_node, env, ctx)
+        if isinstance(dict_type, MapType) and len(binding) == 2:
+            comp_env.var_types[binding[0]] = dict_type.key
+            comp_env.var_types[binding[1]] = dict_type.value
+        iter_expr = _lower_expr(dict_node, env, ctx)
+    else:
+        iter_expr = _lower_extend_arg(iter_node, env, ctx)
     elt_expr = _lower_expr(elt, comp_env, ctx)
     cid = ctx.comp_counter
     ctx.comp_counter = cid + 1
@@ -3856,6 +4020,8 @@ def _lower_any_all(fname: str, node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExp
         body = [TIfStmt(pos, cond, inner_body, None, {})]
     for_ann: Ann = {}
     for_ann.update(b_ann)
+    if is_items:
+        for_ann["for.items"] = "true"
     for_ann["provenance"] = "any_call" if is_any else "all_call"
     iter_type = _infer_expr_type(iter_node, env, ctx)
     if len(binding) == 1 and _is_type_dict(iter_type, ["bytes"]):
@@ -6417,10 +6583,61 @@ def _build_struct(
     ancestor_methods = _collect_ancestor_methods(name, own_method_names, ctx)
     for am in ancestor_methods:
         methods.append(am)
+    # Synthesize __eq__ for structural equality (needed by non-Python backends)
+    if "__eq__" not in own_method_names and not any(
+        m.name == "__eq__" for m in ancestor_methods
+    ):
+        eq_method = _synthesize_eq_method(pos, name, fields)
+        methods.append(eq_method)
     ann: Ann = {}
     if is_exception:
         ann["_is_exception"] = "true"
     return TStructDecl(pos, name, parent, fields, methods, ann)
+
+
+def _synthesize_eq_method(
+    pos: Pos, class_name: str, fields: list[TFieldDecl]
+) -> TFnDecl:
+    """Synthesize __eq__(this, other) for structural equality."""
+    self_param = TParam(pos, "this", None, {})
+    other_param = TParam(pos, "other", TIdentType(pos, class_name), {})
+    params = [self_param, other_param]
+    other_var = TVar(pos, "other", {})
+    # if not isinstance(other, ClassName): return False
+    isinstance_check = _make_call(
+        pos, "IsType", [other_var, TStringLit(pos, class_name, {})]
+    )
+    guard = TIfStmt(
+        pos,
+        TUnaryOp(pos, "!", isinstance_check, {}),
+        [TReturnStmt(pos, TBoolLit(pos, False, {}), {})],
+        None,
+        {},
+    )
+    # return this.f1 == other.f1 and this.f2 == other.f2 and ...
+    self_var = TVar(pos, "this", {})
+    if fields:
+        cmp: TExpr = TBinaryOp(
+            pos,
+            "==",
+            TFieldAccess(pos, self_var, fields[0].name, {}),
+            TFieldAccess(pos, other_var, fields[0].name, {}),
+            {},
+        )
+        for fld in fields[1:]:
+            right_cmp = TBinaryOp(
+                pos,
+                "==",
+                TFieldAccess(pos, self_var, fld.name, {}),
+                TFieldAccess(pos, other_var, fld.name, {}),
+                {},
+            )
+            cmp = TBinaryOp(pos, "&&", cmp, right_cmp, {})
+    else:
+        cmp = TBoolLit(pos, True, {})
+    ret = TReturnStmt(pos, cmp, {})
+    body: list[TStmt] = [guard, ret]
+    return TFnDecl(pos, "__eq__", params, TPrimitive(pos, "bool"), body, {})
 
 
 def _build_class_constants(class_node: ASTNode, ctx: _LowerCtx) -> list[TModuleItem]:

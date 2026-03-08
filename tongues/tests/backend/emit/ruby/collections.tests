@@ -45,3 +45,6 @@ s.each_char do |ch|
 
 === list repetition with annotation
 [0] * 5
+
+=== dict get with default
+d.fetch("a", 99)

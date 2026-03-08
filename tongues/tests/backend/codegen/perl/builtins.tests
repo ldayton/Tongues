@@ -16,6 +16,12 @@ my $n = do { my $__s = "42"; my $__b = 10; $__b == 0 ? ($__s =~ /^0[xX]/ ? hex($
 === FormatInt
 my $hex = sprintf('%x', 255);
 
+=== FormatInt octal
+my $oct = sprintf('%o', 255);
+
+=== FormatInt binary
+my $bin = sprintf('%b', 255);
+
 === RuneToInt and RuneFromInt
 my $n = ord("A");
 

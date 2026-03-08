@@ -16,6 +16,12 @@ n = "42".to_i(10)
 === FormatInt
 hex = 255.to_s(16)
 
+=== FormatInt octal
+oct = 255.to_s(8)
+
+=== FormatInt binary
+bin = 255.to_s(2)
+
 === RuneToInt and RuneFromInt
 n = "A".ord
 

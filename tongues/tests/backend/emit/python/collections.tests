@@ -45,3 +45,6 @@ for ch in s:
 
 === list repetition with annotation
 [0] * 5
+
+=== dict get with default
+d.get("a", 99)

@@ -12,3 +12,6 @@ any(x == target for x in xs)
 
 === any assigns to variable
 found: bool = any(x > 0 for x in xs)
+
+=== any with dict items tuple unpack
+any(v > 10 for k, v in d.items())

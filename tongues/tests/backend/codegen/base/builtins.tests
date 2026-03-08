@@ -34,6 +34,18 @@ fn Main() -> void {
     WritelnOut(hex)
 }
 
+=== FormatInt octal
+fn Main() -> void {
+    let oct: string = FormatInt(255, 8)
+    WritelnOut(oct)
+}
+
+=== FormatInt binary
+fn Main() -> void {
+    let bin: string = FormatInt(255, 2)
+    WritelnOut(bin)
+}
+
 === RuneToInt and RuneFromInt
 fn Main() -> void {
     let n: int = RuneToInt('A')

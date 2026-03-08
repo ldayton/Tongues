@@ -12,3 +12,6 @@ xs.any? { |x| x == target }
 
 === any assigns to variable
 found = xs.any? { |x| x > 0 }
+
+=== any with dict items tuple unpack
+d.any? { |k, v| v > 10 }

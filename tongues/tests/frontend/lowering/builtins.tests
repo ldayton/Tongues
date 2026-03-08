@@ -298,3 +298,24 @@ def f(a: int, b: int, c: int) -> list[int]:
 ---
 RangeList(a, b, c)
 ---
+
+=== hex slice to FormatInt
+def f(n: int) -> str:
+    return hex(n)[2:]
+---
+FormatInt(n, 16)
+---
+
+=== oct slice to FormatInt
+def f(n: int) -> str:
+    return oct(n)[2:]
+---
+FormatInt(n, 8)
+---
+
+=== bin slice to FormatInt
+def f(n: int) -> str:
+    return bin(n)[2:]
+---
+FormatInt(n, 2)
+---

@@ -134,3 +134,11 @@ def main() -> None:
     print(str(len(slots)))
 if __name__ == "__main__":
     main()
+
+=== dict get with default
+def main() -> None:
+    d: dict[str, int] = {"a": 0, "b": 2}
+    x: int = d.get("a", 99)
+    print(str(x))
+if __name__ == "__main__":
+    main()

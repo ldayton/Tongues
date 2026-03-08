@@ -13,6 +13,12 @@ n: int = int("42", 10)
 === FormatInt
 hex_: str = format(255, "x")
 
+=== FormatInt octal
+oct_: str = format(255, "o")
+
+=== FormatInt binary
+bin_: str = format(255, "b")
+
 === RuneToInt and RuneFromInt
 n: int = ord("A")
 
