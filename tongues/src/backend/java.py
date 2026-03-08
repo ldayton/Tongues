@@ -4128,7 +4128,7 @@ class _JavaEmitter(Emitter):
             return "System.in.readNBytes(" + self._a(args, 0) + ")"
         if name == "Encode":
             inner = args[0].value
-            if isinstance(inner, TBinaryOp):
+            if isinstance(inner, (TBinaryOp, TCall)):
                 return "(" + self._a(args, 0) + ").getBytes(StandardCharsets.UTF_8)"
             return self._a(args, 0) + ".getBytes(StandardCharsets.UTF_8)"
         if name == "Decode":
