@@ -10,4 +10,5 @@ ENV PATH="/root/.local/bin:${PATH}"
 RUN gem install rubocop --no-document \
     && rubocop --version | grep -q "."
 RUN uv python install "~=3.12.0"
+RUN curl -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
 WORKDIR /workspace

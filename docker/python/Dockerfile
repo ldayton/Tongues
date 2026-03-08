@@ -1,9 +1,10 @@
 FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y curl \
+RUN apt-get update && apt-get install -y curl nodejs npm \
     && rm -rf /var/lib/apt/lists/* \
     && curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:${PATH}"
 RUN uv python install "~=3.12.0"
 RUN uvx ruff --version | grep -q "ruff"
+RUN curl -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
 WORKDIR /workspace

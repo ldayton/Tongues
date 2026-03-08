@@ -5,20 +5,16 @@ on:
   pull_request:
   workflow_dispatch:
 
+env:
+  DOCKER_BUILDKIT: 1
+
 jobs:
   style:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-      - uses: extractions/setup-just@v3
-      - run: just -f justfile.v2 style
+      - run: docker build -t tongues-python docker/python
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 style
 
   # ---------------------------------------------------------------------------
   # Transpile jobs — one per language, upload artifacts for downstream jobs
@@ -28,14 +24,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - uses: extractions/setup-just@v3
+      - run: docker build -t tongues-python docker/python
       - run: |
-          just -f justfile.v2 _transpile-tongues python
-          just -f justfile.v2 _transpile-harness python
+          docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _transpile-tongues python
+          docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _transpile-harness python
       - uses: actions/upload-artifact@v4
         with:
           name: transpiled-python
@@ -47,14 +39,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - uses: extractions/setup-just@v3
+      - run: docker build -t tongues-ruby docker/ruby
       - run: |
-          just -f justfile.v2 _transpile-tongues ruby
-          just -f justfile.v2 _transpile-harness ruby
+          docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile.v2 _transpile-tongues ruby
+          docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile.v2 _transpile-harness ruby
       - uses: actions/upload-artifact@v4
         with:
           name: transpiled-ruby
@@ -66,14 +54,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - uses: extractions/setup-just@v3
+      - run: docker build -t tongues-perl docker/perl
       - run: |
-          just -f justfile.v2 _transpile-tongues perl
-          just -f justfile.v2 _transpile-harness perl
+          docker run --rm -v $PWD:/workspace tongues-perl just -f justfile.v2 _transpile-tongues perl
+          docker run --rm -v $PWD:/workspace tongues-perl just -f justfile.v2 _transpile-harness perl
       - uses: actions/upload-artifact@v4
         with:
           name: transpiled-perl
@@ -85,14 +69,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - uses: extractions/setup-just@v3
+      - run: docker build -t tongues-javascript docker/javascript
       - run: |
-          just -f justfile.v2 _transpile-tongues javascript
-          just -f justfile.v2 _transpile-harness javascript
+          docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile.v2 _transpile-tongues javascript
+          docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile.v2 _transpile-harness javascript
       - uses: actions/upload-artifact@v4
         with:
           name: transpiled-javascript
@@ -109,62 +89,49 @@ jobs:
     needs: transpile-python
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-python
           path: tongues/.out
-      - run: python3 tongues/tests/test-transpiled.py .out/tongues.py
+      - run: docker build -t tongues-python docker/python
+      - run: docker run --rm -v $PWD:/workspace tongues-python
+          python3 tongues/tests/test-transpiled.py .out/tongues.py
 
   retranspile-python:
     runs-on: ubuntu-latest
     needs: transpile-python
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-python
           path: tongues/.out
-      - uses: extractions/setup-just@v3
-      - run: just -f justfile.v2 _retranspile python
+      - run: docker build -t tongues-python docker/python
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _retranspile python
 
   fixed-point-python:
     runs-on: ubuntu-latest
     needs: transpile-python
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-python
           path: tongues/.out
-      - uses: extractions/setup-just@v3
-      - run: just -f justfile.v2 fixed-point python
+      - run: docker build -t tongues-python docker/python
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 fixed-point python
 
   pyright:
     runs-on: ubuntu-latest
     needs: transpile-python
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-python
           path: tongues/.out
-      - uses: extractions/setup-just@v3
-      - run: just -f justfile.v2 _pyright
+      - run: docker build -t tongues-python docker/python
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _pyright
 
   # ---------------------------------------------------------------------------
   # Ruby: test, retranspile, fixed-point
@@ -175,52 +142,37 @@ jobs:
     needs: transpile-ruby
     steps:
       - uses: actions/checkout@v6
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.3"
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-ruby
           path: tongues/.out
-      - run: ruby tongues/tests/test-transpiled.rb .out/tongues.rb
+      - run: docker build -t tongues-ruby docker/ruby
+      - run: docker run --rm -v $PWD:/workspace tongues-ruby
+          ruby tongues/tests/test-transpiled.rb .out/tongues.rb
 
   retranspile-ruby:
     runs-on: ubuntu-latest
     needs: transpile-ruby
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.3"
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-ruby
           path: tongues/.out
-      - uses: extractions/setup-just@v3
-      - run: just -f justfile.v2 _retranspile ruby
+      - run: docker build -t tongues-ruby docker/ruby
+      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile.v2 _retranspile ruby
 
   fixed-point-ruby:
     runs-on: ubuntu-latest
     needs: transpile-ruby
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: "3.3"
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-ruby
           path: tongues/.out
-      - uses: extractions/setup-just@v3
-      - run: just -f justfile.v2 fixed-point ruby
+      - run: docker build -t tongues-ruby docker/ruby
+      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile.v2 fixed-point ruby
 
   # ---------------------------------------------------------------------------
   # Perl: test, retranspile, fixed-point
@@ -235,39 +187,33 @@ jobs:
         with:
           name: transpiled-perl
           path: tongues/.out
-      - run: perl tongues/tests/test-transpiled.pl .out/tongues.pl
+      - run: docker build -t tongues-perl docker/perl
+      - run: docker run --rm -v $PWD:/workspace tongues-perl
+          perl tongues/tests/test-transpiled.pl .out/tongues.pl
 
   retranspile-perl:
     runs-on: ubuntu-latest
     needs: transpile-perl
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-perl
           path: tongues/.out
-      - uses: extractions/setup-just@v3
-      - run: just -f justfile.v2 _retranspile perl
+      - run: docker build -t tongues-perl docker/perl
+      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile.v2 _retranspile perl
 
   fixed-point-perl:
     runs-on: ubuntu-latest
     needs: transpile-perl
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-perl
           path: tongues/.out
-      - uses: extractions/setup-just@v3
-      - run: just -f justfile.v2 fixed-point perl
+      - run: docker build -t tongues-perl docker/perl
+      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile.v2 fixed-point perl
 
   # ---------------------------------------------------------------------------
   # JavaScript: test, fixed-point (no retranspile, pending #224)
@@ -278,33 +224,25 @@ jobs:
     needs: transpile-javascript
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-javascript
           path: tongues/.out
-      - run: node tongues/tests/test-transpiled.js .out/tongues.js
+      - run: docker build -t tongues-javascript docker/javascript
+      - run: docker run --rm -v $PWD:/workspace tongues-javascript
+          node tongues/tests/test-transpiled.js .out/tongues.js
 
   fixed-point-javascript:
     runs-on: ubuntu-latest
     needs: transpile-javascript
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
       - uses: actions/download-artifact@v4
         with:
           name: transpiled-javascript
           path: tongues/.out
-      - uses: extractions/setup-just@v3
-      - run: just -f justfile.v2 fixed-point javascript
+      - run: docker build -t tongues-javascript docker/javascript
+      - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile.v2 fixed-point javascript
 
   # ---------------------------------------------------------------------------
   # Generative / property-based tests
@@ -314,23 +252,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - uses: extractions/setup-just@v3
-      - run: just -f justfile.v2 _pytest-gen-tycheck
+      - run: docker build -t tongues-python docker/python
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _pytest-gen-tycheck
 
   pytest-gen-softfloat:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-      - uses: extractions/setup-just@v3
-      - run: just -f justfile.v2 _pytest-gen-softfloat
+      - run: docker build -t tongues-python docker/python
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _pytest-gen-softfloat
 
   # ---------------------------------------------------------------------------
   # Gate — single status check for branch protection
