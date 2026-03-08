@@ -7,7 +7,7 @@ if (value instanceof Integer n) {
 }
 
 === unused match binding is omitted
-if (value instanceof Integer) {
+if (value instanceof Integer n) {
     return "int";
 
 === match on optional with nil case

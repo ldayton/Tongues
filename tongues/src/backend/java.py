@@ -420,8 +420,13 @@ class _JavaEmitter(Emitter):
         self._needs_replace_count: bool = False
         self._needs_to_byte_array: bool = False
         self._needs_replace_slice: bool = False
+        self._needs_concat_lists: bool = False
+        self._needs_concat_bytes: bool = False
         self._ret_is_void: bool = True
         self._var_aliases: dict[str, str] = {}
+        self._interface_methods: dict[str, list[TFnDecl]] = {}
+        self._interface_fields: dict[str, list[TFieldDecl]] = {}
+        self._tmp_counter: int = 0
 
     # ── Type emission ────────────────────────────────────────
 
@@ -445,8 +450,9 @@ class _JavaEmitter(Emitter):
             if typ.kind == "bytes":
                 return "byte[]"
         if isinstance(typ, TIdentType):
-            if typ.name in self._enum_names:
-                return typ.name
+            mapped = _ISTYPE_MAP.get(typ.name)
+            if mapped is not None:
+                return mapped
             return typ.name
         if isinstance(typ, TListType):
             return "List<" + self._boxed_type(typ.element) + ">"
@@ -490,6 +496,137 @@ class _JavaEmitter(Emitter):
             if typ.kind == "bytes":
                 return "byte[]"
         return self._type(typ)
+
+    def _expr_type_ann(self, expr: TExpr) -> str:
+        """Try to determine the type annotation string for an expression."""
+        ann = expr.annotations.get("type", "")
+        if ann:
+            return ann
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            if typ is not None:
+                return self._type_to_ann(typ)
+        if isinstance(expr, TFieldAccess):
+            owner_ann = self._expr_type_ann(expr.obj)
+            if owner_ann and owner_ann in self.struct_names:
+                fdecls = self._struct_field_decls.get(owner_ann, [])
+                for fd in fdecls:
+                    if fd.name == expr.field:
+                        return self._type_to_ann(fd.typ)
+        if isinstance(expr, TListLit):
+            return "list["
+        if isinstance(expr, TBytesLit):
+            return "bytes"
+        return ""
+
+    def _type_to_ann(self, typ: TType) -> str:
+        """Convert a TType to an annotation string for cast lookups."""
+        if isinstance(typ, TPrimitive):
+            return typ.kind
+        if isinstance(typ, TIdentType):
+            return typ.name
+        if isinstance(typ, TListType):
+            return "list[" + self._type_to_ann(typ.element) + "]"
+        if isinstance(typ, TMapType):
+            return (
+                "map["
+                + self._type_to_ann(typ.key)
+                + ", "
+                + self._type_to_ann(typ.value)
+                + "]"
+            )
+        if isinstance(typ, TSetType):
+            return "set[" + self._type_to_ann(typ.element) + "]"
+        return ""
+
+    def _iterable_tuple_types(self, iterable: TExpr) -> list[str]:
+        """Get the Java types for each element of a tuple iterable (list[tuple[...]])."""
+        typ: TType | None = None
+        if isinstance(iterable, TFieldAccess):
+            owner_ann = self._expr_type_ann(iterable.obj)
+            if owner_ann and owner_ann in self.struct_names:
+                fdecls = self._struct_field_decls.get(owner_ann, [])
+                for fd in fdecls:
+                    if fd.name == iterable.field:
+                        typ = fd.typ
+                        break
+        elif isinstance(iterable, TVar):
+            typ = self.var_types.get(iterable.name)
+        if typ is None:
+            return []
+        if not isinstance(typ, TListType):
+            return []
+        elem = typ.element
+        if not isinstance(elem, TTupleType):
+            return []
+        result: list[str] = []
+        for et in elem.elements:
+            result.append(self._type(et))
+        return result
+
+    def _tuple_cast_type(self, ann: str) -> str | None:
+        """Return the boxed Java cast type for extracting from Object[]."""
+        _BOXED_CAST: dict[str, str] = {
+            "int": "Integer",
+            "float": "Double",
+            "bool": "Boolean",
+            "string": "String",
+            "rune": "Character",
+            "byte": "Integer",
+            "bytes": "byte[]",
+        }
+        if ann in _BOXED_CAST:
+            return _BOXED_CAST[ann]
+        result = self._java_type_for_ann(ann)
+        if result is not None:
+            return result
+        return None
+
+    def _java_type_for_ann(self, ann: str) -> str | None:
+        """Convert a type annotation string to a Java type for casting."""
+        _PRIM: dict[str, str] = {
+            "int": "int",
+            "float": "double",
+            "bool": "boolean",
+            "string": "String",
+            "rune": "char",
+            "byte": "int",
+            "bytes": "byte[]",
+        }
+        if ann in _PRIM:
+            return None
+        if ann in self.struct_names:
+            return _safe_name(ann)
+        if ann in self._enum_names:
+            return ann
+        if ann.startswith("list["):
+            return "List<" + self._boxed_ann(ann[5:-1]) + ">"
+        if ann.startswith("set["):
+            return "HashSet<" + self._boxed_ann(ann[4:-1]) + ">"
+        if ann.startswith("map["):
+            inner = ann[4:-1]
+            comma = inner.find(", ")
+            if comma >= 0:
+                k = inner[:comma]
+                v = inner[comma + 2 :]
+                return "HashMap<" + self._boxed_ann(k) + ", " + self._boxed_ann(v) + ">"
+        return None
+
+    def _boxed_ann(self, ann: str) -> str:
+        """Convert a type annotation to a boxed Java type name."""
+        _BOXED: dict[str, str] = {
+            "int": "Integer",
+            "float": "Double",
+            "bool": "Boolean",
+            "string": "String",
+            "rune": "Character",
+            "byte": "Integer",
+        }
+        if ann in _BOXED:
+            return _BOXED[ann]
+        if ann in self.struct_names or ann in self._enum_names:
+            return _safe_name(ann)
+        return "Object"
 
     def _zero_value(self, typ: TType) -> str:
         if isinstance(typ, TPrimitive):
@@ -558,6 +695,45 @@ class _JavaEmitter(Emitter):
             self.indent -= 1
             self._line("}")
 
+    def _collect_interface_members(self, module: TModule) -> None:
+        """Find methods and fields shared by all implementors of each interface."""
+        implementors: dict[str, list[TStructDecl]] = {}
+        for decl in module.decls:
+            if isinstance(decl, TStructDecl) and decl.parent is not None:
+                if decl.parent not in implementors:
+                    implementors[decl.parent] = []
+                implementors[decl.parent].append(decl)
+        for iface_name, structs in implementors.items():
+            if not structs:
+                continue
+            first_methods: dict[str, TFnDecl] = {}
+            for m in structs[0].methods:
+                first_methods[m.name] = m
+            common_methods: set[str] = set(first_methods.keys())
+            first_fields: dict[str, TFieldDecl] = {}
+            for f in structs[0].fields:
+                first_fields[f.name] = f
+            common_fields: set[str] = set(first_fields.keys())
+            for s in structs[1:]:
+                other_methods: set[str] = set()
+                for m in s.methods:
+                    other_methods.add(m.name)
+                common_methods &= other_methods
+                other_fields: set[str] = set()
+                for f in s.fields:
+                    other_fields.add(f.name)
+                common_fields &= other_fields
+            result_m: list[TFnDecl] = []
+            for mname in common_methods:
+                result_m.append(first_methods[mname])
+            if result_m:
+                self._interface_methods[iface_name] = result_m
+            result_f: list[TFieldDecl] = []
+            for fname in common_fields:
+                result_f.append(first_fields[fname])
+            if result_f:
+                self._interface_fields[iface_name] = result_f
+
     # ── Module ───────────────────────────────────────────────
 
     def emit_module(self, module: TModule) -> None:
@@ -570,6 +746,7 @@ class _JavaEmitter(Emitter):
             if isinstance(decl, TStructDecl):
                 for m in decl.methods:
                     self.fn_names.add(m.name)
+        self._collect_interface_members(module)
         all_builtins: set[str] = set()
         for decl in module.decls:
             if isinstance(decl, TFnDecl):
@@ -637,6 +814,25 @@ class _JavaEmitter(Emitter):
                 "for (int i = 0; i < xs.size(); i++) result[i] = xs.get(i).byteValue();"
             )
             self._line("return result;")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_concat_lists:
+            self._line()
+            self._line("static <T> List<T> _concatLists(List<T> a, List<T> b) {")
+            self.indent += 1
+            self._line("List<T> r = new ArrayList<>(a);")
+            self._line("r.addAll(b);")
+            self._line("return r;")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_concat_bytes:
+            self._line()
+            self._line("static byte[] _concatBytes(byte[] a, byte[] b) {")
+            self.indent += 1
+            self._line("byte[] r = new byte[a.length + b.length];")
+            self._line("System.arraycopy(a, 0, r, 0, a.length);")
+            self._line("System.arraycopy(b, 0, r, a.length, b.length);")
+            self._line("return r;")
             self.indent -= 1
             self._line("}")
         if self._needs_replace_count:
@@ -769,14 +965,49 @@ class _JavaEmitter(Emitter):
             extends = " extends " + _safe_name(parent)
         self._line("static class " + name + extends + " {")
         self.indent += 1
+        declared_fields: set[str] = set()
         for f in decl.fields:
             self._line(self._type(f.typ) + " " + _safe_name(f.name) + ";")
+            declared_fields.add(f.name)
+        parent_fields: set[str] = set()
+        if parent and parent in self._interface_fields:
+            for pf in self._interface_fields[parent]:
+                parent_fields.add(pf.name)
+        for f in self._interface_fields.get(decl.name, []):
+            if f.name not in declared_fields and f.name not in parent_fields:
+                self._line(self._type(f.typ) + " " + _safe_name(f.name) + ";")
+        parent_methods: set[str] = set()
+        if parent and parent in self._interface_methods:
+            for pm in self._interface_methods[parent]:
+                parent_methods.add(pm.name)
+        methods = self._interface_methods.get(decl.name, [])
+        for m in methods:
+            if m.name in parent_methods:
+                continue
+            ret = "void"
+            if m.ret is not None:
+                ret = self._type(m.ret)
+            params = m.params[1:]
+            param_str = ", ".join(
+                self._type(p.typ) + " " + _safe_name(p.name)
+                for p in params
+                if p.typ is not None
+            )
+            self._line(
+                ret
+                + " "
+                + _safe_name(m.name)
+                + "("
+                + param_str
+                + ") throws Exception { throw new RuntimeException(); }"
+            )
         self.indent -= 1
         self._line("}")
 
     def _emit_fn(self, decl: TFnDecl) -> None:
         old_var_types = self.var_types.copy()
         old_ret = self._ret_is_void
+        self._tmp_counter = 0
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
@@ -854,6 +1085,7 @@ class _JavaEmitter(Emitter):
         old_var_types = self.var_types.copy()
         old_self = self.self_name
         old_ret = self._ret_is_void
+        self._tmp_counter = 0
         self.self_name = decl.params[0].name if decl.params else None
         method_params = decl.params[1:]
         for p in method_params:
@@ -933,10 +1165,7 @@ class _JavaEmitter(Emitter):
                     )
                     old_aliases = self._var_aliases.copy()
                     self._var_aliases[var_name] = cast_name
-                    i += 1
-                    while i < len(stmts):
-                        self._emit_stmt(stmts[i])
-                        i += 1
+                    self._emit_stmts(stmts[i + 1 :])
                     self._var_aliases = old_aliases
                     return
             self._emit_stmt(stmt)
@@ -972,7 +1201,24 @@ class _JavaEmitter(Emitter):
             case TTupleAssignStmt():
                 self._emit_tuple_assign(stmt)
             case TOpAssignStmt():
-                if (
+                if stmt.op == "+=" and self._is_list_expr(stmt.target):
+                    self._line(
+                        self._expr(stmt.target)
+                        + ".addAll("
+                        + self._expr(stmt.value)
+                        + ");"
+                    )
+                elif stmt.op == "+=" and self._is_bytes_expr(stmt.target):
+                    self._needs_concat_bytes = True
+                    self._line(
+                        self._expr(stmt.target)
+                        + " = _concatBytes("
+                        + self._expr(stmt.target)
+                        + ", "
+                        + self._expr(stmt.value)
+                        + ");"
+                    )
+                elif (
                     self.strict_math
                     and stmt.op in JAVA_STRICT_INT_COMPOUND
                     and self._is_int_expr(stmt.target)
@@ -1142,12 +1388,35 @@ class _JavaEmitter(Emitter):
         if self._is_divmod_call(stmt.value):
             self._emit_divmod_assign(stmt, unused_indices)
             return
-        tmp = "__tmp"
+        tmp = "__tmp" + str(self._tmp_counter)
+        self._tmp_counter += 1
         self._line("var " + tmp + " = " + self._expr(stmt.value) + ";")
         for i, t in enumerate(stmt.targets):
             if i in unused_indices:
                 continue
-            self._line(self._expr(t) + " = " + tmp + "[" + str(i) + "];")
+            rhs = tmp + "[" + str(i) + "]"
+            type_ann = t.annotations.get("type", "")
+            if not type_ann and isinstance(t, TVar):
+                vtype = self.var_types.get(t.name)
+                if vtype is not None:
+                    type_ann = self._type_to_ann(vtype)
+            if type_ann:
+                cast = self._tuple_cast_type(type_ann)
+                if cast is not None:
+                    rhs = "((" + cast + ") " + rhs + ")"
+                elif isinstance(t, TVar):
+                    vtype2 = self.var_types.get(t.name)
+                    if vtype2 is not None:
+                        jtype = self._type(vtype2)
+                        if jtype != "Object" and jtype != "var":
+                            rhs = "((" + jtype + ") " + rhs + ")"
+            elif isinstance(t, TVar):
+                vtype = self.var_types.get(t.name)
+                if vtype is not None:
+                    jtype = self._type(vtype)
+                    if jtype != "Object" and jtype != "var":
+                        rhs = "((" + jtype + ") " + rhs + ")"
+            self._line(self._expr(t) + " = " + rhs + ";")
 
     def _emit_expr_stmt(self, stmt: TExprStmt) -> None:
         expr = stmt.expr
@@ -1383,6 +1652,25 @@ class _JavaEmitter(Emitter):
             )
         )
         is_map = self._is_map_type(stmt.iterable)
+        if len(binding) >= 2 and not is_map and not is_string:
+            tuple_types = self._iterable_tuple_types(stmt.iterable)
+            self._line("for (var __entry : " + iterable_expr + ") {")
+            self.indent += 1
+            for bi in range(len(binding)):
+                bname = binding[bi]
+                rhs = "__entry[" + str(bi) + "]"
+                btype = self.var_types.get(bname)
+                if btype is not None:
+                    jtype = self._type(btype)
+                    if jtype != "Object":
+                        rhs = "(" + jtype + ") " + rhs
+                elif bi < len(tuple_types) and tuple_types[bi] != "Object":
+                    rhs = "(" + tuple_types[bi] + ") " + rhs
+                self._line("var " + bname + " = " + rhs + ";")
+            self._emit_stmts(stmt.body)
+            self.indent -= 1
+            self._line("}")
+            return
         if is_string:
             self._line(
                 "for (char " + binding[0] + " : " + iterable_expr + ".toCharArray()) {"
@@ -1978,6 +2266,11 @@ class _JavaEmitter(Emitter):
             self._line("}")
 
     def _emit_match_switch(self, stmt: TMatchStmt, expr_str: str) -> None:
+        plain = (
+            _safe_name(stmt.expr.name)
+            if isinstance(stmt.expr, TVar) and stmt.expr.name != self.self_name
+            else None
+        )
         self._line("switch (" + expr_str + ") {")
         self.indent += 1
         for case in stmt.cases:
@@ -1987,6 +2280,8 @@ class _JavaEmitter(Emitter):
                 binding = _safe_name(pat.name)
                 old_aliases = self._var_aliases.copy()
                 self._var_aliases[expr_str] = binding
+                if plain is not None and plain != expr_str:
+                    self._var_aliases[plain] = binding
                 self._emit_switch_case("case " + type_name + " " + binding, case.body)
                 self._var_aliases = old_aliases
         if stmt.default:
@@ -1995,47 +2290,37 @@ class _JavaEmitter(Emitter):
         self._line("}")
 
     def _emit_match_instanceof(self, stmt: TMatchStmt, expr_str: str) -> None:
+        plain = (
+            _safe_name(stmt.expr.name)
+            if isinstance(stmt.expr, TVar) and stmt.expr.name != self.self_name
+            else None
+        )
         first = True
         for case in stmt.cases:
             pat = case.pattern
             if isinstance(pat, TPatternType):
                 type_name = self._boxed_type(pat.type_name)
                 binding = _safe_name(pat.name)
-                unused = pat.annotations.get("liveness.match_var_unused") == "true"
                 if first:
-                    if unused:
-                        self._line(
-                            "if (" + expr_str + " instanceof " + type_name + ") {"
-                        )
-                    else:
-                        self._line(
-                            "if ("
-                            + expr_str
-                            + " instanceof "
-                            + type_name
-                            + " "
-                            + binding
-                            + ") {"
-                        )
+                    self._line(
+                        "if ("
+                        + expr_str
+                        + " instanceof "
+                        + type_name
+                        + " "
+                        + binding
+                        + ") {"
+                    )
                 else:
-                    if unused:
-                        self._line(
-                            "} else if ("
-                            + expr_str
-                            + " instanceof "
-                            + type_name
-                            + ") {"
-                        )
-                    else:
-                        self._line(
-                            "} else if ("
-                            + expr_str
-                            + " instanceof "
-                            + type_name
-                            + " "
-                            + binding
-                            + ") {"
-                        )
+                    self._line(
+                        "} else if ("
+                        + expr_str
+                        + " instanceof "
+                        + type_name
+                        + " "
+                        + binding
+                        + ") {"
+                    )
             elif isinstance(pat, TPatternNil):
                 if first:
                     self._line("if (" + expr_str + " == null) {")
@@ -2045,6 +2330,8 @@ class _JavaEmitter(Emitter):
             old_aliases = self._var_aliases.copy()
             if isinstance(pat, TPatternType):
                 self._var_aliases[expr_str] = _safe_name(pat.name)
+                if plain is not None and plain != expr_str:
+                    self._var_aliases[plain] = _safe_name(pat.name)
             self.indent += 1
             self._emit_stmts(case.body)
             self.indent -= 1
@@ -2171,11 +2458,15 @@ class _JavaEmitter(Emitter):
                 return self._var_aliases[n]
             if expr.name in self.fn_names:
                 return _lower1(n)
+            narrowed = expr.annotations.get("scope.narrowed_type", "")
+            if narrowed and narrowed in self.struct_names:
+                return "((" + _safe_name(narrowed) + ") " + n + ")"
             return n
         if isinstance(expr, TFieldAccess):
             obj = self._expr(expr.obj)
             field = _safe_name(expr.field)
-            if field == "message":
+            obj_ann = self._expr_type_ann(expr.obj)
+            if field == "message" and obj_ann not in self.struct_names:
                 result = obj + ".getMessage()"
             else:
                 result = obj + "." + field
@@ -2183,7 +2474,13 @@ class _JavaEmitter(Emitter):
                 return self._var_aliases[result]
             return result
         if isinstance(expr, TTupleAccess):
-            return self._expr(expr.obj) + "[" + str(expr.index) + "]"
+            raw = self._expr(expr.obj) + "[" + str(expr.index) + "]"
+            type_ann = expr.annotations.get("type", "")
+            if type_ann:
+                cast_type = self._tuple_cast_type(type_ann)
+                if cast_type is not None:
+                    return "((" + cast_type + ") " + raw + ")"
+            return raw
         if isinstance(expr, TIndex):
             if expr.annotations.get("provenance") == "negative_index":
                 neg = self._negative_index(expr)
@@ -2230,14 +2527,20 @@ class _JavaEmitter(Emitter):
         v = expr.value
         if v > 9223372036854775807:
             signed = v - (1 << 64)
-            return str(signed) + "L"
+            if self.strict_math:
+                return str(signed) + "L"
+            return "(int) " + str(signed) + "L"
         raw = expr.raw
         if raw.startswith(("0x", "0X", "0o", "0O", "0b", "0B")):
             if v > 2147483647 or v < -2147483648:
-                return raw + "L"
+                if self.strict_math:
+                    return raw + "L"
+                return "(int) " + raw + "L"
             return raw
         if v > 2147483647 or v < -2147483648:
-            return str(v) + "L"
+            if self.strict_math:
+                return str(v) + "L"
+            return "(int) " + str(v) + "L"
         return str(v)
 
     def _bytes_lit(self, expr: TBytesLit) -> str:
@@ -2428,6 +2731,35 @@ class _JavaEmitter(Emitter):
             result = self._string_eq(expr.right, expr.left, op)
             if result is not None:
                 return result
+        if op in ("&&", "and"):
+            checks = self._collect_isinstance_raw(expr.left)
+            if checks:
+                old_aliases = self._var_aliases.copy()
+                parts: list[str] = []
+                for check_expr in checks:
+                    info = self._isinstance_info(check_expr)
+                    if info is not None:
+                        var_name = info[0]
+                        cast_name = _binding_name(var_name)
+                        parts.append(
+                            var_name + " instanceof " + info[1] + " " + cast_name
+                        )
+                        self._var_aliases[var_name] = cast_name
+                remaining = self._strip_isinstance_parts(expr.left)
+                if remaining is not None:
+                    parts.append(self._expr(remaining))
+                right = self._expr(expr.right)
+                self._var_aliases = old_aliases
+                return " && ".join(parts) + " && " + right
+        if op in ("|", "&", "^") and self._is_bool_expr(expr.right):
+            return (
+                self._maybe_paren(expr.left, op, True)
+                + " "
+                + op
+                + " ("
+                + self._expr(expr.right)
+                + " ? 1 : 0)"
+            )
         left = self._maybe_paren(expr.left, op, True)
         right = self._maybe_paren(expr.right, op, False)
         return left + " " + op + " " + right
@@ -2479,6 +2811,8 @@ class _JavaEmitter(Emitter):
     def _maybe_paren(self, expr: TExpr, parent_op: str, is_left: bool) -> str:
         s = self._expr(expr)
         if isinstance(expr, TBinaryOp) and _needs_parens(expr.op, parent_op, is_left):
+            return "(" + s + ")"
+        if isinstance(expr, TTernary):
             return "(" + s + ")"
         return s
 
@@ -2713,10 +3047,15 @@ class _JavaEmitter(Emitter):
         if name == "IndexOf":
             return self._a(args, 0) + ".indexOf(" + self._a(args, 1) + ")"
         if name == "Concat":
-            type_ann = args[0].value.annotations.get("type", "")
-            if type_ann == "string" or self._is_string_expr(args[0].value):
+            if self._is_string_expr(args[0].value):
                 return self._a(args, 0) + " + " + self._a(args, 1)
-            return self._a(args, 0) + " + " + self._a(args, 1)
+            if self._is_bytes_expr(args[0].value):
+                self._needs_concat_bytes = True
+                return (
+                    "_concatBytes(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                )
+            self._needs_concat_lists = True
+            return "_concatLists(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Merge":
             a = self._a(args, 0)
             b = self._a(args, 1)
@@ -3073,17 +3412,32 @@ class _JavaEmitter(Emitter):
     def _is_set_type(self, expr: TExpr) -> bool:
         raise NotImplementedError
 
+    def _is_bool_expr(self, expr: TExpr) -> bool:
+        """Check if expression evaluates to boolean in Java (comparison/logical)."""
+        if isinstance(expr, TBinaryOp):
+            return expr.op in (
+                "==",
+                "!=",
+                "<",
+                "<=",
+                ">",
+                ">=",
+                "&&",
+                "||",
+                "and",
+                "or",
+            )
+        if isinstance(expr, TBoolLit):
+            return True
+        return False
+
     def _is_list_expr(self, expr: TExpr) -> bool:
-        raise NotImplementedError
+        ann = self._expr_type_ann(expr)
+        return ann.startswith("list[")
 
     def _is_bytes_expr(self, expr: TExpr) -> bool:
-        ann = expr.annotations.get("type", "")
-        if ann == "bytes":
-            return True
-        if isinstance(expr, TVar):
-            typ = self.var_types.get(expr.name)
-            return isinstance(typ, TIdentType) and typ.name == "bytes"
-        return False
+        ann = self._expr_type_ann(expr)
+        return ann == "bytes"
 
     def _is_int_list(self, expr: TExpr) -> bool:
         raise NotImplementedError
