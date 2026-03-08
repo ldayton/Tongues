@@ -88,6 +88,10 @@ jobs:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
       - run: just lang-python
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reference-python-python
+          path: tongues/.out/reference-python-python.txt
 
   lang-javascript:
     runs-on: ubuntu-latest
@@ -103,6 +107,10 @@ jobs:
           node-version: "20"
       - uses: extractions/setup-just@v3
       - run: just lang-javascript
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reference-python-javascript
+          path: tongues/.out/reference-python-javascript.txt
 
   lang-ruby:
     runs-on: ubuntu-latest
@@ -118,6 +126,10 @@ jobs:
           ruby-version: "3.3"
       - uses: extractions/setup-just@v3
       - run: just lang-ruby
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reference-python-ruby
+          path: tongues/.out/reference-python-ruby.txt
 
   lang-perl:
     runs-on: ubuntu-latest
@@ -130,6 +142,10 @@ jobs:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
       - run: just lang-perl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reference-python-perl
+          path: tongues/.out/reference-python-perl.txt
 
   lang-taytsh:
     runs-on: ubuntu-latest
@@ -275,24 +291,51 @@ jobs:
       - uses: extractions/setup-just@v3
       - run: just _lang-taytsh-vm-apptest
 
-  fixed-point:
+  consistency:
     runs-on: ubuntu-latest
-    needs: style
+    needs: [lang-python, lang-javascript, lang-ruby, lang-perl]
     steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/download-artifact@v4
         with:
-          python-version: "3.12"
-      - uses: extractions/setup-just@v3
-      - run: just fixed-point
+          name: reference-python-python
+          path: refs
+      - uses: actions/download-artifact@v4
+        with:
+          name: reference-python-javascript
+          path: refs-javascript
+      - uses: actions/download-artifact@v4
+        with:
+          name: reference-python-ruby
+          path: refs-ruby
+      - uses: actions/download-artifact@v4
+        with:
+          name: reference-python-perl
+          path: refs-perl
+      - run: |
+          cp refs-javascript/reference-python-javascript.txt refs/
+          cp refs-ruby/reference-python-ruby.txt refs/
+          cp refs-perl/reference-python-perl.txt refs/
+          cd refs
+          base=reference-python-python.txt
+          failed=0
+          for f in reference-python-*.txt; do
+            [ "$f" = "$base" ] && continue
+            if ! diff -q "$base" "$f" >/dev/null 2>&1; then
+              echo "MISMATCH: $base vs $f"
+              diff --unified=3 "$base" "$f" | head -30
+              failed=1
+            else
+              echo "OK: $base == $f"
+            fi
+          done
+          exit $failed
 
   check:
     if: always()
-    needs: [style, test-frontend, test-middleend, test-taytsh, test-backend, test-lib, lang-python, lang-javascript, lang-ruby, lang-perl, tw-frontend, tw-middleend, tw-backend, tw-apptest, vm-frontend, vm-middleend, vm-backend, vm-apptest, fixed-point]
+    needs: [style, test-frontend, test-middleend, test-taytsh, test-backend, test-lib, lang-python, lang-javascript, lang-ruby, lang-perl, tw-frontend, tw-middleend, tw-backend, tw-apptest, vm-frontend, vm-middleend, vm-backend, vm-apptest, consistency]
     runs-on: ubuntu-latest
     steps:
       - run: |
-          if [[ "${{ needs.style.result }}" != "success" || "${{ needs.test-frontend.result }}" != "success" || "${{ needs.test-middleend.result }}" != "success" || "${{ needs.test-taytsh.result }}" != "success" || "${{ needs.test-backend.result }}" != "success" || "${{ needs.test-lib.result }}" != "success" || "${{ needs.lang-python.result }}" != "success" || "${{ needs.lang-javascript.result }}" != "success" || "${{ needs.lang-ruby.result }}" != "success" || "${{ needs.lang-perl.result }}" != "success" || "${{ needs.tw-frontend.result }}" != "success" || "${{ needs.tw-middleend.result }}" != "success" || "${{ needs.tw-backend.result }}" != "success" || "${{ needs.tw-apptest.result }}" != "success" || "${{ needs.vm-frontend.result }}" != "success" || "${{ needs.vm-middleend.result }}" != "success" || "${{ needs.vm-backend.result }}" != "success" || "${{ needs.vm-apptest.result }}" != "success" || "${{ needs.fixed-point.result }}" != "success" ]]; then
+          if [[ "${{ needs.style.result }}" != "success" || "${{ needs.test-frontend.result }}" != "success" || "${{ needs.test-middleend.result }}" != "success" || "${{ needs.test-taytsh.result }}" != "success" || "${{ needs.test-backend.result }}" != "success" || "${{ needs.test-lib.result }}" != "success" || "${{ needs.lang-python.result }}" != "success" || "${{ needs.lang-javascript.result }}" != "success" || "${{ needs.lang-ruby.result }}" != "success" || "${{ needs.lang-perl.result }}" != "success" || "${{ needs.tw-frontend.result }}" != "success" || "${{ needs.tw-middleend.result }}" != "success" || "${{ needs.tw-backend.result }}" != "success" || "${{ needs.tw-apptest.result }}" != "success" || "${{ needs.vm-frontend.result }}" != "success" || "${{ needs.vm-middleend.result }}" != "success" || "${{ needs.vm-backend.result }}" != "success" || "${{ needs.vm-apptest.result }}" != "success" || "${{ needs.consistency.result }}" != "success" ]]; then
             exit 1
           fi
