@@ -1701,7 +1701,7 @@ class _JavaEmitter(Emitter):
                 self._var_aliases[var_name] = cast_name
             remaining = self._strip_isinstance_parts(cond_expr)
             if remaining is not None:
-                parts.append(self._expr(remaining))
+                parts.append(self._maybe_paren(remaining, "&&", False))
             self._line("if (" + " && ".join(parts) + ") {")
         else:
             self._line("if (" + cond_str + ") {")
@@ -1756,7 +1756,7 @@ class _JavaEmitter(Emitter):
                     self._var_aliases[var_name] = cast_name
                 remaining = self._strip_isinstance_parts(elif_stmt.cond)
                 if remaining is not None:
-                    parts_list.append(self._expr(remaining))
+                    parts_list.append(self._maybe_paren(remaining, "&&", False))
                 self._line("} else if (" + " && ".join(parts_list) + ") {")
             else:
                 self._line("} else if (" + cond + ") {")
@@ -2952,9 +2952,22 @@ class _JavaEmitter(Emitter):
                 remaining = self._strip_isinstance_parts(expr.left)
                 if remaining is not None:
                     parts.append(self._expr(remaining))
-                right = self._expr(expr.right)
+                right = self._maybe_paren(expr.right, "&&", False)
                 self._var_aliases = old_aliases
                 return " && ".join(parts) + " && " + right
+        if op in ("||", "or"):
+            neg_info = self._detect_negated_isinstance(expr.left)
+            if neg_info is not None:
+                var_name, type_name_str = neg_info
+                cast_name = _binding_name(var_name)
+                old_aliases = self._var_aliases.copy()
+                self._var_aliases[var_name] = cast_name
+                right = self._expr(expr.right)
+                self._var_aliases = old_aliases
+                return (
+                    "!(" + var_name + " instanceof " + type_name_str + " " + cast_name + ")"
+                    + " || " + right
+                )
         if op in ("|", "&", "^") and self._is_bool_expr(expr.right):
             return (
                 self._maybe_paren(expr.left, op, True)
@@ -2967,6 +2980,12 @@ class _JavaEmitter(Emitter):
         left = self._maybe_paren(expr.left, op, True)
         right = self._maybe_paren(expr.right, op, False)
         return left + " " + op + " " + right
+
+    def _detect_negated_isinstance(self, expr: TExpr) -> tuple[str, str] | None:
+        """Detect `not isinstance(x, T)` and return (var_name, type_name)."""
+        if isinstance(expr, TUnaryOp) and expr.op in ("not", "!"):
+            return self._isinstance_info(expr.operand)
+        return None
 
     def _unary(self, expr: TUnaryOp) -> str:
         if expr.op in ("not", "!"):
@@ -2995,6 +3014,22 @@ class _JavaEmitter(Emitter):
         else_str = self._expr(expr.else_expr)
         if isinstance(expr.else_expr, TTernary):
             else_str = "(" + else_str + ")"
+        raw_checks = self._collect_isinstance_raw(expr.cond)
+        if raw_checks:
+            parts: list[str] = []
+            old_aliases = self._var_aliases.copy()
+            for check_expr in raw_checks:
+                var_name, type_name_str = self._isinstance_info_checked(check_expr)
+                cast_name = _binding_name(var_name)
+                parts.append(var_name + " instanceof " + type_name_str + " " + cast_name)
+                self._var_aliases[var_name] = cast_name
+            remaining = self._strip_isinstance_parts(expr.cond)
+            if remaining is not None:
+                parts.append(self._maybe_paren(remaining, "&&", False))
+            cond_str = " && ".join(parts)
+            then_str = self._expr(expr.then_expr)
+            self._var_aliases = old_aliases
+            return cond_str + " ? " + then_str + " : " + else_str
         return (
             self._expr(expr.cond)
             + " ? "
