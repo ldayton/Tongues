@@ -172,6 +172,64 @@ TAYTSH_KEYWORDS: set[str] = {
 _CONTEXT_ONLY_FUNCS: frozenset[str] = frozenset({"range", "enumerate", "reversed"})
 
 
+def _float_repr(value: float) -> str:
+    """Format a float literal the way Python's repr() does, portable across runtimes.
+
+    Python uses fixed-point when -4 <= exponent < 16, scientific otherwise.
+    Scientific notation: no trailing .0 in mantissa, exponent has sign + min 2 digits.
+    """
+    r: str = repr(value)
+    if "e" not in r and "E" not in r:
+        return r
+    # Normalize to lowercase, parse mantissa and exponent.
+    low: str = r.lower()
+    e_pos: int = low.index("e")
+    mantissa: str = low[:e_pos]
+    exp_str: str = low[e_pos + 1 :]
+    exp: int = int(exp_str)
+    # Python uses fixed-point for -4 <= exp < 16.
+    if -4 <= exp < 16:
+        # Expand to fixed-point form.
+        sign: str = ""
+        m: str = mantissa
+        if m.startswith("-"):
+            sign = "-"
+            m = m[1:]
+        if "." in m:
+            dot_pos: int = m.index(".")
+            digits: str = m[:dot_pos] + m[dot_pos + 1 :]
+        else:
+            digits = m
+            dot_pos = len(m)
+        new_dot: int = dot_pos + exp
+        while len(digits) < new_dot:
+            digits = digits + "0"
+        while new_dot <= 0:
+            digits = "0" + digits
+            new_dot += 1
+        frac: str = digits[new_dot:]
+        if frac == "":
+            frac = "0"
+        result: str = digits[:new_dot] + "." + frac
+        while result.endswith("0") and not result.endswith(".0"):
+            result = result[:-1]
+        return sign + result
+    # Keep scientific notation but normalize to Python's format:
+    # strip trailing .0 from mantissa, format exponent as +/-DD.
+    while mantissa.endswith("0") and "." in mantissa and not mantissa.endswith(".0"):
+        mantissa = mantissa[:-1]
+    if mantissa.endswith(".0"):
+        mantissa = mantissa[:-2]
+    exp_digits: str = str(abs(exp))
+    if len(exp_digits) < 2:
+        exp_digits = "0" + exp_digits
+    if exp >= 0:
+        exp_part: str = "e+" + exp_digits
+    else:
+        exp_part = "e-" + exp_digits
+    return mantissa + exp_part
+
+
 def _safe_name(name: str) -> str:
     """Rename if name collides with a Taytsh keyword."""
     if name in TAYTSH_KEYWORDS:
@@ -1124,7 +1182,7 @@ def _lower_constant(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             raw = str(val.value)
         return TIntLit(pos, val.value, raw, {})
     if isinstance(val, JFloat):
-        return TFloatLit(pos, val.value, repr(val.value), {})
+        return TFloatLit(pos, val.value, _float_repr(val.value), {})
     if isinstance(val, JStr):
         if get_bool(node, "_is_bytes"):
             byte_vals: list[int] = []

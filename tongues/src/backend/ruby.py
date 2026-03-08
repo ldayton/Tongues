@@ -404,6 +404,31 @@ def _safe_type_name(name: str) -> str:
     return name
 
 
+def _escape_regex_charclass(value: str) -> str:
+    """Escape characters for use inside a Ruby regex character class."""
+    out: list[str] = []
+    i: int = 0
+    while i < len(value):
+        c: str = value[i : i + 1]
+        if c in "\\]^-":
+            out.append("\\" + c)
+        elif c == "\n":
+            out.append("\\n")
+        elif c == "\t":
+            out.append("\\t")
+        elif c == "\r":
+            out.append("\\r")
+        elif ord(c) < 32 or ord(c) > 126:
+            h: str = hex(ord(c))[2:]
+            if len(h) == 1:
+                h = "0" + h
+            out.append("\\x" + h)
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def _escape_ruby_string(value: str) -> str:
     result = escape_string(value)
     out: list[str] = []
@@ -2644,7 +2669,7 @@ class _RubyEmitter(Emitter):
     def _trim_gsub(self, expr: TExpr, mode: str) -> str:
         """Emit .gsub for Trim/TrimStart/TrimEnd with \\A/\\z anchors."""
         if isinstance(expr, TStringLit):
-            c = expr.value
+            c = _escape_regex_charclass(expr.value)
             if mode == "both":
                 return ".gsub(/\\A[" + c + "]+|[" + c + ']+\\z/, "")'
             if mode == "start":
