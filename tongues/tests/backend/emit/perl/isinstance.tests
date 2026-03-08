@@ -6,3 +6,6 @@ eval { $a->isa('Dog') }
 
 === negated isinstance guard
 if (!(defined($v) && $v->isa('VTuple')))
+
+=== isinstance on concrete type
+$info->isa('Info')

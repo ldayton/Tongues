@@ -2563,6 +2563,29 @@ class _GoEmitter(Emitter):
             self._line("}")
         else:
             # Type switch
+            # If scrutinee is already a concrete type, skip the switch
+            if isinstance(stmt.expr, TVar):
+                vt = self.var_types.get(stmt.expr.name)
+                if vt is not None:
+                    go_t = self._type(vt).lstrip("*")
+                    if go_t not in self._interface_names and go_t != "any":
+                        # Concrete type — emit matching case body directly
+                        for c in stmt.cases:
+                            if isinstance(c.pattern, TPatternType):
+                                if c.pattern.name is not None:
+                                    safe = _restore_name(
+                                        c.pattern.name, c.pattern.annotations
+                                    )
+                                    self._line(
+                                        safe
+                                        + " := "
+                                        + self._expr(stmt.expr)
+                                    )
+                                self._emit_stmts(c.body)
+                                return
+                        if stmt.default is not None:
+                            self._emit_stmts(stmt.default.body)
+                        return
             switch_var = self._find_switch_var(stmt)
             # Check if any case needs the binding
             any_used = False
@@ -2989,6 +3012,12 @@ class _GoEmitter(Emitter):
                         if expr.field
                         else expr.field
                     )
+                    # Skip assertion if variable is already the concrete type
+                    vt = self.var_types.get(expr.obj.name)
+                    if vt is not None:
+                        go_t = self._type(vt).lstrip("*")
+                        if go_t == narrowed or go_t not in self._interface_names:
+                            return obj_s + "." + fname
                     return obj_s + ".(*" + narrowed + ")." + fname
             # Interface common field accessor
             if self._is_interface_field_access(expr):
@@ -4306,12 +4335,29 @@ class _GoEmitter(Emitter):
         elif isinstance(type_arg, TStringLit):
             type_name = type_arg.value
         if type_name:
-            ptr = "*" if type_name not in self._interface_names else ""
+            if type_name not in self._interface_names:
+                # Check if the object is already a concrete (non-interface) type
+                obj_expr = args[0].value
+                obj_is_concrete = False
+                if isinstance(obj_expr, TVar):
+                    vt = self.var_types.get(obj_expr.name)
+                    if vt is not None:
+                        go_t = self._type(vt)
+                        if go_t.lstrip("*") not in self._interface_names:
+                            obj_is_concrete = True
+                if obj_is_concrete:
+                    return "true"
+                return (
+                    "func() bool { _, ok := "
+                    + obj
+                    + ".(*"
+                    + type_name
+                    + "); return ok }()"
+                )
             return (
                 "func() bool { _, ok := "
                 + obj
                 + ".("
-                + ptr
                 + type_name
                 + "); return ok }()"
             )

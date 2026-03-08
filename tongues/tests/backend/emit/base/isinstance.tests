@@ -46,3 +46,15 @@ def main() -> None:
     print(str(check(t)))
 if __name__ == "__main__":
     main()
+
+=== isinstance on concrete type
+import sys
+class Info:
+    name: str
+def check(info: Info) -> bool:
+    return isinstance(info, Info)
+def main() -> None:
+    i: Info = Info(name="x")
+    print(str(check(i)))
+if __name__ == "__main__":
+    main()

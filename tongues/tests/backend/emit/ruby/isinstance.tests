@@ -6,3 +6,6 @@ a.is_a?(Dog) || a.is_a?(Cat)
 
 === negated isinstance guard
 if !v.is_a?(VTuple)
+
+=== isinstance on concrete type
+info.is_a?(Info)
