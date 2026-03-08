@@ -1,0 +1,51 @@
+set shell := ["bash", "-o", "pipefail", "-cu"]
+
+export VIRTUAL_ENV := ""
+
+# Run lint and format checks (--fix to auto-fix)
+style *ARGS:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    start=$SECONDS
+    pids=()
+    just lint {{ARGS}} & pids+=($!)
+    just fmt {{ARGS}} & pids+=($!)
+    failed=0
+    for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+    elapsed=$((SECONDS - start))
+    if [ $failed -eq 0 ]; then
+        printf '\033[32m[style] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[style] %ds (FAILED)\033[0m\n' "$elapsed"
+        exit 1
+    fi
+
+# Lint (--fix to apply changes)
+lint *ARGS:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    start=$SECONDS
+    uv run --directory tongues ruff check {{ if ARGS == "--fix" { "--fix" } else { "" } }} src/; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[lint] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[lint] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
+
+# Format (--fix to apply changes)
+fmt *ARGS:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    start=$SECONDS
+    failed=0
+    uv run --directory tongues ruff format {{ if ARGS == "--fix" { "" } else { "--check" } }} . || failed=1
+    npx prettier {{ if ARGS == "--fix" { "--write" } else { "--check" } }} spec/*.md || failed=1
+    elapsed=$((SECONDS - start))
+    if [ $failed -eq 0 ]; then
+        printf '\033[32m[fmt] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[fmt] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $failed
