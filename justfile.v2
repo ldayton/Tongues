@@ -192,6 +192,39 @@ _pytest-gen-softfloat:
     fi
     exit $rc
 
+# Check if formatters are installed
+formatters:
+    #!/usr/bin/env bash
+    failed=0
+    printf "%-12s %-30s %s\n" "LANG" "FORMATTER" "STATUS"
+    printf "%-12s %-30s %s\n" "----" "---------" "------"
+    check() {
+        lang=$1; name=$2; cmd=$3
+        if eval "$cmd" >/dev/null 2>&1; then
+            status="✅"
+        else
+            status="❌"
+            failed=1
+        fi
+        printf "%-12s %-30s %s\n" "$lang" "$name" "$status"
+    }
+    check "c"          "clang-format"              "command -v clang-format"
+    check "csharp"     "csharpier"                 "command -v dotnet-csharpier || dotnet tool list -g | grep -q csharpier"
+    check "dart"       "dart format"               "command -v dart"
+    check "go"         "gofmt"                     "command -v gofmt"
+    check "java"       "google-java-format"        "test -f /opt/java-tools/google-java-format.jar"
+    check "javascript" "biome (via npx)"           "command -v npx"
+    check "lua"        "stylua"                    "command -v stylua"
+    check "perl"       "perltidy"                  "command -v perltidy"
+    check "php"        "php-cs-fixer"              "command -v php-cs-fixer"
+    check "python"     "ruff (via uvx)"            "command -v uvx"
+    check "ruby"       "rubocop"                   "command -v rubocop"
+    check "rust"       "rustfmt"                   "command -v rustfmt"
+    check "swift"      "swiftformat"               "command -v swiftformat"
+    check "typescript" "biome (via npx)"           "command -v npx"
+    check "zig"        "zig fmt"                   "command -v zig"
+    exit $failed
+
 # Check local runtime versions against Dockerfile expectations
 versions:
     #!/usr/bin/env bash
@@ -226,6 +259,21 @@ versions:
     check "typescript" "5.3"   ".direnv npm"        ".direnv npm"        "tsc --version | grep -oE '[0-9]+\.[0-9]+'"
     check "zig"        "0.14"  "brew zig@0.14"      "brew zig@0.14"      "zig version | grep -oE '[0-9]+\.[0-9]+'"
     exit $failed
+
+# Install VS Code syntax highlighting extension for Taytsh
+vscode:
+    #!/usr/bin/env bash
+    cd editors/vscode
+    rm -f taytsh-syntax-*.vsix
+    npx @vscode/vsce package --allow-missing-repository
+    shopt -s nullglob
+    vsix=(taytsh-syntax-*.vsix)
+    if [ ${#vsix[@]} -ne 1 ]; then
+        echo "expected exactly one VSIX, found ${#vsix[@]}"
+        ls -la
+        exit 1
+    fi
+    code --install-extension "${vsix[0]}"
 
 # Run a just target inside Docker
 docker target lang:
