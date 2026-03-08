@@ -7,5 +7,8 @@ isinstance(a, (Dog, Cat))
 === negated isinstance guard
 if not isinstance(v, VTuple):
 
+=== isinstance field path narrowing
+isinstance(st.expr, Call)
+
 === isinstance on concrete type
 isinstance(info, Info)

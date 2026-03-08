@@ -47,6 +47,26 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== isinstance field path narrowing
+import sys
+class Expr:
+    pass
+class Call(Expr):
+    name: str
+class Lit(Expr):
+    value: int
+class Stmt:
+    expr: Expr
+def get_call_name(st: Stmt) -> str:
+    if isinstance(st.expr, Call):
+        return st.expr.name
+    return ""
+def main() -> None:
+    s: Stmt = Stmt(expr=Call(name="foo"))
+    print(get_call_name(s))
+if __name__ == "__main__":
+    main()
+
 === isinstance on concrete type
 import sys
 class Info:

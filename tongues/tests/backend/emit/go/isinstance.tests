@@ -9,5 +9,8 @@ case *Dog, *Cat:
 === negated isinstance guard
 _, ok := v.(*VTuple); return ok
 
+=== isinstance field path narrowing
+st.Expr.(*Call).Name
+
 === isinstance on concrete type
 return true

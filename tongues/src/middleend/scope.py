@@ -160,6 +160,32 @@ def _get_base_var(expr: TExpr) -> str | None:
     return None
 
 
+def _field_access_path(expr: TExpr) -> str | None:
+    """Build a dotted path from nested TFieldAccess, e.g. 'a.b.c'."""
+    if isinstance(expr, TVar):
+        return expr.name
+    if isinstance(expr, TFieldAccess):
+        base = _field_access_path(expr.obj)
+        if base is not None:
+            return base + "." + expr.field
+    return None
+
+
+def _resolve_path_type(path: str, ctx: _ScopeCtx) -> Type | None:
+    """Resolve the type of a dotted path like 'x.field.subfield'."""
+    parts = path.split(".")
+    name = parts[0]
+    if name not in ctx.bindings:
+        return None
+    t = ctx.narrowings.get(name, ctx.bindings[name].declared_type)
+    for field in parts[1:]:
+        if isinstance(t, StructT) and field in t.fields:
+            t = t.fields[field]
+        else:
+            return None
+    return t
+
+
 # ============================================================
 # ASSIGNMENT TARGET ANALYSIS
 # ============================================================
@@ -239,7 +265,16 @@ def _walk_expr(expr: TExpr, ctx: _ScopeCtx) -> None:
             _walk_expr(expr.cond, ctx)
             _walk_expr(expr.then_expr, ctx)
             _walk_expr(expr.else_expr, ctx)
-        case TFieldAccess() | TTupleAccess():
+        case TFieldAccess():
+            _walk_expr(expr.obj, ctx)
+            path = _field_access_path(expr)
+            if path is not None:
+                narrowed_type = ctx.narrowings.get(path)
+                if narrowed_type is not None:
+                    expr.annotations["scope.narrowed_type"] = type_name(narrowed_type)
+                    if isinstance(narrowed_type, InterfaceT):
+                        expr.annotations["scope.is_interface"] = "true"
+        case TTupleAccess():
             _walk_expr(expr.obj, ctx)
         case TIndex():
             _walk_expr(expr.obj, ctx)
@@ -400,44 +435,56 @@ def _extract_condition_narrowings(
         _extract_condition_narrowings(cond.right, ctx, then_narrowings, else_narrowings)
         return
 
-    # Nil checks: x != nil / x == nil
+    # Nil checks: x != nil / x == nil (also supports field paths like x.f != nil)
     if isinstance(cond, TBinaryOp) and cond.op in ("!=", "=="):
-        var_node: TVar | None = None
-        is_nil_check = False
+        nil_path: str | None = None
         is_neq = False
-        if isinstance(cond.left, TVar) and isinstance(cond.right, TNilLit):
-            var_node = cond.left
-            is_nil_check = True
+        if isinstance(cond.right, TNilLit):
+            nil_path = _field_access_path(cond.left)
             is_neq = cond.op == "!="
-        elif isinstance(cond.right, TVar) and isinstance(cond.left, TNilLit):
-            var_node = cond.right
-            is_nil_check = True
+        elif isinstance(cond.left, TNilLit):
+            nil_path = _field_access_path(cond.right)
             is_neq = cond.op == "!="
-        if is_nil_check and var_node is not None:
-            name = var_node.name
-            if name in ctx.bindings:
-                declared = ctx.bindings[name].declared_type
+        if nil_path is not None:
+            # Simple var: look up in bindings
+            if "." not in nil_path and nil_path in ctx.bindings:
+                declared = ctx.bindings[nil_path].declared_type
                 if contains_nil(declared):
                     non_nil = remove_nil(declared)
                     if is_neq:
-                        then_narrowings[name] = non_nil
-                        else_narrowings[name] = NIL_T
+                        then_narrowings[nil_path] = non_nil
+                        else_narrowings[nil_path] = NIL_T
                     else:
-                        then_narrowings[name] = NIL_T
-                        else_narrowings[name] = non_nil
+                        then_narrowings[nil_path] = NIL_T
+                        else_narrowings[nil_path] = non_nil
+            # Field path: resolve type through struct fields
+            elif "." in nil_path:
+                path_type = _resolve_path_type(nil_path, ctx)
+                if path_type is not None and contains_nil(path_type):
+                    non_nil = remove_nil(path_type)
+                    if is_neq:
+                        then_narrowings[nil_path] = non_nil
+                        else_narrowings[nil_path] = NIL_T
+                    else:
+                        then_narrowings[nil_path] = NIL_T
+                        else_narrowings[nil_path] = non_nil
         return
 
-    # IsType(x, "TypeName") calls
+    # IsType(x, "TypeName") calls — supports both vars and field paths
     if isinstance(cond, TCall) and isinstance(cond.func, TVar):
         if cond.func.name == "IsType" and len(cond.args) == 2:
             arg0 = cond.args[0].value
             arg1 = cond.args[1].value
-            if isinstance(arg0, TVar) and isinstance(arg1, TStringLit):
-                name = arg0.name
-                type_name_str = arg1.value
-                narrowed = ctx.checker.types.get(type_name_str)
-                if narrowed is not None and name in ctx.bindings:
-                    then_narrowings[name] = narrowed
+            if isinstance(arg1, TStringLit):
+                path = _field_access_path(arg0)
+                if path is not None:
+                    type_name_str = arg1.value
+                    narrowed = ctx.checker.types.get(type_name_str)
+                    if narrowed is not None:
+                        # For simple vars, require binding exists
+                        if "." not in path and path not in ctx.bindings:
+                            return
+                        then_narrowings[path] = narrowed
 
 
 # ============================================================

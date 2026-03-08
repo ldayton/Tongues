@@ -2576,11 +2576,7 @@ class _GoEmitter(Emitter):
                                     safe = _restore_name(
                                         c.pattern.name, c.pattern.annotations
                                     )
-                                    self._line(
-                                        safe
-                                        + " := "
-                                        + self._expr(stmt.expr)
-                                    )
+                                    self._line(safe + " := " + self._expr(stmt.expr))
                                 self._emit_stmts(c.body)
                                 return
                         if stmt.default is not None:
@@ -3003,23 +2999,21 @@ class _GoEmitter(Emitter):
             # Enum variant access: Color.Red → ColorRed
             if isinstance(expr.obj, TVar) and expr.obj.name in self._enum_names:
                 return expr.obj.name + expr.field
-            # Type assertion for narrowed interface variables
-            if isinstance(expr.obj, TVar):
-                narrowed = expr.obj.annotations.get("scope.narrowed_type", "")
-                if narrowed != "" and narrowed in self.struct_names:
-                    obj_s = self._expr(expr.obj)
-                    fname = (
-                        expr.field[0].upper() + expr.field[1:]
-                        if expr.field
-                        else expr.field
-                    )
-                    # Skip assertion if variable is already the concrete type
+            # Type assertion for narrowed interface variables or field paths
+            narrowed = expr.obj.annotations.get("scope.narrowed_type", "")
+            if narrowed != "" and narrowed in self.struct_names:
+                obj_s = self._expr(expr.obj)
+                fname = (
+                    expr.field[0].upper() + expr.field[1:] if expr.field else expr.field
+                )
+                # Skip assertion if variable is already the concrete type
+                if isinstance(expr.obj, TVar):
                     vt = self.var_types.get(expr.obj.name)
                     if vt is not None:
                         go_t = self._type(vt).lstrip("*")
                         if go_t == narrowed or go_t not in self._interface_names:
                             return obj_s + "." + fname
-                    return obj_s + ".(*" + narrowed + ")." + fname
+                return obj_s + ".(*" + narrowed + ")." + fname
             # Interface common field accessor
             if self._is_interface_field_access(expr):
                 obj_s = self._expr(expr.obj)
@@ -3358,9 +3352,7 @@ class _GoEmitter(Emitter):
                 return "!" + self._expr(expr.operand)
             if isinstance(expr.operand, (TTernary,)):
                 return "!(" + self._expr(expr.operand) + ")"
-            if self._is_isnil_call(expr.operand) and isinstance(
-                expr.operand, TCall
-            ):
+            if self._is_isnil_call(expr.operand) and isinstance(expr.operand, TCall):
                 # !IsNil(x) → x != nil
                 nil_arg = expr.operand.args[0].value
                 if isinstance(nil_arg, TVar):
@@ -4369,11 +4361,7 @@ class _GoEmitter(Emitter):
                     + "); return ok }()"
                 )
             return (
-                "func() bool { _, ok := "
-                + obj
-                + ".("
-                + type_name
-                + "); return ok }()"
+                "func() bool { _, ok := " + obj + ".(" + type_name + "); return ok }()"
             )
         return obj + " != nil"
 
