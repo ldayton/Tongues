@@ -739,6 +739,7 @@ class _GoEmitter(Emitter):
         self._try_result_var: str | None = None
         self._fn_params: dict[str, list[TParam]] = {}
         self._interface_methods: dict[str, list[TFnDecl]] = {}
+        self._suppress_deref: bool = False
 
     def _line(self, text: str = "") -> None:
         if text:
@@ -1117,6 +1118,15 @@ class _GoEmitter(Emitter):
             parts.append(s)
         return ", ".join(parts)
 
+    def _is_opt_prim_type(self, typ: TType | None) -> bool:
+        return isinstance(typ, TOptionalType) and isinstance(typ.inner, TPrimitive)
+
+    def _opt_prim_inner_go(self, typ: TType | None) -> str:
+        """Get Go type string for inner type of an optional primitive."""
+        if isinstance(typ, TOptionalType):
+            return self._type(typ.inner)
+        return "interface{}"
+
     def _is_go_ref_type(self, typ: TType | None) -> bool:
         """Check if a type is a reference type in Go (no deref needed for Unwrap)."""
         if typ is None:
@@ -1210,6 +1220,14 @@ class _GoEmitter(Emitter):
         if inner not in ("int", "float", "string", "bool"):
             return False
         return True
+
+    def _expr_preserve_ptr(self, expr: TExpr) -> str:
+        """Emit expression WITHOUT auto-deref for optional primitives."""
+        old = self._suppress_deref
+        self._suppress_deref = True
+        result = self._expr(expr)
+        self._suppress_deref = old
+        return result
 
     def _expr_no_narrowing(self, expr: TExpr) -> str:
         """Emit expression without TVar narrowing type assertion."""
@@ -1457,6 +1475,27 @@ class _GoEmitter(Emitter):
                     self._line(self._expr(stmt.target) + " = &__atmp")
                 elif self._needs_deref_from_expected(stmt.value):
                     self._line(self._expr(stmt.target) + " = *" + val_s)
+                elif isinstance(stmt.target, TVar):
+                    vt = self.var_types.get(stmt.target.name)
+                    if (
+                        isinstance(vt, TOptionalType)
+                        and isinstance(vt.inner, TPrimitive)
+                        and not isinstance(stmt.value, TNilLit)
+                    ):
+                        val_ann = stmt.value.annotations.get("type", "")
+                        tgt_s = _restore_name(stmt.target.name, stmt.target.annotations)
+                        tgt_s = self._var_aliases.get(tgt_s, tgt_s)
+                        if not val_ann.endswith("?") and "nil" not in val_ann.split(
+                            " | "
+                        ):
+                            self._line("__atmp := " + val_s)
+                            self._line(tgt_s + " = &__atmp")
+                        else:
+                            self._line(
+                                tgt_s + " = " + self._expr_preserve_ptr(stmt.value)
+                            )
+                    else:
+                        self._line(self._expr(stmt.target) + " = " + val_s)
                 else:
                     self._line(self._expr(stmt.target) + " = " + val_s)
             case TTupleAssignStmt():
@@ -1607,10 +1646,14 @@ class _GoEmitter(Emitter):
             if isinstance(val, TNilLit):
                 self._line("var " + safe + " " + self._type(stmt.typ))
                 return
+            is_opt_prim = isinstance(stmt.typ, TOptionalType) and isinstance(
+                stmt.typ.inner, TPrimitive
+            )
+            val_s = self._expr_preserve_ptr(val) if is_opt_prim else self._expr(val)
             if self._in_func:
-                self._line(safe + " := " + self._expr(val))
+                self._line(safe + " := " + val_s)
             else:
-                self._line("var " + safe + " = " + self._expr(val))
+                self._line("var " + safe + " = " + val_s)
         else:
             self._line("var " + safe + " " + self._type(stmt.typ))
 
@@ -2487,6 +2530,8 @@ class _GoEmitter(Emitter):
 
     def _needs_deref(self, expr: TVar) -> bool:
         """Check if a variable needs optional dereference (*x)."""
+        if self._suppress_deref:
+            return False
         typ = self.var_types.get(expr.name)
         if not isinstance(typ, TOptionalType):
             return False
@@ -2519,6 +2564,8 @@ class _GoEmitter(Emitter):
 
     def _is_optional_primitive_field(self, expr: TFieldAccess) -> bool:
         """Check if field access returns an optional primitive (needs deref in Go)."""
+        if self._suppress_deref:
+            return False
         if not isinstance(expr.obj, TVar):
             return False
         obj_type = self.var_types.get(expr.obj.name)
@@ -2529,6 +2576,11 @@ class _GoEmitter(Emitter):
         ):
             struct_name = obj_type.inner.name
         else:
+            ann = expr.annotations.get("type", "")
+            if ann.endswith("?"):
+                ann_inner = ann[:-1]
+                if ann_inner in ("string", "int", "float", "bool", "byte", "rune"):
+                    return True
             return False
         fields = self.struct_field_types.get(struct_name, [])
         for f in fields:
@@ -4127,6 +4179,33 @@ class _GoEmitter(Emitter):
                                 pairs.append(self._expr(k) + ": " + self._expr(v))
                             return "map[" + kt + "]" + vt + "{" + ", ".join(pairs) + "}"
                     break
+        for fd in field_decls:
+            if fd.name == field_name:
+                if isinstance(fd.typ, TOptionalType) and isinstance(
+                    fd.typ.inner, TPrimitive
+                ):
+                    val_s = self._expr_preserve_ptr(value)
+                    val_ann = value.annotations.get("type", "")
+                    val_is_opt = val_ann.endswith("?") or isinstance(value, TNilLit)
+                    if not val_is_opt and isinstance(value, TVar):
+                        val_vt = self.var_types.get(value.name)
+                        if isinstance(val_vt, TOptionalType):
+                            val_is_opt = True
+                    if not val_is_opt and isinstance(value, TFieldAccess):
+                        ft = self._resolve_field_type(value)
+                        if isinstance(ft, TOptionalType):
+                            val_is_opt = True
+                    if not val_is_opt:
+                        inner_go = self._type(fd.typ.inner)
+                        return (
+                            "func() *"
+                            + inner_go
+                            + " { v := "
+                            + val_s
+                            + "; return &v }()"
+                        )
+                    return val_s
+                break
         return self._expr(value)
 
     def _method_call(self, func: TFieldAccess, args: list[TArg]) -> str:
@@ -5077,6 +5156,49 @@ class _GoEmitter(Emitter):
                 and ptype is not None
             ):
                 parts.append(self._type(ptype) + "{}")
+            elif ptype is not None and self._is_opt_prim_type(ptype):
+                val_ann = a.value.annotations.get("type", "")
+                val_is_opt = val_ann.endswith("?") or isinstance(a.value, TNilLit)
+                if not val_is_opt and isinstance(a.value, TVar):
+                    vt = self.var_types.get(a.value.name)
+                    if isinstance(vt, TOptionalType):
+                        val_is_opt = True
+                if not val_is_opt and isinstance(a.value, TFieldAccess):
+                    ft = self._resolve_field_type(a.value)
+                    if isinstance(ft, TOptionalType):
+                        val_is_opt = True
+                if not val_is_opt:
+                    inner_go = self._opt_prim_inner_go(ptype)
+                    parts.append(
+                        "func() *"
+                        + inner_go
+                        + " { v := "
+                        + self._expr(a.value)
+                        + "; return &v }()"
+                    )
+                else:
+                    parts.append(self._expr_preserve_ptr(a.value))
+            elif ptype is not None and not isinstance(ptype, TOptionalType):
+                val_ann = a.value.annotations.get("type", "")
+                if val_ann.endswith("?") and val_ann[:-1] in (
+                    "string",
+                    "int",
+                    "float",
+                    "bool",
+                ):
+                    parts.append("*" + self._expr(a.value))
+                elif self._needs_deref_from_expected(a.value):
+                    parts.append("*" + self._expr(a.value))
+                elif self._needs_ptr_wrap_from_expected(a.value):
+                    parts.append(
+                        "func() *"
+                        + self._ann_type_to_go(self._expected_type_ann(a.value)[:-1])
+                        + " { v := "
+                        + self._expr(a.value)
+                        + "; return &v }()"
+                    )
+                else:
+                    parts.append(self._expr(a.value))
             elif self._needs_deref_from_expected(a.value):
                 parts.append("*" + self._expr(a.value))
             elif self._needs_ptr_wrap_from_expected(a.value):
