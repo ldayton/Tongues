@@ -89,6 +89,7 @@ lang target:
         just -f {{justfile()}} _retranspile {{target}} & pids+=($!)
     fi
     just -f {{justfile()}} fixed-point {{target}} & pids+=($!)
+    just -f {{justfile()}} _treewalker {{target}} & pids+=($!)
     start=$SECONDS
     cd tongues
     ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} .out/tongues.${ext[{{target}}]}; rc=$?
@@ -154,6 +155,32 @@ fixed-point target:
         printf '\033[31m[fixed-point:{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
     fi
     exit $rc
+
+# Run taytsh app tests through the treewalker in target language
+_treewalker target:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
+    declare -A runner=([python]=python3 [ruby]=ruby [perl]=perl [javascript]=node)
+    start=$SECONDS
+    passed=0; failed=0
+    cd tongues
+    for f in tests/taytsh/app/*.ty; do
+        name=$(basename "$f" .ty)
+        if ${runner[{{target}}]} ".out/tongues.${ext[{{target}}]}" taytsh "$f" >/dev/null 2>&1; then
+            passed=$((passed + 1))
+        else
+            echo "  FAIL $name"
+            failed=$((failed + 1))
+        fi
+    done
+    elapsed=$((SECONDS - start))
+    if [ $failed -eq 0 ]; then
+        printf '\033[32m[treewalker:{{target}}] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
+    else
+        printf '\033[31m[treewalker:{{target}}] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
+        exit 1
+    fi
 
 # Generative / property-based tests (require pytest + hypothesis)
 pytest-gen:
