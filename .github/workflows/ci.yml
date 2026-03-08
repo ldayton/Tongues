@@ -248,18 +248,39 @@ jobs:
   # Generative / property-based tests
   # ---------------------------------------------------------------------------
 
-  pytest-gen-tycheck:
+  pytest-gen:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - run: docker build -t tongues-python docker/python
+      - run: docker save tongues-python -o /tmp/tongues-python.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-python
+          path: /tmp/tongues-python.tar
+
+  pytest-gen-tycheck:
+    runs-on: ubuntu-latest
+    needs: pytest-gen
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: docker-python
+          path: /tmp
+      - run: docker load -i /tmp/tongues-python.tar
       - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _pytest-gen-tycheck
 
   pytest-gen-softfloat:
     runs-on: ubuntu-latest
+    needs: pytest-gen
     steps:
       - uses: actions/checkout@v6
-      - run: docker build -t tongues-python docker/python
+      - uses: actions/download-artifact@v4
+        with:
+          name: docker-python
+          path: /tmp
+      - run: docker load -i /tmp/tongues-python.tar
       - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _pytest-gen-softfloat
 
   # ---------------------------------------------------------------------------
