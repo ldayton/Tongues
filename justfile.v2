@@ -80,6 +80,15 @@ lang target:
     declare -A runner=([python]=python3 [ruby]=ruby [perl]=perl [javascript]=node)
     just -f {{justfile()}} _transpile-tongues {{target}}
     just -f {{justfile()}} _transpile-harness {{target}}
+    pids=()
+    failed=0
+    if [ "{{target}}" = "python" ]; then
+        just -f {{justfile()}} _pyright & pids+=($!)
+    fi
+    if [ "{{target}}" != "javascript" ]; then
+        just -f {{justfile()}} _retranspile {{target}} & pids+=($!)
+    fi
+    just -f {{justfile()}} fixed-point {{target}} & pids+=($!)
     start=$SECONDS
     cd tongues
     ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} .out/tongues.${ext[{{target}}]}; rc=$?
@@ -88,5 +97,60 @@ lang target:
         printf '\033[32m[test:{{target}}] %ds\033[0m\n' "$elapsed"
     else
         printf '\033[31m[test:{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
+        failed=1
+    fi
+    for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+    exit $failed
+
+# Type-check transpiled Python output
+_pyright:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    start=$SECONDS
+    uvx pyright tongues/.out/tongues.py; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[pyright] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[pyright] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
+
+# Run the transpiled binary on src/ targeting its own language, compare to stage 2
+_retranspile target:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
+    e=${ext[{{target}}]}
+    start=$SECONDS
+    cd tongues
+    python3 tests/retranspile.py ".out/tongues.$e" src {{target}} ".out/tongues-retranspiled.$e"; rc=$?
+    if [ $rc -ne 0 ]; then
+        printf '\033[31m[retranspile:{{target}}] %ds (FAILED)\033[0m\n' "$((SECONDS - start))"
+        exit 1
+    fi
+    if diff -q ".out/tongues.$e" ".out/tongues-retranspiled.$e" >/dev/null 2>&1; then
+        rm ".out/tongues-retranspiled.$e"
+        printf '\033[32m[retranspile:{{target}}] %ds\033[0m\n' "$((SECONDS - start))"
+    else
+        printf '\033[31m[retranspile:{{target}}] %ds (FAILED)\033[0m\n' "$((SECONDS - start))"
+        diff --unified=3 ".out/tongues.$e" ".out/tongues-retranspiled.$e" | head -30
+        rm ".out/tongues-retranspiled.$e"
+        exit 1
+    fi
+
+# Fixed-point test: transpiled binary self-transpiles to identical output
+fixed-point target:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
+    start=$SECONDS
+    uv run --directory tongues pytest tests/test_self_consistency.py \
+        -k test_fixed_point --transpiled ".out/tongues.${ext[{{target}}]}" -v; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[fixed-point:{{target}}] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[fixed-point:{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
     fi
     exit $rc
