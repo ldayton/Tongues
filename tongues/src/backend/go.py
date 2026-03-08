@@ -688,6 +688,7 @@ class _GoEmitter(Emitter):
         self._error_structs: set[str] = set()
         self._pointer_structs: set[str] = set()
         self._var_aliases: dict[str, str] = {}
+        self._tuple_unpack_counter: int = 0
         self._need_reverse_string: bool = False
         self._in_func: bool = False
         self._current_ret_type: TType | None = None
@@ -1372,7 +1373,11 @@ class _GoEmitter(Emitter):
                         )
                     elif isinstance(stmt.value, TNilLit):
                         ret_t = self._current_ret_type
-                        if ret_t is not None and isinstance(ret_t, TTupleType):
+                        if isinstance(ret_t, TOptionalType) and isinstance(
+                            ret_t.inner, TTupleType
+                        ):
+                            self._line("return " + self._type(ret_t.inner) + "{}")
+                        elif isinstance(ret_t, TTupleType):
                             self._line("return " + self._type(ret_t) + "{}")
                         else:
                             self._line("return nil")
@@ -1631,11 +1636,36 @@ class _GoEmitter(Emitter):
                 var_name + " := strictSortedF64(" + self._expr(expr.args[0].value) + ")"
             )
             return
-        a = self._expr(expr.args[0].value)
-        self._line(var_name + " := slices.Clone(" + a + ")")
+        arg = expr.args[0].value
+        is_set = self._is_set_type(arg)
+        if (
+            not is_set
+            and isinstance(arg, TCall)
+            and isinstance(arg.func, TVar)
+            and arg.func.name == "ListFrom"
+            and arg.args
+        ):
+            is_set = self._is_set_type(arg.args[0].value)
+            if is_set:
+                arg = arg.args[0].value
+        a = self._expr(arg)
+        if is_set:
+            et = self._infer_elem_type(arg)
+            self._line(var_name + " := make([]" + et + ", 0, len(" + a + "))")
+            self._line(
+                "for k := range "
+                + a
+                + " { "
+                + var_name
+                + " = append("
+                + var_name
+                + ", k) }"
+            )
+        else:
+            self._line(var_name + " := slices.Clone(" + a + ")")
         if len(expr.args) >= 2 and isinstance(expr.args[1].value, TFnLit):
             key_fn = self._expr(expr.args[1].value)
-            et = self._infer_elem_type(expr.args[0].value)
+            et = self._infer_elem_type(arg)
             self._line(
                 "slices.SortFunc("
                 + var_name
@@ -1674,13 +1704,24 @@ class _GoEmitter(Emitter):
         if self._is_divmod_call(stmt.value):
             self._emit_divmod_assign(stmt, unused_indices)
             return
-        parts: list[str] = []
+        n = self._tuple_unpack_counter
+        self._tuple_unpack_counter += 1
+        tmp = "__tup" + str(n)
+        self._line(tmp + " := " + self._expr(stmt.value))
         for i, t in enumerate(stmt.targets):
             if i in unused_indices:
-                parts.append("_")
+                continue
+            target_s = self._expr(t)
+            elem = tmp + "[" + str(i) + "]"
+            go_type = ""
+            if isinstance(t, TVar):
+                vt = self.var_types.get(t.name)
+                if vt is not None:
+                    go_type = self._type(vt)
+            if go_type and go_type != "any":
+                self._line(target_s + " = " + elem + ".(" + go_type + ")")
             else:
-                parts.append(self._expr(t))
-        self._line(", ".join(parts) + " = " + self._expr(stmt.value))
+                self._line(target_s + " = " + elem)
 
     def _is_divmod_call(self, expr: TExpr) -> bool:
         return (
@@ -2263,7 +2304,7 @@ class _GoEmitter(Emitter):
         ann: str = expr.annotations.get("type", "")
         if ann.startswith("list[") and ann.endswith("]"):
             inner = ann[5:-1]
-            return self._type_str_to_go(inner)
+            return self._ann_type_to_go(inner)
         if ann.startswith("set[") and ann.endswith("]"):
             inner = ann[4:-1]
             return self._ann_type_to_go(inner)
@@ -4058,16 +4099,45 @@ class _GoEmitter(Emitter):
             if self.strict_math and self._is_float_list(args[0].value):
                 self._used_strict_helpers.add("strict_sorted_f64")
                 return "strictSortedF64(" + self._a(args, 0) + ")"
-            a = self._a(args, 0)
+            arg = args[0].value
+            is_set = self._is_set_type(arg)
+            if (
+                not is_set
+                and isinstance(arg, TCall)
+                and isinstance(arg.func, TVar)
+                and arg.func.name == "ListFrom"
+                and arg.args
+            ):
+                is_set = self._is_set_type(arg.args[0].value)
+                if is_set:
+                    arg = arg.args[0].value
+            a = self._expr(arg)
+            et = self._infer_elem_type(arg)
+            if is_set:
+                clone_s = (
+                    "make([]"
+                    + et
+                    + ", 0, len("
+                    + a
+                    + ")); for k := range "
+                    + a
+                    + " { s = append(s, k) }"
+                )
+            else:
+                clone_s = "slices.Clone(" + a + ")"
+            if is_set:
+                ret_type = "[]" + et
+            else:
+                ret_type = self._infer_go_type(arg)
             if len(args) >= 2:
                 key_fn = self._expr(args[1].value)
                 return (
                     "func() "
-                    + self._infer_go_type(args[0].value)
-                    + " { s := slices.Clone("
-                    + a
-                    + "); slices.SortFunc(s, func(a, b "
-                    + self._infer_elem_type(args[0].value)
+                    + ret_type
+                    + " { s := "
+                    + clone_s
+                    + "; slices.SortFunc(s, func(a, b "
+                    + et
                     + ") int { return "
                     + key_fn
                     + "(a) - "
@@ -4076,10 +4146,10 @@ class _GoEmitter(Emitter):
                 )
             return (
                 "func() "
-                + self._infer_go_type(args[0].value)
-                + " { s := slices.Clone("
-                + a
-                + "); slices.Sort(s); return s }()"
+                + ret_type
+                + " { s := "
+                + clone_s
+                + "; slices.Sort(s); return s }()"
             )
         if name == "SortBy":
             return (

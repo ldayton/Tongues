@@ -1,5 +1,8 @@
 === tuple assign in if-body used after
-a, b = get_pair()
+__tup0 := get_pair()
+a = __tup0[0].(string)
+b = __tup0[1].(int)
 
 === tuple assign in if-body one target used after
-a, _ = get_pair()
+__tup0 := get_pair()
+a = __tup0[0].(string)
