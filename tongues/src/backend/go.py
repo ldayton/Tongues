@@ -1183,6 +1183,8 @@ class _GoEmitter(Emitter):
             return self._type(typ) + "{}"
         if isinstance(typ, TSetType):
             return self._type(typ) + "{}"
+        if isinstance(typ, TTupleType):
+            return self._type(typ) + "{}"
         return "nil"
 
     # ── Statements ────────────────────────────────────────────
@@ -1368,6 +1370,12 @@ class _GoEmitter(Emitter):
                         self._line(
                             "return " + self._type(self._current_ret_type) + "{}"
                         )
+                    elif isinstance(stmt.value, TNilLit):
+                        ret_t = self._current_ret_type
+                        if ret_t is not None and isinstance(ret_t, TTupleType):
+                            self._line("return " + self._type(ret_t) + "{}")
+                        else:
+                            self._line("return nil")
                     else:
                         self._line("return " + self._expr(stmt.value))
                 else:
@@ -1453,6 +1461,19 @@ class _GoEmitter(Emitter):
                 self._line("var " + safe + " = " + self._expr(val))
         else:
             self._line("var " + safe + " " + self._type(stmt.typ))
+
+    def _resolve_field_type(self, expr: TFieldAccess) -> TType | None:
+        """Resolve the declared type of a field access through struct types."""
+        obj_type: TType | None = None
+        if isinstance(expr.obj, TVar):
+            obj_type = self.var_types.get(expr.obj.name)
+        elif isinstance(expr.obj, TFieldAccess):
+            obj_type = self._resolve_field_type(expr.obj)
+        if isinstance(obj_type, TIdentType):
+            for fd in self.struct_field_types.get(obj_type.name, []):
+                if fd.name == expr.field:
+                    return fd.typ
+        return None
 
     def _is_interface_field_access(self, expr: TFieldAccess) -> bool:
         """Check if this is a field access on an interface-typed variable."""
@@ -1887,12 +1908,14 @@ class _GoEmitter(Emitter):
         while i < len(binding):
             name = _restore_name(binding[i], ann)
             idx = str(i)
+            op = "=" if name == "_" else ":="
             if elem_types is not None and i < len(elem_types):
                 go_t = self._type(elem_types[i])
-                self._line(name + " := __unpack[" + idx + "].(" + go_t + ")")
-                self.var_types[binding[i]] = elem_types[i]
+                self._line(name + " " + op + " __unpack[" + idx + "].(" + go_t + ")")
+                if name != "_":
+                    self.var_types[binding[i]] = elem_types[i]
             else:
-                self._line(name + " := __unpack[" + idx + "]")
+                self._line(name + " " + op + " __unpack[" + idx + "]")
             i += 1
         self._emit_stmts(stmt.body)
         self.indent -= 1
@@ -2132,6 +2155,8 @@ class _GoEmitter(Emitter):
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TMapType)
+        if isinstance(expr, TFieldAccess):
+            return isinstance(self._resolve_field_type(expr), TMapType)
         return False
 
     def _is_set_type(self, expr: TExpr) -> bool:
@@ -2141,6 +2166,8 @@ class _GoEmitter(Emitter):
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TSetType)
+        if isinstance(expr, TFieldAccess):
+            return isinstance(self._resolve_field_type(expr), TSetType)
         return False
 
     def _is_map_for(self, stmt: TForStmt) -> bool:
@@ -2157,6 +2184,8 @@ class _GoEmitter(Emitter):
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TListType)
+        if isinstance(expr, TFieldAccess):
+            return isinstance(self._resolve_field_type(expr), TListType)
         return isinstance(expr, TListLit)
 
     def _needs_deref(self, expr: TVar) -> bool:
@@ -2235,10 +2264,21 @@ class _GoEmitter(Emitter):
         if ann.startswith("list[") and ann.endswith("]"):
             inner = ann[5:-1]
             return self._type_str_to_go(inner)
+        if ann.startswith("set[") and ann.endswith("]"):
+            inner = ann[4:-1]
+            return self._ann_type_to_go(inner)
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             if isinstance(typ, TListType):
                 return self._type(typ.element)
+            if isinstance(typ, TSetType):
+                return self._type(typ.element)
+        if isinstance(expr, TFieldAccess):
+            resolved = self._resolve_field_type(expr)
+            if isinstance(resolved, TListType):
+                return self._type(resolved.element)
+            if isinstance(resolved, TSetType):
+                return self._type(resolved.element)
         if isinstance(expr, TListLit) and expr.elements:
             return self._infer_go_type(expr.elements[0])
         return "any"
@@ -2252,6 +2292,10 @@ class _GoEmitter(Emitter):
             typ = self.var_types.get(expr.name)
             if isinstance(typ, TMapType):
                 return self._type(typ.key)
+        if isinstance(expr, TFieldAccess):
+            resolved = self._resolve_field_type(expr)
+            if isinstance(resolved, TMapType):
+                return self._type(resolved.key)
         return "any"
 
     def _infer_map_val_type(self, expr: TExpr) -> str:
@@ -2264,6 +2308,10 @@ class _GoEmitter(Emitter):
             typ = self.var_types.get(expr.name)
             if isinstance(typ, TMapType):
                 return self._type(typ.value)
+        if isinstance(expr, TFieldAccess):
+            resolved = self._resolve_field_type(expr)
+            if isinstance(resolved, TMapType):
+                return self._type(resolved.value)
         return "any"
 
     def _empty_map_call(self, args: list[TArg]) -> str:
@@ -3078,8 +3126,10 @@ class _GoEmitter(Emitter):
         ann = expr.annotations.get("type", "")
         if ann.startswith("list["):
             inner = ann[5:-1]
-            if inner in self._interface_names or inner in self.struct_names:
+            if inner in self._interface_names:
                 return "[]" + inner
+            if inner in self.struct_names:
+                return "[]*" + inner
             go_inner = self._type_str_to_go(inner)
             if go_inner != "[]any":
                 return go_inner
@@ -3100,7 +3150,7 @@ class _GoEmitter(Emitter):
                         if vt.name in self._interface_children[iface]:
                             return "[]" + iface
                     if vt.name in self.struct_names:
-                        return "[]" + vt.name
+                        return "[]*" + vt.name
             if isinstance(first, TCall):
                 if isinstance(first.func, TVar):
                     fname = first.func.name
@@ -3108,7 +3158,7 @@ class _GoEmitter(Emitter):
                         if fname in self._interface_children[iface]:
                             return "[]" + iface
                     if fname in self.struct_names:
-                        return "[]" + fname
+                        return "[]*" + fname
         return "[]any"
 
     def _type_str_to_go(self, s: str) -> str:
@@ -4502,8 +4552,12 @@ class _GoEmitter(Emitter):
     def _setfromlist_call(self, args: list[TArg]) -> str:
         a = self._a(args, 0)
         arg = args[0].value
-        if self._is_map_type(arg):
-            kt = self._infer_map_key_type(arg)
+        if self._is_map_type(arg) or self._is_set_type(arg):
+            kt = (
+                self._infer_map_key_type(arg)
+                if self._is_map_type(arg)
+                else self._infer_elem_type(arg)
+            )
             return (
                 "func() map["
                 + kt
