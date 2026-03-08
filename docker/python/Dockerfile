@@ -6,5 +6,5 @@ RUN apt-get update && apt-get install -y curl nodejs npm \
 ENV PATH="/root/.local/bin:${PATH}"
 RUN uv python install "~=3.12.0"
 RUN uvx ruff --version | grep -q "ruff"
-RUN curl -sSf https://just.systems/install.sh | bash -s -- --to /usr/local/bin
+RUN curl -sSfL https://github.com/casey/just/releases/latest/download/just-x86_64-unknown-linux-musl.tar.gz | tar xz -C /usr/local/bin just
 WORKDIR /workspace
