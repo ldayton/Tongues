@@ -6,6 +6,7 @@ Usage: retranspile.py <binary> <src_dir> <target> <output_file>
 Loads the transpiled binary and feeds it the project source via --project mode.
 For Python, runs in-process; for Ruby/Perl/JS, runs as a subprocess.
 """
+
 import importlib.util
 import io
 import os
@@ -51,7 +52,10 @@ def run_python(binary_path, stdin_data, target):
     sys.modules["tongues_retranspile"] = mod
     spec.loader.exec_module(mod)
     old_argv, old_stdout, old_stderr, old_stdin = (
-        sys.argv, sys.stdout, sys.stderr, sys.stdin,
+        sys.argv,
+        sys.stdout,
+        sys.stderr,
+        sys.stdin,
     )
     out = io.StringIO()
     err = io.StringIO()
@@ -64,40 +68,68 @@ def run_python(binary_path, stdin_data, target):
     except SystemExit as e:
         if e.code not in (None, 0):
             sys.argv, sys.stdout, sys.stderr, sys.stdin = (
-                old_argv, old_stdout, old_stderr, old_stdin,
+                old_argv,
+                old_stdout,
+                old_stderr,
+                old_stdin,
             )
-            print(f"Retranspile failed (exit {e.code}): {err.getvalue()}", file=sys.stderr)
+            print(
+                f"Retranspile failed (exit {e.code}): {err.getvalue()}", file=sys.stderr
+            )
             sys.exit(1)
     finally:
         sys.argv, sys.stdout, sys.stderr, sys.stdin = (
-            old_argv, old_stdout, old_stderr, old_stdin,
+            old_argv,
+            old_stdout,
+            old_stderr,
+            old_stdin,
         )
     return out.getvalue()
 
 
 def run_subprocess(cmd, stdin_data):
     result = subprocess.run(
-        cmd, input=stdin_data.encode("utf-8"),
-        capture_output=True, timeout=600,
+        cmd,
+        input=stdin_data.encode("utf-8"),
+        capture_output=True,
+        timeout=600,
     )
     if result.returncode != 0:
-        print(f"Retranspile failed (exit {result.returncode}): {result.stderr.decode(errors='replace')}", file=sys.stderr)
+        print(
+            f"Retranspile failed (exit {result.returncode}): {result.stderr.decode(errors='replace')}",
+            file=sys.stderr,
+        )
         sys.exit(1)
     return result.stdout.decode()
 
 
 def run_ruby(binary_path, stdin_data, target):
     return run_subprocess(
-        ["ruby", "-W0", "-e", f"load '{binary_path}'; main", "--",
-         "--project", "--target", target],
+        [
+            "ruby",
+            "-W0",
+            "-e",
+            f"load '{binary_path}'; main",
+            "--",
+            "--project",
+            "--target",
+            target,
+        ],
         stdin_data,
     )
 
 
 def run_perl(binary_path, stdin_data, target):
     return run_subprocess(
-        ["perl", "-e", f"do '{binary_path}'; die $@ if $@; main()", "--",
-         "--project", "--target", target],
+        [
+            "perl",
+            "-e",
+            f"do '{binary_path}'; die $@ if $@; main()",
+            "--",
+            "--project",
+            "--target",
+            target,
+        ],
         stdin_data,
     )
 

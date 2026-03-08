@@ -21,42 +21,204 @@ LIB_DIR = os.path.join(TONGUES_DIR, "src", "lib")
 # Phase -> test config
 # Runners: cli, linker, phase, lowering, codegen, emit, app, ordering, ty_app
 TESTS = [
-    ("cli", [
-        ("cli", {"dir": "frontend/cli", "run": "cli"}),
-    ]),
-    ("linker", [
-        ("linker", {"dir": "frontend/linker", "run": "linker"}),
-    ]),
-    ("frontend", [
-        ("parse",     {"dir": "frontend/parse",      "run": "phase", "taytsh": False, "args": ["--stop-at", "parse"],      "json": True}),
-        ("subset",    {"dir": "frontend/subset",      "run": "phase", "taytsh": False, "args": ["--stop-at", "subset"],     "json": False}),
-        ("names",     {"dir": "frontend/names",       "run": "phase", "taytsh": False, "args": ["--stop-at", "names"],      "json": True}),
-        ("sigs",      {"dir": "frontend/signatures",  "run": "phase", "taytsh": False, "args": ["--stop-at", "signatures"],"json": True}),
-        ("fields",    {"dir": "frontend/fields",      "run": "phase", "taytsh": False, "args": ["--stop-at", "fields"],     "json": True}),
-        ("hierarchy", {"dir": "frontend/hierarchy",   "run": "phase", "taytsh": False, "args": ["--stop-at", "hierarchy"],  "json": True}),
-        ("pycheck",   {"dir": "frontend/pycheck",     "run": "phase", "taytsh": False, "args": ["--stop-at", "pycheck"],    "json": True}),
-        ("lowering",  {"dir": "frontend/lowering",    "run": "lowering"}),
-    ]),
-    ("middleend", [
-        ("scope",     {"dir": "middleend/scope",     "run": "phase", "taytsh": True, "args": ["--stop-at", "scope"],     "json": True}),
-        ("returns",   {"dir": "middleend/returns",   "run": "phase", "taytsh": True, "args": ["--stop-at", "returns"],   "json": True}),
-        ("liveness",  {"dir": "middleend/liveness",  "run": "phase", "taytsh": True, "args": ["--stop-at", "liveness"],  "json": True}),
-        ("strings",   {"dir": "middleend/strings",   "run": "phase", "taytsh": True, "args": ["--stop-at", "strings"],   "json": True}),
-        ("hoisting",  {"dir": "middleend/hoisting",  "run": "phase", "taytsh": True, "args": ["--stop-at", "hoisting"],  "json": True}),
-        ("ownership", {"dir": "middleend/ownership", "run": "phase", "taytsh": True, "args": ["--stop-at", "ownership"], "json": True}),
-        ("callgraph", {"dir": "middleend/callgraph", "run": "phase", "taytsh": True, "args": ["--stop-at", "callgraph"], "json": True}),
-    ]),
-    ("backend", [
-        ("codegen",  {"dir": "backend/codegen",  "run": "codegen"}),
-        ("emit",     {"dir": "backend/emit",     "run": "emit"}),
-        ("app",      {"dir": "backend/app",      "run": "app"}),
-        ("ordering", {"dir": "backend/ordering", "run": "ordering"}),
-    ]),
-    ("taytsh", [
-        ("typarse", {"dir": "taytsh/typarse", "run": "phase", "taytsh": True, "args": ["--stop-at", "parse"], "json": True}),
-        ("tycheck", {"dir": "taytsh/tycheck", "run": "phase", "taytsh": True, "args": ["--stop-at", "check"], "json": True}),
-        ("ty_app",  {"dir": "taytsh/app",     "run": "ty_app"}),
-    ]),
+    (
+        "cli",
+        [
+            ("cli", {"dir": "frontend/cli", "run": "cli"}),
+        ],
+    ),
+    (
+        "linker",
+        [
+            ("linker", {"dir": "frontend/linker", "run": "linker"}),
+        ],
+    ),
+    (
+        "frontend",
+        [
+            (
+                "parse",
+                {
+                    "dir": "frontend/parse",
+                    "run": "phase",
+                    "taytsh": False,
+                    "args": ["--stop-at", "parse"],
+                    "json": True,
+                },
+            ),
+            (
+                "subset",
+                {
+                    "dir": "frontend/subset",
+                    "run": "phase",
+                    "taytsh": False,
+                    "args": ["--stop-at", "subset"],
+                    "json": False,
+                },
+            ),
+            (
+                "names",
+                {
+                    "dir": "frontend/names",
+                    "run": "phase",
+                    "taytsh": False,
+                    "args": ["--stop-at", "names"],
+                    "json": True,
+                },
+            ),
+            (
+                "sigs",
+                {
+                    "dir": "frontend/signatures",
+                    "run": "phase",
+                    "taytsh": False,
+                    "args": ["--stop-at", "signatures"],
+                    "json": True,
+                },
+            ),
+            (
+                "fields",
+                {
+                    "dir": "frontend/fields",
+                    "run": "phase",
+                    "taytsh": False,
+                    "args": ["--stop-at", "fields"],
+                    "json": True,
+                },
+            ),
+            (
+                "hierarchy",
+                {
+                    "dir": "frontend/hierarchy",
+                    "run": "phase",
+                    "taytsh": False,
+                    "args": ["--stop-at", "hierarchy"],
+                    "json": True,
+                },
+            ),
+            (
+                "pycheck",
+                {
+                    "dir": "frontend/pycheck",
+                    "run": "phase",
+                    "taytsh": False,
+                    "args": ["--stop-at", "pycheck"],
+                    "json": True,
+                },
+            ),
+            ("lowering", {"dir": "frontend/lowering", "run": "lowering"}),
+        ],
+    ),
+    (
+        "middleend",
+        [
+            (
+                "scope",
+                {
+                    "dir": "middleend/scope",
+                    "run": "phase",
+                    "taytsh": True,
+                    "args": ["--stop-at", "scope"],
+                    "json": True,
+                },
+            ),
+            (
+                "returns",
+                {
+                    "dir": "middleend/returns",
+                    "run": "phase",
+                    "taytsh": True,
+                    "args": ["--stop-at", "returns"],
+                    "json": True,
+                },
+            ),
+            (
+                "liveness",
+                {
+                    "dir": "middleend/liveness",
+                    "run": "phase",
+                    "taytsh": True,
+                    "args": ["--stop-at", "liveness"],
+                    "json": True,
+                },
+            ),
+            (
+                "strings",
+                {
+                    "dir": "middleend/strings",
+                    "run": "phase",
+                    "taytsh": True,
+                    "args": ["--stop-at", "strings"],
+                    "json": True,
+                },
+            ),
+            (
+                "hoisting",
+                {
+                    "dir": "middleend/hoisting",
+                    "run": "phase",
+                    "taytsh": True,
+                    "args": ["--stop-at", "hoisting"],
+                    "json": True,
+                },
+            ),
+            (
+                "ownership",
+                {
+                    "dir": "middleend/ownership",
+                    "run": "phase",
+                    "taytsh": True,
+                    "args": ["--stop-at", "ownership"],
+                    "json": True,
+                },
+            ),
+            (
+                "callgraph",
+                {
+                    "dir": "middleend/callgraph",
+                    "run": "phase",
+                    "taytsh": True,
+                    "args": ["--stop-at", "callgraph"],
+                    "json": True,
+                },
+            ),
+        ],
+    ),
+    (
+        "backend",
+        [
+            ("codegen", {"dir": "backend/codegen", "run": "codegen"}),
+            ("emit", {"dir": "backend/emit", "run": "emit"}),
+            ("app", {"dir": "backend/app", "run": "app"}),
+            ("ordering", {"dir": "backend/ordering", "run": "ordering"}),
+        ],
+    ),
+    (
+        "taytsh",
+        [
+            (
+                "typarse",
+                {
+                    "dir": "taytsh/typarse",
+                    "run": "phase",
+                    "taytsh": True,
+                    "args": ["--stop-at", "parse"],
+                    "json": True,
+                },
+            ),
+            (
+                "tycheck",
+                {
+                    "dir": "taytsh/tycheck",
+                    "run": "phase",
+                    "taytsh": True,
+                    "args": ["--stop-at", "check"],
+                    "json": True,
+                },
+            ),
+            ("ty_app", {"dir": "taytsh/app", "run": "ty_app"}),
+        ],
+    ),
 ]
 
 EMITTER_LANGS = ["python", "perl", "ruby"]
@@ -74,12 +236,15 @@ _main_func = None
 # In-process execution
 # ---------------------------------------------------------------------------
 
+
 class _StdinWrapper(io.StringIO):
     """StringIO with a .buffer attribute for code that reads binary stdin."""
 
     def __init__(self, text, raw_bytes=None):
         super().__init__(text)
-        self.buffer = io.BytesIO(raw_bytes if raw_bytes is not None else text.encode("utf-8"))
+        self.buffer = io.BytesIO(
+            raw_bytes if raw_bytes is not None else text.encode("utf-8")
+        )
 
 
 def run_inprocess(argv, stdin_data="", stdin_bytes=None):
@@ -135,13 +300,19 @@ def run_transpiled_phase(source, cli_args, is_taytsh=False, expect_json=True):
     try:
         data = json_parse(stdout_text)
     except Exception:
-        return {"errors": [f"Invalid JSON output: {stdout_text[:200]}"], "warnings": [], "data": None, "reveals": []}
+        return {
+            "errors": [f"Invalid JSON output: {stdout_text[:200]}"],
+            "warnings": [],
+            "data": None,
+            "reveals": [],
+        }
     return {"errors": [], "warnings": warnings, "data": data, "reveals": []}
 
 
 # ---------------------------------------------------------------------------
 # Test runners
 # ---------------------------------------------------------------------------
+
 
 def run_cli_tests(test_dir):
     results = []
@@ -156,10 +327,14 @@ def run_cli_tests(test_dir):
                 continue
             if spec.stdin_hex:
                 raw = bytes.fromhex(spec.stdin_hex)
-                result = run_inprocess(spec.args, stdin_data=raw.decode("latin-1"), stdin_bytes=raw)
+                result = run_inprocess(
+                    spec.args, stdin_data=raw.decode("latin-1"), stdin_bytes=raw
+                )
             else:
                 result = run_inprocess(spec.args, stdin_data=spec.stdin)
-            err = check_cli_assertions(result["exit"], result["stdout"], result["stderr"], spec.assertions)
+            err = check_cli_assertions(
+                result["exit"], result["stdout"], result["stderr"], spec.assertions
+            )
             if err:
                 results.append(("fail", test_id, err))
             else:
@@ -188,7 +363,9 @@ def run_linker_tests(test_dir):
                     results.append(("skip", test_id, None))
                     continue
             result = run_inprocess(args, stdin_data=stdin_data)
-            err = check_cli_assertions(result["exit"], result["stdout"], result["stderr"], spec.assertions)
+            err = check_cli_assertions(
+                result["exit"], result["stdout"], result["stderr"], spec.assertions
+            )
             if err:
                 results.append(("fail", test_id, err))
             else:
@@ -206,20 +383,40 @@ def run_phase_tests(test_dir, phase_name, cfg):
             test_id = f"{stem}/{entry.name}"
             lenient = phase_name in ("parse", "pycheck", "typarse", "tycheck")
             phase_result = run_transpiled_phase(
-                entry.input_, cfg["args"],
+                entry.input_,
+                cfg["args"],
                 is_taytsh=cfg["taytsh"],
                 expect_json=cfg["json"],
             )
             reveals = phase_result["reveals"]
-            if phase_name in ("pycheck", "tycheck") and not phase_result["errors"] and phase_result["data"]:
+            if (
+                phase_name in ("pycheck", "tycheck")
+                and not phase_result["errors"]
+                and phase_result["data"]
+            ):
                 if isinstance(phase_result["data"], JsonObject):
                     try:
-                        reveals_arr = json_get_items(json_get_field(phase_result["data"], "reveals"))
-                        reveals = [(int(json_get_number(json_get_field(r, "line"))), json_get_string(json_get_field(r, "type"))) for r in reveals_arr]
+                        reveals_arr = json_get_items(
+                            json_get_field(phase_result["data"], "reveals")
+                        )
+                        reveals = [
+                            (
+                                int(json_get_number(json_get_field(r, "line"))),
+                                json_get_string(json_get_field(r, "type")),
+                            )
+                            for r in reveals_arr
+                        ]
                     except Exception:
                         pass
-            err = check_expected(entry.expected, phase_result["errors"], phase_result["warnings"],
-                                 phase_result["data"], reveals, phase_name, lenient)
+            err = check_expected(
+                entry.expected,
+                phase_result["errors"],
+                phase_result["warnings"],
+                phase_result["data"],
+                reveals,
+                phase_name,
+                lenient,
+            )
             if err:
                 results.append(("fail", test_id, err))
             else:
@@ -245,21 +442,41 @@ def run_lowering_tests(test_dir):
             if entry.expected.startswith("error:"):
                 expected_msg = entry.expected[6:].strip()
                 if result["exit"] == 0:
-                    results.append(("fail", test_id, f"Expected error containing '{expected_msg}', got success"))
+                    results.append(
+                        (
+                            "fail",
+                            test_id,
+                            f"Expected error containing '{expected_msg}', got success",
+                        )
+                    )
                     continue
                 stderr_line = (result["stderr"].strip().split("\n") or [""])[0]
                 if expected_msg and expected_msg.lower() not in stderr_line.lower():
-                    results.append(("fail", test_id, f"Expected error containing '{expected_msg}', got: {stderr_line}"))
+                    results.append(
+                        (
+                            "fail",
+                            test_id,
+                            f"Expected error containing '{expected_msg}', got: {stderr_line}",
+                        )
+                    )
                     continue
                 results.append(("pass", test_id, None))
                 continue
             if result["exit"] != 0:
-                err_msg = (result["stderr"].strip().split("\n") or ["lowering failed"])[0]
+                err_msg = (result["stderr"].strip().split("\n") or ["lowering failed"])[
+                    0
+                ]
                 results.append(("fail", test_id, f"Lowering error: {err_msg}"))
                 continue
             output = result["stdout"]
             if not contains_normalized(output, entry.expected):
-                results.append(("fail", test_id, f"Expected not found in output:\n--- expected ---\n{entry.expected}\n--- got ---\n{output}"))
+                results.append(
+                    (
+                        "fail",
+                        test_id,
+                        f"Expected not found in output:\n--- expected ---\n{entry.expected}\n--- got ---\n{output}",
+                    )
+                )
                 continue
             results.append(("pass", test_id, None))
     return results
@@ -270,10 +487,15 @@ def run_codegen_tests(test_dir):
     base_dir = os.path.join(test_dir, "base")
     if not os.path.isdir(base_dir):
         return results
-    lang_dirs = sorted([
-        d for d in os.listdir(test_dir)
-        if d != "base" and os.path.isdir(os.path.join(test_dir, d)) and d in EMITTER_LANGS
-    ])
+    lang_dirs = sorted(
+        [
+            d
+            for d in os.listdir(test_dir)
+            if d != "base"
+            and os.path.isdir(os.path.join(test_dir, d))
+            and d in EMITTER_LANGS
+        ]
+    )
     for lang in lang_dirs:
         lang_dir = os.path.join(test_dir, lang)
         for base_file in sorted(glob.glob(os.path.join(base_dir, "*.tests"))):
@@ -286,7 +508,13 @@ def run_codegen_tests(test_dir):
                 continue
             if not os.path.exists(lang_file):
                 for entry in base_tests:
-                    results.append(("fail", f"{stem}/{entry.name}[{lang}]", f"{lang}/{basename} missing"))
+                    results.append(
+                        (
+                            "fail",
+                            f"{stem}/{entry.name}[{lang}]",
+                            f"{lang}/{basename} missing",
+                        )
+                    )
                 continue
             with open(lang_file) as fh:
                 lang_tests = parse_simple_tests(fh.read())
@@ -294,7 +522,13 @@ def run_codegen_tests(test_dir):
             lang_names = [e.name for e in lang_tests]
             if base_names != lang_names:
                 for entry in base_tests:
-                    results.append(("fail", f"{stem}/{entry.name}[{lang}]", "base/lang name mismatch"))
+                    results.append(
+                        (
+                            "fail",
+                            f"{stem}/{entry.name}[{lang}]",
+                            "base/lang name mismatch",
+                        )
+                    )
                 continue
             lang_by_name = {e.name: e.content for e in lang_tests}
             for entry in base_tests:
@@ -308,12 +542,20 @@ def run_codegen_tests(test_dir):
                 finally:
                     os.unlink(tmp_path)
                 if result["exit"] != 0:
-                    stderr = (result["stderr"].strip().split("\n") or ["transpile failed"])[0]
+                    stderr = (
+                        result["stderr"].strip().split("\n") or ["transpile failed"]
+                    )[0]
                     results.append(("fail", test_id, f"Transpile error: {stderr}"))
                     continue
                 output = result["stdout"]
                 if not contains_normalized(output, expected):
-                    results.append(("fail", test_id, f"Expected not found in output:\n--- expected ---\n{expected}\n--- got ---\n{output}"))
+                    results.append(
+                        (
+                            "fail",
+                            test_id,
+                            f"Expected not found in output:\n--- expected ---\n{expected}\n--- got ---\n{output}",
+                        )
+                    )
                     continue
                 results.append(("pass", test_id, None))
     return results
@@ -324,10 +566,15 @@ def run_emit_tests(test_dir):
     base_dir = os.path.join(test_dir, "base")
     if not os.path.isdir(base_dir):
         return results
-    lang_dirs = sorted([
-        d for d in os.listdir(test_dir)
-        if d != "base" and os.path.isdir(os.path.join(test_dir, d)) and d in EMITTER_LANGS
-    ])
+    lang_dirs = sorted(
+        [
+            d
+            for d in os.listdir(test_dir)
+            if d != "base"
+            and os.path.isdir(os.path.join(test_dir, d))
+            and d in EMITTER_LANGS
+        ]
+    )
     for lang in lang_dirs:
         lang_dir = os.path.join(test_dir, lang)
         for base_file in sorted(glob.glob(os.path.join(base_dir, "*.tests"))):
@@ -356,12 +603,20 @@ def run_emit_tests(test_dir):
                 finally:
                     os.unlink(tmp_path)
                 if result["exit"] != 0:
-                    stderr = (result["stderr"].strip().split("\n") or ["emit failed"])[0]
+                    stderr = (result["stderr"].strip().split("\n") or ["emit failed"])[
+                        0
+                    ]
                     results.append(("fail", test_id, f"Emit error: {stderr}"))
                     continue
                 output = result["stdout"]
                 if not contains_normalized(output, expected):
-                    results.append(("fail", test_id, f"Expected not found in output:\n--- expected ---\n{expected}\n--- got ---\n{output}"))
+                    results.append(
+                        (
+                            "fail",
+                            test_id,
+                            f"Expected not found in output:\n--- expected ---\n{expected}\n--- got ---\n{output}",
+                        )
+                    )
                     continue
                 results.append(("pass", test_id, None))
     return results
@@ -424,20 +679,36 @@ def run_app_tests(test_dir):
                     with open(lib_path) as fh:
                         parts.append((f"lib/{name}.py", fh.read()))
                 stdin_data = build_project_input("apptest.py", source, parts)
-                result = run_inprocess(["--project", "--target", target], stdin_data=stdin_data)
+                result = run_inprocess(
+                    ["--project", "--target", target], stdin_data=stdin_data
+                )
             if result["exit"] != 0:
-                stderr = (result["stderr"].strip().split("\n") or ["transpile failed"])[0]
-                results.append(("fail", test_id, f"Transpile error ({target}): {stderr}"))
+                stderr = (result["stderr"].strip().split("\n") or ["transpile failed"])[
+                    0
+                ]
+                results.append(
+                    ("fail", test_id, f"Transpile error ({target}): {stderr}")
+                )
                 continue
             transpiled_code = result["stdout"]
             runtime = RUNTIMES[target]
             try:
                 proc = subprocess.run(
-                    runtime, input=transpiled_code, capture_output=True, text=True, timeout=30,
+                    runtime,
+                    input=transpiled_code,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
                 )
                 if proc.returncode != 0:
                     output = proc.stdout + proc.stderr
-                    results.append(("fail", test_id, f"App test failed with exit {proc.returncode}\n{output}"))
+                    results.append(
+                        (
+                            "fail",
+                            test_id,
+                            f"App test failed with exit {proc.returncode}\n{output}",
+                        )
+                    )
                     continue
             except subprocess.TimeoutExpired:
                 results.append(("fail", test_id, "App test timed out"))
@@ -469,18 +740,32 @@ def run_ordering_tests(test_dir):
             test_id = f"{stem}[{target}]"
             result = run_inprocess(["taytsh", "--emit", target, test_file])
             if result["exit"] != 0:
-                stderr = (result["stderr"].strip().split("\n") or ["transpile failed"])[0]
-                results.append(("fail", test_id, f"Transpile error ({target}): {stderr}"))
+                stderr = (result["stderr"].strip().split("\n") or ["transpile failed"])[
+                    0
+                ]
+                results.append(
+                    ("fail", test_id, f"Transpile error ({target}): {stderr}")
+                )
                 continue
             transpiled_code = result["stdout"]
             runtime = RUNTIMES[target]
             try:
                 proc = subprocess.run(
-                    runtime, input=transpiled_code, capture_output=True, text=True, timeout=30,
+                    runtime,
+                    input=transpiled_code,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
                 )
                 if proc.returncode != 0:
                     output = proc.stdout + proc.stderr
-                    results.append(("fail", test_id, f"Ordering test failed with exit {proc.returncode}\n{output}"))
+                    results.append(
+                        (
+                            "fail",
+                            test_id,
+                            f"Ordering test failed with exit {proc.returncode}\n{output}",
+                        )
+                    )
                     continue
             except subprocess.TimeoutExpired:
                 results.append(("fail", test_id, "Ordering test timed out"))
@@ -506,7 +791,11 @@ if __name__ == "__main__":
         print("Usage: python test-transpiled.py <transpiled.py>", file=sys.stderr)
         sys.exit(1)
 
-    transpiled_path = os.path.join(TONGUES_DIR, sys.argv[1]) if not os.path.isabs(sys.argv[1]) else sys.argv[1]
+    transpiled_path = (
+        os.path.join(TONGUES_DIR, sys.argv[1])
+        if not os.path.isabs(sys.argv[1])
+        else sys.argv[1]
+    )
     if not os.path.exists(transpiled_path):
         print(f"Transpiled file not found: {transpiled_path}", file=sys.stderr)
         sys.exit(1)
@@ -534,7 +823,9 @@ if __name__ == "__main__":
     if not os.path.exists(harness_path):
         print(f"Transpiled harness not found: {harness_path}", file=sys.stderr)
         sys.exit(1)
-    harness_spec = importlib.util.spec_from_file_location("test_harness_transpiled", harness_path)
+    harness_spec = importlib.util.spec_from_file_location(
+        "test_harness_transpiled", harness_path
+    )
     harness_mod = importlib.util.module_from_spec(harness_spec)
     sys.modules["test_harness_transpiled"] = harness_mod
     harness_spec.loader.exec_module(harness_mod)
@@ -604,7 +895,9 @@ if __name__ == "__main__":
 
     print("=" * 60)
     total = total_pass + total_fail + total_skip
-    print(f"{total} tests: {total_pass} passed, {total_fail} failed, {total_skip} skipped")
+    print(
+        f"{total} tests: {total_pass} passed, {total_fail} failed, {total_skip} skipped"
+    )
     print("=" * 60)
 
     sys.exit(1 if total_fail > 0 else 0)
