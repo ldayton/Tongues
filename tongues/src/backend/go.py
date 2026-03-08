@@ -762,6 +762,7 @@ class _GoEmitter(Emitter):
         self._try_action_var: str | None = None
         self._try_result_var: str | None = None
         self._fn_params: dict[str, list[TParam]] = {}
+        self._fn_ret_types: dict[str, TType | None] = {}
         self._interface_methods: dict[str, list[TFnDecl]] = {}
         self._suppress_deref: bool = False
 
@@ -780,10 +781,12 @@ class _GoEmitter(Emitter):
             if isinstance(decl, TFnDecl):
                 self.fn_names.add(decl.name)
                 self._fn_params[decl.name] = decl.params
+                self._fn_ret_types[decl.name] = decl.ret
             if isinstance(decl, TStructDecl):
                 for m in decl.methods:
                     self.fn_names.add(m.name)
                     self._fn_params[decl.name + "." + m.name] = m.params
+                    self._fn_ret_types[m.name] = m.ret
                 is_error = decl.name in BUILTIN_STRUCTS
                 if not is_error and decl.parent is not None:
                     if decl.parent in BUILTIN_STRUCTS:
@@ -1512,7 +1515,10 @@ class _GoEmitter(Emitter):
                         val_ann = stmt.value.annotations.get("type", "")
                         tgt_s = _restore_name(stmt.target.name, stmt.target.annotations)
                         tgt_s = self._var_aliases.get(tgt_s, tgt_s)
-                        if not val_ann.endswith("?") and "nil" not in val_ann.split(
+                        if self._is_map_get_call(stmt.value):
+                            self._line("__atmp := " + val_s)
+                            self._line(tgt_s + " = &__atmp")
+                        elif not val_ann.endswith("?") and "nil" not in val_ann.split(
                             " | "
                         ):
                             self._line("__atmp := " + val_s)
@@ -1687,12 +1693,54 @@ class _GoEmitter(Emitter):
                     go_type = self._type(stmt.typ)
                     if go_type != "any" and go_type != self._type(obj_vt):
                         val_s = val_s + ".(" + go_type + ")"
+            if is_opt_prim and self._let_needs_ptr_wrap(val):
+                self._line("__atmp := " + val_s)
+                self._line(safe + " := &__atmp")
+                return
             if self._in_func:
                 self._line(safe + " := " + val_s)
             else:
                 self._line("var " + safe + " = " + val_s)
         else:
             self._line("var " + safe + " " + self._type(stmt.typ))
+
+    def _is_map_get_call(self, expr: TExpr) -> bool:
+        """Check if expr is Get(map, key) without default — produces non-pointer in Go."""
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "Get"
+            and len(expr.args) == 2
+        )
+
+    def _let_needs_ptr_wrap(self, val: TExpr) -> bool:
+        """Check if a let value needs &-wrapping because Go infers a non-pointer type."""
+        if isinstance(val, TNilLit):
+            return False
+        # Map index produces non-pointer value
+        if isinstance(val, TIndex):
+            return True
+        # dict.get() without default produces map index (non-pointer)
+        if isinstance(val, TCall) and isinstance(val.func, TVar):
+            if val.func.name == "Get" and len(val.args) == 2:
+                return True
+        # Literals
+        if isinstance(val, (TStringLit, TIntLit, TFloatLit, TBoolLit)):
+            return True
+        # Variable with non-optional Go type
+        if isinstance(val, TVar):
+            vt = self.var_types.get(val.name)
+            if vt is not None and not isinstance(vt, TOptionalType):
+                return True
+        # Field access: non-optional field
+        if isinstance(val, TFieldAccess):
+            ft = self._resolve_field_type(val)
+            if ft is not None and not isinstance(ft, TOptionalType):
+                return True
+        # Binary/unary ops produce non-pointer values
+        if isinstance(val, (TBinaryOp, TUnaryOp)):
+            return True
+        return False
 
     def _resolve_field_type(self, expr: TFieldAccess) -> TType | None:
         """Resolve the declared type of a field access through struct types."""
@@ -2618,6 +2666,8 @@ class _GoEmitter(Emitter):
             return False
         if self._is_go_ref_type(typ.inner):
             return False
+        if isinstance(typ.inner, TTupleType):
+            return False
         # Check if narrowed via scope annotation
         narrowed = expr.annotations.get("scope.narrowed_type", "")
         if narrowed:
@@ -2647,9 +2697,11 @@ class _GoEmitter(Emitter):
         """Check if field access returns an optional primitive (needs deref in Go)."""
         if self._suppress_deref:
             return False
-        if not isinstance(expr.obj, TVar):
-            return False
-        obj_type = self.var_types.get(expr.obj.name)
+        obj_type: TType | None = None
+        if isinstance(expr.obj, TVar):
+            obj_type = self.var_types.get(expr.obj.name)
+        elif isinstance(expr.obj, TFieldAccess):
+            obj_type = self._resolve_field_type(expr.obj)
         if isinstance(obj_type, TIdentType):
             struct_name = obj_type.name
         elif isinstance(obj_type, TOptionalType) and isinstance(
@@ -3325,16 +3377,24 @@ class _GoEmitter(Emitter):
         if isinstance(expr.then_expr, TTernary):
             self._emit_ternary_return(expr.then_expr)
         else:
-            self._line("return " + self._expr(expr.then_expr))
+            self._emit_return_value(expr.then_expr)
         self.indent -= 1
         self._line("} else {")
         self.indent += 1
         if isinstance(expr.else_expr, TTernary):
             self._emit_ternary_return(expr.else_expr)
         else:
-            self._line("return " + self._expr(expr.else_expr))
+            self._emit_return_value(expr.else_expr)
         self.indent -= 1
         self._line("}")
+
+    def _emit_return_value(self, value: TExpr) -> None:
+        """Emit a return statement with ptr wrapping if needed."""
+        if self._needs_ptr_wrap_return(value):
+            self._line("__retv := " + self._expr(value))
+            self._line("return &__retv")
+        else:
+            self._line("return " + self._expr(value))
 
     def _emit_ternary_stmt(self, expr: TTernary, target: str) -> None:
         """Emit ternary as if/else assignment."""
@@ -3567,10 +3627,23 @@ class _GoEmitter(Emitter):
         if isinstance(expr, TTupleAccess):
             return self._expr(expr.obj) + "[" + str(expr.index) + "]"
         if isinstance(expr, TIndex):
+            obj_s = self._expr(expr.obj)
+            if obj_s.startswith("*"):
+                obj_s = "(" + obj_s + ")"
             neg = self._negative_index(expr)
             if neg is not None:
-                return self._expr(expr.obj) + "[" + neg + "]"
-            return self._expr(expr.obj) + "[" + self._expr(expr.index) + "]"
+                return obj_s + "[" + neg + "]"
+            idx_s = self._expr(expr.index)
+            # Force deref optional primitive used as map/slice index
+            if isinstance(expr.index, TVar):
+                idx_vt = self.var_types.get(expr.index.name)
+                if (
+                    isinstance(idx_vt, TOptionalType)
+                    and isinstance(idx_vt.inner, TPrimitive)
+                    and not idx_s.startswith("*")
+                ):
+                    idx_s = "*" + idx_s
+            return obj_s + "[" + idx_s + "]"
         if isinstance(expr, TSlice):
             return self._slice(expr)
         if isinstance(expr, TBinaryOp):
@@ -3794,6 +3867,8 @@ class _GoEmitter(Emitter):
 
     def _slice(self, expr: TSlice) -> str:
         obj = self._expr(expr.obj)
+        if obj.startswith("*"):
+            obj = "(" + obj + ")"
         prov = expr.annotations.get("provenance", "")
         low = self._expr(expr.low)
         high = self._expr(expr.high)
@@ -3891,7 +3966,38 @@ class _GoEmitter(Emitter):
                 return "nil " + op + " " + self._field_access_raw(expr.right)
         left_str = self._maybe_paren(expr.left, op, is_left=True)
         right_str = self._maybe_paren(expr.right, op, is_left=False)
+        # Deref *string when comparing with string literal or non-pointer string
+        if op in ("==", "!="):
+            l_opt = self._is_opt_prim_expr(expr.left)
+            r_opt = self._is_opt_prim_expr(expr.right)
+            if l_opt and not r_opt and not left_str.startswith("*"):
+                left_str = "*" + left_str
+            elif r_opt and not l_opt and not right_str.startswith("*"):
+                right_str = "*" + right_str
         return left_str + " " + op + " " + right_str
+
+    def _is_opt_prim_expr(self, expr: TExpr) -> bool:
+        """Check if expression produces a *primitive (optional primitive) in Go."""
+        if isinstance(expr, TVar):
+            vt = self.var_types.get(expr.name)
+            if isinstance(vt, TOptionalType) and isinstance(vt.inner, TPrimitive):
+                return True
+        if isinstance(expr, TFieldAccess) and self._is_optional_primitive_field(expr):
+            return True
+        if isinstance(expr, TCall):
+            ann = expr.annotations.get("type", "")
+            if ann.endswith("?"):
+                inner = ann[:-1]
+                if inner in ("int", "float", "string", "bool", "rune"):
+                    return True
+            # Check function return type from declarations
+            if isinstance(expr.func, TVar):
+                fn_ret = self._fn_ret_types.get(expr.func.name)
+                if isinstance(fn_ret, TOptionalType) and isinstance(
+                    fn_ret.inner, TPrimitive
+                ):
+                    return True
+        return False
 
     def _unary(self, expr: TUnaryOp) -> str:
         op = expr.op
@@ -3928,6 +4034,8 @@ class _GoEmitter(Emitter):
         inner = self._expr(expr.operand)
         if op == "-" and inner.startswith("-"):
             return "-(" + inner + ")"
+        if op == "*" and "[" in inner:
+            return "(*" + inner + ")"
         return op + inner
 
     def _ternary(self, expr: TTernary) -> str:
@@ -4459,11 +4567,19 @@ class _GoEmitter(Emitter):
                 "strings.Contains(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             )
         if name == "IsDigit":
-            return "unicode.IsDigit(rune(" + self._a(args, 0) + "[0]))"
+            a = self._a(args, 0)
+            if a.startswith("*"):
+                a = "(" + a + ")"
+            return "unicode.IsDigit(rune(" + a + "[0]))"
         if name == "IsAlpha":
-            return "unicode.IsLetter(rune(" + self._a(args, 0) + "[0]))"
+            a = self._a(args, 0)
+            if a.startswith("*"):
+                a = "(" + a + ")"
+            return "unicode.IsLetter(rune(" + a + "[0]))"
         if name == "IsAlnum":
             a = self._a(args, 0)
+            if a.startswith("*"):
+                a = "(" + a + ")"
             return (
                 "(unicode.IsLetter(rune("
                 + a
@@ -4472,11 +4588,20 @@ class _GoEmitter(Emitter):
                 + "[0])))"
             )
         if name == "IsSpace":
-            return "unicode.IsSpace(rune(" + self._a(args, 0) + "[0]))"
+            a = self._a(args, 0)
+            if a.startswith("*"):
+                a = "(" + a + ")"
+            return "unicode.IsSpace(rune(" + a + "[0]))"
         if name == "IsUpper":
-            return "unicode.IsUpper(rune(" + self._a(args, 0) + "[0]))"
+            a = self._a(args, 0)
+            if a.startswith("*"):
+                a = "(" + a + ")"
+            return "unicode.IsUpper(rune(" + a + "[0]))"
         if name == "IsLower":
-            return "unicode.IsLower(rune(" + self._a(args, 0) + "[0]))"
+            a = self._a(args, 0)
+            if a.startswith("*"):
+                a = "(" + a + ")"
+            return "unicode.IsLower(rune(" + a + "[0]))"
         if name == "Encode":
             return "[]byte(" + self._a(args, 0) + ")"
         if name == "Decode":
@@ -4501,6 +4626,15 @@ class _GoEmitter(Emitter):
                     + default
                     + " }; return v }()"
                 )
+            key_expr = args[1].value
+            if isinstance(key_expr, TVar):
+                kv = self.var_types.get(key_expr.name)
+                if (
+                    isinstance(kv, TOptionalType)
+                    and isinstance(kv.inner, TPrimitive)
+                    and not key.startswith("*")
+                ):
+                    key = "*" + key
             return map_arg + "[" + key + "]"
         if name == "Delete":
             return "delete(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
