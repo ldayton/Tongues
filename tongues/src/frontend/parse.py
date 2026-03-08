@@ -4487,7 +4487,8 @@ def _stamp_uids_walk(node: ASTNode, counter: list[int]) -> None:
     if "_type" in node:
         node["_uid"] = JInt(counter[0])
         counter[0] += 1
-    for k in node:
+    keys: list[str] = sorted(node.keys())
+    for k in keys:
         if len(k) > 0 and k[0:1] == "_":
             continue
         v = node[k]

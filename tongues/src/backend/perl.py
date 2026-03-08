@@ -2434,7 +2434,19 @@ class _PerlEmitter(Emitter):
             key = self._hash_key(args[0].value)
             if len(args) >= 2:
                 default = self._expr(args[1].value)
-                return "(" + obj + "->{" + key + "} // " + default + ")"
+                return (
+                    "(exists "
+                    + obj
+                    + "->{"
+                    + key
+                    + "} ? "
+                    + obj
+                    + "->{"
+                    + key
+                    + "} : "
+                    + default
+                    + ")"
+                )
             return obj + "->{" + key + "}"
         if method == "append" and not self._is_known_struct_method(func.obj, method):
             obj = self._expr(func.obj)

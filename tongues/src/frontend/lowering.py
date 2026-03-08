@@ -180,6 +180,9 @@ def _float_repr(value: float) -> str:
     """
     r: str = repr(value)
     if "e" not in r and "E" not in r:
+        # Some runtimes stringify 0.0 as "0" — ensure decimal point is present.
+        if "." not in r and "inf" not in r and "nan" not in r:
+            r = r + ".0"
         return r
     # Normalize to lowercase, parse mantissa and exponent.
     low: str = r.lower()
@@ -2245,6 +2248,20 @@ def _lower_conversion_call(
                 "FormatInt",
                 [int_arg, TIntLit(pos, 16, "16", {})],
             )
+    if fname == "oct":
+        if args and isinstance(args[0], dict):
+            return _make_call(
+                pos,
+                "FormatInt",
+                [_lower_expr(args[0], env, ctx), TIntLit(pos, 8, "8", {})],
+            )
+    if fname == "bin":
+        if args and isinstance(args[0], dict):
+            return _make_call(
+                pos,
+                "FormatInt",
+                [_lower_expr(args[0], env, ctx), TIntLit(pos, 2, "2", {})],
+            )
     return None
 
 
@@ -3642,12 +3659,12 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             if argv_idx is not None and argv_idx >= 1:
                 idx = TIntLit(pos, argv_idx - 1, str(argv_idx - 1), {})
                 return TIndex(pos, args_call, idx, {})
-    # hex(x)[2:] → FormatInt(x, 16) (hex() includes "0x" prefix, FormatInt does not)
+    # hex/oct/bin(x)[2:] → FormatInt(x, base) (builtins include prefix, FormatInt does not)
     if (
         _is_ast(slice_node, "Slice")
         and _is_ast(obj_node, "Call")
         and _is_ast(get_node(obj_node, "func"), "Name")
-        and get_str(get_node(obj_node, "func"), "id") == "hex"
+        and get_str(get_node(obj_node, "func"), "id") in ("hex", "oct", "bin")
     ):
         lower_jv = slice_node.get("lower")
         upper_jv = slice_node.get("upper")
