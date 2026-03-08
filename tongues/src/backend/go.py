@@ -2724,7 +2724,8 @@ class _GoEmitter(Emitter):
                 self._line("case " + type_str + ":")
             elif isinstance(tname, TIdentType):
                 type_str = tname.name
-                self._line("case *" + type_str + ":")
+                ptr = "" if type_str in self._interface_names else "*"
+                self._line("case " + ptr + type_str + ":")
             else:
                 type_str = self._type(tname)
                 self._line("case " + type_str + ":")
