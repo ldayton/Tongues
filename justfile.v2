@@ -8,8 +8,8 @@ style *ARGS:
     set -uo pipefail
     start=$SECONDS
     pids=()
-    just lint {{ARGS}} & pids+=($!)
-    just fmt {{ARGS}} & pids+=($!)
+    just -f {{justfile()}} lint {{ARGS}} & pids+=($!)
+    just -f {{justfile()}} fmt {{ARGS}} & pids+=($!)
     failed=0
     for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
     elapsed=$((SECONDS - start))
@@ -49,3 +49,44 @@ fmt *ARGS:
         printf '\033[31m[fmt] %ds (FAILED)\033[0m\n' "$elapsed"
     fi
     exit $failed
+
+# Transpile Tongues to target language
+_transpile-tongues target:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    start=$SECONDS
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js [taytsh]=ty)
+    mkdir -p tongues/.out
+    cd tongues && uv run bin/tongues --target {{target}} -o ".out/tongues.${ext[{{target}}]}" src
+    printf '\033[32m[transpile-tongues:{{target}}] %ds\033[0m\n' "$((SECONDS - start))"
+
+# Transpile the shared test harness to target language
+_transpile-harness target:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    start=$SECONDS
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
+    cd tongues
+    printf 'tests/shared/test_harness.py\0%s\0lib/json.py\0%s' \
+        "$(<tests/shared/test_harness.py)" "$(<src/lib/json.py)" \
+        | uv run bin/tongues --project --target {{target}} -o ".out/test_harness.${ext[{{target}}]}"
+    printf '\033[32m[transpile-harness:{{target}}] %ds\033[0m\n' "$((SECONDS - start))"
+
+# Transpile Tongues and run test suite in target language
+lang target:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
+    declare -A runner=([python]=python3 [ruby]=ruby [perl]=perl [javascript]=node)
+    just -f {{justfile()}} _transpile-tongues {{target}}
+    just -f {{justfile()}} _transpile-harness {{target}}
+    start=$SECONDS
+    cd tongues
+    ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} .out/tongues.${ext[{{target}}]}; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[test:{{target}}] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[test:{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
