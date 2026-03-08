@@ -310,7 +310,7 @@ jobs:
   # Generative / property-based tests
   # ---------------------------------------------------------------------------
 
-  pytest-gen:
+  pytest-gen-tycheck:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -319,7 +319,18 @@ jobs:
         with:
           python-version: "3.12"
       - uses: extractions/setup-just@v3
-      - run: just -f justfile.v2 pytest-gen
+      - run: just -f justfile.v2 _pytest-gen-tycheck
+
+  pytest-gen-softfloat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: extractions/setup-just@v3
+      - run: just -f justfile.v2 _pytest-gen-softfloat
 
   # ---------------------------------------------------------------------------
   # Gate — single status check for branch protection
@@ -329,7 +340,8 @@ jobs:
     if: always()
     needs:
       - style
-      - pytest-gen
+      - pytest-gen-tycheck
+      - pytest-gen-softfloat
       - test-python
       - retranspile-python
       - fixed-point-python
@@ -347,7 +359,8 @@ jobs:
       - run: |
           for result in \
             "${{ needs.style.result }}" \
-            "${{ needs.pytest-gen.result }}" \
+            "${{ needs.pytest-gen-tycheck.result }}" \
+            "${{ needs.pytest-gen-softfloat.result }}" \
             "${{ needs.test-python.result }}" \
             "${{ needs.retranspile-python.result }}" \
             "${{ needs.fixed-point-python.result }}" \
