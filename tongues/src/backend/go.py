@@ -155,6 +155,24 @@ def _to_lower_camel(name: str) -> str:
     return name[0].lower() + name[1:]
 
 
+def _split_tuple_ann(inner: str) -> list[str]:
+    """Split tuple annotation by top-level commas, respecting brackets."""
+    parts: list[str] = []
+    depth = 0
+    start = 0
+    for i in range(len(inner)):
+        ch = inner[i]
+        if ch in ("[", "("):
+            depth += 1
+        elif ch in ("]", ")"):
+            depth -= 1
+        elif ch == "," and depth == 0:
+            parts.append(inner[start:i].strip())
+            start = i + 1
+    parts.append(inner[start:].strip())
+    return parts
+
+
 def _restore_name(name: str, annotations: Ann) -> str:
     key = "name.original." + name
     if key in annotations:
@@ -1129,6 +1147,27 @@ class _GoEmitter(Emitter):
             return False
         return True
 
+    def _needs_ptr_wrap_assign(self, target: TExpr, value: TExpr) -> bool:
+        """Check if an assignment target is an optional primitive field needing &-wrap."""
+        if not isinstance(target, TFieldAccess):
+            return False
+        if not self._is_optional_primitive_field(target):
+            return False
+        if isinstance(value, TNilLit):
+            return False
+        ann = value.annotations.get("type", "")
+        if ann.endswith("?") or "nil" in ann.split(" | "):
+            return False
+        if isinstance(value, TFieldAccess) and self._is_optional_primitive_field(value):
+            return False
+        return True
+
+    def _field_access_no_deref(self, expr: TFieldAccess) -> str:
+        """Emit field access without optional primitive deref."""
+        obj_s = self._expr(expr.obj)
+        fname = expr.field[0].upper() + expr.field[1:] if expr.field else expr.field
+        return obj_s + "." + fname
+
     def _return_type(self, decl: TFnDecl) -> str:
         if decl.ret is None:
             return ""
@@ -1163,6 +1202,10 @@ class _GoEmitter(Emitter):
         if isinstance(typ, TSetType):
             return "map[" + self._type(typ.element) + "]bool"
         if isinstance(typ, TTupleType):
+            if typ.elements:
+                types = [self._type(e) for e in typ.elements]
+                if all(t == types[0] for t in types[1:]):
+                    return "[" + str(len(typ.elements)) + "]" + types[0]
             return "[" + str(len(typ.elements)) + "]any"
         if isinstance(typ, TOptionalType):
             inner = typ.inner
@@ -1342,7 +1385,14 @@ class _GoEmitter(Emitter):
                     inferred = self._infer_list_type(stmt.target)
                     if inferred is not None:
                         val_s = self._type(inferred) + "{}"
-                self._line(self._expr(stmt.target) + " = " + val_s)
+                if isinstance(
+                    stmt.target, TFieldAccess
+                ) and self._needs_ptr_wrap_assign(stmt.target, stmt.value):
+                    tgt_s = self._field_access_no_deref(stmt.target)
+                    self._line("__atmp := " + val_s)
+                    self._line(tgt_s + " = &__atmp")
+                else:
+                    self._line(self._expr(stmt.target) + " = " + val_s)
             case TTupleAssignStmt():
                 self._emit_tuple_assign(stmt)
             case TOpAssignStmt():
@@ -1733,6 +1783,7 @@ class _GoEmitter(Emitter):
         self._tuple_unpack_counter += 1
         tmp = "__tup" + str(n)
         self._line(tmp + " := " + self._expr(stmt.value))
+        tuple_elem_type = self._tuple_go_elem_type(stmt.value)
         for i, t in enumerate(stmt.targets):
             if i in unused_indices:
                 continue
@@ -1743,10 +1794,47 @@ class _GoEmitter(Emitter):
                 vt = self.var_types.get(t.name)
                 if vt is not None:
                     go_type = self._type(vt)
-            if go_type and go_type != "any":
+            if go_type and go_type != "any" and tuple_elem_type == "any":
                 self._line(target_s + " = " + elem + ".(" + go_type + ")")
             else:
                 self._line(target_s + " = " + elem)
+
+    def _tuple_go_elem_type(self, expr: TExpr) -> str:
+        """Return the Go element type if tuple is homogeneous, else 'any'."""
+        if isinstance(expr, TTupleLit) and expr.elements:
+            types = [self._infer_go_type(e) for e in expr.elements]
+            if types[0] != "any" and all(t == types[0] for t in types[1:]):
+                return types[0]
+        tup = self._resolve_tuple_type(expr)
+        if tup is not None and tup.elements:
+            types = [self._type(e) for e in tup.elements]
+            if all(t == types[0] for t in types[1:]):
+                return types[0]
+        return "any"
+
+    def _resolve_tuple_type(self, expr: TExpr) -> TTupleType | None:
+        """Try to resolve a TTupleType for an expression."""
+        if isinstance(expr, TVar):
+            vt = self.var_types.get(expr.name)
+            if isinstance(vt, TTupleType):
+                return vt
+        if isinstance(expr, TCall) and isinstance(expr.func, TVar):
+            ft = self.var_types.get(expr.func.name)
+            if isinstance(ft, TFuncType) and ft.params:
+                ret = ft.params[-1]
+                if isinstance(ret, TTupleType):
+                    return ret
+        # Fallback: parse type annotation
+        ann = expr.annotations.get("type", "")
+        if ann.startswith("(") and ann.endswith(")"):
+            parts = _split_tuple_ann(ann[1:-1])
+            go_types = [self._ann_type_to_go(p) for p in parts]
+            if all(t != "any" for t in go_types):
+                elems: list[TType] = []
+                for p in parts:
+                    elems.append(TPrimitive(pos=expr.pos, kind=p))
+                return TTupleType(pos=expr.pos, elements=elems)
+        return None
 
     def _is_divmod_call(self, expr: TExpr) -> bool:
         return (
@@ -1970,14 +2058,23 @@ class _GoEmitter(Emitter):
             if isinstance(vt, TListType):
                 if isinstance(vt.element, TTupleType):
                     elem_types = vt.element.elements
+        homogeneous = False
+        if elem_types is not None and len(elem_types) > 0:
+            go_types = [self._type(e) for e in elem_types]
+            homogeneous = all(t == go_types[0] for t in go_types[1:])
         i = 0
         while i < len(binding):
             name = _restore_name(binding[i], ann)
             idx = str(i)
             op = "=" if name == "_" else ":="
             if elem_types is not None and i < len(elem_types):
-                go_t = self._type(elem_types[i])
-                self._line(name + " " + op + " __unpack[" + idx + "].(" + go_t + ")")
+                if homogeneous:
+                    self._line(name + " " + op + " __unpack[" + idx + "]")
+                else:
+                    go_t = self._type(elem_types[i])
+                    self._line(
+                        name + " " + op + " __unpack[" + idx + "].(" + go_t + ")"
+                    )
                 if name != "_":
                     self.var_types[binding[i]] = elem_types[i]
             else:
@@ -3105,7 +3202,6 @@ class _GoEmitter(Emitter):
                 return "self"
             name = _restore_name(expr.name, expr.annotations)
             name = self._var_aliases.get(name, name)
-            # Check if variable needs optional dereference
             if self._needs_deref(expr):
                 return "*" + name
             return name
@@ -3166,7 +3262,12 @@ class _GoEmitter(Emitter):
             return self._set_lit(expr)
         if isinstance(expr, TTupleLit):
             elems = self._join_exprs(expr.elements, ", ")
-            return "[" + str(len(expr.elements)) + "]any{" + elems + "}"
+            elem_type = "any"
+            if expr.elements:
+                types = [self._infer_go_type(e) for e in expr.elements]
+                if types[0] and all(t == types[0] for t in types[1:]):
+                    elem_type = types[0]
+            return "[" + str(len(expr.elements)) + "]" + elem_type + "{" + elems + "}"
         if isinstance(expr, TFnLit):
             return self._fn_lit(expr)
         if isinstance(expr, TCall):
