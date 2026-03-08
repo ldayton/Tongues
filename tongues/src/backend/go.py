@@ -1162,6 +1162,18 @@ class _GoEmitter(Emitter):
             return False
         return True
 
+    def _expr_no_narrowing(self, expr: TExpr) -> str:
+        """Emit expression without TVar narrowing type assertion."""
+        if isinstance(expr, TVar):
+            if expr.name == self.self_name:
+                return "self"
+            name = _restore_name(expr.name, expr.annotations)
+            name = self._var_aliases.get(name, name)
+            if self._needs_deref(expr):
+                return "*" + name
+            return name
+        return self._expr(expr)
+
     def _field_access_no_deref(self, expr: TFieldAccess) -> str:
         """Emit field access without optional primitive deref."""
         obj_s = self._expr(expr.obj)
@@ -2005,10 +2017,13 @@ class _GoEmitter(Emitter):
             iterable = stmt.iterable
             if self._is_map_type(iterable):
                 self._line("for " + b + " := range " + self._expr(iterable) + " {")
+                self._track_for_binding_type(binding[0], iterable, "key")
             elif self._is_set_type(iterable):
                 self._line("for " + b + " := range " + self._expr(iterable) + " {")
+                self._track_for_binding_type(binding[0], iterable, "key")
             else:
                 self._line("for _, " + b + " := range " + self._expr(iterable) + " {")
+                self._track_for_binding_type(binding[0], iterable, "elem")
         elif len(binding) == 2:
             b0 = _restore_name(binding[0], ann)
             b1 = _restore_name(binding[1], ann)
@@ -2024,6 +2039,8 @@ class _GoEmitter(Emitter):
                     + self._expr(stmt.iterable)
                     + " {"
                 )
+                self._track_for_binding_type(binding[0], stmt.iterable, "key")
+                self._track_for_binding_type(binding[1], stmt.iterable, "val")
             elif is_enumerate:
                 self._line(
                     "for "
@@ -2034,6 +2051,7 @@ class _GoEmitter(Emitter):
                     + self._expr(stmt.iterable)
                     + " {"
                 )
+                self._track_for_binding_type(binding[1], stmt.iterable, "elem")
             else:
                 self._emit_for_tuple_unpack(stmt, binding, ann)
                 return
@@ -2044,6 +2062,25 @@ class _GoEmitter(Emitter):
         self._emit_stmts(stmt.body)
         self.indent -= 1
         self._line("}")
+
+    def _track_for_binding_type(
+        self, var_name: str, iterable: TExpr, role: str
+    ) -> None:
+        """Track var_types for for-loop binding variables."""
+        if not isinstance(iterable, TVar):
+            return
+        vt = self.var_types.get(iterable.name)
+        if role == "elem":
+            if isinstance(vt, TListType):
+                self.var_types[var_name] = vt.element
+        elif role == "key":
+            if isinstance(vt, TMapType):
+                self.var_types[var_name] = vt.key
+            elif isinstance(vt, TSetType):
+                self.var_types[var_name] = vt.element
+        elif role == "val":
+            if isinstance(vt, TMapType):
+                self.var_types[var_name] = vt.value
 
     def _emit_for_tuple_unpack(
         self, stmt: TForStmt, binding: list[str], ann: Ann
@@ -2755,7 +2792,7 @@ class _GoEmitter(Emitter):
     # ── Match ─────────────────────────────────────────────────
 
     def _emit_match(self, stmt: TMatchStmt) -> None:
-        expr_s = self._expr(stmt.expr)
+        expr_s = self._expr_no_narrowing(stmt.expr)
         if expr_s.startswith("*"):
             expr_s = "(" + expr_s + ")"
         is_enum = self._is_enum_match(stmt)
@@ -2939,6 +2976,11 @@ class _GoEmitter(Emitter):
             self.indent += 1
             pat_unused = pat.annotations.get("liveness.match_var_unused") == "true"
             aliases_added: list[str] = []
+            # Determine the concrete type for this case arm
+            case_type: TType | None = None
+            if isinstance(tname, TIdentType):
+                case_type = tname
+            saved_var_types: list[tuple[str, TType | None]] = []
             if pat.name is not None and not pat_unused:
                 bname = _restore_name(pat.name, case.annotations)
                 if bname != switch_var:
@@ -2947,15 +2989,30 @@ class _GoEmitter(Emitter):
                         aliases_added.append(bname)
                     else:
                         self._line(bname + " := " + switch_var)
+                        if case_type is not None:
+                            saved_var_types.append(
+                                (pat.name, self.var_types.get(pat.name))
+                            )
+                            self.var_types[pat.name] = case_type
             if isinstance(stmt.expr, TVar):
                 scrutinee = _restore_name(stmt.expr.name, stmt.expr.annotations)
                 if scrutinee != switch_var and _stmts_ref_var(
                     case.body, stmt.expr.name
                 ):
                     self._line(scrutinee + " := " + switch_var)
+                if case_type is not None:
+                    saved_var_types.append(
+                        (stmt.expr.name, self.var_types.get(stmt.expr.name))
+                    )
+                    self.var_types[stmt.expr.name] = case_type
             self._emit_stmts(case.body)
             for alias in aliases_added:
                 del self._var_aliases[alias]
+            for vname, old_type in saved_var_types:
+                if old_type is None:
+                    self.var_types.pop(vname, None)
+                else:
+                    self.var_types[vname] = old_type
             self.indent -= 1
         elif isinstance(pat, TPatternNil):
             self._line("case nil:")
@@ -3204,6 +3261,17 @@ class _GoEmitter(Emitter):
             name = self._var_aliases.get(name, name)
             if self._needs_deref(expr):
                 return "*" + name
+            narrowed = expr.annotations.get("scope.narrowed_type", "")
+            if (
+                narrowed
+                and narrowed in self.struct_names
+                and narrowed not in self._interface_names
+            ):
+                vt = self.var_types.get(expr.name)
+                if vt is not None:
+                    go_t = self._type(vt).lstrip("*")
+                    if go_t in self._interface_names:
+                        return name + ".(*" + narrowed + ")"
             return name
         if isinstance(expr, TFieldAccess):
             # Enum variant access: Color.Red → ColorRed
@@ -3212,7 +3280,7 @@ class _GoEmitter(Emitter):
             # Type assertion for narrowed interface variables or field paths
             narrowed = expr.obj.annotations.get("scope.narrowed_type", "")
             if narrowed != "" and narrowed in self.struct_names:
-                obj_s = self._expr(expr.obj)
+                obj_s = self._expr_no_narrowing(expr.obj)
                 fname = (
                     expr.field[0].upper() + expr.field[1:] if expr.field else expr.field
                 )
@@ -3297,9 +3365,9 @@ class _GoEmitter(Emitter):
                 return "[]" + inner
             if inner in self.struct_names:
                 return "[]*" + inner
-            go_inner = self._type_str_to_go(inner)
-            if go_inner != "[]any":
-                return go_inner
+            go_inner = self._ann_type_to_go(inner)
+            if go_inner != "any":
+                return "[]" + go_inner
         if expr.elements:
             first = expr.elements[0]
             if isinstance(first, TIntLit):
@@ -3420,6 +3488,18 @@ class _GoEmitter(Emitter):
         if ann.startswith("list["):
             inner = ann[5:-1]
             return "[]" + self._ann_type_to_go(inner)
+        if ann.startswith("tuple[") and ann.endswith("]"):
+            parts = _split_tuple_ann(ann[6:-1])
+            go_parts = [self._ann_type_to_go(p) for p in parts]
+            if all(t == go_parts[0] for t in go_parts[1:]):
+                return "[" + str(len(parts)) + "]" + go_parts[0]
+            return "[" + str(len(parts)) + "]any"
+        if ann.startswith("(") and ann.endswith(")"):
+            parts = _split_tuple_ann(ann[1:-1])
+            go_parts = [self._ann_type_to_go(p) for p in parts]
+            if all(t == go_parts[0] for t in go_parts[1:]):
+                return "[" + str(len(parts)) + "]" + go_parts[0]
+            return "[" + str(len(parts)) + "]any"
         if ann in self._interface_names or ann in self.struct_names:
             return ann
         return "any"
@@ -4579,7 +4659,7 @@ class _GoEmitter(Emitter):
         return name + "(" + arg_strs + ")"
 
     def _isinstance_call(self, args: list[TArg]) -> str:
-        obj = self._a(args, 0)
+        obj = self._expr_no_narrowing(args[0].value)
         type_arg = args[1].value
         type_name = ""
         if isinstance(type_arg, TVar):
