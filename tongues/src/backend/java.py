@@ -1484,6 +1484,9 @@ class _JavaEmitter(Emitter):
             if guard is not None:
                 self._emit_stmt(stmt)
                 var_name, type_name = guard
+                if self._instanceof_is_redundant(var_name, type_name):
+                    self._emit_stmts(stmts[i + 1 :])
+                    return
                 cast_name = _binding_name(var_name + "_" + type_name)
                 self._line(
                     type_name
@@ -1496,9 +1499,12 @@ class _JavaEmitter(Emitter):
                     + ";"
                 )
                 old_aliases = self._var_aliases.copy()
+                old_narrowed = self._narrowed_types.copy()
                 self._var_aliases[var_name] = cast_name
+                self._narrowed_types[cast_name] = type_name
                 self._emit_stmts(stmts[i + 1 :])
                 self._var_aliases = old_aliases
+                self._narrowed_types = old_narrowed
                 return
             self._emit_stmt(stmt)
             i += 1
@@ -1510,7 +1516,7 @@ class _JavaEmitter(Emitter):
         if not stmt.then_body:
             return None
         last = stmt.then_body[-1]
-        if not isinstance(last, (TReturnStmt, TThrowStmt, TContinueStmt)):
+        if not isinstance(last, (TReturnStmt, TThrowStmt, TContinueStmt, TBreakStmt)):
             return None
         cond = stmt.cond
         if not isinstance(cond, TUnaryOp):
@@ -1928,6 +1934,7 @@ class _JavaEmitter(Emitter):
     ) -> None:
         raw_checks = self._collect_isinstance_raw(cond_expr)
         old_aliases = self._var_aliases.copy()
+        old_narrowed = self._narrowed_types.copy()
         if raw_checks:
             parts: list[str] = []
             for check_expr in raw_checks:
@@ -1938,6 +1945,7 @@ class _JavaEmitter(Emitter):
                 cast_name = _binding_name(var_name + "_" + type_name)
                 parts.append(var_name + " instanceof " + type_name + " " + cast_name)
                 self._var_aliases[var_name] = cast_name
+                self._narrowed_types[cast_name] = type_name
             remaining = self._strip_isinstance_parts(cond_expr)
             if remaining is not None:
                 parts.append(self._maybe_paren(remaining, "&&", False))
@@ -1951,6 +1959,7 @@ class _JavaEmitter(Emitter):
         self._emit_stmts(body)
         self.indent -= 1
         self._var_aliases = old_aliases
+        self._narrowed_types = old_narrowed
 
     def _strip_isinstance_parts(self, cond: TExpr) -> TExpr | None:
         """Return the non-isinstance portion of a compound && condition."""
@@ -1973,7 +1982,27 @@ class _JavaEmitter(Emitter):
         truth = self._truthiness_expr(stmt.cond, raised=prov == "truthiness")
         cond = truth if truth is not None else self._expr(stmt.cond)
         self._emit_if_with_bindings(stmt.cond, cond, stmt.then_body)
-        self._emit_else_body(stmt.else_body)
+        neg_info = self._detect_negated_isinstance(stmt.cond)
+        if neg_info is not None and stmt.else_body is not None:
+            var_name = neg_info[0]
+            type_name = neg_info[1]
+            cast_name = _binding_name(var_name + "_" + type_name)
+            old_aliases = self._var_aliases.copy()
+            old_narrowed = self._narrowed_types.copy()
+            self._var_aliases[var_name] = cast_name
+            self._narrowed_types[cast_name] = type_name
+            self._line("} else {")
+            self.indent += 1
+            self._line(
+                type_name + " " + cast_name + " = (" + type_name + ") " + var_name + ";"
+            )
+            self._emit_stmts(stmt.else_body)
+            self.indent -= 1
+            self._line("}")
+            self._var_aliases = old_aliases
+            self._narrowed_types = old_narrowed
+        else:
+            self._emit_else_body(stmt.else_body)
 
     def _emit_else_body(self, else_body: list[TStmt] | None) -> None:
         if else_body is None:
@@ -1987,6 +2016,7 @@ class _JavaEmitter(Emitter):
             cond = truth if truth is not None else self._expr(elif_stmt.cond)
             raw_checks = self._collect_isinstance_raw(elif_stmt.cond)
             old_aliases = self._var_aliases.copy()
+            old_narrowed = self._narrowed_types.copy()
             if raw_checks:
                 parts_list: list[str] = []
                 for check_expr in raw_checks:
@@ -1996,6 +2026,7 @@ class _JavaEmitter(Emitter):
                         var_name + " instanceof " + type_name + " " + cast_name
                     )
                     self._var_aliases[var_name] = cast_name
+                    self._narrowed_types[cast_name] = type_name
                 remaining = self._strip_isinstance_parts(elif_stmt.cond)
                 if remaining is not None:
                     parts_list.append(self._maybe_paren(remaining, "&&", False))
@@ -2006,6 +2037,7 @@ class _JavaEmitter(Emitter):
             self._emit_stmts(elif_stmt.then_body)
             self.indent -= 1
             self._var_aliases = old_aliases
+            self._narrowed_types = old_narrowed
             self._emit_else_body(elif_stmt.else_body)
         else:
             self._line("} else {")
@@ -2697,8 +2729,34 @@ class _JavaEmitter(Emitter):
         self._emit_stmts(catch.body)
         self.indent -= 1
 
+    def _match_needs_object_cast(self, stmt: TMatchStmt, expr_str: str) -> bool:
+        """Check if match expression type is incompatible with case types."""
+        _COLLECTION_TYPES = {"ArrayList", "HashMap", "HashSet"}
+        if not isinstance(stmt.expr, TVar):
+            return False
+        expr_type = self.var_types.get(stmt.expr.name)
+        if expr_type is None:
+            return False
+        expr_java = self._type(expr_type)
+        expr_raw = expr_java.split("<")[0] if "<" in expr_java else expr_java
+        if expr_raw == "Object":
+            return False
+        for case in stmt.cases:
+            if isinstance(case.pattern, TPatternType):
+                case_type = self._type(case.pattern.type_name)
+                case_raw = case_type.split("<")[0] if "<" in case_type else case_type
+                if case_raw in _COLLECTION_TYPES and case_raw != expr_raw:
+                    return True
+                if expr_raw not in self.struct_names and (
+                    case_raw in self.struct_names
+                ):
+                    return True
+        return False
+
     def _emit_match(self, stmt: TMatchStmt) -> None:
         expr_str = self._expr(stmt.expr)
+        if self._match_needs_object_cast(stmt, expr_str):
+            expr_str = "((Object) " + expr_str + ")"
         if stmt.cases and isinstance(stmt.cases[0].pattern, TPatternEnum):
             self._emit_match_enum(stmt, expr_str)
         elif stmt.cases and isinstance(stmt.cases[0].pattern, TPatternType):
@@ -2767,6 +2825,9 @@ class _JavaEmitter(Emitter):
                         self._emit_stmts(case.body)
                         self._var_aliases = old_aliases
                         return
+            if stmt.default:
+                self._emit_stmts(stmt.default.body)
+            return
         self._line("switch (" + expr_str + ") {")
         self.indent += 1
         for case in stmt.cases:
@@ -2828,14 +2889,19 @@ class _JavaEmitter(Emitter):
                     self._line("} else if (" + expr_str + " == null) {")
             first = False
             old_aliases = self._var_aliases.copy()
+            old_narrowed = self._narrowed_types.copy()
             if isinstance(pat, TPatternType):
-                self._var_aliases[expr_str] = _safe_name(pat.name)
+                binding_name = _safe_name(pat.name)
+                self._var_aliases[expr_str] = binding_name
+                self._narrowed_types[binding_name] = self._boxed_type(pat.type_name)
                 if plain is not None and plain != expr_str:
-                    self._var_aliases[plain] = _safe_name(pat.name)
+                    self._var_aliases[plain] = binding_name
+                    self._narrowed_types[plain] = self._narrowed_types[binding_name]
             self.indent += 1
             self._emit_stmts(case.body)
             self.indent -= 1
             self._var_aliases = old_aliases
+            self._narrowed_types = old_narrowed
         if stmt.default:
             binding = stmt.default.name
             if first:
@@ -2960,7 +3026,10 @@ class _JavaEmitter(Emitter):
                 return _lower1(n)
             narrowed = expr.annotations.get("scope.narrowed_type", "")
             if narrowed and narrowed in self.struct_names:
-                return "((" + _safe_name(narrowed) + ") " + n + ")"
+                result = "((" + _safe_name(narrowed) + ") " + n + ")"
+                if result in self._var_aliases:
+                    return self._var_aliases[result]
+                return result
             return n
         if isinstance(expr, TFieldAccess):
             obj = self._expr(expr.obj)
