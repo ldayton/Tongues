@@ -46,6 +46,7 @@ from .middleend.callgraph import analyze_callgraph
 from .middleend.error_types import patch_error_types
 from .middleend.callgraph_serial import serialize_callgraph
 from .middleend.hoisting import analyze_hoisting
+from .middleend.int_width import analyze_int_width
 from .middleend.liveness import analyze_liveness
 from .middleend.ownership import analyze_ownership
 from .middleend.returns import analyze_returns
@@ -1271,6 +1272,7 @@ def _pipeline_post_parse(
     analyze_returns(module, checker)
     analyze_scope(module, checker)
     analyze_liveness(module, checker)
+    analyze_int_width(module, checker)
     if stop_at == "analyze":
         return (0, to_json(module_to_dict(module)))
     if target == "python":
@@ -1548,6 +1550,7 @@ def taytsh_pipeline(argv: list[str]) -> int:
         analyze_returns(module, checker)
         analyze_scope(module, checker)
         analyze_liveness(module, checker)
+        analyze_int_width(module, checker)
         result = ""
         if emit_target == "java":
             result = emit_java(module)

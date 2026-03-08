@@ -428,12 +428,13 @@ class _JavaEmitter(Emitter):
         self._needs_hex_helper: bool = False
         self._needs_argv: bool = False
         self._ret_is_void: bool = True
+        self._ret_type: str = "void"
+        self._wide_vars: set[str] = set()
         self._var_aliases: dict[str, str] = {}
         self._narrowed_types: dict[str, str] = {}
         self._interface_methods: dict[str, list[TFnDecl]] = {}
         self._interface_fields: dict[str, list[TFieldDecl]] = {}
         self._tmp_counter: int = 0
-        self._long_vars: set[str] = set()
 
     # ── Type emission ────────────────────────────────────────
 
@@ -813,6 +814,10 @@ class _JavaEmitter(Emitter):
             elif isinstance(decl, TStmt):
                 all_builtins |= collect_builtin_calls([decl])
         self._needs_read_all = "ReadAll" in all_builtins
+        for decl in module.decls:
+            if isinstance(decl, TLetStmt):
+                if decl.annotations.get("intwidth.wide") == "true":
+                    self._wide_vars.add(decl.name)
         self._emit_imports(module)
         self._line("public class Main {")
         self.indent += 1
@@ -1205,6 +1210,7 @@ class _JavaEmitter(Emitter):
     def _emit_fn(self, decl: TFnDecl) -> None:
         old_var_types = self.var_types.copy()
         old_ret = self._ret_is_void
+        old_ret_type = self._ret_type
         self._tmp_counter = 0
         for p in decl.params:
             if p.typ is not None:
@@ -1220,7 +1226,10 @@ class _JavaEmitter(Emitter):
             ret = "void"
             if decl.ret is not None:
                 ret = self._type(decl.ret)
+            if decl.annotations.get("intwidth.wide_return") == "true" and ret == "int":
+                ret = "long"
             self._ret_is_void = ret == "void"
+            self._ret_type = ret
             params = self._params(decl.params)
             fname = _lower1(_safe_name(decl.name))
             self._line(
@@ -1244,6 +1253,7 @@ class _JavaEmitter(Emitter):
             self._emit_fn_overloads(decl, is_static=True)
         self.var_types = old_var_types
         self._ret_is_void = old_ret
+        self._ret_type = old_ret_type
 
     def _emit_fn_overloads(self, decl: TFnDecl, is_static: bool) -> None:
         """Emit overloaded versions for functions with default parameters."""
@@ -1256,6 +1266,8 @@ class _JavaEmitter(Emitter):
         ret = "void"
         if decl.ret is not None:
             ret = self._type(decl.ret)
+        if decl.annotations.get("intwidth.wide_return") == "true" and ret == "int":
+            ret = "long"
         fname = _lower1(_safe_name(decl.name))
         prefix = "public static " if is_static else ""
         for i in range(len(defaulted)):
@@ -1287,6 +1299,7 @@ class _JavaEmitter(Emitter):
         old_var_types = self.var_types.copy()
         old_self = self.self_name
         old_ret = self._ret_is_void
+        old_ret_type = self._ret_type
         self._tmp_counter = 0
         self.self_name = decl.params[0].name if decl.params else None
         method_params = decl.params[1:]
@@ -1296,7 +1309,10 @@ class _JavaEmitter(Emitter):
         ret = "void"
         if decl.ret is not None:
             ret = self._type(decl.ret)
+        if decl.annotations.get("intwidth.wide_return") == "true" and ret == "int":
+            ret = "long"
         self._ret_is_void = ret == "void"
+        self._ret_type = ret
         params = self._params(method_params)
         fname = _safe_name(decl.name).lower()
         self._line(ret + " " + fname + "(" + params + ") throws Exception {")
@@ -1308,14 +1324,18 @@ class _JavaEmitter(Emitter):
         self.self_name = old_self
         self.var_types = old_var_types
         self._ret_is_void = old_ret
+        self._ret_type = old_ret_type
 
     def _params(self, params: list[TParam]) -> str:
         parts: list[str] = []
         for p in params:
             if p.typ is None:
                 continue
+            jtype = self._type(p.typ)
+            if p.annotations.get("intwidth.wide") == "true" and jtype == "int":
+                jtype = "long"
             name = _restore_name(p.name, p.annotations)
-            parts.append(self._type(p.typ) + " " + name)
+            parts.append(jtype + " " + name)
         return ", ".join(parts)
 
     # ── Statements ───────────────────────────────────────────
@@ -1527,9 +1547,15 @@ class _JavaEmitter(Emitter):
                     target = _safe_name(stmt.target.name)
                     self._line(target + " = " + self._expr(stmt.value) + ";")
                 else:
-                    self._line(
-                        self._expr(stmt.target) + " = " + self._expr(stmt.value) + ";"
-                    )
+                    val = self._expr(stmt.value)
+                    if (
+                        isinstance(stmt.target, TVar)
+                        and stmt.target.name not in self._wide_vars
+                        and self._is_int_expr(stmt.target)
+                        and self._yields_long(stmt.value)
+                    ):
+                        val = "(int)(" + val + ")"
+                    self._line(self._expr(stmt.target) + " = " + val + ";")
             case TTupleAssignStmt():
                 self._emit_tuple_assign(stmt)
             case TOpAssignStmt():
@@ -1624,7 +1650,10 @@ class _JavaEmitter(Emitter):
                     ):
                         self._emit_partition_return_impl(stmt.value, prov)
                     else:
-                        self._line("return " + self._expr(stmt.value) + ";")
+                        val = self._expr(stmt.value)
+                        if self._ret_type == "int" and self._yields_long(stmt.value):
+                            val = "(int)(" + val + ")"
+                        self._line("return " + val + ";")
                 else:
                     if self._ret_is_void:
                         self._line("return;")
@@ -1682,32 +1711,14 @@ class _JavaEmitter(Emitter):
         "Difference": "removeAll",
     }
 
-    def _needs_long(self, expr: TExpr) -> bool:
-        """Check if expression produces long (e.g. large bit shift, Pow)."""
-        if isinstance(expr, TBinaryOp):
-            if expr.op == "<<" and isinstance(expr.right, TIntLit):
-                if expr.right.value >= 31:
-                    return True
-            return self._needs_long(expr.left) or self._needs_long(expr.right)
-        if isinstance(expr, TUnaryOp):
-            return self._needs_long(expr.operand)
-        if isinstance(expr, TVar) and expr.name in self._long_vars:
-            return True
-        if isinstance(expr, TCall) and isinstance(expr.func, TVar):
-            if expr.func.name == "Pow" and self._is_int_expr(expr):
-                return True
-        if isinstance(expr, TTernary):
-            return self._needs_long(expr.then_expr) or self._needs_long(expr.else_expr)
-        return False
-
     def _emit_module_let(self, stmt: TLetStmt) -> None:
         safe = _restore_name(stmt.name, stmt.annotations)
         self.var_types[stmt.name] = stmt.typ
         jtype = self._type(stmt.typ)
+        if stmt.annotations.get("intwidth.wide") == "true" and jtype == "int":
+            jtype = "long"
+            self._wide_vars.add(stmt.name)
         if stmt.value is not None:
-            if jtype == "int" and self._needs_long(stmt.value):
-                jtype = "long"
-                self._long_vars.add(stmt.name)
             self._line(
                 "static " + jtype + " " + safe + " = " + self._expr(stmt.value) + ";"
             )
@@ -1719,6 +1730,8 @@ class _JavaEmitter(Emitter):
         self.var_types[stmt.name] = stmt.typ
         unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
         jtype = self._type(stmt.typ)
+        if stmt.annotations.get("intwidth.wide") == "true" and jtype == "int":
+            jtype = "long"
         if stmt.value is not None and not unused:
             if (
                 isinstance(stmt.value, TCall)
@@ -1773,7 +1786,10 @@ class _JavaEmitter(Emitter):
                     self._line(jtype + " " + safe + " = new " + raw + "<>(" + a + ");")
                     self._line(safe + "." + method + "(" + b + ");")
                     return
-            self._line(jtype + " " + safe + " = " + self._expr(stmt.value) + ";")
+            val = self._expr(stmt.value)
+            if jtype == "int" and self._yields_long(stmt.value):
+                val = "(int)(" + val + ")"
+            self._line(jtype + " " + safe + " = " + val + ";")
         else:
             self._line(jtype + " " + safe + ";")
 
@@ -2483,11 +2499,14 @@ class _JavaEmitter(Emitter):
         body: list[TStmt],
         ann: Ann,
     ) -> None:
+        itype = "long" if ann.get("intwidth.wide") == "true" else "int"
         nargs = len(iterable.args)
         if nargs == 1:
             high = self._expr(iterable.args[0])
             self._line(
-                "for (int "
+                "for ("
+                + itype
+                + " "
                 + var_name
                 + " = 0; "
                 + var_name
@@ -2501,7 +2520,9 @@ class _JavaEmitter(Emitter):
             low = self._expr(iterable.args[0])
             high = self._expr(iterable.args[1])
             self._line(
-                "for (int "
+                "for ("
+                + itype
+                + " "
                 + var_name
                 + " = "
                 + low
@@ -2521,7 +2542,9 @@ class _JavaEmitter(Emitter):
             if step_val is None:
                 step_str = self._expr(step)
                 self._line(
-                    "for (int "
+                    "for ("
+                    + itype
+                    + " "
                     + var_name
                     + " = "
                     + low
@@ -2541,7 +2564,9 @@ class _JavaEmitter(Emitter):
                     high_val = self._static_int(iterable.args[1])
                     if high_val is not None:
                         self._line(
-                            "for (int "
+                            "for ("
+                            + itype
+                            + " "
                             + var_name
                             + " = "
                             + low
@@ -2555,7 +2580,9 @@ class _JavaEmitter(Emitter):
                         )
                     else:
                         self._line(
-                            "for (int "
+                            "for ("
+                            + itype
+                            + " "
                             + var_name
                             + " = "
                             + low
@@ -2569,7 +2596,9 @@ class _JavaEmitter(Emitter):
                         )
                 else:
                     self._line(
-                        "for (int "
+                        "for ("
+                        + itype
+                        + " "
                         + var_name
                         + " = "
                         + low
@@ -2583,7 +2612,9 @@ class _JavaEmitter(Emitter):
                     )
             elif step_val == 1:
                 self._line(
-                    "for (int "
+                    "for ("
+                    + itype
+                    + " "
                     + var_name
                     + " = "
                     + low
@@ -2598,7 +2629,9 @@ class _JavaEmitter(Emitter):
             elif step_val < 0:
                 step_str = self._expr(step)
                 self._line(
-                    "for (int "
+                    "for ("
+                    + itype
+                    + " "
                     + var_name
                     + " = "
                     + low
@@ -2615,7 +2648,9 @@ class _JavaEmitter(Emitter):
             else:
                 step_str = self._expr(step)
                 self._line(
-                    "for (int "
+                    "for ("
+                    + itype
+                    + " "
                     + var_name
                     + " = "
                     + low
@@ -3010,6 +3045,29 @@ class _JavaEmitter(Emitter):
                 return str(v) + "L"
             return "(int) " + str(v) + "L"
         return str(v)
+
+    def _yields_long(self, expr: TExpr) -> bool:
+        """Check if an expression would produce a long value in emitted Java."""
+        if isinstance(expr, TIntLit):
+            return expr.value > 2147483647 or expr.value < -2147483648
+        if isinstance(expr, TVar):
+            return expr.name in self._wide_vars
+        if isinstance(expr, TBinaryOp):
+            if (
+                expr.op == "<<"
+                and isinstance(expr.right, TIntLit)
+                and expr.right.value >= 31
+                and isinstance(expr.left, TIntLit)
+            ):
+                return True
+            return self._yields_long(expr.left) or self._yields_long(expr.right)
+        if isinstance(expr, TUnaryOp):
+            return self._yields_long(expr.operand)
+        if isinstance(expr, TTernary):
+            return self._yields_long(expr.then_expr) or self._yields_long(
+                expr.else_expr
+            )
+        return False
 
     def _bytes_lit(self, expr: TBytesLit) -> str:
         elems = ", ".join("(byte) 0x" + hex(b)[2:].zfill(2) for b in expr.value)
@@ -3543,7 +3601,10 @@ class _JavaEmitter(Emitter):
         if name == "Pow":
             if self.strict_math and self._is_int_expr(args[0].value):
                 return "checkedPow(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
-            return "(long) Math.pow(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+            cast = "(long)" if self.strict_math else "(int)"
+            return (
+                cast + " Math.pow(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+            )
         if name == "Sorted" and self.strict_math and self._is_float_list(args[0].value):
             return "strictSortedF64(" + self._a(args, 0) + ")"
         if name == "Exit":
