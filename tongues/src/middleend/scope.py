@@ -420,6 +420,10 @@ def _walk_if_stmt(stmt: TIfStmt, ctx: _ScopeCtx) -> None:
     if stmt.else_body is not None:
         else_ctx = _fork_ctx(ctx, else_narrowings)
         _walk_stmts(stmt.else_body, else_ctx)
+    else:
+        then_exits = stmt.annotations.get("returns.then_always_returns") == "true"
+        if then_exits and else_narrowings:
+            ctx.narrowings.update(else_narrowings)
 
 
 def _extract_condition_narrowings(
@@ -429,6 +433,12 @@ def _extract_condition_narrowings(
     else_narrowings: dict[str, Type],
 ) -> None:
     """Extract narrowing info from a condition expression."""
+    # Negation: swap then/else narrowings
+    if isinstance(cond, TUnaryOp) and cond.op == "!":
+        _extract_condition_narrowings(
+            cond.operand, ctx, else_narrowings, then_narrowings
+        )
+        return
     # && chains: narrow from left side into then-branch
     if isinstance(cond, TBinaryOp) and cond.op == "&&":
         _extract_condition_narrowings(cond.left, ctx, then_narrowings, else_narrowings)

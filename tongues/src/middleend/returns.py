@@ -300,6 +300,9 @@ def _walk_block(stmts: list[TStmt], ctx: _ReturnsCtx) -> bool:
                 stmt.annotations["returns.always_returns"] = (
                     "true" if combined else "false"
                 )
+                stmt.annotations["returns.then_always_returns"] = (
+                    "true" if then_returns else "false"
+                )
                 if combined:
                     return True
                 survivors: list[_ReturnsCtx] = []
