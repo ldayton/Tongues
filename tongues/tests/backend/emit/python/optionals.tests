@@ -1,0 +1,2 @@
+=== optional field is not None check
+if not d.parent is None:

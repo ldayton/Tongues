@@ -3357,8 +3357,17 @@ class _GoEmitter(Emitter):
                 return "!" + self._expr(expr.operand)
             if isinstance(expr.operand, (TTernary,)):
                 return "!(" + self._expr(expr.operand) + ")"
-            if self._is_isnil_call(expr.operand):
-                return "!(" + self._expr(expr.operand) + ")"
+            if self._is_isnil_call(expr.operand) and isinstance(
+                expr.operand, TCall
+            ):
+                # !IsNil(x) → x != nil
+                nil_arg = expr.operand.args[0].value
+                if isinstance(nil_arg, TVar):
+                    raw = _restore_name(nil_arg.name, nil_arg.annotations)
+                    return raw + " != nil"
+                if isinstance(nil_arg, TFieldAccess):
+                    return self._field_access_raw(nil_arg) + " != nil"
+                return self._a(expr.operand.args, 0) + " != nil"
             return "!" + self._expr(expr.operand)
         if op == "*" and isinstance(expr.operand, TVar):
             unwrap_vt = self.var_types.get(expr.operand.name)
@@ -4256,6 +4265,8 @@ class _GoEmitter(Emitter):
             if isinstance(arg, TVar):
                 raw = _restore_name(arg.name, arg.annotations)
                 return raw + " == nil"
+            if isinstance(arg, TFieldAccess):
+                return self._field_access_raw(arg) + " == nil"
             return self._a(args, 0) + " == nil"
         if name == "DivMod":
             a = self._a(args, 0)

@@ -1,0 +1,13 @@
+=== optional field is not None check
+class Decl:
+    parent: str | None
+    name: str
+def has_parent(d: Decl) -> bool:
+    if d.parent is not None:
+        return True
+    return False
+def main() -> None:
+    d: Decl = Decl(parent="Base", name="Sub")
+    print(str(has_parent(d)))
+if __name__ == "__main__":
+    main()
