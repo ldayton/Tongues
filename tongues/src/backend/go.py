@@ -1147,6 +1147,24 @@ class _GoEmitter(Emitter):
             return False
         return True
 
+    def _is_optional_return_match(self, value: TExpr) -> bool:
+        """Check if value is an optional primitive var matching the return type."""
+        rt = self._current_ret_type
+        if not isinstance(rt, TOptionalType):
+            return False
+        rt_inner = rt.inner
+        if not isinstance(rt_inner, TPrimitive):
+            return False
+        if not isinstance(value, TVar):
+            return False
+        vt = self.var_types.get(value.name)
+        if not isinstance(vt, TOptionalType):
+            return False
+        vt_inner = vt.inner
+        if not isinstance(vt_inner, TPrimitive):
+            return False
+        return vt_inner.kind == rt_inner.kind
+
     def _needs_ptr_wrap_assign(self, target: TExpr, value: TExpr) -> bool:
         """Check if an assignment target is an optional primitive field needing &-wrap."""
         if not isinstance(target, TFieldAccess):
@@ -1468,6 +1486,12 @@ class _GoEmitter(Emitter):
                             self._line("return " + self._type(ret_t) + "{}")
                         else:
                             self._line("return nil")
+                    elif isinstance(
+                        stmt.value, TVar
+                    ) and self._is_optional_return_match(stmt.value):
+                        vname = _restore_name(stmt.value.name, stmt.value.annotations)
+                        vname = self._var_aliases.get(vname, vname)
+                        self._line("return " + vname)
                     else:
                         self._line("return " + self._expr(stmt.value))
                 else:
@@ -2514,18 +2538,30 @@ class _GoEmitter(Emitter):
                 return self._type(resolved.value)
         return "any"
 
-    def _empty_map_call(self, args: list[TArg]) -> str:
+    def _empty_map_call(self, args: list[TArg], ann: Ann | None = None) -> str:
         if len(args) >= 2:
             kt = self._infer_go_type(args[0].value)
             vt = self._infer_go_type(args[1].value)
             return "map[" + kt + "]" + vt + "{}"
+        if ann is not None:
+            type_ann = ann.get("type", "")
+            if type_ann.startswith("map["):
+                go_t = self._ann_type_to_go(type_ann)
+                if go_t != "any":
+                    return go_t + "{}"
         return "map[string]any{}"
 
-    def _empty_set_call(self, args: list[TArg]) -> str:
+    def _empty_set_call(self, args: list[TArg], ann: Ann | None = None) -> str:
         if len(args) >= 1:
             kt = self._infer_go_type(args[0].value)
             return "map[" + kt + "]bool{}"
-        return "map[int]bool{}"
+        if ann is not None:
+            type_ann = ann.get("type", "")
+            if type_ann.startswith("set["):
+                go_t = self._ann_type_to_go(type_ann)
+                if go_t != "any":
+                    return go_t + "{}"
+        return "map[string]bool{}"
 
     # ── Try / Catch ───────────────────────────────────────────
 
@@ -4641,9 +4677,9 @@ class _GoEmitter(Emitter):
         if name == "Inf":
             return "math.Inf(1)"
         if name == "Map":
-            return self._empty_map_call(args)
+            return self._empty_map_call(args, ann)
         if name == "Set":
-            return self._empty_set_call(args)
+            return self._empty_set_call(args, ann)
         if name == "IsType":
             return self._isinstance_call(args)
         if name == "CutPrefix":
