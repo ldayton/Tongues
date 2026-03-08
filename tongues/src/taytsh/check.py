@@ -2405,6 +2405,8 @@ class Checker:
         result = self._check_expr_inner(expr, expected)
         if result is not None:
             self.expr_types[(expr.pos.line, expr.pos.col)] = result
+            if expected is not None:
+                expr.annotations["expected_type"] = type_name(expected)
             expr.annotations["type"] = type_name(result)
         return result
 
@@ -3936,6 +3938,7 @@ class Checker:
                             + type_name(t1.value),
                             pos,
                         )
+                    args[2].value.annotations["expected_type"] = type_name(t1.value)
                     return t1.value
                 return make_optional(t1.value)
             return None

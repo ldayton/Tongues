@@ -1180,6 +1180,37 @@ class _GoEmitter(Emitter):
             return False
         return True
 
+    def _expected_type_ann(self, expr: TExpr) -> str:
+        return expr.annotations.get("expected_type", "")
+
+    def _needs_ptr_wrap_from_expected(self, expr: TExpr) -> bool:
+        """Check if expected_type is optional primitive but actual type is non-optional."""
+        expected = self._expected_type_ann(expr)
+        if not expected.endswith("?"):
+            return False
+        inner = expected[:-1]
+        if inner not in ("int", "float", "string", "bool"):
+            return False
+        actual = expr.annotations.get("type", "")
+        if actual.endswith("?") or "nil" in actual.split(" | "):
+            return False
+        if isinstance(expr, TNilLit):
+            return False
+        return True
+
+    def _needs_deref_from_expected(self, expr: TExpr) -> bool:
+        """Check if expected_type is non-optional but actual type is optional primitive."""
+        expected = self._expected_type_ann(expr)
+        if not expected or expected.endswith("?"):
+            return False
+        actual = expr.annotations.get("type", "")
+        if not actual.endswith("?"):
+            return False
+        inner = actual[:-1]
+        if inner not in ("int", "float", "string", "bool"):
+            return False
+        return True
+
     def _expr_no_narrowing(self, expr: TExpr) -> str:
         """Emit expression without TVar narrowing type assertion."""
         if isinstance(expr, TVar):
@@ -1421,6 +1452,11 @@ class _GoEmitter(Emitter):
                     tgt_s = self._field_access_no_deref(stmt.target)
                     self._line("__atmp := " + val_s)
                     self._line(tgt_s + " = &__atmp")
+                elif self._needs_ptr_wrap_from_expected(stmt.value):
+                    self._line("__atmp := " + val_s)
+                    self._line(self._expr(stmt.target) + " = &__atmp")
+                elif self._needs_deref_from_expected(stmt.value):
+                    self._line(self._expr(stmt.target) + " = *" + val_s)
                 else:
                     self._line(self._expr(stmt.target) + " = " + val_s)
             case TTupleAssignStmt():
@@ -1593,17 +1629,54 @@ class _GoEmitter(Emitter):
 
     def _is_interface_field_access(self, expr: TFieldAccess) -> bool:
         """Check if this is a field access on an interface-typed variable."""
-        if isinstance(expr.obj, TVar):
-            if expr.obj.annotations.get("scope.is_interface") == "true":
-                vt = self.var_types.get(expr.obj.name)
-                if (
-                    isinstance(vt, TIdentType)
-                    and vt.name in self._interface_common_fields
-                ):
-                    for fld in self._interface_common_fields[vt.name]:
-                        if fld.name == expr.field:
-                            return True
+        obj_type_name = self._obj_interface_type(expr.obj)
+        if obj_type_name is not None:
+            common = self._interface_common_fields.get(obj_type_name, [])
+            for fld in common:
+                if fld.name == expr.field:
+                    return True
         return False
+
+    def _obj_interface_type(self, obj: TExpr) -> str | None:
+        """Return interface type name if obj is interface-typed, else None."""
+        if isinstance(obj, TVar):
+            vt = self.var_types.get(obj.name)
+            iname = self._extract_interface_name(vt)
+            if iname is not None:
+                return iname
+            ann = obj.annotations.get("type", "")
+            if ann in self._interface_names:
+                return ann
+            if ann.endswith("?"):
+                base = ann[:-1]
+                if base in self._interface_names:
+                    return base
+        if isinstance(obj, TFieldAccess):
+            ann = obj.annotations.get("type", "")
+            if ann in self._interface_names:
+                return ann
+            if ann.endswith("?"):
+                base = ann[:-1]
+                if base in self._interface_names:
+                    return base
+            ft = self._resolve_field_type(obj)
+            iname = self._extract_interface_name(ft)
+            if iname is not None:
+                return iname
+        return None
+
+    def _extract_interface_name(self, vt: TType | None) -> str | None:
+        """Extract interface name from a type, handling optionals and unions."""
+        if isinstance(vt, TIdentType) and vt.name in self._interface_names:
+            return vt.name
+        if isinstance(vt, TOptionalType):
+            return self._extract_interface_name(vt.inner)
+        if isinstance(vt, TUnionType):
+            for m in vt.members:
+                n = self._extract_interface_name(m)
+                if n is not None:
+                    return n
+        return None
 
     def _is_empty_collection_return(self, expr: TExpr) -> bool:
         """Check if expr is an empty Map()/Set()/List()/list that needs ret type."""
@@ -2544,11 +2617,13 @@ class _GoEmitter(Emitter):
             vt = self._infer_go_type(args[1].value)
             return "map[" + kt + "]" + vt + "{}"
         if ann is not None:
-            type_ann = ann.get("type", "")
-            if type_ann.startswith("map["):
-                go_t = self._ann_type_to_go(type_ann)
-                if go_t != "any":
-                    return go_t + "{}"
+            # Try expected_type first (from checker context), then actual type
+            for key in ("expected_type", "type"):
+                type_ann = ann.get(key, "")
+                if type_ann.startswith("map["):
+                    go_t = self._ann_type_to_go(type_ann)
+                    if go_t != "any":
+                        return go_t + "{}"
         return "map[string]any{}"
 
     def _empty_set_call(self, args: list[TArg], ann: Ann | None = None) -> str:
@@ -2556,11 +2631,12 @@ class _GoEmitter(Emitter):
             kt = self._infer_go_type(args[0].value)
             return "map[" + kt + "]bool{}"
         if ann is not None:
-            type_ann = ann.get("type", "")
-            if type_ann.startswith("set["):
-                go_t = self._ann_type_to_go(type_ann)
-                if go_t != "any":
-                    return go_t + "{}"
+            for key in ("expected_type", "type"):
+                type_ann = ann.get(key, "")
+                if type_ann.startswith("set["):
+                    go_t = self._ann_type_to_go(type_ann)
+                    if go_t != "any":
+                        return go_t + "{}"
         return "map[string]bool{}"
 
     # ── Try / Catch ───────────────────────────────────────────
@@ -3306,7 +3382,7 @@ class _GoEmitter(Emitter):
                 vt = self.var_types.get(expr.name)
                 if vt is not None:
                     go_t = self._type(vt).lstrip("*")
-                    if go_t in self._interface_names:
+                    if go_t in self._interface_names or go_t == "any":
                         return name + ".(*" + narrowed + ")"
             return name
         if isinstance(expr, TFieldAccess):
@@ -3315,7 +3391,11 @@ class _GoEmitter(Emitter):
                 return expr.obj.name + expr.field
             # Type assertion for narrowed interface variables or field paths
             narrowed = expr.obj.annotations.get("scope.narrowed_type", "")
-            if narrowed != "" and narrowed in self.struct_names:
+            if (
+                narrowed != ""
+                and narrowed in self.struct_names
+                and narrowed not in self._interface_names
+            ):
                 obj_s = self._expr_no_narrowing(expr.obj)
                 fname = (
                     expr.field[0].upper() + expr.field[1:] if expr.field else expr.field
@@ -3325,7 +3405,9 @@ class _GoEmitter(Emitter):
                     vt = self.var_types.get(expr.obj.name)
                     if vt is not None:
                         go_t = self._type(vt).lstrip("*")
-                        if go_t == narrowed or go_t not in self._interface_names:
+                        if go_t == narrowed or (
+                            go_t not in self._interface_names and go_t != "any"
+                        ):
                             return obj_s + "." + fname
                 return obj_s + ".(*" + narrowed + ")." + fname
             # Interface common field accessor
@@ -3394,16 +3476,17 @@ class _GoEmitter(Emitter):
         return "[]byte{" + ", ".join(parts) + "}"
 
     def _infer_list_elem_type(self, expr: TListLit) -> str:
-        ann = expr.annotations.get("type", "")
-        if ann.startswith("list["):
-            inner = ann[5:-1]
-            if inner in self._interface_names:
-                return "[]" + inner
-            if inner in self.struct_names:
-                return "[]*" + inner
-            go_inner = self._ann_type_to_go(inner)
-            if go_inner != "any":
-                return "[]" + go_inner
+        for key in ("expected_type", "type"):
+            ann = expr.annotations.get(key, "")
+            if ann.startswith("list["):
+                inner = ann[5:-1]
+                if inner in self._interface_names:
+                    return "[]" + inner
+                if inner in self.struct_names:
+                    return "[]*" + inner
+                go_inner = self._ann_type_to_go(inner)
+                if go_inner != "any":
+                    return "[]" + go_inner
         if expr.elements:
             first = expr.elements[0]
             if isinstance(first, TIntLit):
@@ -3908,6 +3991,14 @@ class _GoEmitter(Emitter):
                         + dict_expr
                         + " { s[k] = true }; return s }()"
                     )
+        # Empty List() with expected_type
+        if isinstance(func, TVar) and func.name == "List" and not args:
+            exp = expr.annotations.get("expected_type", "")
+            if exp.startswith("list["):
+                go_t = self._ann_type_to_go(exp)
+                if go_t != "any":
+                    return go_t + "{}"
+            return "[]any{}"
         # Builtin call
         if isinstance(func, TVar) and func.name in BUILTIN_NAMES:
             return self._builtin_call(func.name, args, expr.annotations)
@@ -4710,8 +4801,8 @@ class _GoEmitter(Emitter):
                 if isinstance(obj_expr, TVar):
                     vt = self.var_types.get(obj_expr.name)
                     if vt is not None:
-                        go_t = self._type(vt)
-                        if go_t.lstrip("*") not in self._interface_names:
+                        go_t = self._type(vt).lstrip("*")
+                        if go_t not in self._interface_names and go_t != "any":
                             obj_is_concrete = True
                 if obj_is_concrete:
                     return "true"
@@ -4986,6 +5077,16 @@ class _GoEmitter(Emitter):
                 and ptype is not None
             ):
                 parts.append(self._type(ptype) + "{}")
+            elif self._needs_deref_from_expected(a.value):
+                parts.append("*" + self._expr(a.value))
+            elif self._needs_ptr_wrap_from_expected(a.value):
+                parts.append(
+                    "func() *"
+                    + self._ann_type_to_go(self._expected_type_ann(a.value)[:-1])
+                    + " { v := "
+                    + self._expr(a.value)
+                    + "; return &v }()"
+                )
             else:
                 parts.append(self._expr(a.value))
         return sep.join(parts)
