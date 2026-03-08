@@ -258,7 +258,15 @@ def _walk_expr(expr: TExpr, ctx: _ScopeCtx) -> None:
     match expr:
         case TBinaryOp():
             _walk_expr(expr.left, ctx)
-            _walk_expr(expr.right, ctx)
+            if expr.op == "&&":
+                left_narr: dict[str, Type] = {}
+                _extract_condition_narrowings(expr.left, ctx, left_narr, {})
+                if left_narr:
+                    _walk_expr(expr.right, _fork_ctx(ctx, left_narr))
+                else:
+                    _walk_expr(expr.right, ctx)
+            else:
+                _walk_expr(expr.right, ctx)
         case TUnaryOp():
             _walk_expr(expr.operand, ctx)
         case TTernary():
