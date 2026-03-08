@@ -3569,21 +3569,33 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
             if argv_idx is not None and argv_idx >= 1:
                 idx = TIntLit(pos, argv_idx - 1, str(argv_idx - 1), {})
                 return TIndex(pos, args_call, idx, {})
-    # hex(x)[2:] → FormatInt(x, 16) (hex() includes "0x" prefix, FormatInt does not)
+    # hex/oct/bin(x)[2:] → FormatInt(x, base) (prefix stripped by [2:])
     if (
         _is_ast(slice_node, "Slice")
         and _is_ast(obj_node, "Call")
         and _is_ast(get_node(obj_node, "func"), "Name")
-        and get_str(get_node(obj_node, "func"), "id") == "hex"
     ):
-        lower_jv = slice_node.get("lower")
-        upper_jv = slice_node.get("upper")
-        if (
-            isinstance(lower_jv, JDict)
-            and _get_const_int(lower_jv.entries) == 2
-            and (upper_jv is None or isinstance(upper_jv, JNull))
-        ):
-            return _lower_expr(obj_node, env, ctx)
+        fn_id = get_str(get_node(obj_node, "func"), "id")
+        base_map = {"hex": 16, "oct": 8, "bin": 2}
+        if fn_id in base_map:
+            lower_jv = slice_node.get("lower")
+            upper_jv = slice_node.get("upper")
+            if (
+                isinstance(lower_jv, JDict)
+                and _get_const_int(lower_jv.entries) == 2
+                and (upper_jv is None or isinstance(upper_jv, JNull))
+            ):
+                if fn_id == "hex":
+                    return _lower_expr(obj_node, env, ctx)
+                call_args = get_nodes(obj_node, "args")
+                if call_args and isinstance(call_args[0], dict):
+                    arg = _lower_expr(call_args[0], env, ctx)
+                    base_val = base_map[fn_id]
+                    return _make_call(
+                        pos,
+                        "FormatInt",
+                        [arg, TIntLit(pos, base_val, str(base_val), {})],
+                    )
     obj = _lower_expr(obj_node, env, ctx)
     obj_type = _infer_expr_type(obj_node, env, ctx)
     if _is_ast(slice_node, "Slice"):

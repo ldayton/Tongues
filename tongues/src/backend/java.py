@@ -426,6 +426,7 @@ class _JavaEmitter(Emitter):
         self._needs_zfill: bool = False
         self._ret_is_void: bool = True
         self._var_aliases: dict[str, str] = {}
+        self._narrowed_types: dict[str, str] = {}
         self._interface_methods: dict[str, list[TFnDecl]] = {}
         self._interface_fields: dict[str, list[TFieldDecl]] = {}
         self._tmp_counter: int = 0
@@ -1286,7 +1287,7 @@ class _JavaEmitter(Emitter):
             if guard is not None:
                 self._emit_stmt(stmt)
                 var_name, type_name = guard
-                cast_name = _binding_name(var_name)
+                cast_name = _binding_name(var_name + "_" + type_name)
                 self._line(
                     type_name
                     + " "
@@ -1388,6 +1389,42 @@ class _JavaEmitter(Emitter):
                         + self._expr(stmt.value)
                         + ");"
                     )
+                elif isinstance(stmt.target, TIndex):
+                    obj = self._expr(stmt.target.obj)
+                    idx = self._expr(stmt.target.index)
+                    val = self._expr(stmt.value)
+                    op_char = stmt.op[0]
+                    ann_t = stmt.target.obj.annotations.get("type", "")
+                    if ann_t.startswith("map[") or self._is_map_type(stmt.target.obj):
+                        self._line(
+                            obj
+                            + ".put("
+                            + idx
+                            + ", "
+                            + obj
+                            + ".get("
+                            + idx
+                            + ") "
+                            + op_char
+                            + " "
+                            + val
+                            + ");"
+                        )
+                    else:
+                        self._line(
+                            obj
+                            + ".set("
+                            + idx
+                            + ", "
+                            + obj
+                            + ".get("
+                            + idx
+                            + ") "
+                            + op_char
+                            + " "
+                            + val
+                            + ");"
+                        )
                 else:
                     self._line(
                         self._expr(stmt.target)
@@ -1501,13 +1538,20 @@ class _JavaEmitter(Emitter):
             jtype == "Object"
             and isinstance(stmt.typ, TPrimitive)
             and stmt.typ.kind == "error"
-            and following is not None
         ):
-            ann = self._find_assign_type_ann(stmt.name, following)
-            if len(ann) > 0:
-                resolved = self._java_type_from_ann(ann)
+            val_ann = ""
+            if stmt.value is not None:
+                val_ann = stmt.value.annotations.get("type", "")
+            if len(val_ann) > 0:
+                resolved = self._java_type_from_ann(val_ann)
                 if resolved is not None:
                     jtype = resolved
+            if jtype == "Object" and following is not None:
+                ann = self._find_assign_type_ann(stmt.name, following)
+                if len(ann) > 0:
+                    resolved = self._java_type_from_ann(ann)
+                    if resolved is not None:
+                        jtype = resolved
         if stmt.value is not None and not unused:
             if (
                 isinstance(stmt.value, TCall)
@@ -1696,7 +1740,7 @@ class _JavaEmitter(Emitter):
             parts: list[str] = []
             for check_expr in raw_checks:
                 var_name, type_name = self._isinstance_info_checked(check_expr)
-                cast_name = _binding_name(var_name)
+                cast_name = _binding_name(var_name + "_" + type_name)
                 parts.append(var_name + " instanceof " + type_name + " " + cast_name)
                 self._var_aliases[var_name] = cast_name
             remaining = self._strip_isinstance_parts(cond_expr)
@@ -1749,7 +1793,7 @@ class _JavaEmitter(Emitter):
                 parts_list: list[str] = []
                 for check_expr in raw_checks:
                     var_name, type_name = self._isinstance_info_checked(check_expr)
-                    cast_name = _binding_name(var_name)
+                    cast_name = _binding_name(var_name + "_" + type_name)
                     parts_list.append(
                         var_name + " instanceof " + type_name + " " + cast_name
                     )
@@ -1838,6 +1882,7 @@ class _JavaEmitter(Emitter):
             or (
                 isinstance(iter_var_type, TPrimitive) and iter_var_type.kind == "string"
             )
+            or self._is_string_expr(stmt.iterable)
         )
         is_map = self._is_map_type(stmt.iterable)
         if len(binding) >= 2 and not is_map and not is_string:
@@ -2465,6 +2510,24 @@ class _JavaEmitter(Emitter):
             if isinstance(stmt.expr, TVar) and stmt.expr.name != self.self_name
             else None
         )
+        narrowed = self._narrowed_types.get(expr_str, "")
+        if len(narrowed) == 0 and plain is not None:
+            narrowed = self._narrowed_types.get(plain, "")
+        if len(narrowed) > 0:
+            for case in stmt.cases:
+                pat = case.pattern
+                if isinstance(pat, TPatternType):
+                    type_name = self._type(pat.type_name)
+                    if type_name == narrowed:
+                        binding = _safe_name(pat.name)
+                        old_aliases = self._var_aliases.copy()
+                        self._var_aliases[expr_str] = binding
+                        if plain is not None and plain != expr_str:
+                            self._var_aliases[plain] = binding
+                        self._line("var " + binding + " = " + expr_str + ";")
+                        self._emit_stmts(case.body)
+                        self._var_aliases = old_aliases
+                        return
         self._line("switch (" + expr_str + ") {")
         self.indent += 1
         for case in stmt.cases:
@@ -2473,11 +2536,15 @@ class _JavaEmitter(Emitter):
                 type_name = self._type(pat.type_name)
                 binding = _safe_name(pat.name)
                 old_aliases = self._var_aliases.copy()
+                old_narrowed = self._narrowed_types.copy()
                 self._var_aliases[expr_str] = binding
+                self._narrowed_types[binding] = type_name
                 if plain is not None and plain != expr_str:
                     self._var_aliases[plain] = binding
+                    self._narrowed_types[plain] = type_name
                 self._emit_switch_case("case " + type_name + " " + binding, case.body)
                 self._var_aliases = old_aliases
+                self._narrowed_types = old_narrowed
         if stmt.default:
             self._emit_switch_case("default", stmt.default.body)
         self.indent -= 1
@@ -2801,6 +2868,17 @@ class _JavaEmitter(Emitter):
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TPrimitive) and typ.kind == "string"
+        if isinstance(expr, TCall):
+            if isinstance(expr.func, TVar):
+                if expr.func.name in ("ToString", "FormatInt", "oct", "bin", "hex"):
+                    return True
+                if expr.func.name == "Concat" and len(expr.args) > 0:
+                    if self._is_string_expr(expr.args[0].value):
+                        return True
+                    if len(expr.args) > 1 and self._is_string_expr(expr.args[1].value):
+                        return True
+            if isinstance(expr.func, TFieldAccess) and expr.func.field == "to_string":
+                return True
         return False
 
     def _is_rune_expr(self, expr: TExpr) -> bool:
@@ -2843,9 +2921,19 @@ class _JavaEmitter(Emitter):
                 )
         a = self._expr(str_expr)
         b = self._expr(other)
+        if self._is_concat_expr(str_expr):
+            a = "(" + a + ")"
         if op == "==":
             return a + ".equals(" + b + ")"
         return "!" + a + ".equals(" + b + ")"
+
+    def _is_concat_expr(self, expr: TExpr) -> bool:
+        """True if the expression is a Concat (string concatenation) call."""
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "Concat"
+        )
 
     def _unwrap_tostring_rune(self, expr: TExpr) -> TExpr | None:
         """If expr is ToString(rune_expr), return the rune_expr."""
@@ -2944,7 +3032,7 @@ class _JavaEmitter(Emitter):
                     info = self._isinstance_info(check_expr)
                     if info is not None:
                         var_name = info[0]
-                        cast_name = _binding_name(var_name)
+                        cast_name = _binding_name(var_name + "_" + info[1])
                         parts.append(
                             var_name + " instanceof " + info[1] + " " + cast_name
                         )
@@ -2959,14 +3047,21 @@ class _JavaEmitter(Emitter):
             neg_info = self._detect_negated_isinstance(expr.left)
             if neg_info is not None:
                 var_name, type_name_str = neg_info
-                cast_name = _binding_name(var_name)
+                cast_name = _binding_name(var_name + "_" + type_name_str)
                 old_aliases = self._var_aliases.copy()
                 self._var_aliases[var_name] = cast_name
                 right = self._expr(expr.right)
                 self._var_aliases = old_aliases
                 return (
-                    "!(" + var_name + " instanceof " + type_name_str + " " + cast_name + ")"
-                    + " || " + right
+                    "!("
+                    + var_name
+                    + " instanceof "
+                    + type_name_str
+                    + " "
+                    + cast_name
+                    + ")"
+                    + " || "
+                    + right
                 )
         if op in ("|", "&", "^") and self._is_bool_expr(expr.right):
             return (
@@ -3020,8 +3115,10 @@ class _JavaEmitter(Emitter):
             old_aliases = self._var_aliases.copy()
             for check_expr in raw_checks:
                 var_name, type_name_str = self._isinstance_info_checked(check_expr)
-                cast_name = _binding_name(var_name)
-                parts.append(var_name + " instanceof " + type_name_str + " " + cast_name)
+                cast_name = _binding_name(var_name + "_" + type_name_str)
+                parts.append(
+                    var_name + " instanceof " + type_name_str + " " + cast_name
+                )
                 self._var_aliases[var_name] = cast_name
             remaining = self._strip_isinstance_parts(expr.cond)
             if remaining is not None:
@@ -3305,8 +3402,16 @@ class _JavaEmitter(Emitter):
         if name == "IndexOf":
             return self._a(args, 0) + ".indexOf(" + self._a(args, 1) + ")"
         if name == "Concat":
-            if self._is_string_expr(args[0].value):
-                return self._a(args, 0) + " + " + self._a(args, 1)
+            a0_str = self._is_string_expr(args[0].value)
+            a1_str = len(args) > 1 and self._is_string_expr(args[1].value)
+            if a0_str or a1_str:
+                lhs = self._a(args, 0)
+                rhs = self._a(args, 1)
+                if isinstance(args[0].value, TTernary):
+                    lhs = "(" + lhs + ")"
+                if isinstance(args[1].value, TTernary):
+                    rhs = "(" + rhs + ")"
+                return lhs + " + " + rhs
             if self._is_bytes_expr(args[0].value):
                 self._needs_concat_bytes = True
                 return (
