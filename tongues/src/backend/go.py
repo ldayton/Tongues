@@ -1681,6 +1681,12 @@ class _GoEmitter(Emitter):
                 stmt.typ.inner, TPrimitive
             )
             val_s = self._expr_preserve_ptr(val) if is_opt_prim else self._expr(val)
+            if isinstance(val, TIndex) and isinstance(val.obj, TVar):
+                obj_vt = self.var_types.get(val.obj.name)
+                if isinstance(obj_vt, TTupleType):
+                    go_type = self._type(stmt.typ)
+                    if go_type != "any" and go_type != self._type(obj_vt):
+                        val_s = val_s + ".(" + go_type + ")"
             if self._in_func:
                 self._line(safe + " := " + val_s)
             else:
@@ -2269,13 +2275,21 @@ class _GoEmitter(Emitter):
         self.indent -= 1
         self._line("}")
 
+    def _resolve_expr_type(self, expr: TExpr) -> TType | None:
+        """Resolve TType for an expression (var, field access)."""
+        if isinstance(expr, TVar):
+            return self.var_types.get(expr.name)
+        if isinstance(expr, TFieldAccess):
+            return self._resolve_field_type(expr)
+        return None
+
     def _track_for_binding_type(
         self, var_name: str, iterable: TExpr, role: str
     ) -> None:
         """Track var_types for for-loop binding variables."""
-        if not isinstance(iterable, TVar):
+        vt = self._resolve_expr_type(iterable)
+        if vt is None:
             return
-        vt = self.var_types.get(iterable.name)
         if role == "elem":
             if isinstance(vt, TListType):
                 self.var_types[var_name] = vt.element
@@ -2296,11 +2310,10 @@ class _GoEmitter(Emitter):
         self.indent += 1
         # Get tuple element types from iterable's list element type
         elem_types: list[TType] | None = None
-        if isinstance(stmt.iterable, TVar):
-            vt = self.var_types.get(stmt.iterable.name)
-            if isinstance(vt, TListType):
-                if isinstance(vt.element, TTupleType):
-                    elem_types = vt.element.elements
+        vt = self._resolve_expr_type(stmt.iterable)
+        if isinstance(vt, TListType):
+            if isinstance(vt.element, TTupleType):
+                elem_types = vt.element.elements
         homogeneous = False
         if elem_types is not None and len(elem_types) > 0:
             go_types = [self._type(e) for e in elem_types]
@@ -4527,6 +4540,8 @@ class _GoEmitter(Emitter):
             a = self._a(args, 0)
             b = self._a(args, 1)
             gt = self._infer_go_type(args[0].value)
+            if self._is_empty_map_or_set_call(args[1].value) and gt != "any":
+                b = gt + "{}"
             return (
                 "func() "
                 + gt
@@ -4542,6 +4557,8 @@ class _GoEmitter(Emitter):
             a = self._a(args, 0)
             b = self._a(args, 1)
             gt = self._infer_go_type(args[0].value)
+            if self._is_empty_map_or_set_call(args[1].value) and gt != "any":
+                b = gt + "{}"
             return (
                 "func() "
                 + gt
