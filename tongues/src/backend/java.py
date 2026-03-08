@@ -411,6 +411,7 @@ class _JavaEmitter(Emitter):
         self._needs_read_all: bool = False
         self._module_decls: list[TModuleItem] = []
         self._current_struct: str = ""
+        self._struct_method_names: dict[str, set[str]] = {}
         self._struct_field_decls: dict[str, list[TFieldDecl]] = {}
         self._enum_names: set[str] = set()
         self._interface_names: set[str] = set()
@@ -422,11 +423,13 @@ class _JavaEmitter(Emitter):
         self._needs_replace_slice: bool = False
         self._needs_concat_lists: bool = False
         self._needs_concat_bytes: bool = False
+        self._needs_zfill: bool = False
         self._ret_is_void: bool = True
         self._var_aliases: dict[str, str] = {}
         self._interface_methods: dict[str, list[TFnDecl]] = {}
         self._interface_fields: dict[str, list[TFieldDecl]] = {}
         self._tmp_counter: int = 0
+        self._long_vars: set[str] = set()
 
     # ── Type emission ────────────────────────────────────────
 
@@ -744,8 +747,16 @@ class _JavaEmitter(Emitter):
             if isinstance(decl, TFnDecl):
                 self.fn_names.add(decl.name)
             if isinstance(decl, TStructDecl):
+                mset: set[str] = set()
                 for m in decl.methods:
                     self.fn_names.add(m.name)
+                    mset.add(m.name)
+                if decl.parent is not None:
+                    self._struct_method_names[decl.name] = (
+                        mset | self._struct_method_names.get(decl.parent, set())
+                    )
+                else:
+                    self._struct_method_names[decl.name] = mset
         self._collect_interface_members(module)
         all_builtins: set[str] = set()
         for decl in module.decls:
@@ -833,6 +844,14 @@ class _JavaEmitter(Emitter):
             self._line("System.arraycopy(a, 0, r, 0, a.length);")
             self._line("System.arraycopy(b, 0, r, a.length, b.length);")
             self._line("return r;")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_zfill:
+            self._line()
+            self._line("static String _zfill(String s, int width) {")
+            self.indent += 1
+            self._line("if (s.length() >= width) return s;")
+            self._line('return "0".repeat(width - s.length()) + s;')
             self.indent -= 1
             self._line("}")
         if self._needs_replace_count:
@@ -928,9 +947,12 @@ class _JavaEmitter(Emitter):
                             )
                     self.indent -= 1
                     self._line("}")
+        old_struct = self._current_struct
+        self._current_struct = decl.name
         for m in decl.methods:
             self._line()
             self._emit_method(m)
+        self._current_struct = old_struct
         self.indent -= 1
         self._line("}")
 
@@ -1304,11 +1326,27 @@ class _JavaEmitter(Emitter):
         "Difference": "removeAll",
     }
 
+    def _needs_long(self, expr: TExpr) -> bool:
+        """Check if expression produces long (e.g. large bit shift)."""
+        if isinstance(expr, TBinaryOp):
+            if expr.op == "<<" and isinstance(expr.right, TIntLit):
+                if expr.right.value >= 31:
+                    return True
+            return self._needs_long(expr.left) or self._needs_long(expr.right)
+        if isinstance(expr, TUnaryOp):
+            return self._needs_long(expr.operand)
+        if isinstance(expr, TVar) and expr.name in self._long_vars:
+            return True
+        return False
+
     def _emit_module_let(self, stmt: TLetStmt) -> None:
         safe = _restore_name(stmt.name, stmt.annotations)
         self.var_types[stmt.name] = stmt.typ
         jtype = self._type(stmt.typ)
         if stmt.value is not None:
+            if jtype == "int" and self._needs_long(stmt.value):
+                jtype = "long"
+                self._long_vars.add(stmt.name)
             self._line(
                 "static " + jtype + " " + safe + " = " + self._expr(stmt.value) + ";"
             )
@@ -1680,7 +1718,9 @@ class _JavaEmitter(Emitter):
         elif is_map and len(binding) == 2:
             entry_var = "__entry" + str(self._tmp_counter)
             self._tmp_counter += 1
-            self._line("for (var " + entry_var + " : " + iterable_expr + ".entrySet()) {")
+            self._line(
+                "for (var " + entry_var + " : " + iterable_expr + ".entrySet()) {"
+            )
             self.indent += 1
             self._line("var " + binding[0] + " = " + entry_var + ".getKey();")
             self._line("var " + binding[1] + " = " + entry_var + ".getValue();")
@@ -2502,7 +2542,10 @@ class _JavaEmitter(Emitter):
         if isinstance(expr, TListLit):
             if not expr.elements:
                 return "new ArrayList<>()"
+            has_tuple = any(isinstance(e, TTupleLit) for e in expr.elements)
             elems = self._join_exprs(expr.elements, ", ")
+            if has_tuple:
+                return "new ArrayList<>(List.<Object[]>of(" + elems + "))"
             return "new ArrayList<>(List.of(" + elems + "))"
         if isinstance(expr, TMapLit):
             if not expr.entries:
@@ -2690,6 +2733,13 @@ class _JavaEmitter(Emitter):
     def _binary(self, expr: TBinaryOp) -> str:
         op = expr.op
         if (
+            op == "<<"
+            and isinstance(expr.right, TIntLit)
+            and expr.right.value >= 31
+            and isinstance(expr.left, TIntLit)
+        ):
+            return str(expr.left.value) + "L << " + str(expr.right.value)
+        if (
             op == "/"
             and isinstance(expr.left, TFloatLit)
             and expr.left.value == 0.0
@@ -2856,6 +2906,12 @@ class _JavaEmitter(Emitter):
         if isinstance(func, TVar) and func.name in BUILTIN_NAMES:
             return self._builtin_call(func.name, args, expr.annotations)
         if isinstance(func, TVar) and func.name in self.struct_names:
+            if func.name in self.fn_names:
+                fields = self._struct_field_decls.get(func.name, [])
+                if len(args) != len(fields):
+                    fn_name = self._expr(func)
+                    arg_strs = self._join_args(args, ", ")
+                    return fn_name + "(" + arg_strs + ")"
             return self._struct_call(func.name, args)
         if isinstance(func, TFieldAccess):
             return self._method_call(func, args)
@@ -2865,6 +2921,10 @@ class _JavaEmitter(Emitter):
             typ = self.var_types.get(func.name)
             if isinstance(typ, TFuncType):
                 return fn_name + ".apply(" + arg_strs + ")"
+            if self._current_struct:
+                methods = self._struct_method_names.get(self._current_struct, set())
+                if func.name in methods:
+                    fn_name = "Main." + fn_name
         return fn_name + "(" + arg_strs + ")"
 
     def _struct_call(self, name: str, args: list[TArg]) -> str:
@@ -2893,6 +2953,9 @@ class _JavaEmitter(Emitter):
     def _method_call(self, func: TFieldAccess, args: list[TArg]) -> str:
         obj = self._expr(func.obj)
         method = _safe_name(func.field).lower()
+        if method == "zfill":
+            self._needs_zfill = True
+            return "_zfill(" + obj + ", " + self._a(args, 0) + ")"
         arg_strs = self._join_args(args, ", ")
         return obj + "." + method + "(" + arg_strs + ")"
 
