@@ -453,6 +453,8 @@ def _stmts_ref_var(stmts: list[TStmt], name: str) -> bool:
             if _stmts_ref_var(s.body, name):
                 return True
         elif isinstance(s, TWhileStmt):
+            if _expr_ref_var(s.cond, name):
+                return True
             if _stmts_ref_var(s.body, name):
                 return True
         elif isinstance(s, TThrowStmt):
@@ -1412,7 +1414,10 @@ class _GoEmitter(Emitter):
                         self._line(safe + " := " + self._expr(next_stmt.value))
                         i += 2
                         continue
-            self._emit_stmt(stmt)
+            if isinstance(stmt, TLetStmt):
+                self._emit_let(stmt, remaining=stmts[i + 1 :])
+            else:
+                self._emit_stmt(stmt)
             i += 1
 
     def _try_merge_let_tuple(self, stmts: list[TStmt], i: int) -> int:
@@ -1624,9 +1629,13 @@ class _GoEmitter(Emitter):
             case TMatchStmt():
                 self._emit_match(stmt)
 
-    def _emit_let(self, stmt: TLetStmt) -> None:
+    def _emit_let(self, stmt: TLetStmt, remaining: list[TStmt] | None = None) -> None:
         safe = _restore_name(stmt.name, stmt.annotations)
         self.var_types[stmt.name] = stmt.typ
+        if remaining is not None and not _stmts_ref_var(remaining, stmt.name):
+            if stmt.value is not None:
+                self._line("_ = " + self._expr(stmt.value))
+            return
         unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
         if stmt.value is not None and not unused:
             val = stmt.value
@@ -2220,6 +2229,10 @@ class _GoEmitter(Emitter):
         elif len(binding) == 2:
             b0 = _restore_name(binding[0], ann)
             b1 = _restore_name(binding[1], ann)
+            if not _stmts_ref_var(stmt.body, binding[0]):
+                b0 = "_"
+            if not _stmts_ref_var(stmt.body, binding[1]):
+                b1 = "_"
             iter_is_map = self._is_map_for(stmt)
             is_enumerate = self._is_enumerate_for(stmt)
             if iter_is_map:
@@ -2295,6 +2308,8 @@ class _GoEmitter(Emitter):
         i = 0
         while i < len(binding):
             name = _restore_name(binding[i], ann)
+            if name != "_" and not _stmts_ref_var(stmt.body, binding[i]):
+                name = "_"
             idx = str(i)
             op = "=" if name == "_" else ":="
             if elem_types is not None and i < len(elem_types):
@@ -2866,9 +2881,11 @@ class _GoEmitter(Emitter):
     def _emit_try_unused_vars(self, body: list[TStmt]) -> None:
         """Emit _ = x for let variables in try body that are never read."""
         let_names: list[str] = []
-        for s in body:
+        for i, s in enumerate(body):
             if isinstance(s, TLetStmt):
-                let_names.append(s.name)
+                # Only include vars that were actually declared (not suppressed)
+                if _stmts_ref_var(body[i + 1 :], s.name):
+                    let_names.append(s.name)
         if not let_names:
             return
         used: set[str] = set()
@@ -3037,7 +3054,13 @@ class _GoEmitter(Emitter):
                         # Concrete type — emit matching case body directly
                         for c in stmt.cases:
                             if isinstance(c.pattern, TPatternType):
-                                if c.pattern.name is not None:
+                                if (
+                                    c.pattern.name is not None
+                                    and c.pattern.annotations.get(
+                                        "liveness.match_var_unused"
+                                    )
+                                    != "true"
+                                ):
                                     safe = _restore_name(
                                         c.pattern.name, c.pattern.annotations
                                     )

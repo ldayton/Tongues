@@ -35,7 +35,7 @@ parts := strings.SplitN("a,b,c,d", ",", 2)
 s := "hello" + " world"
 
 === string indexing and slicing
-sub := s[1:4]
+_ = s[1:4]
 
 === format string becomes f-string
 return fmt.Sprintf("hello, %s", name)

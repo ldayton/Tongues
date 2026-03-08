@@ -58,8 +58,7 @@ fmt.Println(strconv.Itoa(x))
 caught := false
 func() {
 	defer func() { if recover() != nil { caught = true } }()
-	x := strictFmod(1.0, 0.0)
-	_ = x
+	_ = strictFmod(1.0, 0.0)
 }()
 fmt.Println(strconv.FormatBool(caught))
 
@@ -78,13 +77,12 @@ nan := math.NaN()
 caught := false
 func() {
 	defer func() { if recover() != nil { caught = true } }()
-	xs := strictSortedF64([]float64{1.0, nan, 2.0})
-	_ = xs
+	_ = strictSortedF64([]float64{1.0, nan, 2.0})
 }()
 fmt.Println(strconv.FormatBool(caught))
 
 === non-strict ops unchanged
-x := 1.5 + 2.5
+_ = 1.5 + 2.5
 y := checkedDivI64(10, 3)
-z := checkedRemI64(10, 3)
+_ = checkedRemI64(10, 3)
 fmt.Println(strconv.Itoa(y))
