@@ -154,3 +154,40 @@ fixed-point target:
         printf '\033[31m[fixed-point:{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
     fi
     exit $rc
+
+# Generative / property-based tests (require pytest + hypothesis)
+pytest-gen:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    pids=()
+    failed=0
+    just -f {{justfile()}} _pytest-gen-tycheck & pids+=($!)
+    just -f {{justfile()}} _pytest-gen-softfloat & pids+=($!)
+    for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+    exit $failed
+
+_pytest-gen-tycheck:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    start=$SECONDS
+    uv run --directory tongues pytest tests/test_taytsh_gen_check.py -v; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[pytest-gen:tycheck] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[pytest-gen:tycheck] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
+
+_pytest-gen-softfloat:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    start=$SECONDS
+    uv run --directory tongues pytest tests/test_gen_softfloat.py -v; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[pytest-gen:softfloat] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[pytest-gen:softfloat] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
