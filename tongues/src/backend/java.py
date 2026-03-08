@@ -1519,6 +1519,13 @@ class _JavaEmitter(Emitter):
             case TAssignStmt():
                 if isinstance(stmt.target, TIndex):
                     self._emit_index_assign(stmt.target, stmt.value)
+                elif (
+                    isinstance(stmt.target, TVar)
+                    and self._var_aliases.get(stmt.target.name, stmt.target.name)
+                    != stmt.target.name
+                ):
+                    target = _safe_name(stmt.target.name)
+                    self._line(target + " = " + self._expr(stmt.value) + ";")
                 else:
                     self._line(
                         self._expr(stmt.target) + " = " + self._expr(stmt.value) + ";"
@@ -1535,12 +1542,15 @@ class _JavaEmitter(Emitter):
                     )
                 elif stmt.op == "+=" and self._is_bytes_expr(stmt.target):
                     self._needs_concat_bytes = True
+                    rhs_val = self._expr(stmt.value)
+                    if self._is_string_expr(stmt.value):
+                        rhs_val = "(" + rhs_val + ").getBytes(StandardCharsets.UTF_8)"
                     self._line(
                         self._expr(stmt.target)
                         + " = _concatBytes("
                         + self._expr(stmt.target)
                         + ", "
-                        + self._expr(stmt.value)
+                        + rhs_val
                         + ");"
                     )
                 elif (
@@ -1673,7 +1683,7 @@ class _JavaEmitter(Emitter):
     }
 
     def _needs_long(self, expr: TExpr) -> bool:
-        """Check if expression produces long (e.g. large bit shift)."""
+        """Check if expression produces long (e.g. large bit shift, Pow)."""
         if isinstance(expr, TBinaryOp):
             if expr.op == "<<" and isinstance(expr.right, TIntLit):
                 if expr.right.value >= 31:
@@ -1683,6 +1693,11 @@ class _JavaEmitter(Emitter):
             return self._needs_long(expr.operand)
         if isinstance(expr, TVar) and expr.name in self._long_vars:
             return True
+        if isinstance(expr, TCall) and isinstance(expr.func, TVar):
+            if expr.func.name == "Pow" and self._is_int_expr(expr):
+                return True
+        if isinstance(expr, TTernary):
+            return self._needs_long(expr.then_expr) or self._needs_long(expr.else_expr)
         return False
 
     def _emit_module_let(self, stmt: TLetStmt) -> None:
@@ -1892,29 +1907,11 @@ class _JavaEmitter(Emitter):
             return [cond]
         return []
 
-    def _body_reassigns_alias(self, body: list[TStmt], alias: str) -> bool:
-        """Check if body contains assignment to the aliased variable."""
-        for stmt in body:
-            if isinstance(stmt, TAssignStmt) and isinstance(stmt.target, TFieldAccess):
-                continue
-            if isinstance(stmt, TAssignStmt) and isinstance(stmt.target, TVar):
-                if stmt.target.name == alias:
-                    return True
-            if isinstance(stmt, TIfStmt):
-                if self._body_reassigns_alias(stmt.then_body, alias):
-                    return True
-                if stmt.else_body is not None and self._body_reassigns_alias(
-                    stmt.else_body, alias
-                ):
-                    return True
-        return False
-
     def _emit_if_with_bindings(
         self, cond_expr: TExpr, cond_str: str, body: list[TStmt]
     ) -> None:
         raw_checks = self._collect_isinstance_raw(cond_expr)
         old_aliases = self._var_aliases.copy()
-        deferred_casts: list[tuple[str, str, str]] = []
         if raw_checks:
             parts: list[str] = []
             for check_expr in raw_checks:
@@ -1923,15 +1920,8 @@ class _JavaEmitter(Emitter):
                     self._var_aliases[var_name] = var_name
                     continue
                 cast_name = _binding_name(var_name + "_" + type_name)
-                if self._body_reassigns_alias(body, cast_name):
-                    parts.append(var_name + " instanceof " + type_name)
-                    deferred_casts.append((type_name, cast_name, var_name))
-                    self._var_aliases[var_name] = cast_name
-                else:
-                    parts.append(
-                        var_name + " instanceof " + type_name + " " + cast_name
-                    )
-                    self._var_aliases[var_name] = cast_name
+                parts.append(var_name + " instanceof " + type_name + " " + cast_name)
+                self._var_aliases[var_name] = cast_name
             remaining = self._strip_isinstance_parts(cond_expr)
             if remaining is not None:
                 parts.append(self._maybe_paren(remaining, "&&", False))
@@ -1942,8 +1932,6 @@ class _JavaEmitter(Emitter):
         else:
             self._line("if (" + cond_str + ") {")
         self.indent += 1
-        for dc in deferred_casts:
-            self._line(dc[0] + " " + dc[1] + " = (" + dc[0] + ") " + dc[2] + ";")
         self._emit_stmts(body)
         self.indent -= 1
         self._var_aliases = old_aliases
@@ -3669,6 +3657,12 @@ class _JavaEmitter(Emitter):
         if name == "Concat":
             a0_str = self._is_string_expr(args[0].value)
             a1_str = len(args) > 1 and self._is_string_expr(args[1].value)
+            a0_bytes = self._is_bytes_expr(args[0].value)
+            a1_bytes = len(args) > 1 and self._is_bytes_expr(args[1].value)
+            if a0_str and a1_bytes:
+                self._needs_concat_bytes = True
+                lhs = "(" + self._a(args, 0) + ").getBytes(StandardCharsets.UTF_8)"
+                return "_concatBytes(" + lhs + ", " + self._a(args, 1) + ")"
             if a0_str or a1_str:
                 lhs = self._a(args, 0)
                 rhs = self._a(args, 1)
@@ -3677,11 +3671,15 @@ class _JavaEmitter(Emitter):
                 if isinstance(args[1].value, TTernary):
                     rhs = "(" + rhs + ")"
                 return lhs + " + " + rhs
-            if self._is_bytes_expr(args[0].value):
+            if a0_bytes or a1_bytes:
                 self._needs_concat_bytes = True
-                return (
-                    "_concatBytes(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
-                )
+                lhs = self._a(args, 0)
+                rhs = self._a(args, 1)
+                if a0_str:
+                    lhs = "(" + lhs + ").getBytes(StandardCharsets.UTF_8)"
+                if a1_str:
+                    rhs = "(" + rhs + ").getBytes(StandardCharsets.UTF_8)"
+                return "_concatBytes(" + lhs + ", " + rhs + ")"
             self._needs_concat_lists = True
             return "_concatLists(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Merge":
@@ -3999,6 +3997,9 @@ class _JavaEmitter(Emitter):
         if name == "ReadBytesN":
             return "System.in.readNBytes(" + self._a(args, 0) + ")"
         if name == "Encode":
+            inner = args[0].value
+            if isinstance(inner, TBinaryOp):
+                return "(" + self._a(args, 0) + ").getBytes(StandardCharsets.UTF_8)"
             return self._a(args, 0) + ".getBytes(StandardCharsets.UTF_8)"
         if name == "Decode":
             return "new String(" + self._a(args, 0) + ", StandardCharsets.UTF_8)"
