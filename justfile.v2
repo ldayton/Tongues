@@ -191,3 +191,8 @@ _pytest-gen-softfloat:
         printf '\033[31m[pytest-gen:softfloat] %ds (FAILED)\033[0m\n' "$elapsed"
     fi
     exit $rc
+
+# Run a just target inside Docker
+docker target lang:
+    docker build -t tongues-{{lang}} docker/{{lang}}
+    docker run --rm -v "$(pwd):/workspace" tongues-{{lang}} just -f justfile.v2 {{target}}
