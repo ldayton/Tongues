@@ -4312,6 +4312,8 @@ class _GoEmitter(Emitter):
         if name == "Concat":
             if self._is_bytes_expr(args[0].value):
                 return "append(" + self._a(args, 0) + ", " + self._a(args, 1) + "...)"
+            if self._is_list_expr(args[0].value):
+                return "append(" + self._a(args, 0) + ", " + self._a(args, 1) + "...)"
             return self._a(args, 0) + " + " + self._a(args, 1)
         if name == "ConcatBytes":
             return "append(" + self._a(args, 0) + ", " + self._a(args, 1) + "...)"

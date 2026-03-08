@@ -43,5 +43,8 @@ a := []byte{1, 2, 3}
 === string iteration for loop
 for _, ch := range s {
 
+=== list concat with plus
+append(a, b...)
+
 === list repetition with annotation
 slots := make([]int, 5)

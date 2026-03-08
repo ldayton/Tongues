@@ -43,5 +43,8 @@ a.bytes.zip(b.bytes).each do |x, y|
 === string iteration for loop
 s.each_char do |ch|
 
+=== list concat with plus
+return a + b
+
 === list repetition with annotation
 [0] * 5

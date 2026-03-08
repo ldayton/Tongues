@@ -43,5 +43,8 @@ for x, y in zip(a, b):
 === string iteration for loop
 for ch in s:
 
+=== list concat with plus
+return a + b
+
 === list repetition with annotation
 [0] * 5

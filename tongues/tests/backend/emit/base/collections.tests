@@ -128,6 +128,14 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== list concat with plus
+def combine(a: list[int], b: list[int]) -> list[int]:
+    return a + b
+def main() -> None:
+    print(str(len(combine([1, 2], [3, 4]))))
+if __name__ == "__main__":
+    main()
+
 === list repetition with annotation
 def main() -> None:
     slots: list[int] = [0] * 5

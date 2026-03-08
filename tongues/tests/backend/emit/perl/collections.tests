@@ -43,5 +43,8 @@ for my $i (reverse 0 .. 4) {
 === string iteration for loop
 for my $ch (split(//, $s)) {
 
+=== list concat with plus
+@{$a}, @{$b}
+
 === list repetition with annotation
 [(0) x 5]
