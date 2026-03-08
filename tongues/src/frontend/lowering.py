@@ -172,6 +172,28 @@ TAYTSH_KEYWORDS: set[str] = {
 _CONTEXT_ONLY_FUNCS: frozenset[str] = frozenset({"range", "enumerate", "reversed"})
 
 
+def _fixed_exponent(s: str) -> int:
+    """Compute the base-10 exponent from a fixed-point decimal string."""
+    if s.startswith("-"):
+        s = s[1:]
+    if "." in s:
+        dp: int = s.index(".")
+        int_part: str = s[:dp]
+        frac_part: str = s[dp + 1 :]
+    else:
+        int_part = s
+        frac_part = ""
+    # Strip leading zeros from int_part.
+    stripped: str = int_part.lstrip("0")
+    if stripped:
+        return len(stripped) - 1
+    # All integer digits are zero; count leading zeros in frac_part.
+    lead: int = 0
+    while lead < len(frac_part) and frac_part[lead] == "0":
+        lead += 1
+    return -(lead + 1)
+
+
 def _float_repr(value: float) -> str:
     """Format a float literal the way Python's repr() does, portable across runtimes.
 
@@ -183,7 +205,46 @@ def _float_repr(value: float) -> str:
         # Some runtimes stringify 0.0 as "0" — ensure decimal point is present.
         if "." not in r and "inf" not in r and "nan" not in r:
             r = r + ".0"
-        return r
+        # Some runtimes use fixed-point where Python would use scientific.
+        # Detect and convert: Python uses scientific when exp < -4 or exp >= 16.
+        # Compute exponent from string: count integer digits (ignoring leading zeros).
+        if value != 0.0 and "inf" not in r and "nan" not in r:
+            exp_check: int = _fixed_exponent(r)
+            if exp_check >= 16 or exp_check < -4:
+                # Re-format as scientific to fall through to normalization below.
+                neg: str = ""
+                s: str = r
+                if s.startswith("-"):
+                    neg = "-"
+                    s = s[1:]
+                # Strip the decimal point and find significant digits.
+                if "." in s:
+                    dp: int = s.index(".")
+                    all_d: str = s[:dp] + s[dp + 1 :]
+                else:
+                    all_d = s
+                    dp = len(s)
+                # Remove leading zeros to find first significant digit.
+                first_sig: int = 0
+                while first_sig < len(all_d) and all_d[first_sig] == "0":
+                    first_sig += 1
+                if first_sig >= len(all_d):
+                    return r
+                sci_exp: int = dp - first_sig - 1
+                sig_digits: str = all_d[first_sig:]
+                # Strip trailing zeros but keep at least one.
+                while len(sig_digits) > 1 and sig_digits[-1] == "0":
+                    sig_digits = sig_digits[:-1]
+                if len(sig_digits) == 1:
+                    mantissa_s: str = sig_digits
+                else:
+                    mantissa_s = sig_digits[0] + "." + sig_digits[1:]
+                r = neg + mantissa_s + "e" + str(sci_exp)
+                # Fall through to normalization below.
+            else:
+                return r
+        else:
+            return r
     # Normalize to lowercase, parse mantissa and exponent.
     low: str = r.lower()
     e_pos: int = low.index("e")

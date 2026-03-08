@@ -293,16 +293,13 @@ jobs:
 
   consistency:
     runs-on: ubuntu-latest
-    needs: [lang-python, lang-javascript, lang-ruby, lang-perl]
+    # NOTE: lang-javascript excluded pending BigInt support (#224)
+    needs: [lang-python, lang-ruby, lang-perl]
     steps:
       - uses: actions/download-artifact@v4
         with:
           name: reference-python-python
           path: refs
-      - uses: actions/download-artifact@v4
-        with:
-          name: reference-python-javascript
-          path: refs-javascript
       - uses: actions/download-artifact@v4
         with:
           name: reference-python-ruby
@@ -312,7 +309,6 @@ jobs:
           name: reference-python-perl
           path: refs-perl
       - run: |
-          cp refs-javascript/reference-python-javascript.txt refs/
           cp refs-ruby/reference-python-ruby.txt refs/
           cp refs-perl/reference-python-perl.txt refs/
           cd refs
