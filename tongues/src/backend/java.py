@@ -1654,11 +1654,13 @@ class _JavaEmitter(Emitter):
         is_map = self._is_map_type(stmt.iterable)
         if len(binding) >= 2 and not is_map and not is_string:
             tuple_types = self._iterable_tuple_types(stmt.iterable)
-            self._line("for (var __entry : " + iterable_expr + ") {")
+            entry_var = "__entry" + str(self._tmp_counter)
+            self._tmp_counter += 1
+            self._line("for (var " + entry_var + " : " + iterable_expr + ") {")
             self.indent += 1
             for bi in range(len(binding)):
                 bname = binding[bi]
-                rhs = "__entry[" + str(bi) + "]"
+                rhs = entry_var + "[" + str(bi) + "]"
                 btype = self.var_types.get(bname)
                 if btype is not None:
                     jtype = self._type(btype)
@@ -1676,10 +1678,12 @@ class _JavaEmitter(Emitter):
                 "for (char " + binding[0] + " : " + iterable_expr + ".toCharArray()) {"
             )
         elif is_map and len(binding) == 2:
-            self._line("for (var __entry : " + iterable_expr + ".entrySet()) {")
+            entry_var = "__entry" + str(self._tmp_counter)
+            self._tmp_counter += 1
+            self._line("for (var " + entry_var + " : " + iterable_expr + ".entrySet()) {")
             self.indent += 1
-            self._line("var " + binding[0] + " = __entry.getKey();")
-            self._line("var " + binding[1] + " = __entry.getValue();")
+            self._line("var " + binding[0] + " = " + entry_var + ".getKey();")
+            self._line("var " + binding[1] + " = " + entry_var + ".getValue();")
             self._emit_stmts(stmt.body)
             self.indent -= 1
             self._line("}")

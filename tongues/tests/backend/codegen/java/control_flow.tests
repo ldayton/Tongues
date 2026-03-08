@@ -30,9 +30,9 @@ for (int x : xs) {
 for (var k : m.keySet()) {
 
 === for over map key-value pairs
-for (var __entry : m.entrySet()) {
-    var k = __entry.getKey();
-    var v = __entry.getValue();
+for (var __entry0 : m.entrySet()) {
+    var k = __entry0.getKey();
+    var v = __entry0.getValue();
 
 === for over string characters
 for (char ch : "hello".toCharArray()) {
