@@ -476,6 +476,13 @@ class _JavaEmitter(Emitter):
         if isinstance(typ, TFuncType):
             return "Function"
         if isinstance(typ, TUnionType):
+            non_nil = [
+                m
+                for m in typ.members
+                if not (isinstance(m, TPrimitive) and m.kind == "nil")
+            ]
+            if len(non_nil) == 1:
+                return self._boxed_type(non_nil[0])
             return "Object"
         return "Object"
 
@@ -1142,6 +1149,106 @@ class _JavaEmitter(Emitter):
 
     # ── Statements ───────────────────────────────────────────
 
+    def _find_assign_type_ann(self, name: str, stmts: list[TStmt]) -> str:
+        """Search stmts for the first assignment to name and return the RHS type annotation."""
+        for stmt in stmts:
+            if isinstance(stmt, TAssignStmt):
+                if isinstance(stmt.target, TVar) and stmt.target.name == name:
+                    return stmt.value.annotations.get("type", "")
+            if isinstance(stmt, TIfStmt):
+                result = self._find_assign_type_ann(name, stmt.then_body)
+                if len(result) > 0:
+                    return result
+                if stmt.else_body is not None:
+                    result = self._find_assign_type_ann(name, stmt.else_body)
+                    if len(result) > 0:
+                        return result
+        return ""
+
+    _TYPE_ANN_TO_JAVA: dict[str, str] = {
+        "int": "int",
+        "float": "double",
+        "bool": "boolean",
+        "string": "String",
+        "bytes": "byte[]",
+        "rune": "char",
+    }
+
+    def _java_type_from_ann(self, ann: str) -> str | None:
+        """Convert a checker type annotation string to a Java type."""
+        if len(ann) == 0:
+            return None
+        ann = ann.strip()
+        if ann == "nil":
+            return None
+        j = self._TYPE_ANN_TO_JAVA.get(ann)
+        if j is not None:
+            return j
+        if ann in self.struct_names:
+            return ann
+        if ann.startswith("list[") and ann.endswith("]"):
+            inner = ann[5:-1]
+            inner_j = self._java_boxed_from_ann(inner)
+            if inner_j is not None:
+                return "List<" + inner_j + ">"
+            return None
+        if ann.startswith("map[") and ann.endswith("]"):
+            inner = ann[4:-1]
+            comma = self._find_top_level_comma(inner)
+            if comma < 0:
+                return None
+            key_ann = inner[:comma].strip()
+            val_ann = inner[comma + 1 :].strip()
+            key_j = self._java_boxed_from_ann(key_ann)
+            val_j = self._java_boxed_from_ann(val_ann)
+            if key_j is not None and val_j is not None:
+                return "HashMap<" + key_j + ", " + val_j + ">"
+            return None
+        if ann.startswith("set[") and ann.endswith("]"):
+            inner = ann[4:-1]
+            inner_j = self._java_boxed_from_ann(inner)
+            if inner_j is not None:
+                return "HashSet<" + inner_j + ">"
+            return None
+        if " | " in ann:
+            parts = [p.strip() for p in ann.split(" | ")]
+            non_nil = [p for p in parts if p != "nil"]
+            if len(non_nil) == 1:
+                return self._java_type_from_ann(non_nil[0])
+            return None
+        if ann.startswith("(") and ann.endswith(")"):
+            return "Object[]"
+        return None
+
+    def _java_boxed_from_ann(self, ann: str) -> str | None:
+        """Convert annotation to boxed Java type for generics."""
+        _BOXED = {
+            "int": "Integer",
+            "float": "Double",
+            "bool": "Boolean",
+            "string": "String",
+            "rune": "Character",
+            "bytes": "byte[]",
+        }
+        b = _BOXED.get(ann)
+        if b is not None:
+            return b
+        j = self._java_type_from_ann(ann)
+        return j
+
+    def _find_top_level_comma(self, s: str) -> int:
+        """Find first comma at bracket depth 0."""
+        depth = 0
+        for i in range(len(s)):
+            c = s[i]
+            if c == "[":
+                depth += 1
+            elif c == "]":
+                depth -= 1
+            elif c == "," and depth == 0:
+                return i
+        return -1
+
     def _emit_stmts(self, stmts: list[TStmt]) -> None:
         i = 0
         while i < len(stmts):
@@ -1195,7 +1302,14 @@ class _JavaEmitter(Emitter):
                 self._emit_stmts(stmts[i + 1 :])
                 self._var_aliases = old_aliases
                 return
-            self._emit_stmt(stmt)
+            if (
+                isinstance(stmt, TLetStmt)
+                and isinstance(stmt.typ, TPrimitive)
+                and stmt.typ.kind == "error"
+            ):
+                self._emit_let(stmt, stmts[i + 1 :])
+            else:
+                self._emit_stmt(stmt)
             i += 1
 
     def _detect_isinstance_guard(self, stmt: TIfStmt) -> tuple[str, str] | None:
@@ -1312,9 +1426,7 @@ class _JavaEmitter(Emitter):
                     throw_func = throw_val.func
                     if isinstance(throw_func, TVar):
                         fname = throw_func.name
-                        exc_name = _EXCEPTION_MAP.get(
-                            fname, _safe_name(fname)
-                        )
+                        exc_name = _EXCEPTION_MAP.get(fname, _safe_name(fname))
                         exc_args = ", ".join(
                             self._expr(a.value) for a in throw_val.args
                         )
@@ -1324,21 +1436,9 @@ class _JavaEmitter(Emitter):
                             or len(throw_val.args)
                             != len(self._struct_field_decls[fname])
                         ):
-                            self._line(
-                                "throw "
-                                + exc_name
-                                + "("
-                                + exc_args
-                                + ");"
-                            )
+                            self._line("throw " + exc_name + "(" + exc_args + ");")
                         else:
-                            self._line(
-                                "throw new "
-                                + exc_name
-                                + "("
-                                + exc_args
-                                + ");"
-                            )
+                            self._line("throw new " + exc_name + "(" + exc_args + ");")
                     else:
                         self._line("throw " + self._expr(stmt.expr) + ";")
                 else:
@@ -1392,11 +1492,22 @@ class _JavaEmitter(Emitter):
         else:
             self._line("static " + jtype + " " + safe + ";")
 
-    def _emit_let(self, stmt: TLetStmt) -> None:
+    def _emit_let(self, stmt: TLetStmt, following: list[TStmt] | None = None) -> None:
         safe = _restore_name(stmt.name, stmt.annotations)
         self.var_types[stmt.name] = stmt.typ
         unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
         jtype = self._type(stmt.typ)
+        if (
+            jtype == "Object"
+            and isinstance(stmt.typ, TPrimitive)
+            and stmt.typ.kind == "error"
+            and following is not None
+        ):
+            ann = self._find_assign_type_ann(stmt.name, following)
+            if len(ann) > 0:
+                resolved = self._java_type_from_ann(ann)
+                if resolved is not None:
+                    jtype = resolved
         if stmt.value is not None and not unused:
             if (
                 isinstance(stmt.value, TCall)
