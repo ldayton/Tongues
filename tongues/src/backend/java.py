@@ -433,6 +433,7 @@ class _JavaEmitter(Emitter):
         self._needs_bytes_helpers: bool = False
         self._needs_hex_helper: bool = False
         self._needs_argv: bool = False
+        self._needs_throwing_runnable: bool = False
         self._ret_is_void: bool = True
         self._ret_type: str = "void"
         self._wide_vars: set[str] = set()
@@ -1037,6 +1038,14 @@ class _JavaEmitter(Emitter):
                 'for (byte b : data) sb.append(String.format("%02x", b & 0xFF));'
             )
             self._line("return sb.toString();")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_throwing_runnable:
+            self._line()
+            self._line("@FunctionalInterface")
+            self._line("interface ThrowingRunnable {")
+            self.indent += 1
+            self._line("void run() throws Exception;")
             self.indent -= 1
             self._line("}")
         self.indent -= 1
