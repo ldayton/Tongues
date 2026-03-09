@@ -294,9 +294,16 @@ BUILTIN_TABLE: list[str] = [
     "WritelnOut",
     "Zip",
 ]
-_BUILTIN_INDEX: dict[str, int] = {}
-for _bi, _bname in enumerate(BUILTIN_TABLE):
-    _BUILTIN_INDEX[_bname] = _bi
+
+
+def _build_builtin_index() -> dict[str, int]:
+    result: dict[str, int] = {}
+    for _bi, _bname in enumerate(BUILTIN_TABLE):
+        result[_bname] = _bi
+    return result
+
+
+_BUILTIN_INDEX: dict[str, int] = _build_builtin_index()
 
 
 # ============================================================

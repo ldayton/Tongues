@@ -1762,9 +1762,13 @@ class _PythonEmitter(Emitter):
 
     def _builtin_call(self, name: str, args: list[TArg]) -> str:
         if name == "FloorDiv":
-            return self._a(args, 0) + " // " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "//", is_left=True)
+            right = self._maybe_paren(args[1].value, "//", is_left=False)
+            return left + " // " + right
         if name == "PythonMod":
-            return self._a(args, 0) + " % " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "%", is_left=True)
+            right = self._maybe_paren(args[1].value, "%", is_left=False)
+            return left + " % " + right
         # Method-on-first-arg
         if name == "Append":
             return self._a(args, 0) + ".append(" + self._a(args, 1) + ")"
@@ -2106,7 +2110,9 @@ class _PythonEmitter(Emitter):
                     + self._a(args, 1)
                     + ")"
                 )
-            return self._a(args, 0) + " ** " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "**", is_left=True)
+            right = self._maybe_paren(args[1].value, "**", is_left=False)
+            return left + " ** " + right
         if name == "Contains":
             return self._a(args, 1) + " in " + self._a(args, 0)
         if name == "Concat":
