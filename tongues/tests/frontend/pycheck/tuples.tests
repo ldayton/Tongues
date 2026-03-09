@@ -280,3 +280,56 @@ def f(s: str) -> str:
 ---
 ok
 ---
+
+=== list of tuple subscript type inferred
+def f(items: list[tuple[int, str]]) -> None:
+    item = items[0]
+    reveal_type(item)
+---
+ok
+reveal:3 = tuple[int, str]
+---
+
+=== list of tuple subscript in loop type inferred
+def f(items: list[tuple[int, float, str]]) -> None:
+    i: int = 0
+    while i < len(items):
+        t = items[i]
+        reveal_type(t)
+        i += 1
+---
+ok
+reveal:5 = tuple[int, float, str]
+---
+
+=== hoisted list of tuple subscript type inferred
+def f(keys: list[tuple[int, float, str]], indices: list[int]) -> None:
+    i: int = 1
+    while i < len(keys):
+        k = keys[i]
+        idx = indices[i]
+        i += 1
+    reveal_type(k)
+    reveal_type(idx)
+---
+ok
+reveal:7 = tuple[int, float, str]
+reveal:8 = int
+---
+
+=== list subscript type when list used as assignment target
+def f(keys: list[tuple[int, str]], indices: list[int]) -> None:
+    i: int = 1
+    while i < len(keys):
+        k = keys[i]
+        idx = indices[i]
+        keys[i] = k
+        indices[i] = idx
+        i += 1
+    reveal_type(k)
+    reveal_type(idx)
+---
+ok
+reveal:9 = tuple[int, str]
+reveal:10 = int
+---

@@ -1407,6 +1407,9 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
             _synth_expr(_upper, env, ctx)
         if _step:
             _synth_expr(_step, env, ctx)
+    # Unwrap Pointer to collection (for lists/dicts used as assignment targets)
+    if isinstance(obj_type, PointerType) and not isinstance(obj_type.target, StructRef):
+        obj_type = obj_type.target
     # String indexing
     if _prim_kind(obj_type) == "string":
         return STR_TYPE
