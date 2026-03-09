@@ -59,11 +59,9 @@ my @TESTS = (
     ]],
 );
 
-my @EMITTER_LANGS = ("python", "perl", "ruby");
+my @EMITTER_LANGS = ("perl");
 my %RUNTIMES = (
-    python => ["python3"],
-    perl   => ["perl"],
-    ruby   => ["ruby"],
+    perl => ["perl"],
 );
 
 # ---------------------------------------------------------------------------

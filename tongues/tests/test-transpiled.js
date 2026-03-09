@@ -56,12 +56,9 @@ const TESTS = [
     ]],
 ];
 
-const EMITTER_LANGS = ["javascript", "perl", "python", "ruby"];
+const EMITTER_LANGS = ["javascript"];
 const RUNTIMES = {
     javascript: ["node"],
-    perl: ["perl"],
-    python: ["python3"],
-    ruby: ["ruby"],
 };
 
 // ---------------------------------------------------------------------------

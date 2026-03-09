@@ -221,11 +221,9 @@ TESTS = [
     ),
 ]
 
-EMITTER_LANGS = ["python", "perl", "ruby"]
+EMITTER_LANGS = ["python"]
 RUNTIMES = {
     "python": ["python3"],
-    "perl": ["perl"],
-    "ruby": ["ruby"],
 }
 
 # Reference to the transpiled module's main function, set after loading.

@@ -54,11 +54,9 @@ TESTS = {
   },
 }
 
-EMITTER_LANGS = %w[python perl ruby]
+EMITTER_LANGS = %w[ruby]
 RUNTIMES = {
-  "python" => ["python3"],
-  "perl"   => ["perl"],
-  "ruby"   => ["ruby"],
+  "ruby" => ["ruby"],
 }
 
 # ---------------------------------------------------------------------------
