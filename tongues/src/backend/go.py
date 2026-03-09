@@ -1431,6 +1431,20 @@ class _GoEmitter(Emitter):
                         if expr.field
                         else expr.field
                     )
+                    # Check if the inner field access already has the concrete type
+                    # (e.g., xs.typ where xs is VList and VList.typ is *ListT)
+                    inner_narrowed = expr.obj.obj.annotations.get(
+                        "scope.narrowed_type", ""
+                    )
+                    if inner_narrowed and inner_narrowed in self.struct_names:
+                        for fd in self.struct_field_types.get(inner_narrowed, []):
+                            if fd.name == expr.obj.field:
+                                go_t = self._type(fd.typ).lstrip("*")
+                                if go_t == obj_narrowed or (
+                                    go_t not in self._interface_names and go_t != "any"
+                                ):
+                                    return inner_obj_s + "." + fname
+                                break
                     return inner_obj_s + ".(*" + obj_narrowed + ")." + fname
             obj_s = self._expr(expr.obj)
             fname = expr.field[0].upper() + expr.field[1:] if expr.field else expr.field
@@ -1704,7 +1718,19 @@ class _GoEmitter(Emitter):
                                         if obj_go.endswith("]any") or obj_go == "[]any":
                                             val_s = val_s + ".(" + go_type + ")"
                                 elif isinstance(stmt.value, TTupleAccess):
-                                    val_s = val_s + ".(" + go_type + ")"
+                                    # Only add assertion if Go-level tuple uses [n]any
+                                    # (i.e., heterogeneous element types)
+                                    if isinstance(stmt.value.obj, TVar):
+                                        tup_vt = self.var_types.get(stmt.value.obj.name)
+                                        if isinstance(tup_vt, TTupleType):
+                                            tup_go = self._type(tup_vt)
+                                            if tup_go.endswith("]any"):
+                                                val_s = val_s + ".(" + go_type + ")"
+                                        else:
+                                            # Unknown tuple type, add assertion
+                                            val_s = val_s + ".(" + go_type + ")"
+                                    else:
+                                        val_s = val_s + ".(" + go_type + ")"
                 if self._is_empty_map_or_set_call(stmt.value):
                     inferred = self._infer_list_type(stmt.target)
                     if inferred is not None:
@@ -4086,6 +4112,20 @@ class _GoEmitter(Emitter):
                         if expr.field
                         else expr.field
                     )
+                    # Check if the field access already has the concrete type
+                    # (e.g., xs.typ where xs is VList and VList.typ is *ListT)
+                    inner_narrowed = expr.obj.obj.annotations.get(
+                        "scope.narrowed_type", ""
+                    )
+                    if inner_narrowed and inner_narrowed in self.struct_names:
+                        for fd in self.struct_field_types.get(inner_narrowed, []):
+                            if fd.name == expr.obj.field:
+                                go_t = self._type(fd.typ).lstrip("*")
+                                if go_t == obj_narrowed or (
+                                    go_t not in self._interface_names and go_t != "any"
+                                ):
+                                    return obj_s + "." + fname
+                                break
                     return obj_s + ".(*" + obj_narrowed + ")." + fname
             # Interface common field accessor
             if self._is_interface_field_access(expr):
@@ -5882,6 +5922,23 @@ class _GoEmitter(Emitter):
                 obj_is_concrete = False
                 if isinstance(obj_expr, TVar):
                     vt = self.var_types.get(obj_expr.name)
+                    if vt is not None:
+                        go_t = self._type(vt).lstrip("*")
+                        if go_t not in self._interface_names and go_t != "any":
+                            obj_is_concrete = True
+                elif isinstance(obj_expr, TFieldAccess):
+                    # Check for narrowing on the obj
+                    vt: TType | None = None
+                    narrowed_struct = obj_expr.obj.annotations.get(
+                        "scope.narrowed_type", ""
+                    )
+                    if narrowed_struct and narrowed_struct in self.struct_names:
+                        for fd in self.struct_field_types.get(narrowed_struct, []):
+                            if fd.name == obj_expr.field:
+                                vt = fd.typ
+                                break
+                    if vt is None:
+                        vt = self._resolve_field_type(obj_expr)
                     if vt is not None:
                         go_t = self._type(vt).lstrip("*")
                         if go_t not in self._interface_names and go_t != "any":
