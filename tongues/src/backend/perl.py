@@ -1091,9 +1091,9 @@ class _PerlEmitter(Emitter):
                 + "; [map { [$_, $__m->{$_}] } sort keys %{$__m}] })}"
             )
         elif self._is_set_expr(for_stmt.iterable):
-            iter_spread = "keys %{" + iterable + "}"
+            iter_spread = "keys %{" + self._deref_safe(iterable) + "}"
         else:
-            iter_spread = "@{" + iterable + "}"
+            iter_spread = "@{" + self._deref_safe(iterable) + "}"
         func = "any" if prov == "any_call" else "all"
         body = for_stmt.body
         if len(body) != 1:
@@ -2358,7 +2358,7 @@ class _PerlEmitter(Emitter):
         ):
             inner = args[0].value
             if isinstance(inner, TCall):
-                dict_expr = self._a(inner.args, 0)
+                dict_expr = self._deref_safe(self._a(inner.args, 0))
                 if func.name == "ListFrom":
                     return "[sort keys %{" + dict_expr + "}]"
                 return (
@@ -2476,13 +2476,13 @@ class _PerlEmitter(Emitter):
             val = self._expr(args[0].value)
             return "push(@{" + obj + "}, " + val + ")"
         if method == "keys" and not self._is_known_struct_method(func.obj, method):
-            obj = self._expr(func.obj)
+            obj = self._deref_safe(self._expr(func.obj))
             return "[sort keys %{" + obj + "}]"
         if method == "values" and not self._is_known_struct_method(func.obj, method):
-            obj = self._expr(func.obj)
+            obj = self._deref_safe(self._expr(func.obj))
             return "[values %{" + obj + "}]"
         if method == "items" and not self._is_known_struct_method(func.obj, method):
-            obj = self._expr(func.obj)
+            obj = self._deref_safe(self._expr(func.obj))
             return "[map { [$_, " + obj + "->{$_}] } sort keys %{" + obj + "}]"
         if method == "update" and not self._is_known_struct_method(func.obj, method):
             obj = self._expr(func.obj)
@@ -2935,9 +2935,9 @@ class _PerlEmitter(Emitter):
             a1 = self._deref_safe(self._a(args, 1))
             return "{ %{" + a0 + "}, %{" + a1 + "} }"
         if name == "Keys":
-            return "[sort keys %{" + self._a(args, 0) + "}]"
+            return "[sort keys %{" + self._deref_safe(self._a(args, 0)) + "}]"
         if name == "Values":
-            return "[values %{" + self._a(args, 0) + "}]"
+            return "[values %{" + self._deref_safe(self._a(args, 0)) + "}]"
         if name == "Items":
             return (
                 "do { my $__m = "
@@ -3035,7 +3035,7 @@ class _PerlEmitter(Emitter):
                     key_body = self._perl_key_sort_body(key_val)
                     return "[sort { " + key_body + " } @{" + a + "}]"
             if self._is_set_expr(sorted_arg):
-                return "[sort keys %{" + a + "}]"
+                return "[sort keys %{" + self._deref_safe(a) + "}]"
             sorted_ann: str = sorted_arg.annotations.get("type", "")
             is_str_list = sorted_ann in ("list[string]", "list[rune]")
             if is_str_list:
@@ -3100,7 +3100,7 @@ class _PerlEmitter(Emitter):
             sfl_inner = args[0].value
             if isinstance(sfl_inner, TCall) and isinstance(sfl_inner.func, TVar):
                 if sfl_inner.func.name == "Keys":
-                    d = self._a(sfl_inner.args, 0)
+                    d = self._deref_safe(self._a(sfl_inner.args, 0))
                     return (
                         "do { my $__s = {}; $__s->{$_} = 1 for sort keys %{"
                         + d
