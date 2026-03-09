@@ -935,6 +935,7 @@ if __name__ == "__main__":
             test_dir = os.path.join(TESTS_DIR, cfg["dir"])
             if not os.path.isdir(test_dir):
                 continue
+            print(f"::group::{phase_name}")
             runner_name = cfg["run"]
             if runner_name == "phase":
                 phase_results = run_phase_tests(test_dir, phase_name, cfg)
@@ -959,6 +960,7 @@ if __name__ == "__main__":
                 if s == "fail":
                     failures.append((phase_name, tid, err))
                     print(f"  FAIL {tid}")
+            print("::endgroup::")
 
     print()
     if failures:
@@ -969,14 +971,35 @@ if __name__ == "__main__":
             print()
             print(f"{phase} :: {tid}")
             print(err)
+            # GitHub Actions error annotation
+            title = f"{phase} :: {tid}"
+            print(f"::error title={title}::{err.splitlines()[0] if err else 'Test failed'}")
         print()
 
     print("=" * 60)
     total = total_pass + total_fail + total_skip
     prefix = f"[{target_name}] " if target_name else ""
-    print(
-        f"{prefix}{total} tests: {total_pass} passed, {total_fail} failed, {total_skip} skipped"
-    )
+    summary_line = f"{prefix}{total} tests: {total_pass} passed, {total_fail} failed, {total_skip} skipped"
+    print(summary_line)
     print("=" * 60)
+
+    # GitHub Actions notice annotation
+    if total_fail == 0:
+        print(f"::notice::{summary_line}")
+
+    # GitHub Actions job summary
+    summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary_file:
+        with open(summary_file, "a") as f:
+            status_emoji = "✅" if total_fail == 0 else "❌"
+            f.write(f"## {status_emoji} {target_name or 'Test Results'}\n\n")
+            f.write(f"| Passed | Failed | Skipped | Total |\n")
+            f.write(f"|--------|--------|---------|-------|\n")
+            f.write(f"| {total_pass} | {total_fail} | {total_skip} | {total} |\n\n")
+            if failures:
+                f.write("### Failures\n\n")
+                for phase, tid, err in failures:
+                    f.write(f"<details><summary><code>{phase} :: {tid}</code></summary>\n\n")
+                    f.write(f"```\n{err}\n```\n\n</details>\n\n")
 
     sys.exit(1 if total_fail > 0 else 0)

@@ -590,6 +590,7 @@ TESTS.each do |section_name, phases|
   phases.each do |phase_name, cfg|
     test_dir = File.join(TESTS_DIR, cfg[:dir])
     next unless File.directory?(test_dir)
+    puts "::group::#{phase_name}"
     phase_results = case cfg[:run]
                     when :cli
                       run_cli_tests(test_dir)
@@ -629,6 +630,7 @@ TESTS.each do |section_name, phases|
         puts "  FAIL #{tid}"
       end
     end
+    puts "::endgroup::"
   end
 end
 
@@ -641,6 +643,10 @@ if !failures.empty?
     puts
     puts "#{phase} :: #{tid}"
     puts err
+    # GitHub Actions error annotation
+    title = "#{phase} :: #{tid}"
+    first_line = err ? err.split("\n").first : "Test failed"
+    puts "::error title=#{title}::#{first_line}"
   end
   puts
 end
@@ -648,7 +654,33 @@ end
 puts "=" * 60
 total = total_pass + total_fail + total_skip
 prefix = $target_name ? "[#{$target_name}] " : ""
-puts "#{prefix}#{total} tests: #{total_pass} passed, #{total_fail} failed, #{total_skip} skipped"
+summary_line = "#{prefix}#{total} tests: #{total_pass} passed, #{total_fail} failed, #{total_skip} skipped"
+puts summary_line
 puts "=" * 60
+
+# GitHub Actions notice annotation
+if total_fail == 0
+  puts "::notice::#{summary_line}"
+end
+
+# GitHub Actions job summary
+summary_file = ENV["GITHUB_STEP_SUMMARY"]
+if summary_file
+  status_emoji = total_fail == 0 ? "✅" : "❌"
+  File.open(summary_file, "a") do |f|
+    f.puts "## #{status_emoji} #{$target_name || 'Test Results'}\n"
+    f.puts "| Passed | Failed | Skipped | Total |"
+    f.puts "|--------|--------|---------|-------|"
+    f.puts "| #{total_pass} | #{total_fail} | #{total_skip} | #{total} |\n"
+    if !failures.empty?
+      f.puts "### Failures\n"
+      failures.each do |phase, tid, err|
+        f.puts "<details><summary><code>#{phase} :: #{tid}</code></summary>\n"
+        f.puts "```\n#{err}\n```\n"
+        f.puts "</details>\n"
+      end
+    end
+  end
+end
 
 exit(total_fail > 0 ? 1 : 0)

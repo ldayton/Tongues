@@ -514,34 +514,34 @@ jobs:
       - run: |
           for result in \
             "${{ needs.style.result }}" \
-            "${{ needs.pytest-gen:tycheck.result }}" \
-            "${{ needs.pytest-gen:softfloat.result }}" \
-            "${{ needs.test-tongues:python.result }}" \
+            "${{ needs['pytest-gen:tycheck'].result }}" \
+            "${{ needs['pytest-gen:softfloat'].result }}" \
+            "${{ needs['test-tongues:python'].result }}" \
             "${{ needs.idempotence.result }}" \
-            "${{ needs.tw-taytsh-apptests:python.result }}" \
-            "${{ needs.vm-taytsh-apptests:python.result }}" \
-            "${{ needs.vm-test-tongues:python.result }}" \
+            "${{ needs['tw-taytsh-apptests:python'].result }}" \
+            "${{ needs['vm-taytsh-apptests:python'].result }}" \
+            "${{ needs['vm-test-tongues:python'].result }}" \
             "${{ needs.pyright.result }}" \
-            "${{ needs.test-tongues:ruby.result }}" \
-            "${{ needs.cross-equivalence:ruby.result }}" \
-            "${{ needs.tw-taytsh-apptests:ruby.result }}" \
-            "${{ needs.vm-taytsh-apptests:ruby.result }}" \
-            "${{ needs.vm-test-tongues:ruby.result }}" \
-            "${{ needs.test-tongues:perl.result }}" \
-            "${{ needs.cross-equivalence:perl.result }}" \
-            "${{ needs.tw-taytsh-apptests:perl.result }}" \
-            "${{ needs.vm-taytsh-apptests:perl.result }}" \
-            "${{ needs.vm-test-tongues:perl.result }}" \
-            "${{ needs.test-tongues:javascript.result }}" \
-            "${{ needs.cross-equivalence:javascript.result }}" \
-            "${{ needs.tw-taytsh-apptests:javascript.result }}" \
-            "${{ needs.vm-taytsh-apptests:javascript.result }}" \
-            "${{ needs.vm-test-tongues:javascript.result }}" \
-            "${{ needs.test-tongues:java.result }}" \
-            "${{ needs.cross-equivalence:java.result }}" \
-            "${{ needs.tw-taytsh-apptests:java.result }}" \
-            "${{ needs.vm-taytsh-apptests:java.result }}" \
-            "${{ needs.vm-test-tongues:java.result }}"; do
+            "${{ needs['test-tongues:ruby'].result }}" \
+            "${{ needs['cross-equivalence:ruby'].result }}" \
+            "${{ needs['tw-taytsh-apptests:ruby'].result }}" \
+            "${{ needs['vm-taytsh-apptests:ruby'].result }}" \
+            "${{ needs['vm-test-tongues:ruby'].result }}" \
+            "${{ needs['test-tongues:perl'].result }}" \
+            "${{ needs['cross-equivalence:perl'].result }}" \
+            "${{ needs['tw-taytsh-apptests:perl'].result }}" \
+            "${{ needs['vm-taytsh-apptests:perl'].result }}" \
+            "${{ needs['vm-test-tongues:perl'].result }}" \
+            "${{ needs['test-tongues:javascript'].result }}" \
+            "${{ needs['cross-equivalence:javascript'].result }}" \
+            "${{ needs['tw-taytsh-apptests:javascript'].result }}" \
+            "${{ needs['vm-taytsh-apptests:javascript'].result }}" \
+            "${{ needs['vm-test-tongues:javascript'].result }}" \
+            "${{ needs['test-tongues:java'].result }}" \
+            "${{ needs['cross-equivalence:java'].result }}" \
+            "${{ needs['tw-taytsh-apptests:java'].result }}" \
+            "${{ needs['vm-taytsh-apptests:java'].result }}" \
+            "${{ needs['vm-test-tongues:java'].result }}"; do
             if [ "$result" != "success" ]; then
               echo "One or more jobs failed"
               exit 1

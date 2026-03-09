@@ -714,6 +714,7 @@ for my $section (@TESTS) {
         my ($phase_name, $cfg) = @$phase_entry;
         my $test_dir = File::Spec->catdir($TESTS_DIR, $cfg->{dir});
         next unless -d $test_dir;
+        say "::group::$phase_name";
         my $phase_results;
         my $runner = $cfg->{run};
         if ($runner eq "cli") {
@@ -754,6 +755,7 @@ for my $section (@TESTS) {
                 say "  FAIL $r->[1]";
             }
         }
+        say "::endgroup::";
     }
 }
 
@@ -767,6 +769,10 @@ if (@failures) {
         say "";
         say "$phase :: $tid";
         say $err;
+        # GitHub Actions error annotation
+        my $title = "$phase :: $tid";
+        my $first_line = $err ? (split /\n/, $err)[0] : "Test failed";
+        say "::error title=$title::$first_line";
     }
     say "";
 }
@@ -774,7 +780,34 @@ if (@failures) {
 say "=" x 60;
 my $total = $total_pass + $total_fail + $total_skip;
 my $prefix = $target_name ? "[$target_name] " : "";
-say "${prefix}$total tests: $total_pass passed, $total_fail failed, $total_skip skipped";
+my $summary_line = "${prefix}$total tests: $total_pass passed, $total_fail failed, $total_skip skipped";
+say $summary_line;
 say "=" x 60;
+
+# GitHub Actions notice annotation
+if ($total_fail == 0) {
+    say "::notice::$summary_line";
+}
+
+# GitHub Actions job summary
+my $summary_file = $ENV{GITHUB_STEP_SUMMARY};
+if ($summary_file) {
+    open my $fh, '>>', $summary_file or die "Cannot open $summary_file: $!";
+    my $status_emoji = $total_fail == 0 ? "✅" : "❌";
+    my $name = $target_name || "Test Results";
+    print $fh "## $status_emoji $name\n\n";
+    print $fh "| Passed | Failed | Skipped | Total |\n";
+    print $fh "|--------|--------|---------|-------|\n";
+    print $fh "| $total_pass | $total_fail | $total_skip | $total |\n\n";
+    if (@failures) {
+        print $fh "### Failures\n\n";
+        for my $f (@failures) {
+            my ($phase, $tid, $err) = @$f;
+            print $fh "<details><summary><code>$phase :: $tid</code></summary>\n\n";
+            print $fh "```\n$err\n```\n\n</details>\n\n";
+        }
+    }
+    close $fh;
+}
 
 exit($total_fail > 0 ? 1 : 0);

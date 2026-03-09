@@ -1100,6 +1100,7 @@ public class TestTranspiled {
                 Path testDir = testsDir.resolve((String) cfg.get("dir"));
                 if (!Files.isDirectory(testDir)) continue;
 
+                System.out.println("::group::" + phaseName);
                 List<String[]> phaseResults;
                 String runnerName = (String) cfg.get("run");
                 try {
@@ -1160,6 +1161,7 @@ public class TestTranspiled {
                         System.out.println("  FAIL " + r[1]);
                     }
                 }
+                System.out.println("::endgroup::");
             }
         }
 
@@ -1172,6 +1174,10 @@ public class TestTranspiled {
                 System.out.println();
                 System.out.println(f[0] + " :: " + f[1]);
                 System.out.println(f[2]);
+                // GitHub Actions error annotation
+                String title = f[0] + " :: " + f[1];
+                String firstLine = f[2] != null && !f[2].isEmpty() ? f[2].split("\n")[0] : "Test failed";
+                System.out.println("::error title=" + title + "::" + firstLine);
             }
             System.out.println();
         }
@@ -1179,8 +1185,37 @@ public class TestTranspiled {
         System.out.println("=".repeat(60));
         int total = totalPass + totalFail + totalSkip;
         String prefix = targetName != null ? "[" + targetName + "] " : "";
-        System.out.println(prefix + total + " tests: " + totalPass + " passed, " + totalFail + " failed, " + totalSkip + " skipped");
+        String summaryLine = prefix + total + " tests: " + totalPass + " passed, " + totalFail + " failed, " + totalSkip + " skipped";
+        System.out.println(summaryLine);
         System.out.println("=".repeat(60));
+
+        // GitHub Actions notice annotation
+        if (totalFail == 0) {
+            System.out.println("::notice::" + summaryLine);
+        }
+
+        // GitHub Actions job summary
+        String summaryFile = System.getenv("GITHUB_STEP_SUMMARY");
+        if (summaryFile != null) {
+            try (java.io.PrintWriter pw = new java.io.PrintWriter(new java.io.FileWriter(summaryFile, true))) {
+                String statusEmoji = totalFail == 0 ? "✅" : "❌";
+                String name = targetName != null ? targetName : "Test Results";
+                pw.println("## " + statusEmoji + " " + name + "\n");
+                pw.println("| Passed | Failed | Skipped | Total |");
+                pw.println("|--------|--------|---------|-------|");
+                pw.println("| " + totalPass + " | " + totalFail + " | " + totalSkip + " | " + total + " |\n");
+                if (!failures.isEmpty()) {
+                    pw.println("### Failures\n");
+                    for (String[] f : failures) {
+                        pw.println("<details><summary><code>" + f[0] + " :: " + f[1] + "</code></summary>\n");
+                        pw.println("```\n" + f[2] + "\n```\n");
+                        pw.println("</details>\n");
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("Failed to write job summary: " + e);
+            }
+        }
 
         System.exit(totalFail > 0 ? 1 : 0);
     }

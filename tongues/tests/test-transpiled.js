@@ -655,6 +655,7 @@ for (const [sectionName, phases] of TESTS) {
     for (const [phaseName, cfg] of phases) {
         const testDir = nodePath.join(TESTS_DIR, cfg.dir);
         if (!nodeFs.existsSync(testDir)) continue;
+        console.log(`::group::${phaseName}`);
         let phaseResults;
         switch (cfg.run) {
             case "cli":      phaseResults = runCliTests(testDir); break;
@@ -688,6 +689,7 @@ for (const [sectionName, phases] of TESTS) {
                 console.log(`  FAIL ${tid}`);
             }
         }
+        console.log("::endgroup::");
     }
 }
 
@@ -700,6 +702,10 @@ if (failures.length > 0) {
         console.log();
         console.log(`${phase} :: ${tid}`);
         console.log(err);
+        // GitHub Actions error annotation
+        const title = `${phase} :: ${tid}`;
+        const firstLine = err ? err.split("\n")[0] : "Test failed";
+        console.log(`::error title=${title}::${firstLine}`);
     }
     console.log();
 }
@@ -707,7 +713,31 @@ if (failures.length > 0) {
 console.log("=".repeat(60));
 const total = totalPass + totalFail + totalSkip;
 const prefix = targetName ? `[${targetName}] ` : "";
-console.log(`${prefix}${total} tests: ${totalPass} passed, ${totalFail} failed, ${totalSkip} skipped`);
+const summaryLine = `${prefix}${total} tests: ${totalPass} passed, ${totalFail} failed, ${totalSkip} skipped`;
+console.log(summaryLine);
 console.log("=".repeat(60));
+
+// GitHub Actions notice annotation
+if (totalFail === 0) {
+    console.log(`::notice::${summaryLine}`);
+}
+
+// GitHub Actions job summary
+const summaryFile = process.env.GITHUB_STEP_SUMMARY;
+if (summaryFile) {
+    const statusEmoji = totalFail === 0 ? "✅" : "❌";
+    let md = `## ${statusEmoji} ${targetName || "Test Results"}\n\n`;
+    md += `| Passed | Failed | Skipped | Total |\n`;
+    md += `|--------|--------|---------|-------|\n`;
+    md += `| ${totalPass} | ${totalFail} | ${totalSkip} | ${total} |\n\n`;
+    if (failures.length > 0) {
+        md += "### Failures\n\n";
+        for (const [phase, tid, err] of failures) {
+            md += `<details><summary><code>${phase} :: ${tid}</code></summary>\n\n`;
+            md += `\`\`\`\n${err}\n\`\`\`\n\n</details>\n\n`;
+        }
+    }
+    nodeFs.appendFileSync(summaryFile, md);
+}
 
 process.exit(totalFail > 0 ? 1 : 0);
