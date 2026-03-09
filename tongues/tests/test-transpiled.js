@@ -579,7 +579,7 @@ function runOrderingTests(testDir) {
 // ---------------------------------------------------------------------------
 
 if (process.argv.length < 3) {
-    process.stderr.write("Usage: node test-transpiled.js <transpiled.js> [--via-vm <tongues.ty>]\n");
+    process.stderr.write("Usage: node test-transpiled.js <transpiled.js> [--via-vm <tongues.ty>] [--target <name>]\n");
     process.exit(1);
 }
 
@@ -591,6 +591,16 @@ if (viaVmIdx !== -1) {
         process.exit(1);
     }
     viaVmPath = nodePath.resolve(TONGUES_DIR, process.argv[viaVmIdx + 1]);
+}
+
+const targetIdx = process.argv.indexOf("--target");
+let targetName = null;
+if (targetIdx !== -1) {
+    if (targetIdx + 1 >= process.argv.length) {
+        process.stderr.write("--target requires a name\n");
+        process.exit(1);
+    }
+    targetName = process.argv[targetIdx + 1];
 }
 
 const transpiledPath = nodePath.resolve(TONGUES_DIR, process.argv[2]);
@@ -684,7 +694,7 @@ for (const [sectionName, phases] of TESTS) {
 console.log();
 if (failures.length > 0) {
     console.log("=".repeat(60));
-    console.log("FAILURES");
+    console.log(targetName ? `FAILURES [${targetName}]` : "FAILURES");
     console.log("=".repeat(60));
     for (const [phase, tid, err] of failures) {
         console.log();
@@ -696,7 +706,8 @@ if (failures.length > 0) {
 
 console.log("=".repeat(60));
 const total = totalPass + totalFail + totalSkip;
-console.log(`${total} tests: ${totalPass} passed, ${totalFail} failed, ${totalSkip} skipped`);
+const prefix = targetName ? `[${targetName}] ` : "";
+console.log(`${prefix}${total} tests: ${totalPass} passed, ${totalFail} failed, ${totalSkip} skipped`);
 console.log("=".repeat(60));
 
 process.exit(totalFail > 0 ? 1 : 0);

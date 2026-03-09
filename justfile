@@ -93,12 +93,12 @@ lang target:
     just -f {{justfile()}} _vm-test-tongues {{target}} & pids+=($!)
     start=$SECONDS
     cd tongues
-    ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} .out/tongues.${ext[{{target}}]}; rc=$?
+    ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} .out/tongues.${ext[{{target}}]} --target test-tongues:{{target}}; rc=$?
     elapsed=$((SECONDS - start))
     if [ $rc -eq 0 ]; then
-        printf '\033[32m[test:{{target}}] %ds\033[0m\n' "$elapsed"
+        printf '\033[32m[test-tongues:{{target}}] %ds\033[0m\n' "$elapsed"
     else
-        printf '\033[31m[test:{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
+        printf '\033[31m[test-tongues:{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
         failed=1
     fi
     for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
@@ -117,12 +117,12 @@ lang-java:
     just -f {{justfile()}} _vm-java & pids+=($!)
     start=$SECONDS
     cd tongues
-    java -cp .out/java-classes TestTranspiled .out/java-classes; rc=$?
+    java -cp .out/java-classes TestTranspiled .out/java-classes --target test-tongues:java; rc=$?
     elapsed=$((SECONDS - start))
     if [ $rc -eq 0 ]; then
-        printf '\033[32m[test:java] %ds\033[0m\n' "$elapsed"
+        printf '\033[32m[test-tongues:java] %ds\033[0m\n' "$elapsed"
     else
-        printf '\033[31m[test:java] %ds (FAILED)\033[0m\n' "$elapsed"
+        printf '\033[31m[test-tongues:java] %ds (FAILED)\033[0m\n' "$elapsed"
         failed=1
     fi
     for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
@@ -165,9 +165,9 @@ _treewalker-java:
     done
     elapsed=$((SECONDS - start))
     if [ $failed -eq 0 ]; then
-        printf '\033[32m[treewalker:java] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
+        printf '\033[32m[tw-taytsh-apptests:java] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
     else
-        printf '\033[31m[treewalker:java] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
+        printf '\033[31m[tw-taytsh-apptests:java] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
         exit 1
     fi
 
@@ -189,9 +189,9 @@ _vm-java:
     done
     elapsed=$((SECONDS - start))
     if [ $failed -eq 0 ]; then
-        printf '\033[32m[vm:java] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
+        printf '\033[32m[vm-taytsh-apptests:java] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
     else
-        printf '\033[31m[vm:java] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
+        printf '\033[31m[vm-taytsh-apptests:java] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
         exit 1
     fi
 
@@ -201,12 +201,12 @@ _test-tongues-java:
     set -uo pipefail
     start=$SECONDS
     cd tongues
-    java -cp .out/java-classes TestTranspiled .out/java-classes; rc=$?
+    java -cp .out/java-classes TestTranspiled .out/java-classes --target test-tongues:java; rc=$?
     elapsed=$((SECONDS - start))
     if [ $rc -eq 0 ]; then
-        printf '\033[32m[test:java] %ds\033[0m\n' "$elapsed"
+        printf '\033[32m[test-tongues:java] %ds\033[0m\n' "$elapsed"
     else
-        printf '\033[31m[test:java] %ds (FAILED)\033[0m\n' "$elapsed"
+        printf '\033[31m[test-tongues:java] %ds (FAILED)\033[0m\n' "$elapsed"
     fi
     exit $rc
 
@@ -284,7 +284,7 @@ _vm-test-tongues target:
     start=$SECONDS
     cd tongues
     ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} \
-        .out/tongues.${ext[{{target}}]} --via-vm .out/tongues.ty; rc=$?
+        .out/tongues.${ext[{{target}}]} --via-vm .out/tongues.ty --target vm-test-tongues:{{target}}; rc=$?
     elapsed=$((SECONDS - start))
     if [ $rc -eq 0 ]; then
         printf '\033[32m[vm-test-tongues:{{target}}] %ds\033[0m\n' "$elapsed"
@@ -313,9 +313,9 @@ _treewalker target:
     done
     elapsed=$((SECONDS - start))
     if [ $failed -eq 0 ]; then
-        printf '\033[32m[treewalker:{{target}}] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
+        printf '\033[32m[tw-taytsh-apptests:{{target}}] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
     else
-        printf '\033[31m[treewalker:{{target}}] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
+        printf '\033[31m[tw-taytsh-apptests:{{target}}] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
         exit 1
     fi
 
@@ -339,9 +339,9 @@ _vm target:
     done
     elapsed=$((SECONDS - start))
     if [ $failed -eq 0 ]; then
-        printf '\033[32m[vm:{{target}}] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
+        printf '\033[32m[vm-taytsh-apptests:{{target}}] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
     else
-        printf '\033[31m[vm:{{target}}] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
+        printf '\033[31m[vm-taytsh-apptests:{{target}}] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
         exit 1
     fi
 

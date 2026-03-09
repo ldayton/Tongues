@@ -1045,11 +1045,20 @@ public class TestTranspiled {
     @SuppressWarnings("unchecked")
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
-            System.err.println("Usage: java TestTranspiled <path-to-classes-dir>");
+            System.err.println("Usage: java TestTranspiled <path-to-classes-dir> [--target <name>]");
             System.exit(1);
         }
 
-        Path classesDir = Paths.get(args[0]).toAbsolutePath();
+        String targetName = null;
+        String classesDirArg = args[0];
+        for (int i = 1; i < args.length; i++) {
+            if (args[i].equals("--target") && i + 1 < args.length) {
+                targetName = args[i + 1];
+                i++;
+            }
+        }
+
+        Path classesDir = Paths.get(classesDirArg).toAbsolutePath();
         if (!Files.isDirectory(classesDir)) {
             System.err.println("Classes directory not found: " + classesDir);
             System.exit(1);
@@ -1157,7 +1166,7 @@ public class TestTranspiled {
         System.out.println();
         if (!failures.isEmpty()) {
             System.out.println("=".repeat(60));
-            System.out.println("FAILURES");
+            System.out.println(targetName != null ? "FAILURES [" + targetName + "]" : "FAILURES");
             System.out.println("=".repeat(60));
             for (String[] f : failures) {
                 System.out.println();
@@ -1169,7 +1178,8 @@ public class TestTranspiled {
 
         System.out.println("=".repeat(60));
         int total = totalPass + totalFail + totalSkip;
-        System.out.println(total + " tests: " + totalPass + " passed, " + totalFail + " failed, " + totalSkip + " skipped");
+        String prefix = targetName != null ? "[" + targetName + "] " : "";
+        System.out.println(prefix + total + " tests: " + totalPass + " passed, " + totalFail + " failed, " + totalSkip + " skipped");
         System.out.println("=".repeat(60));
 
         System.exit(totalFail > 0 ? 1 : 0);

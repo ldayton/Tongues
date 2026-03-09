@@ -829,12 +829,13 @@ def _runtime_available(cmd):
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print(
-            "Usage: python test-transpiled.py <transpiled.py> [--via-vm <tongues.ty>]",
+            "Usage: python test-transpiled.py <transpiled.py> [--via-vm <tongues.ty>] [--target <name>]",
             file=sys.stderr,
         )
         sys.exit(1)
 
     via_vm_path = None
+    target_name = None
     filtered_argv = []
     i = 1
     while i < len(sys.argv):
@@ -844,6 +845,12 @@ if __name__ == "__main__":
                 sys.exit(1)
             raw = sys.argv[i + 1]
             via_vm_path = raw if os.path.isabs(raw) else os.path.join(TONGUES_DIR, raw)
+            i += 2
+        elif sys.argv[i] == "--target":
+            if i + 1 >= len(sys.argv):
+                print("--target requires a name", file=sys.stderr)
+                sys.exit(1)
+            target_name = sys.argv[i + 1]
             i += 2
         else:
             filtered_argv.append(sys.argv[i])
@@ -956,7 +963,7 @@ if __name__ == "__main__":
     print()
     if failures:
         print("=" * 60)
-        print("FAILURES")
+        print(f"FAILURES [{target_name}]" if target_name else "FAILURES")
         print("=" * 60)
         for phase, tid, err in failures:
             print()
@@ -966,8 +973,9 @@ if __name__ == "__main__":
 
     print("=" * 60)
     total = total_pass + total_fail + total_skip
+    prefix = f"[{target_name}] " if target_name else ""
     print(
-        f"{total} tests: {total_pass} passed, {total_fail} failed, {total_skip} skipped"
+        f"{prefix}{total} tests: {total_pass} passed, {total_fail} failed, {total_skip} skipped"
     )
     print("=" * 60)
 

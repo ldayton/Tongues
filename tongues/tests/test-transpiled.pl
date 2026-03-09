@@ -628,11 +628,12 @@ sub run_ordering_tests ($test_dir) {
 # ---------------------------------------------------------------------------
 
 if (@ARGV < 1) {
-    print STDERR "Usage: perl test-transpiled.pl <transpiled.pl> [--via-vm <tongues.ty>]\n";
+    print STDERR "Usage: perl test-transpiled.pl <transpiled.pl> [--via-vm <tongues.ty>] [--target <name>]\n";
     exit 1;
 }
 
 my $via_vm_path = undef;
+my $target_name = undef;
 my @filtered_argv;
 for (my $i = 0; $i < @ARGV; $i++) {
     if ($ARGV[$i] eq "--via-vm") {
@@ -641,6 +642,13 @@ for (my $i = 0; $i < @ARGV; $i++) {
             exit 1;
         }
         $via_vm_path = File::Spec->rel2abs($ARGV[$i + 1], $TONGUES_DIR);
+        $i++;
+    } elsif ($ARGV[$i] eq "--target") {
+        if ($i + 1 >= @ARGV) {
+            print STDERR "--target requires a name\n";
+            exit 1;
+        }
+        $target_name = $ARGV[$i + 1];
         $i++;
     } else {
         push @filtered_argv, $ARGV[$i];
@@ -752,7 +760,7 @@ for my $section (@TESTS) {
 say "";
 if (@failures) {
     say "=" x 60;
-    say "FAILURES";
+    say $target_name ? "FAILURES [$target_name]" : "FAILURES";
     say "=" x 60;
     for my $f (@failures) {
         my ($phase, $tid, $err) = @$f;
@@ -765,7 +773,8 @@ if (@failures) {
 
 say "=" x 60;
 my $total = $total_pass + $total_fail + $total_skip;
-say "$total tests: $total_pass passed, $total_fail failed, $total_skip skipped";
+my $prefix = $target_name ? "[$target_name] " : "";
+say "${prefix}$total tests: $total_pass passed, $total_fail failed, $total_skip skipped";
 say "=" x 60;
 
 exit($total_fail > 0 ? 1 : 0);

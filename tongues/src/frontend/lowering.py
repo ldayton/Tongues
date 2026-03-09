@@ -475,6 +475,9 @@ def _backpatch_hoisted(pos: Pos, name: str, typ: TypeNode, env: _Env) -> None:
     existing = env.var_types.get(name)
     if existing is not None:
         typ = combine_types([existing, typ])
+    # Convert pure void to error (void is only valid as part of Optional)
+    if _is_type_dict(typ, ["void"]):
+        typ = PrimitiveType("error")
     ttype = _typenode_to_ttype(pos, typ)
     placeholder.typ = ttype
     if _type_has_zero_value(typ):

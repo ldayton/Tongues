@@ -514,11 +514,12 @@ end
 # ---------------------------------------------------------------------------
 
 if ARGV.length < 1
-  $stderr.puts "Usage: ruby test-transpiled.rb <transpiled.rb> [--via-vm <tongues.ty>]"
+  $stderr.puts "Usage: ruby test-transpiled.rb <transpiled.rb> [--via-vm <tongues.ty>] [--target <name>]"
   exit 1
 end
 
 via_vm_path = nil
+$target_name = nil
 filtered_argv = []
 i = 0
 while i < ARGV.length
@@ -528,6 +529,13 @@ while i < ARGV.length
       exit 1
     end
     via_vm_path = File.expand_path(ARGV[i + 1], TONGUES_DIR)
+    i += 2
+  elsif ARGV[i] == "--target"
+    if i + 1 >= ARGV.length
+      $stderr.puts "--target requires a name"
+      exit 1
+    end
+    $target_name = ARGV[i + 1]
     i += 2
   else
     filtered_argv << ARGV[i]
@@ -627,7 +635,7 @@ end
 puts
 if !failures.empty?
   puts "=" * 60
-  puts "FAILURES"
+  puts $target_name ? "FAILURES [#{$target_name}]" : "FAILURES"
   puts "=" * 60
   failures.each do |phase, tid, err|
     puts
@@ -639,7 +647,8 @@ end
 
 puts "=" * 60
 total = total_pass + total_fail + total_skip
-puts "#{total} tests: #{total_pass} passed, #{total_fail} failed, #{total_skip} skipped"
+prefix = $target_name ? "[#{$target_name}] " : ""
+puts "#{prefix}#{total} tests: #{total_pass} passed, #{total_fail} failed, #{total_skip} skipped"
 puts "=" * 60
 
 exit(total_fail > 0 ? 1 : 0)

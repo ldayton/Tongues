@@ -20,7 +20,7 @@ jobs:
   # Transpile jobs — one per language, upload artifacts for downstream jobs
   # ---------------------------------------------------------------------------
 
-  transpile-python:
+  "transpile-tongues:python":
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -35,7 +35,7 @@ jobs:
             tongues/.out/tongues.py
             tongues/.out/test_harness.py
 
-  transpile-ruby:
+  "transpile-tongues:ruby":
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -50,7 +50,7 @@ jobs:
             tongues/.out/tongues.rb
             tongues/.out/test_harness.rb
 
-  transpile-perl:
+  "transpile-tongues:perl":
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -65,7 +65,7 @@ jobs:
             tongues/.out/tongues.pl
             tongues/.out/test_harness.pl
 
-  transpile-javascript:
+  "transpile-tongues:javascript":
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -80,7 +80,7 @@ jobs:
             tongues/.out/tongues.js
             tongues/.out/test_harness.js
 
-  transpile-java:
+  "transpile-tongues:java":
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -98,9 +98,9 @@ jobs:
   # Python: test, idempotence, treewalker, vm, pyright
   # ---------------------------------------------------------------------------
 
-  test-tongues-python:
+  "test-tongues:python":
     runs-on: ubuntu-latest
-    needs: transpile-python
+    needs: "transpile-tongues:python"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -109,11 +109,11 @@ jobs:
           path: tongues/.out
       - run: docker build -t tongues-python docker/python
       - run: docker run --rm -v $PWD:/workspace tongues-python
-          python3 tongues/tests/test-transpiled.py .out/tongues.py
+          python3 tongues/tests/test-transpiled.py .out/tongues.py --target test-tongues:python
 
   idempotence:
     runs-on: ubuntu-latest
-    needs: transpile-python
+    needs: "transpile-tongues:python"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -125,7 +125,7 @@ jobs:
 
   pyright:
     runs-on: ubuntu-latest
-    needs: transpile-python
+    needs: "transpile-tongues:python"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -135,9 +135,9 @@ jobs:
       - run: docker build -t tongues-python docker/python
       - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _pyright
 
-  treewalker-apptests-python:
+  "tw-taytsh-apptests:python":
     runs-on: ubuntu-latest
-    needs: transpile-python
+    needs: "transpile-tongues:python"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -147,9 +147,9 @@ jobs:
       - run: docker build -t tongues-python docker/python
       - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _treewalker python
 
-  vm-apptests-python:
+  "vm-taytsh-apptests:python":
     runs-on: ubuntu-latest
-    needs: transpile-python
+    needs: "transpile-tongues:python"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -163,9 +163,9 @@ jobs:
   # Ruby: test, cross-equivalence, treewalker, vm
   # ---------------------------------------------------------------------------
 
-  test-tongues-ruby:
+  "test-tongues:ruby":
     runs-on: ubuntu-latest
-    needs: transpile-ruby
+    needs: "transpile-tongues:ruby"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -174,11 +174,11 @@ jobs:
           path: tongues/.out
       - run: docker build -t tongues-ruby docker/ruby
       - run: docker run --rm -v $PWD:/workspace tongues-ruby
-          ruby tongues/tests/test-transpiled.rb .out/tongues.rb
+          ruby tongues/tests/test-transpiled.rb .out/tongues.rb --target test-tongues:ruby
 
-  cross-equivalence-ruby:
+  "cross-equivalence:ruby":
     runs-on: ubuntu-latest
-    needs: transpile-ruby
+    needs: "transpile-tongues:ruby"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -188,9 +188,9 @@ jobs:
       - run: docker build -t tongues-ruby docker/ruby
       - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile cross-equivalence ruby
 
-  treewalker-apptests-ruby:
+  "tw-taytsh-apptests:ruby":
     runs-on: ubuntu-latest
-    needs: transpile-ruby
+    needs: "transpile-tongues:ruby"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -200,9 +200,9 @@ jobs:
       - run: docker build -t tongues-ruby docker/ruby
       - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile _treewalker ruby
 
-  vm-apptests-ruby:
+  "vm-taytsh-apptests:ruby":
     runs-on: ubuntu-latest
-    needs: transpile-ruby
+    needs: "transpile-tongues:ruby"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -216,9 +216,9 @@ jobs:
   # Perl: test, cross-equivalence, treewalker, vm
   # ---------------------------------------------------------------------------
 
-  test-tongues-perl:
+  "test-tongues:perl":
     runs-on: ubuntu-latest
-    needs: transpile-perl
+    needs: "transpile-tongues:perl"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -227,11 +227,11 @@ jobs:
           path: tongues/.out
       - run: docker build -t tongues-perl docker/perl
       - run: docker run --rm -v $PWD:/workspace tongues-perl
-          perl tongues/tests/test-transpiled.pl .out/tongues.pl
+          perl tongues/tests/test-transpiled.pl .out/tongues.pl --target test-tongues:perl
 
-  cross-equivalence-perl:
+  "cross-equivalence:perl":
     runs-on: ubuntu-latest
-    needs: transpile-perl
+    needs: "transpile-tongues:perl"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -241,9 +241,9 @@ jobs:
       - run: docker build -t tongues-perl docker/perl
       - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile cross-equivalence perl
 
-  treewalker-apptests-perl:
+  "tw-taytsh-apptests:perl":
     runs-on: ubuntu-latest
-    needs: transpile-perl
+    needs: "transpile-tongues:perl"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -253,9 +253,9 @@ jobs:
       - run: docker build -t tongues-perl docker/perl
       - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile _treewalker perl
 
-  vm-apptests-perl:
+  "vm-taytsh-apptests:perl":
     runs-on: ubuntu-latest
-    needs: transpile-perl
+    needs: "transpile-tongues:perl"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -269,9 +269,9 @@ jobs:
   # JavaScript: test, cross-equivalence, treewalker, vm
   # ---------------------------------------------------------------------------
 
-  test-tongues-javascript:
+  "test-tongues:javascript":
     runs-on: ubuntu-latest
-    needs: transpile-javascript
+    needs: "transpile-tongues:javascript"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -280,11 +280,11 @@ jobs:
           path: tongues/.out
       - run: docker build -t tongues-javascript docker/javascript
       - run: docker run --rm -v $PWD:/workspace tongues-javascript
-          node tongues/tests/test-transpiled.js .out/tongues.js
+          node tongues/tests/test-transpiled.js .out/tongues.js --target test-tongues:javascript
 
-  cross-equivalence-javascript:
+  "cross-equivalence:javascript":
     runs-on: ubuntu-latest
-    needs: transpile-javascript
+    needs: "transpile-tongues:javascript"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -294,9 +294,9 @@ jobs:
       - run: docker build -t tongues-javascript docker/javascript
       - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile cross-equivalence javascript
 
-  treewalker-apptests-javascript:
+  "tw-taytsh-apptests:javascript":
     runs-on: ubuntu-latest
-    needs: transpile-javascript
+    needs: "transpile-tongues:javascript"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -306,9 +306,9 @@ jobs:
       - run: docker build -t tongues-javascript docker/javascript
       - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile _treewalker javascript
 
-  vm-apptests-javascript:
+  "vm-taytsh-apptests:javascript":
     runs-on: ubuntu-latest
-    needs: transpile-javascript
+    needs: "transpile-tongues:javascript"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -322,9 +322,9 @@ jobs:
   # Java: test, cross-equivalence, treewalker, vm
   # ---------------------------------------------------------------------------
 
-  test-tongues-java:
+  "test-tongues:java":
     runs-on: ubuntu-latest
-    needs: transpile-java
+    needs: "transpile-tongues:java"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -334,9 +334,9 @@ jobs:
       - run: docker build -t tongues-java docker/java
       - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile _test-tongues-java
 
-  cross-equivalence-java:
+  "cross-equivalence:java":
     runs-on: ubuntu-latest
-    needs: transpile-java
+    needs: "transpile-tongues:java"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -346,9 +346,9 @@ jobs:
       - run: docker build -t tongues-java docker/java
       - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile cross-equivalence java
 
-  treewalker-apptests-java:
+  "tw-taytsh-apptests:java":
     runs-on: ubuntu-latest
-    needs: transpile-java
+    needs: "transpile-tongues:java"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -358,9 +358,9 @@ jobs:
       - run: docker build -t tongues-java docker/java
       - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile _treewalker-java
 
-  vm-apptests-java:
+  "vm-taytsh-apptests:java":
     runs-on: ubuntu-latest
-    needs: transpile-java
+    needs: "transpile-tongues:java"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -374,9 +374,9 @@ jobs:
   # Taytsh VM: full tongues test suite through VM per language
   # ---------------------------------------------------------------------------
 
-  vm-test-tongues-javascript:
+  "vm-test-tongues:javascript":
     runs-on: ubuntu-latest
-    needs: transpile-javascript
+    needs: "transpile-tongues:javascript"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -386,9 +386,9 @@ jobs:
       - run: docker build -t tongues-javascript docker/javascript
       - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile _vm-test-tongues javascript
 
-  vm-test-tongues-perl:
+  "vm-test-tongues:perl":
     runs-on: ubuntu-latest
-    needs: transpile-perl
+    needs: "transpile-tongues:perl"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -398,9 +398,9 @@ jobs:
       - run: docker build -t tongues-perl docker/perl
       - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile _vm-test-tongues perl
 
-  vm-test-tongues-ruby:
+  "vm-test-tongues:ruby":
     runs-on: ubuntu-latest
-    needs: transpile-ruby
+    needs: "transpile-tongues:ruby"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -410,9 +410,9 @@ jobs:
       - run: docker build -t tongues-ruby docker/ruby
       - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile _vm-test-tongues ruby
 
-  vm-test-tongues-python:
+  "vm-test-tongues:python":
     runs-on: ubuntu-latest
-    needs: transpile-python
+    needs: "transpile-tongues:python"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -422,9 +422,9 @@ jobs:
       - run: docker build -t tongues-python docker/python
       - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _vm-test-tongues python
 
-  vm-test-tongues-java:
+  "vm-test-tongues:java":
     runs-on: ubuntu-latest
-    needs: transpile-java
+    needs: "transpile-tongues:java"
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v4
@@ -449,7 +449,7 @@ jobs:
           name: docker-python
           path: /tmp/tongues-python.tar
 
-  pytest-gen-tycheck:
+  "pytest-gen:tycheck":
     runs-on: ubuntu-latest
     needs: pytest-gen
     steps:
@@ -461,7 +461,7 @@ jobs:
       - run: docker load -i /tmp/tongues-python.tar
       - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _pytest-gen-tycheck
 
-  pytest-gen-softfloat:
+  "pytest-gen:softfloat":
     runs-on: ubuntu-latest
     needs: pytest-gen
     steps:
@@ -481,67 +481,67 @@ jobs:
     if: always()
     needs:
       - style
-      - pytest-gen-tycheck
-      - pytest-gen-softfloat
-      - test-tongues-python
+      - "pytest-gen:tycheck"
+      - "pytest-gen:softfloat"
+      - "test-tongues:python"
       - idempotence
-      - treewalker-apptests-python
-      - vm-apptests-python
-      - vm-test-tongues-python
+      - "tw-taytsh-apptests:python"
+      - "vm-taytsh-apptests:python"
+      - "vm-test-tongues:python"
       - pyright
-      - test-tongues-ruby
-      - cross-equivalence-ruby
-      - treewalker-apptests-ruby
-      - vm-apptests-ruby
-      - vm-test-tongues-ruby
-      - test-tongues-perl
-      - cross-equivalence-perl
-      - treewalker-apptests-perl
-      - vm-apptests-perl
-      - vm-test-tongues-perl
-      - test-tongues-javascript
-      - cross-equivalence-javascript
-      - treewalker-apptests-javascript
-      - vm-apptests-javascript
-      - vm-test-tongues-javascript
-      - test-tongues-java
-      - cross-equivalence-java
-      - treewalker-apptests-java
-      - vm-apptests-java
-      - vm-test-tongues-java
+      - "test-tongues:ruby"
+      - "cross-equivalence:ruby"
+      - "tw-taytsh-apptests:ruby"
+      - "vm-taytsh-apptests:ruby"
+      - "vm-test-tongues:ruby"
+      - "test-tongues:perl"
+      - "cross-equivalence:perl"
+      - "tw-taytsh-apptests:perl"
+      - "vm-taytsh-apptests:perl"
+      - "vm-test-tongues:perl"
+      - "test-tongues:javascript"
+      - "cross-equivalence:javascript"
+      - "tw-taytsh-apptests:javascript"
+      - "vm-taytsh-apptests:javascript"
+      - "vm-test-tongues:javascript"
+      - "test-tongues:java"
+      - "cross-equivalence:java"
+      - "tw-taytsh-apptests:java"
+      - "vm-taytsh-apptests:java"
+      - "vm-test-tongues:java"
     runs-on: ubuntu-latest
     steps:
       - run: |
           for result in \
             "${{ needs.style.result }}" \
-            "${{ needs.pytest-gen-tycheck.result }}" \
-            "${{ needs.pytest-gen-softfloat.result }}" \
-            "${{ needs.test-tongues-python.result }}" \
+            "${{ needs.pytest-gen:tycheck.result }}" \
+            "${{ needs.pytest-gen:softfloat.result }}" \
+            "${{ needs.test-tongues:python.result }}" \
             "${{ needs.idempotence.result }}" \
-            "${{ needs.treewalker-apptests-python.result }}" \
-            "${{ needs.vm-apptests-python.result }}" \
-            "${{ needs.vm-test-tongues-python.result }}" \
+            "${{ needs.tw-taytsh-apptests:python.result }}" \
+            "${{ needs.vm-taytsh-apptests:python.result }}" \
+            "${{ needs.vm-test-tongues:python.result }}" \
             "${{ needs.pyright.result }}" \
-            "${{ needs.test-tongues-ruby.result }}" \
-            "${{ needs.cross-equivalence-ruby.result }}" \
-            "${{ needs.treewalker-apptests-ruby.result }}" \
-            "${{ needs.vm-apptests-ruby.result }}" \
-            "${{ needs.vm-test-tongues-ruby.result }}" \
-            "${{ needs.test-tongues-perl.result }}" \
-            "${{ needs.cross-equivalence-perl.result }}" \
-            "${{ needs.treewalker-apptests-perl.result }}" \
-            "${{ needs.vm-apptests-perl.result }}" \
-            "${{ needs.vm-test-tongues-perl.result }}" \
-            "${{ needs.test-tongues-javascript.result }}" \
-            "${{ needs.cross-equivalence-javascript.result }}" \
-            "${{ needs.treewalker-apptests-javascript.result }}" \
-            "${{ needs.vm-apptests-javascript.result }}" \
-            "${{ needs.vm-test-tongues-javascript.result }}" \
-            "${{ needs.test-tongues-java.result }}" \
-            "${{ needs.cross-equivalence-java.result }}" \
-            "${{ needs.treewalker-apptests-java.result }}" \
-            "${{ needs.vm-apptests-java.result }}" \
-            "${{ needs.vm-test-tongues-java.result }}"; do
+            "${{ needs.test-tongues:ruby.result }}" \
+            "${{ needs.cross-equivalence:ruby.result }}" \
+            "${{ needs.tw-taytsh-apptests:ruby.result }}" \
+            "${{ needs.vm-taytsh-apptests:ruby.result }}" \
+            "${{ needs.vm-test-tongues:ruby.result }}" \
+            "${{ needs.test-tongues:perl.result }}" \
+            "${{ needs.cross-equivalence:perl.result }}" \
+            "${{ needs.tw-taytsh-apptests:perl.result }}" \
+            "${{ needs.vm-taytsh-apptests:perl.result }}" \
+            "${{ needs.vm-test-tongues:perl.result }}" \
+            "${{ needs.test-tongues:javascript.result }}" \
+            "${{ needs.cross-equivalence:javascript.result }}" \
+            "${{ needs.tw-taytsh-apptests:javascript.result }}" \
+            "${{ needs.vm-taytsh-apptests:javascript.result }}" \
+            "${{ needs.vm-test-tongues:javascript.result }}" \
+            "${{ needs.test-tongues:java.result }}" \
+            "${{ needs.cross-equivalence:java.result }}" \
+            "${{ needs.tw-taytsh-apptests:java.result }}" \
+            "${{ needs.vm-taytsh-apptests:java.result }}" \
+            "${{ needs.vm-test-tongues:java.result }}"; do
             if [ "$result" != "success" ]; then
               echo "One or more jobs failed"
               exit 1
