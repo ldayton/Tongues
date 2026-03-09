@@ -429,8 +429,10 @@ class _JavaEmitter(Emitter):
         self._needs_merge_maps: bool = False
         self._needs_repeat_list: bool = False
         self._needs_repeat_bytes: bool = False
+        self._needs_list_compare: bool = False
         self._needs_zfill: bool = False
         self._needs_bytes_helpers: bool = False
+        self._needs_pop_item: bool = False
         self._needs_hex_helper: bool = False
         self._needs_argv: bool = False
         self._needs_throwing_runnable: bool = False
@@ -996,6 +998,25 @@ class _JavaEmitter(Emitter):
             self._line("xs.addAll(lo, vals);")
             self.indent -= 1
             self._line("}")
+        if self._needs_list_compare:
+            self._line()
+            self._line(
+                "@SuppressWarnings(\"unchecked\")"
+            )
+            self._line(
+                "static <T extends Comparable<T>> int _listCompare(List<T> a, List<T> b) {"
+            )
+            self.indent += 1
+            self._line("int n = Math.min(a.size(), b.size());")
+            self._line("for (int i = 0; i < n; i++) {")
+            self.indent += 1
+            self._line("int c = ((Comparable<T>) a.get(i)).compareTo(b.get(i));")
+            self._line("if (c != 0) return c;")
+            self.indent -= 1
+            self._line("}")
+            self._line("return Integer.compare(a.size(), b.size());")
+            self.indent -= 1
+            self._line("}")
         if self._needs_to_byte_array:
             self._line()
             self._line("static byte[] toByteArray(List<Integer> xs) {")
@@ -1130,6 +1151,20 @@ class _JavaEmitter(Emitter):
                 'for (byte b : data) sb.append(String.format("%02x", b & 0xFF));'
             )
             self._line("return sb.toString();")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_pop_item:
+            self._line()
+            self._line("@SuppressWarnings(\"unchecked\")")
+            self._line(
+                "static <K, V> List<Object> _popItem(LinkedHashMap<K, V> m) {"
+            )
+            self.indent += 1
+            self._line("var it = m.entrySet().iterator();")
+            self._line("Map.Entry<K, V> last = null;")
+            self._line("while (it.hasNext()) last = it.next();")
+            self._line("m.remove(last.getKey());")
+            self._line("return Arrays.asList(last.getKey(), last.getValue());")
             self.indent -= 1
             self._line("}")
         if self._needs_throwing_runnable:
@@ -3392,13 +3427,16 @@ class _JavaEmitter(Emitter):
         return "null"
 
     def _int_lit(self, expr: TIntLit) -> str:
-        v = expr.value
-        if v > 9223372036854775807:
-            signed = v - (1 << 64)
+        v: int = expr.value
+        # Check for unsigned 64-bit values (> Long.MAX_VALUE in Java terms)
+        # First guard with a smaller check to avoid overflow in transpiled Java
+        # (2147483647 fits in Java int; if v > 2B then maybe > MAX_LONG)
+        if v > 2147483647 and v > 9223372036854775807:
+            signed: int = v - (1 << 64)
             if self.strict_math:
                 return str(signed) + "L"
             return "(int) " + str(signed) + "L"
-        raw = expr.raw
+        raw: str = expr.raw
         if raw.startswith(("0x", "0X", "0o", "0O", "0b", "0B")):
             if v > 2147483647 or v < -2147483648:
                 if self.strict_math:
@@ -3470,7 +3508,9 @@ class _JavaEmitter(Emitter):
                 + ".length()))"
             )
         if hi_is_len:
-            return "new ArrayList<>(" + obj + ".subList(" + lo + ", " + obj + ".size()))"
+            return (
+                "new ArrayList<>(" + obj + ".subList(" + lo + ", " + obj + ".size()))"
+            )
         hi = self._expr(hi_expr)
         return (
             "new ArrayList<>("
@@ -3535,6 +3575,10 @@ class _JavaEmitter(Emitter):
                     if len(expr.args) > 1 and self._is_string_expr(expr.args[1].value):
                         return True
             if isinstance(expr.func, TFieldAccess) and expr.func.field == "to_string":
+                return True
+        if isinstance(expr, TTernary):
+            prov = expr.annotations.get("provenance", "")
+            if prov == "removeprefix" or prov == "removesuffix":
                 return True
         return False
 
@@ -3646,8 +3690,13 @@ class _JavaEmitter(Emitter):
                 )
         a = self._expr(str_expr)
         b = self._expr(other)
-        if self._is_concat_expr(str_expr):
+        if self._is_concat_expr(str_expr) or isinstance(str_expr, TTernary):
             a = "(" + a + ")"
+        # Use simple != null or == null when comparing to nil
+        if isinstance(other, TNilLit):
+            if op == "==":
+                return a + " == null"
+            return a + " != null"
         if use_objects_equals:
             if op == "==":
                 return "Objects.equals(" + a + ", " + b + ")"
@@ -3881,6 +3930,9 @@ class _JavaEmitter(Emitter):
         return "!(" + rendered + ")"
 
     def _ternary(self, expr: TTernary) -> str:
+        prov = expr.annotations.get("provenance", "")
+        if prov == "removeprefix" or prov == "removesuffix":
+            return self._remove_affix_ternary(expr, prov)
         else_str = self._expr(expr.else_expr)
         if isinstance(expr.else_expr, TTernary):
             else_str = "(" + else_str + ")"
@@ -3920,7 +3972,45 @@ class _JavaEmitter(Emitter):
         raise NotImplementedError
 
     def _remove_affix_ternary(self, expr: TTernary, prov: str) -> str:
-        raise NotImplementedError
+        """Emit removeprefix/removesuffix as proper Java ternary with string results."""
+        rx_cond = expr.cond
+        if isinstance(rx_cond, TCall) and isinstance(rx_cond.func, TVar):
+            obj_s = self._expr(rx_cond.args[0].value)
+            arg_s = self._expr(rx_cond.args[1].value)
+            if prov == "removeprefix":
+                return (
+                    obj_s
+                    + ".startsWith("
+                    + arg_s
+                    + ") ? "
+                    + obj_s
+                    + ".substring("
+                    + arg_s
+                    + ".length()) : "
+                    + obj_s
+                )
+            else:  # removesuffix
+                return (
+                    obj_s
+                    + ".endsWith("
+                    + arg_s
+                    + ") ? "
+                    + obj_s
+                    + ".substring(0, "
+                    + obj_s
+                    + ".length() - "
+                    + arg_s
+                    + ".length()) : "
+                    + obj_s
+                )
+        # Fallback to standard ternary
+        return (
+            self._expr(expr.cond)
+            + " ? "
+            + self._expr(expr.then_expr)
+            + " : "
+            + self._expr(expr.else_expr)
+        )
 
     def _maybe_paren(self, expr: TExpr, parent_op: str, is_left: bool) -> str:
         s = self._expr(expr)
@@ -4079,6 +4169,9 @@ class _JavaEmitter(Emitter):
         if name == "Format":
             return self._format_call(args)
         if name == "RuneToInt":
+            arg = args[0].value
+            if isinstance(arg, TRuneLit):
+                return "(int) " + self._a(args, 0)
             return "(int) (" + self._a(args, 0) + ")"
         if name == "RuneFromInt":
             return "(char) (" + self._a(args, 0) + ")"
@@ -4087,6 +4180,8 @@ class _JavaEmitter(Emitter):
         if name == "Abs":
             return "Math.abs(" + self._a(args, 0) + ")"
         if name == "Min":
+            if len(args) == 1:
+                return "Collections.min(" + self._a(args, 0) + ")"
             if len(args) == 2 and isinstance(args[1].value, TFnLit):
                 return (
                     "Collections.min("
@@ -4105,6 +4200,8 @@ class _JavaEmitter(Emitter):
                 )
             return "Math.min(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Max":
+            if len(args) == 1:
+                return "Collections.max(" + self._a(args, 0) + ")"
             if len(args) == 2 and isinstance(args[1].value, TFnLit):
                 return (
                     "Collections.max("
@@ -4193,6 +4290,9 @@ class _JavaEmitter(Emitter):
             )
         if name == "Pop":
             return self._a(args, 0) + ".removeLast()"
+        if name == "PopItem":
+            self._needs_pop_item = True
+            return "_popItem(" + self._a(args, 0) + ")"
         if name == "RemoveAt":
             idx_val = self._static_int(args[1].value)
             if idx_val == 0:
@@ -4341,7 +4441,19 @@ class _JavaEmitter(Emitter):
         if name == "Set":
             return "new HashSet<>()"
         if name == "Zip":
-            raise NotImplementedError("builtin: Zip")
+            a = self._a(args, 0)
+            b = self._a(args, 1)
+            return (
+                "IntStream.range(0, Math.min("
+                + a
+                + ".size(), "
+                + b
+                + ".size())).mapToObj(i -> Arrays.asList("
+                + a
+                + ".get(i), "
+                + b
+                + ".get(i))).collect(Collectors.toList())"
+            )
         if name == "Repeat":
             first = args[0].value
             type_ann = first.annotations.get("type", "")
@@ -4400,6 +4512,18 @@ class _JavaEmitter(Emitter):
             if self._is_bytes_expr(args[0].value):
                 self._needs_bytes_helpers = True
                 return "_bytesSplit(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+            # Skip Pattern.quote for simple literals without regex metacharacters
+            sep_arg = args[1].value
+            if isinstance(sep_arg, TStringLit) and not any(
+                c in sep_arg.value for c in r"\.[]{}()*+-?^$|"
+            ):
+                return (
+                    "List.of("
+                    + self._a(args, 0)
+                    + ".split("
+                    + self._a(args, 1)
+                    + "))"
+                )
             # Use Pattern.quote to escape regex special characters
             return (
                 "List.of("
@@ -4532,6 +4656,17 @@ class _JavaEmitter(Emitter):
             if self._is_bytes_expr(args[0].value):
                 self._needs_bytes_helpers = True
                 return "_bytesCount(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+            # Skip Pattern.quote for simple literals without regex metacharacters
+            sep_arg = args[1].value
+            if isinstance(sep_arg, TStringLit) and not any(
+                c in sep_arg.value for c in r"\.[]{}()*+-?^$|"
+            ):
+                return (
+                    self._a(args, 0)
+                    + ".split("
+                    + self._a(args, 1)
+                    + ", -1).length - 1"
+                )
             return (
                 self._a(args, 0)
                 + ".split(Pattern.quote("
@@ -4649,6 +4784,24 @@ class _JavaEmitter(Emitter):
                 + ", "
                 + self._a(args, 3)
                 + ")"
+            )
+        if name == "ListCompare":
+            self._needs_list_compare = True
+            return "_listCompare(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+        if name == "MapFromKeys":
+            keys = self._a(args, 0)
+            default = self._a(args, 1)
+            return (
+                keys
+                + ".stream().collect(Collectors.toMap(k -> k, k -> "
+                + default
+                + ", (a, b) -> b, LinkedHashMap::new))"
+            )
+        if name == "MapFromPairs":
+            pairs = self._a(args, 0)
+            return (
+                pairs
+                + ".stream().collect(Collectors.toMap(p -> p.get(0), p -> p.get(1), (a, b) -> b, LinkedHashMap::new))"
             )
         raise NotImplementedError("builtin: " + name)
 
