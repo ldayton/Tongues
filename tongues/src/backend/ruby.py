@@ -404,6 +404,31 @@ def _safe_type_name(name: str) -> str:
     return name
 
 
+def _escape_regex_charclass(value: str) -> str:
+    """Escape characters for use inside a Ruby regex character class."""
+    out: list[str] = []
+    i: int = 0
+    while i < len(value):
+        c: str = value[i : i + 1]
+        if c in "\\]^-":
+            out.append("\\" + c)
+        elif c == "\n":
+            out.append("\\n")
+        elif c == "\t":
+            out.append("\\t")
+        elif c == "\r":
+            out.append("\\r")
+        elif ord(c) < 32 or ord(c) > 126:
+            h: str = hex(ord(c))[2:]
+            if len(h) == 1:
+                h = "0" + h
+            out.append("\\x" + h)
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def _escape_ruby_string(value: str) -> str:
     result = escape_string(value)
     out: list[str] = []
@@ -597,6 +622,7 @@ class _RubyEmitter(Emitter):
         self.lines: list[str] = []
         self.self_name: str | None = None
         self.var_types: dict[str, TType] = {}
+        self.var_annotations: dict[str, dict[str, str]] = {}
         self._needs_set: bool = False
         self.in_fn: bool = False
         self.local_names: dict[str, str] = {}
@@ -815,6 +841,7 @@ class _RubyEmitter(Emitter):
 
     def _emit_fn(self, decl: TFnDecl) -> None:
         old_var_types = self.var_types.copy()
+        old_var_annotations = self.var_annotations.copy()
         old_local_names = self.local_names
         old_in_fn = self.in_fn
         self.local_names = {}
@@ -822,6 +849,7 @@ class _RubyEmitter(Emitter):
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
+            self._capture_var_annotations(p.name, p.annotations)
         params = self._params(decl.params, with_self=False)
         self._line("def " + _safe_fn_name(decl.name) + "(" + params + ")")
         self.indent += 1
@@ -832,10 +860,12 @@ class _RubyEmitter(Emitter):
         self.indent -= 1
         self._line("end")
         self.var_types = old_var_types
+        self.var_annotations = old_var_annotations
         self.local_names = old_local_names
 
     def _emit_method(self, decl: TFnDecl) -> None:
         old_var_types = self.var_types.copy()
+        old_var_annotations = self.var_annotations.copy()
         old_local_names = self.local_names
         old_in_fn = self.in_fn
         self.local_names = {}
@@ -843,6 +873,7 @@ class _RubyEmitter(Emitter):
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
+            self._capture_var_annotations(p.name, p.annotations)
         params = self._params(decl.params, with_self=True)
         self._line("def " + _safe_name(decl.name) + "(" + params + ")")
         self.indent += 1
@@ -857,6 +888,7 @@ class _RubyEmitter(Emitter):
         self.indent -= 1
         self._line("end")
         self.var_types = old_var_types
+        self.var_annotations = old_var_annotations
         self.local_names = old_local_names
 
     def _params(self, params: list[TParam], with_self: bool) -> str:
@@ -1253,6 +1285,7 @@ class _RubyEmitter(Emitter):
     def _emit_let(self, stmt: TLetStmt) -> None:
         safe = self._decl_name(stmt.name, stmt.annotations)
         self.var_types[stmt.name] = stmt.typ
+        self._capture_var_annotations(stmt.name, stmt.annotations)
         unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
         if stmt.value is not None and not unused:
             self._line(safe + " = " + self._expr(stmt.value))
@@ -1654,6 +1687,22 @@ class _RubyEmitter(Emitter):
             return isinstance(typ, TPrimitive) and typ.kind == "string"
         return False
 
+    def _capture_var_annotations(self, name: str, annotations: Ann) -> None:
+        """Capture strings.* annotations for a variable."""
+        strings_ann: dict[str, str] = {}
+        for key, val in annotations.items():
+            if key.startswith("strings."):
+                strings_ann[key] = val
+        if strings_ann:
+            self.var_annotations[name] = strings_ann
+
+    def _is_ascii_content(self, expr: TExpr) -> bool:
+        """Check if expression has strings.content=ascii annotation."""
+        if isinstance(expr, TVar):
+            ann = self.var_annotations.get(expr.name, {})
+            return ann.get("strings.content") == "ascii"
+        return False
+
     def _is_bytes_type(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
         if ann:
@@ -1828,6 +1877,14 @@ class _RubyEmitter(Emitter):
         if isinstance(expr, TTupleAccess):
             return self._expr(expr.obj) + "[" + str(expr.index) + "]"
         if isinstance(expr, TIndex):
+            # Use O(1) getbyte for ASCII strings instead of O(n) character indexing
+            if self._is_string_type(expr.obj) and self._is_ascii_content(expr.obj):
+                idx = self._expr(expr.index)
+                if expr.annotations.get("provenance") == "negative_index":
+                    neg = self._negative_index(expr)
+                    if neg is not None:
+                        idx = neg
+                return self._expr(expr.obj) + ".getbyte(" + idx + ")&.chr"
             if expr.annotations.get("provenance") == "negative_index":
                 neg = self._negative_index(expr)
                 if neg is not None:
@@ -1918,6 +1975,13 @@ class _RubyEmitter(Emitter):
         high = self._expr(expr.high)
         if prov == "open_start" and self._is_zero(expr.low):
             low = "0"
+        # Use O(1) byteslice for ASCII strings instead of O(n) character slicing
+        if self._is_string_type(expr.obj) and self._is_ascii_content(expr.obj):
+            if prov == "open_end" and self._is_len_call(expr.high):
+                return (
+                    obj + ".byteslice(" + low + ", " + obj + ".bytesize - " + low + ")"
+                )
+            return obj + ".byteslice(" + low + ", (" + high + ") - (" + low + "))"
         if prov == "open_end" and self._is_len_call(expr.high):
             return obj + "[" + low + "..]"
         return obj + "[" + low + "..." + high + "]"
@@ -2644,7 +2708,7 @@ class _RubyEmitter(Emitter):
     def _trim_gsub(self, expr: TExpr, mode: str) -> str:
         """Emit .gsub for Trim/TrimStart/TrimEnd with \\A/\\z anchors."""
         if isinstance(expr, TStringLit):
-            c = expr.value
+            c = _escape_regex_charclass(expr.value)
             if mode == "both":
                 return ".gsub(/\\A[" + c + "]+|[" + c + ']+\\z/, "")'
             if mode == "start":

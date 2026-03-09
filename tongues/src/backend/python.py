@@ -470,15 +470,20 @@ class _PythonEmitter(Emitter):
         else:
             self._line("class " + decl.name + ":")
         self.indent += 1
-        if not decl.fields and not decl.methods:
+        has_non_eq = any(m.name != "__eq__" for m in decl.methods)
+        if not decl.fields and not has_non_eq:
             self._line("pass")
         self._current_struct = decl.name
         for fld in decl.fields:
             self._emit_field(fld)
         self._current_struct = ""
-        for i, method in enumerate(decl.methods):
-            if i > 0 or decl.fields:
+        first_method = True
+        for method in decl.methods:
+            if method.name == "__eq__":
+                continue
+            if not first_method or decl.fields:
                 self._line()
+            first_method = False
             self._emit_method(method)
         self.indent -= 1
 
@@ -1293,7 +1298,11 @@ class _PythonEmitter(Emitter):
             self.indent += 1
             unused = pat.annotations.get("liveness.match_var_unused") == "true"
             if not unused:
-                self._line(_safe_name(pat.name) + " = " + expr_str)
+                # Avoid shadowing the type name with the binding variable
+                var_name = _safe_name(pat.name)
+                if var_name == type_name:
+                    var_name = "_m_" + var_name
+                self._line(var_name + " = " + expr_str)
             if not case.body:
                 if unused:
                     self._line("pass")

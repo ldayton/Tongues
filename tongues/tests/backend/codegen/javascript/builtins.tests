@@ -14,6 +14,12 @@ let n = parseInt("42", 10);
 === FormatInt
 let hex = (255).toString(16);
 
+=== FormatInt octal
+let oct = (255).toString(8);
+
+=== FormatInt binary
+let bin = (255).toString(2);
+
 === RuneToInt and RuneFromInt
 let n = "A".codePointAt(0);
 

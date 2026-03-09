@@ -158,6 +158,7 @@ lang-python *ARGS:
         tests/test_backend_codegen.py tests/test_backend_target.py tests/test_taytsh_app.py \
         tests/test_frontend_linker.py \
         --transpiled ".out/tongues.py" -v {{ ARGS }}
+    uv run --directory tongues pytest tests/test_self_consistency.py --transpiled ".out/tongues.py" -v
 
 # Self-transpile and test against transpiled JavaScript binary
 lang-javascript:
@@ -169,6 +170,7 @@ lang-javascript:
         "$(<tests/shared/test_harness.py)" "$(<src/lib/json.py)" \
         | uv run bin/tongues --project --target javascript -o .out/test_harness.js
     node tests/test-transpiled.js ".out/tongues.js"
+    uv run pytest tests/test_self_consistency.py --transpiled ".out/tongues.js" -v
 
 # Self-transpile and test against transpiled Ruby binary
 lang-ruby:
@@ -180,6 +182,7 @@ lang-ruby:
         "$(<tests/shared/test_harness.py)" "$(<src/lib/json.py)" \
         | uv run bin/tongues --project --target ruby -o .out/test_harness.rb
     ruby tests/test-transpiled.rb ".out/tongues.rb"
+    uv run pytest tests/test_self_consistency.py --transpiled ".out/tongues.rb" -v
 
 # Self-transpile to Java and verify compilation succeeds
 lang-java:
@@ -210,14 +213,35 @@ lang-perl:
         "$(<tests/shared/test_harness.py)" "$(<src/lib/json.py)" \
         | uv run bin/tongues --project --target perl -o .out/test_harness.pl
     perl tests/test-transpiled.pl ".out/tongues.pl"
+    uv run pytest tests/test_self_consistency.py --transpiled ".out/tongues.pl" -v
 
-# Verify the transpiler reaches a fixed point via bootstrap
-fixed-point:
-    uv run --directory tongues pytest tests/test_fixed_point.py -v -n auto
+# Compare reference Python output across all language backends
+consistency-join:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd tongues/.out
+    files=(reference-python-*.txt)
+    if [ ${#files[@]} -lt 2 ]; then
+        echo "Need at least 2 reference files, found ${#files[@]}: ${files[*]}"
+        exit 1
+    fi
+    base="${files[0]}"
+    failed=0
+    for f in "${files[@]:1}"; do
+        if ! diff -q "$base" "$f" >/dev/null 2>&1; then
+            echo "MISMATCH: $base vs $f"
+            diff --unified=3 "$base" "$f" | head -30
+            failed=1
+        else
+            echo "OK: $base == $f"
+        fi
+    done
+    exit $failed
 
-# Self-transpile to Taytsh and test through treewalker
+# Self-transpile to Taytsh, run self-consistency, then test through treewalker
 lang-taytsh-treewalker *ARGS:
     just _self-transpile taytsh
+    uv run --directory tongues pytest tests/test_self_consistency.py --transpiled ".out/tongues.ty" -v
     just _lang-taytsh-treewalker-frontend {{ ARGS }}
     just _lang-taytsh-treewalker-middleend {{ ARGS }}
     just _lang-taytsh-treewalker-backend {{ ARGS }}
@@ -360,7 +384,6 @@ test:
     _st perl & pid_pl=$!
     _st taytsh-treewalker & pid_ty_tw=$!
     _st taytsh-vm & pid_ty_vm=$!
-    just fixed-point & pid_fp=$!
     wait $pid_py && results[lang-python]=✅ || { results[lang-python]=❌; failed=1; }
     wait $pid_java && results[lang-java]=✅ || { results[lang-java]=❌; failed=1; }
     wait $pid_js && results[lang-javascript]=✅ || { results[lang-javascript]=❌; failed=1; }
@@ -368,14 +391,14 @@ test:
     wait $pid_pl && results[lang-perl]=✅ || { results[lang-perl]=❌; failed=1; }
     wait $pid_ty_tw && results[lang-taytsh-tw]=✅ || { results[lang-taytsh-tw]=❌; failed=1; }
     wait $pid_ty_vm && results[lang-taytsh-vm]=✅ || { results[lang-taytsh-vm]=❌; failed=1; }
-    wait $pid_fp && results[fixed-point]=✅ || { results[fixed-point]=❌; failed=1; }
+    just consistency-join && results[consistency]=✅ || { results[consistency]=❌; failed=1; }
     echo ""
     echo "══════════════════════════════════════"
     echo "           TEST SUMMARY"
     echo "══════════════════════════════════════"
     printf "%-16s %s\n" "TARGET" "STATUS"
     printf "%-16s %s\n" "──────" "──────"
-    for t in versions tests lang-python lang-java lang-javascript lang-ruby lang-perl lang-taytsh-tw lang-taytsh-vm fixed-point; do
+    for t in versions tests lang-python lang-java lang-javascript lang-ruby lang-perl lang-taytsh-tw lang-taytsh-vm consistency; do
         printf "%-16s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"

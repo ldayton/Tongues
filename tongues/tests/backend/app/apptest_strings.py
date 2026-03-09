@@ -386,6 +386,12 @@ def test_string_removesuffix() -> None:
     assert "aaa".removesuffix("a") == "aa"
 
 
+def test_strip_regex_special_chars() -> None:
+    """strip() with regex-special characters."""
+    assert "]-hello-]".strip("]-") == "hello"
+    assert "\\data\\".strip("\\") == "data"
+
+
 def main() -> int:
     passed: int = 0
     failed: int = 0
@@ -431,6 +437,7 @@ def main() -> int:
         ("test_string_rpartition", test_string_rpartition),
         ("test_string_removeprefix", test_string_removeprefix),
         ("test_string_removesuffix", test_string_removesuffix),
+        ("test_strip_regex_special_chars", test_strip_regex_special_chars),
     ]
     for name, fn in tests:
         try:

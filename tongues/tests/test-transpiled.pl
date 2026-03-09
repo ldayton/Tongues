@@ -82,10 +82,42 @@ BEGIN {
 }
 
 # ---------------------------------------------------------------------------
+# VM mode: parse + compile .ty once, invoke per test
+# ---------------------------------------------------------------------------
+
+my $_vm_compiled = undef;
+
+sub load_vm_module ($ty_path) {
+    my $source = _read_file($ty_path);
+    my $module = taytsh_taytsh_parse($source);
+    $_vm_compiled = vm_prepare($module);
+    say "VM module compiled";
+}
+
+sub run_vm_inprocess ($argv, $stdin_data = "") {
+    my $placeholder = bless {}, "VM";
+    my $builtins = _BuiltinDispatch->new($placeholder, {});
+    my $instance = VM->new($_vm_compiled, [], [], [], [], [], [], "", 0, [], {}, $builtins, undef, {});
+    $builtins->{vm} = $instance;
+    my $result = $instance->invoke($stdin_data, $argv);
+    return {
+        stdout => $result->{stdout} // "",
+        stderr => $result->{stderr} // "",
+        exit   => $result->{exit_code} // 0,
+    };
+}
+
+# ---------------------------------------------------------------------------
 # In-process execution (fork per test, 3s timeout)
 # ---------------------------------------------------------------------------
 
+my $run_inprocess_fn = \&_run_inprocess_fork;
+
 sub run_inprocess ($argv, $stdin_data = "") {
+    return $run_inprocess_fn->($argv, $stdin_data);
+}
+
+sub _run_inprocess_fork ($argv, $stdin_data = "") {
     my ($out_fh, $out_file) = tempfile("out_XXXXXX", TMPDIR => 1);
     my ($err_fh, $err_file) = tempfile("err_XXXXXX", TMPDIR => 1);
     my ($in_fh, $in_file) = tempfile("in_XXXXXX", TMPDIR => 1);
@@ -598,11 +630,26 @@ sub run_ordering_tests ($test_dir) {
 # ---------------------------------------------------------------------------
 
 if (@ARGV < 1) {
-    print STDERR "Usage: perl test-transpiled.pl <transpiled.pl>\n";
+    print STDERR "Usage: perl test-transpiled.pl <transpiled.pl> [--via-vm <tongues.ty>]\n";
     exit 1;
 }
 
-my $transpiled_path = File::Spec->rel2abs($ARGV[0], $TONGUES_DIR);
+my $via_vm_path = undef;
+my @filtered_argv;
+for (my $i = 0; $i < @ARGV; $i++) {
+    if ($ARGV[$i] eq "--via-vm") {
+        if ($i + 1 >= @ARGV) {
+            print STDERR "--via-vm requires a path to a .ty file\n";
+            exit 1;
+        }
+        $via_vm_path = File::Spec->rel2abs($ARGV[$i + 1], $TONGUES_DIR);
+        $i++;
+    } else {
+        push @filtered_argv, $ARGV[$i];
+    }
+}
+
+my $transpiled_path = File::Spec->rel2abs($filtered_argv[0], $TONGUES_DIR);
 unless (-f $transpiled_path) {
     print STDERR "Transpiled file not found: $transpiled_path\n";
     exit 1;
@@ -622,6 +669,18 @@ if ($@) {
 }
 my $t1 = time();
 printf("Loaded in %.1fs\n", $t1 - $t0);
+
+if (defined $via_vm_path) {
+    unless (-f $via_vm_path) {
+        print STDERR "VM module not found: $via_vm_path\n";
+        exit 1;
+    }
+    say "Loading VM module: $via_vm_path";
+    my $vm_t0 = time();
+    load_vm_module($via_vm_path);
+    printf("VM compiled in %.1fs\n", time() - $vm_t0);
+    $run_inprocess_fn = \&run_vm_inprocess;
+}
 
 my $harness_path = File::Spec->catfile($TONGUES_DIR, ".out", "test_harness.pl");
 unless (-f $harness_path) {

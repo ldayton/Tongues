@@ -15,3 +15,6 @@
 
 === fstring str conversion
 "%s" % x.to_s
+
+=== strip regex special chars
+\]\-

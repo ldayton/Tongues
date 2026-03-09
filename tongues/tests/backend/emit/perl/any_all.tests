@@ -12,3 +12,6 @@ any { $_ == $target } @{$xs}
 
 === any assigns to variable
 my $found = any { $_ > 0 } @{$xs};
+
+=== any with dict items tuple unpack
+any { $_->[1] > 10 }

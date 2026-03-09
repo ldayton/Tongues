@@ -69,6 +69,7 @@ from ..taytsh.ast import (
     TTupleLit,
     TTryStmt,
     TTupleType,
+    TOptionalType,
     TType,
     TUnaryOp,
     TVar,
@@ -758,7 +759,10 @@ class _JavaScriptEmitter(Emitter):
         binder_parts: list[str] = []
         for b in binding:
             binder_parts.append(_restore_name(b, for_stmt.annotations))
-        binders = ", ".join(binder_parts)
+        if len(binder_parts) > 1:
+            binders = "([" + ", ".join(binder_parts) + "])"
+        else:
+            binders = binder_parts[0] if binder_parts else "_"
         if isinstance(for_stmt.iterable, TRange):
             return None
         iterable = self._expr(for_stmt.iterable)
@@ -1010,7 +1014,10 @@ class _JavaScriptEmitter(Emitter):
         binder_parts: list[str] = []
         for b in binding:
             binder_parts.append(_restore_name(b, for_stmt.annotations))
-        binders = ", ".join(binder_parts)
+        if len(binder_parts) > 1:
+            binders = "([" + ", ".join(binder_parts) + "])"
+        else:
+            binders = binder_parts[0] if binder_parts else "_"
         if isinstance(for_stmt.iterable, TRange):
             return None
         iterable = self._expr(for_stmt.iterable)
@@ -2198,6 +2205,13 @@ class _JavaScriptEmitter(Emitter):
             return self._maybe_paren(expr.right, op, is_left=False) + " === null"
         if op == "!=" and isinstance(expr.left, TNilLit):
             return self._maybe_paren(expr.right, op, is_left=False) + " !== null"
+        if expr.annotations.get("struct_eq") == "true":
+            left_str = self._expr(expr.left)
+            right_str = self._expr(expr.right)
+            call = left_str + ".__eq__(" + right_str + ")"
+            if op == "!=":
+                return "!" + call
+            return call
         js_op = op
         if op == "==":
             js_op = "==="
@@ -2517,12 +2531,32 @@ class _JavaScriptEmitter(Emitter):
             parts.append(self._expr(a.value))
         return "new " + name + "(" + ", ".join(parts) + ")"
 
+    def _is_known_struct_method(self, obj: TExpr, method: str) -> bool:
+        if isinstance(obj, TVar):
+            typ = self.var_types.get(obj.name)
+            if isinstance(typ, TIdentType):
+                return True
+            if isinstance(typ, TOptionalType) and isinstance(typ.inner, TIdentType):
+                return True
+        return False
+
     def _method_call(self, func: TFieldAccess, args: list[TArg]) -> str:
+        method = func.field
         obj_str = self._expr(func.obj)
         if isinstance(func.obj, (TBinaryOp, TUnaryOp, TTernary)):
             obj_str = "(" + obj_str + ")"
+        if method == "clear" and not self._is_known_struct_method(func.obj, method):
+            return obj_str + ".length = 0"
+        if method == "append" and not self._is_known_struct_method(func.obj, method):
+            return obj_str + ".push(" + self._a(args, 0) + ")"
+        if method == "get" and not self._is_known_struct_method(func.obj, method):
+            key = self._expr(args[0].value)
+            if len(args) >= 2:
+                default = self._expr(args[1].value)
+                return "(" + obj_str + ".get(" + key + ") ?? " + default + ")"
+            return "(" + obj_str + ".get(" + key + ") ?? null)"
         arg_strs = self._join_args(args, ", ")
-        field = _safe_name(_to_lower_camel(func.field))
+        field = _safe_name(_to_lower_camel(method))
         return obj_str + "." + field + "(" + arg_strs + ")"
 
     def _builtin_call(self, name: str, args: list[TArg], ann: Ann | None = None) -> str:

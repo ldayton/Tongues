@@ -35,7 +35,7 @@ parts = "a,b,c,d".split(",", 2)
 s = "hello" + " world"
 
 === string indexing and slicing
-ch = s[0]
+ch = s.getbyte(0)&.chr
 
 === format string becomes f-string
 return "hello, %s" % name
