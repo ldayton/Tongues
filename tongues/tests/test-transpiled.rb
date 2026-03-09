@@ -78,7 +78,7 @@ def run_vm_inprocess(argv, stdin_data: "")
   builtins.instance_variable_set(:@_table, {})
   instance = VM.new(module_: $vm_compiled, builtins: builtins)
   builtins.vm = instance
-  result = instance.invoke(stdin_data, argv)
+  result = instance.invoke(stdin_data, ["tongues"] + argv)
   { stdout: result.stdout.to_s, stderr: result.stderr.to_s, exit: result.exit_code }
 end
 

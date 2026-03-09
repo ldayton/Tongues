@@ -98,7 +98,7 @@ function runVmInprocess(argv, stdinData) {
         ? Buffer.from(stdinData, "utf-8")
         : (Buffer.isBuffer(stdinData) ? stdinData : Buffer.from(stdinData));
     const instance = new VM(_vmCompiled);
-    const result = instance.invoke(stdinBuf, argv);
+    const result = instance.invoke(stdinBuf, ["tongues", ...argv]);
     return {
         stdout: typeof result.stdout === "string" ? result.stdout : result.stdout.toString("utf-8"),
         stderr: typeof result.stderr === "string" ? result.stderr : result.stderr.toString("utf-8"),

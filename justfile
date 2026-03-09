@@ -115,6 +115,7 @@ lang-java:
     just -f {{justfile()}} cross-equivalence java & pids+=($!)
     just -f {{justfile()}} _treewalker-java & pids+=($!)
     just -f {{justfile()}} _vm-java & pids+=($!)
+    just -f {{justfile()}} _vm-test-tongues-java & pids+=($!)
     start=$SECONDS
     cd tongues
     java -cp .out/java-classes TestTranspiled .out/java-classes --target test-tongues-java; rc=$?
@@ -210,12 +211,22 @@ _test-tongues-java:
     fi
     exit $rc
 
-# Run test suite through VM with Java binary (not yet implemented)
+# Run test suite through VM with Java binary
 _vm-test-tongues-java:
     #!/usr/bin/env bash
-    # VM tests for Java not yet implemented - would require --via-vm support in TestTranspiled.java
-    printf '\033[31m[vm-test-tongues-java] not implemented\033[0m\n'
-    exit 1
+    set -uo pipefail
+    just -f {{justfile()}} _transpile-tongues taytsh
+    start=$SECONDS
+    cd tongues
+    java -cp .out/java-classes TestTranspiled .out/java-classes \
+        --via-vm .out/tongues.ty --target vm-test-tongues-java; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[vm-test-tongues-java] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[vm-test-tongues-java] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
 
 # Type-check transpiled Python output
 _pyright:

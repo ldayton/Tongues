@@ -24,6 +24,12 @@ public class TestTranspiled {
     private static Method mainMethod;
     private static Class<?> mainClass;
 
+    // VM mode state
+    private static boolean _useVm = false;
+    private static Object _vmCompiled = null;
+    private static Constructor<?> _vmConstructor = null;
+    private static Method _vmInvokeMethod = null;
+
     // Test phase configuration: name -> {dir, run, taytsh?, args?, json?}
     static class Phase {
         String name;
@@ -382,6 +388,9 @@ public class TestTranspiled {
     }
 
     static RunResult runInprocess(String[] argv, String stdinData, byte[] stdinBytes) {
+        if (_useVm) {
+            return runVmInprocess(argv, stdinData, stdinBytes);
+        }
         PrintStream oldOut = System.out;
         PrintStream oldErr = System.err;
         InputStream oldIn = System.in;
@@ -436,6 +445,72 @@ public class TestTranspiled {
 
     static RunResult runInprocess(String[] argv) {
         return runInprocess(argv, "", null);
+    }
+
+    // -------------------------------------------------------------------------
+    // VM mode: parse + compile .ty once, invoke per test
+    // -------------------------------------------------------------------------
+
+    static void loadVmModule(String tyPath) throws Exception {
+        String source = Files.readString(Paths.get(tyPath));
+        // Call taytsh_taytsh_parse(source) -> TModule
+        Method parseMethod = mainClass.getMethod("taytsh_taytsh_parse", String.class);
+        Object module = parseMethod.invoke(null, source);
+        // Call vm_prepare(module) -> CompiledModule
+        Method prepareMethod = mainClass.getMethod("vm_prepare", module.getClass());
+        _vmCompiled = prepareMethod.invoke(null, module);
+        // Get VM class and methods
+        Class<?> vmClass = Class.forName("Main$VM", true, mainClass.getClassLoader());
+        // Find the constructor that takes the CompiledModule type
+        Constructor<?>[] constructors = vmClass.getConstructors();
+        for (Constructor<?> c : constructors) {
+            Class<?>[] params = c.getParameterTypes();
+            if (params.length == 1 && params[0].isAssignableFrom(_vmCompiled.getClass())) {
+                _vmConstructor = c;
+                break;
+            }
+        }
+        if (_vmConstructor == null) {
+            throw new RuntimeException("Could not find VM constructor accepting CompiledModule");
+        }
+        _vmInvokeMethod = vmClass.getMethod("invoke", byte[].class, List.class);
+        System.out.println("VM module compiled");
+    }
+
+    static RunResult runVmInprocess(String[] argv, String stdinData, byte[] stdinBytes) {
+        try {
+            byte[] inputBytes = stdinBytes != null ? stdinBytes : stdinData.getBytes("UTF-8");
+            Object vm = _vmConstructor.newInstance(_vmCompiled);
+            // Set builtins.vm = vm (required for VM self-reference)
+            try {
+                Field builtinsField = vm.getClass().getField("builtins");
+                Object builtins = builtinsField.get(vm);
+                Field vmField = builtins.getClass().getField("vm");
+                vmField.set(builtins, vm);
+            } catch (NoSuchFieldException ignored) {
+                // builtins.vm may not exist in all versions
+            }
+            List<String> args = new ArrayList<>();
+            args.add("tongues");
+            args.addAll(Arrays.asList(argv));
+            Object result = _vmInvokeMethod.invoke(vm, inputBytes, args);
+            // Extract stdout, stderr, exit_code from VMResult
+            Field stdoutField = result.getClass().getField("stdout");
+            Field stderrField = result.getClass().getField("stderr");
+            Field exitField = result.getClass().getField("exit_code");
+            Object stdoutObj = stdoutField.get(result);
+            Object stderrObj = stderrField.get(result);
+            int exit = exitField.getInt(result);
+            String stdout = stdoutObj instanceof String ? (String) stdoutObj : new String((byte[]) stdoutObj, "UTF-8");
+            String stderr = stderrObj instanceof String ? (String) stderrObj : new String((byte[]) stderrObj, "UTF-8");
+            return new RunResult(stdout, stderr, exit);
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            String msg = cause != null ? cause.getMessage() : e.getMessage();
+            return new RunResult("", msg != null ? msg : "Unknown error", 1);
+        } catch (Exception e) {
+            return new RunResult("", e.getMessage() != null ? e.getMessage() : "Unknown error", 1);
+        }
     }
 
     static PhaseResult runTranspiledPhase(String source, String[] cliArgs, boolean isTaytsh, boolean expectJson) throws IOException {
@@ -1045,15 +1120,19 @@ public class TestTranspiled {
     @SuppressWarnings("unchecked")
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
-            System.err.println("Usage: java TestTranspiled <path-to-classes-dir> [--target <name>]");
+            System.err.println("Usage: java TestTranspiled <path-to-classes-dir> [--via-vm <tongues.ty>] [--target <name>]");
             System.exit(1);
         }
 
         String targetName = null;
+        String viaVmPath = null;
         String classesDirArg = args[0];
         for (int i = 1; i < args.length; i++) {
             if (args[i].equals("--target") && i + 1 < args.length) {
                 targetName = args[i + 1];
+                i++;
+            } else if (args[i].equals("--via-vm") && i + 1 < args.length) {
+                viaVmPath = args[i + 1];
                 i++;
             }
         }
@@ -1086,6 +1165,24 @@ public class TestTranspiled {
 
         long t1 = System.currentTimeMillis();
         System.out.printf("Loaded in %.1fs%n", (t1 - t0) / 1000.0);
+
+        if (viaVmPath != null) {
+            // Resolve path relative to tonguesDir if not absolute
+            Path vmPath = Paths.get(viaVmPath);
+            if (!vmPath.isAbsolute()) {
+                vmPath = tonguesDir.resolve(viaVmPath);
+            }
+            if (!Files.exists(vmPath)) {
+                System.err.println("VM module not found: " + vmPath);
+                System.exit(1);
+            }
+            System.out.println("Loading VM module: " + vmPath);
+            long vmT0 = System.currentTimeMillis();
+            loadVmModule(vmPath.toString());
+            System.out.printf("VM compiled in %.1fs%n", (System.currentTimeMillis() - vmT0) / 1000.0);
+            _useVm = true;
+        }
+
         System.out.println();
 
         int totalPass = 0;

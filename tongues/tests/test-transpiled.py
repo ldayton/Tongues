@@ -254,7 +254,7 @@ def _run_vm_inprocess(argv, stdin_data="", stdin_bytes=None):
     instance = _vm_mod.VM(module=_vm_compiled)
     instance.builtins.vm = instance
     try:
-        result = instance.invoke(raw, argv)
+        result = instance.invoke(raw, ["tongues"] + list(argv))
     except Exception as e:
         return {"stdout": "", "stderr": str(e), "exit": 1}
     stdout = (
@@ -973,7 +973,9 @@ if __name__ == "__main__":
             print(err)
             # GitHub Actions error annotation
             title = f"{phase} :: {tid}"
-            print(f"::error title={title}::{err.splitlines()[0] if err else 'Test failed'}")
+            print(
+                f"::error title={title}::{err.splitlines()[0] if err else 'Test failed'}"
+            )
         print()
 
     print("=" * 60)
@@ -999,7 +1001,9 @@ if __name__ == "__main__":
             if failures:
                 f.write("### Failures\n\n")
                 for phase, tid, err in failures:
-                    f.write(f"<details><summary><code>{phase} :: {tid}</code></summary>\n\n")
+                    f.write(
+                        f"<details><summary><code>{phase} :: {tid}</code></summary>\n\n"
+                    )
                     f.write(f"```\n{err}\n```\n\n</details>\n\n")
 
     sys.exit(1 if total_fail > 0 else 0)

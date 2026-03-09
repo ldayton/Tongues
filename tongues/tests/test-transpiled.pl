@@ -97,7 +97,7 @@ sub run_vm_inprocess ($argv, $stdin_data = "") {
     my $builtins = _BuiltinDispatch->new($placeholder, {});
     my $instance = VM->new($_vm_compiled, [], [], [], [], [], [], "", 0, [], {}, $builtins, undef, {});
     $builtins->{vm} = $instance;
-    my $result = $instance->invoke($stdin_data, $argv);
+    my $result = $instance->invoke($stdin_data, ["tongues", @$argv]);
     return {
         stdout => $result->{stdout} // "",
         stderr => $result->{stderr} // "",
