@@ -4406,7 +4406,12 @@ class _JavaEmitter(Emitter):
             if self._is_bytes_expr(args[0].value):
                 self._needs_bytes_helpers = True
                 return "_bytesCount(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
-            return self._a(args, 0) + ".split(" + self._a(args, 1) + ", -1).length - 1"
+            return (
+                self._a(args, 0)
+                + ".split(Pattern.quote("
+                + self._a(args, 1)
+                + "), -1).length - 1"
+            )
         if name == "FormatInt":
             return (
                 "Integer.toString(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
