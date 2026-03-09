@@ -1542,6 +1542,7 @@ def taytsh_pipeline(argv: list[str]) -> int:
         elif emit_target == "perl":
             result = emit_perl(module)
         elif emit_target == "ruby":
+            analyze_strings(module, checker)
             result = emit_ruby(module)
         elif emit_target == "taytsh":
             result = emit_taytsh(module)

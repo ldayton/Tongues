@@ -259,8 +259,16 @@ def _run_vm_inprocess(argv, stdin_data="", stdin_bytes=None):
         result = instance.invoke(raw, argv)
     except Exception as e:
         return {"stdout": "", "stderr": str(e), "exit": 1}
-    stdout = result.stdout if isinstance(result.stdout, str) else result.stdout.decode("utf-8")
-    stderr = result.stderr if isinstance(result.stderr, str) else result.stderr.decode("utf-8")
+    stdout = (
+        result.stdout
+        if isinstance(result.stdout, str)
+        else result.stdout.decode("utf-8")
+    )
+    stderr = (
+        result.stderr
+        if isinstance(result.stderr, str)
+        else result.stderr.decode("utf-8")
+    )
     return {"stdout": stdout, "stderr": stderr, "exit": result.exit_code}
 
 

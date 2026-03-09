@@ -1066,7 +1066,9 @@ def discover_ty_apps(test_dir: Path) -> list[Path]:
     return sorted(test_dir.glob("*.ty"))
 
 
-def _transpile_with_emitter(source: str, emitter) -> tuple[str | None, str | None]:
+def _transpile_with_emitter(
+    source: str, emitter, lang: str
+) -> tuple[str | None, str | None]:
     """Transpile Taytsh source. Returns (output, error)."""
     try:
         signal.alarm(PARSE_TIMEOUT)
@@ -1082,6 +1084,8 @@ def _transpile_with_emitter(source: str, emitter) -> tuple[str | None, str | Non
         analyze_returns(module, checker)
         analyze_scope(module, checker)
         analyze_liveness(module, checker)
+        if lang == "ruby":
+            analyze_strings(module, checker)
         return (emitter(module), None)
     except Exception as e:
         return (None, str(e))
@@ -1103,7 +1107,7 @@ def transpile_code(source: str, lang: str) -> tuple[str | None, str | None]:
     emitter = EMITTERS.get(lang)
     if emitter is None:
         return (None, f"no emitter for '{lang}'")
-    return _transpile_with_emitter(source, emitter)
+    return _transpile_with_emitter(source, emitter, lang)
 
 
 def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
@@ -1302,13 +1306,15 @@ def transpile_app(source: str, target: str) -> tuple[str | None, str | None]:
             analyze_returns(merged, checker)
             analyze_scope(merged, checker)
             analyze_liveness(merged, checker)
+            if target == "ruby":
+                analyze_strings(merged, checker)
             return (emitter(merged), None)
         except Exception as e:
             return (None, str(e))
     taytsh_text, err = lower_to_taytsh(source)
     if err is not None:
         return (None, err)
-    return _transpile_with_emitter(taytsh_text, emitter)
+    return _transpile_with_emitter(taytsh_text, emitter, target)
 
 
 def discover_app_tests(
