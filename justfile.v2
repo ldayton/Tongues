@@ -180,6 +180,37 @@ _vm-java:
         exit 1
     fi
 
+# Run test suite with Java binary
+_test-tongues-java:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    start=$SECONDS
+    cd tongues
+    bash tests/test-transpiled-java.sh .out/java-classes; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[test:java] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[test:java] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
+
+# Run test suite through VM with Java binary
+_vm-test-tongues-java:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    just -f {{justfile()}} _transpile-tongues taytsh
+    start=$SECONDS
+    cd tongues
+    bash tests/test-transpiled-java.sh .out/java-classes --via-vm .out/tongues.ty; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[vm-test-tongues:java] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[vm-test-tongues:java] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
+
 # Type-check transpiled Python output
 _pyright:
     #!/usr/bin/env bash
