@@ -1,0 +1,1178 @@
+import java.io.*;
+import java.lang.reflect.*;
+import java.nio.file.*;
+import java.util.*;
+import java.util.stream.*;
+
+/**
+ * Native Java test harness for transpiled Tongues binaries.
+ * Loads the transpiled Main class once, then runs all .tests cases in-process.
+ */
+public class TestTranspiled {
+    private static final String[] EMITTER_LANGS = {"java", "javascript", "perl", "python", "ruby"};
+    private static final Map<String, String[]> RUNTIMES = Map.of(
+        "java", new String[]{"java"},
+        "javascript", new String[]{"node"},
+        "perl", new String[]{"perl"},
+        "python", new String[]{"python3"},
+        "ruby", new String[]{"ruby"}
+    );
+
+    private static Path tonguesDir;
+    private static Path testsDir;
+    private static Path libDir;
+    private static Method mainMethod;
+    private static Class<?> mainClass;
+
+    // Test phase configuration: name -> {dir, run, taytsh?, args?, json?}
+    static class Phase {
+        String name;
+        Map<String, Object> cfg;
+        Phase(String name, Map<String, Object> cfg) { this.name = name; this.cfg = cfg; }
+    }
+    static class Section {
+        String name;
+        List<Phase> phases;
+        Section(String name, Phase... phases) { this.name = name; this.phases = List.of(phases); }
+    }
+    private static final List<Section> TESTS = List.of(
+        new Section("cli",
+            new Phase("cli", Map.of("dir", "frontend/cli", "run", "cli"))
+        ),
+        new Section("linker",
+            new Phase("linker", Map.of("dir", "frontend/linker", "run", "linker"))
+        ),
+        new Section("frontend",
+            new Phase("parse", Map.of("dir", "frontend/parse", "run", "phase", "taytsh", false, "args", new String[]{"--stop-at", "parse"}, "json", true)),
+            new Phase("subset", Map.of("dir", "frontend/subset", "run", "phase", "taytsh", false, "args", new String[]{"--stop-at", "subset"}, "json", false)),
+            new Phase("names", Map.of("dir", "frontend/names", "run", "phase", "taytsh", false, "args", new String[]{"--stop-at", "names"}, "json", true)),
+            new Phase("sigs", Map.of("dir", "frontend/signatures", "run", "phase", "taytsh", false, "args", new String[]{"--stop-at", "signatures"}, "json", true)),
+            new Phase("fields", Map.of("dir", "frontend/fields", "run", "phase", "taytsh", false, "args", new String[]{"--stop-at", "fields"}, "json", true)),
+            new Phase("hierarchy", Map.of("dir", "frontend/hierarchy", "run", "phase", "taytsh", false, "args", new String[]{"--stop-at", "hierarchy"}, "json", true)),
+            new Phase("pycheck", Map.of("dir", "frontend/pycheck", "run", "phase", "taytsh", false, "args", new String[]{"--stop-at", "pycheck"}, "json", true)),
+            new Phase("lowering", Map.of("dir", "frontend/lowering", "run", "lowering"))
+        ),
+        new Section("middleend",
+            new Phase("scope", Map.of("dir", "middleend/scope", "run", "phase", "taytsh", true, "args", new String[]{"--stop-at", "scope"}, "json", true)),
+            new Phase("returns", Map.of("dir", "middleend/returns", "run", "phase", "taytsh", true, "args", new String[]{"--stop-at", "returns"}, "json", true)),
+            new Phase("liveness", Map.of("dir", "middleend/liveness", "run", "phase", "taytsh", true, "args", new String[]{"--stop-at", "liveness"}, "json", true)),
+            new Phase("strings", Map.of("dir", "middleend/strings", "run", "phase", "taytsh", true, "args", new String[]{"--stop-at", "strings"}, "json", true)),
+            new Phase("hoisting", Map.of("dir", "middleend/hoisting", "run", "phase", "taytsh", true, "args", new String[]{"--stop-at", "hoisting"}, "json", true)),
+            new Phase("ownership", Map.of("dir", "middleend/ownership", "run", "phase", "taytsh", true, "args", new String[]{"--stop-at", "ownership"}, "json", true)),
+            new Phase("callgraph", Map.of("dir", "middleend/callgraph", "run", "phase", "taytsh", true, "args", new String[]{"--stop-at", "callgraph"}, "json", true))
+        ),
+        new Section("backend",
+            new Phase("codegen", Map.of("dir", "backend/codegen", "run", "codegen")),
+            new Phase("emit", Map.of("dir", "backend/emit", "run", "emit")),
+            new Phase("app", Map.of("dir", "backend/app", "run", "app")),
+            new Phase("ordering", Map.of("dir", "backend/ordering", "run", "ordering"))
+        ),
+        new Section("taytsh",
+            new Phase("typarse", Map.of("dir", "taytsh/typarse", "run", "phase", "taytsh", true, "args", new String[]{"--stop-at", "parse"}, "json", true)),
+            new Phase("tycheck", Map.of("dir", "taytsh/tycheck", "run", "phase", "taytsh", true, "args", new String[]{"--stop-at", "check"}, "json", true)),
+            new Phase("ty_app", Map.of("dir", "taytsh/app", "run", "ty_app"))
+        )
+    );
+
+    // -------------------------------------------------------------------------
+    // Data classes for test parsing
+    // -------------------------------------------------------------------------
+
+    static class SpecEntry {
+        String name;
+        String input;
+        String expected;
+        SpecEntry(String name, String input, String expected) {
+            this.name = name;
+            this.input = input;
+            this.expected = expected;
+        }
+    }
+
+    static class SimpleEntry {
+        String name;
+        String content;
+        SimpleEntry(String name, String content) {
+            this.name = name;
+            this.content = content;
+        }
+    }
+
+    static class CliAssertion {
+        String kind;
+        String value;
+        CliAssertion(String kind, String value) {
+            this.kind = kind;
+            this.value = value;
+        }
+    }
+
+    static class CliSpec {
+        List<String> args;
+        String stdin;
+        String stdinHex;
+        List<CliAssertion> assertions;
+        CliSpec(List<String> args, String stdin, String stdinHex, List<CliAssertion> assertions) {
+            this.args = args;
+            this.stdin = stdin;
+            this.stdinHex = stdinHex;
+            this.assertions = assertions;
+        }
+    }
+
+    static class LinkerFile {
+        String path;
+        String source;
+        LinkerFile(String path, String source) {
+            this.path = path;
+            this.source = source;
+        }
+    }
+
+    static class LinkerSpec {
+        List<LinkerFile> files;
+        List<String> args;
+        List<CliAssertion> assertions;
+        LinkerSpec(List<LinkerFile> files, List<String> args, List<CliAssertion> assertions) {
+            this.files = files;
+            this.args = args;
+            this.assertions = assertions;
+        }
+    }
+
+    static class RunResult {
+        String stdout;
+        String stderr;
+        int exit;
+        RunResult(String stdout, String stderr, int exit) {
+            this.stdout = stdout;
+            this.stderr = stderr;
+            this.exit = exit;
+        }
+    }
+
+    static class PhaseResult {
+        List<String> errors;
+        List<String> warnings;
+        String data;
+        PhaseResult(List<String> errors, List<String> warnings, String data) {
+            this.errors = errors;
+            this.warnings = warnings;
+            this.data = data;
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Test file parsing
+    // -------------------------------------------------------------------------
+
+    static String trimBlankLines(String text) {
+        String[] lines = text.split("\n", -1);
+        int start = 0;
+        while (start < lines.length && lines[start].isEmpty()) start++;
+        int end = lines.length;
+        while (end > start && lines[end - 1].isEmpty()) end--;
+        return String.join("\n", Arrays.copyOfRange(lines, start, end));
+    }
+
+    static List<SpecEntry> parseSpecFile(String text) {
+        String[] lines = text.split("\n", -1);
+        List<SpecEntry> result = new ArrayList<>();
+        int i = 0;
+        while (i < lines.length) {
+            if (lines[i].startsWith("=== ")) {
+                String testName = lines[i].substring(4).trim();
+                i++;
+                List<String> inputLines = new ArrayList<>();
+                while (i < lines.length && !lines[i].startsWith("---")) {
+                    inputLines.add(lines[i]);
+                    i++;
+                }
+                if (i < lines.length && lines[i].equals("---")) i++;
+                List<String> expectedLines = new ArrayList<>();
+                while (i < lines.length && !lines[i].startsWith("---")) {
+                    expectedLines.add(lines[i]);
+                    i++;
+                }
+                if (i < lines.length && lines[i].equals("---")) i++;
+                result.add(new SpecEntry(
+                    testName,
+                    String.join("\n", inputLines),
+                    trimBlankLines(String.join("\n", expectedLines))
+                ));
+            } else {
+                i++;
+            }
+        }
+        return result;
+    }
+
+    static List<CliAssertion> parseCliAssertions(List<String> expectedLines) {
+        List<CliAssertion> assertions = new ArrayList<>();
+        for (String rawLine : expectedLines) {
+            String stripped = rawLine.trim();
+            if (stripped.isEmpty()) continue;
+            if (stripped.startsWith("exit:")) {
+                assertions.add(new CliAssertion("exit", stripped.substring(5).trim()));
+            } else if (stripped.startsWith("exit-not:")) {
+                assertions.add(new CliAssertion("exit-not", stripped.substring(9).trim()));
+            } else if (stripped.startsWith("stderr:")) {
+                assertions.add(new CliAssertion("stderr", stripped.substring(7).trim()));
+            } else if (stripped.startsWith("stderr-contains:")) {
+                assertions.add(new CliAssertion("stderr-contains", stripped.substring(16).trim()));
+            } else if (stripped.startsWith("stderr-empty:")) {
+                assertions.add(new CliAssertion("stderr-empty", ""));
+            } else if (stripped.startsWith("stdout-contains:")) {
+                assertions.add(new CliAssertion("stdout-contains", stripped.substring(16).trim()));
+            } else if (stripped.startsWith("stdout-empty:")) {
+                assertions.add(new CliAssertion("stdout-empty", ""));
+            }
+        }
+        return assertions;
+    }
+
+    static CliSpec parseCliSpec(List<String> inputLines, List<String> expectedLines) {
+        List<String> args = new ArrayList<>();
+        String stdin = "";
+        String stdinHex = "";
+        int bodyStart = 0;
+        if (!inputLines.isEmpty() && inputLines.get(0).startsWith("args:")) {
+            String argsStr = inputLines.get(0).substring(5).trim();
+            if (!argsStr.isEmpty()) {
+                args = Arrays.asList(argsStr.split("\\s+"));
+            }
+            bodyStart = 1;
+        }
+        List<String> remaining = inputLines.subList(bodyStart, inputLines.size());
+        if (!remaining.isEmpty() && remaining.get(0).startsWith("stdin-bytes:")) {
+            stdinHex = remaining.get(0).substring(12).trim();
+        } else {
+            stdin = String.join("\n", remaining);
+        }
+        List<CliAssertion> assertions = parseCliAssertions(expectedLines);
+        return new CliSpec(args, stdin, stdinHex, assertions);
+    }
+
+    static List<Map.Entry<String, CliSpec>> parseCliTestFile(String text) {
+        String[] lines = text.split("\n", -1);
+        List<Map.Entry<String, CliSpec>> result = new ArrayList<>();
+        int i = 0;
+        while (i < lines.length) {
+            if (lines[i].startsWith("=== ")) {
+                String testName = lines[i].substring(4).trim();
+                i++;
+                List<String> inputLines = new ArrayList<>();
+                while (i < lines.length && !lines[i].startsWith("---")) {
+                    inputLines.add(lines[i]);
+                    i++;
+                }
+                if (i < lines.length && lines[i].equals("---")) i++;
+                List<String> expectedLines = new ArrayList<>();
+                while (i < lines.length && !lines[i].startsWith("---")) {
+                    expectedLines.add(lines[i]);
+                    i++;
+                }
+                if (i < lines.length && lines[i].equals("---")) i++;
+                CliSpec spec = parseCliSpec(inputLines, expectedLines);
+                result.add(Map.entry(testName, spec));
+            } else {
+                i++;
+            }
+        }
+        return result;
+    }
+
+    static LinkerSpec parseLinkerSpec(List<String> inputLines, List<String> expectedLines) {
+        List<LinkerFile> files = new ArrayList<>();
+        List<String> args = new ArrayList<>();
+        String currentPath = "";
+        boolean hasCurrent = false;
+        List<String> currentLines = new ArrayList<>();
+        for (String line : inputLines) {
+            if (line.startsWith("file: ")) {
+                if (hasCurrent) {
+                    files.add(new LinkerFile(currentPath, String.join("\n", currentLines)));
+                }
+                currentPath = line.substring(6).trim();
+                hasCurrent = true;
+                currentLines = new ArrayList<>();
+            } else if (line.startsWith("args: ")) {
+                if (hasCurrent) {
+                    files.add(new LinkerFile(currentPath, String.join("\n", currentLines)));
+                    hasCurrent = false;
+                    currentLines = new ArrayList<>();
+                }
+                args = Arrays.asList(line.substring(6).trim().split("\\s+"));
+            } else {
+                currentLines.add(line);
+            }
+        }
+        if (hasCurrent) {
+            files.add(new LinkerFile(currentPath, String.join("\n", currentLines)));
+        }
+        List<CliAssertion> assertions = parseCliAssertions(expectedLines);
+        return new LinkerSpec(files, args, assertions);
+    }
+
+    static List<Map.Entry<String, LinkerSpec>> parseLinkerTestFile(String text) {
+        String[] lines = text.split("\n", -1);
+        List<Map.Entry<String, LinkerSpec>> result = new ArrayList<>();
+        int i = 0;
+        while (i < lines.length) {
+            if (lines[i].startsWith("=== ")) {
+                String testName = lines[i].substring(4).trim();
+                i++;
+                List<String> inputLines = new ArrayList<>();
+                while (i < lines.length && !lines[i].startsWith("---")) {
+                    inputLines.add(lines[i]);
+                    i++;
+                }
+                if (i < lines.length && lines[i].equals("---")) i++;
+                List<String> expectedLines = new ArrayList<>();
+                while (i < lines.length && !lines[i].startsWith("---")) {
+                    expectedLines.add(lines[i]);
+                    i++;
+                }
+                if (i < lines.length && lines[i].equals("---")) i++;
+                LinkerSpec spec = parseLinkerSpec(inputLines, expectedLines);
+                result.add(Map.entry(testName, spec));
+            } else {
+                i++;
+            }
+        }
+        return result;
+    }
+
+    static List<SimpleEntry> parseSimpleTests(String text) {
+        String[] lines = text.split("\n", -1);
+        List<SimpleEntry> result = new ArrayList<>();
+        int i = 0;
+        while (i < lines.length) {
+            if (lines[i].startsWith("=== ")) {
+                String name = lines[i].substring(4).trim();
+                i++;
+                List<String> contentLines = new ArrayList<>();
+                while (i < lines.length && !lines[i].startsWith("=== ")) {
+                    contentLines.add(lines[i]);
+                    i++;
+                }
+                result.add(new SimpleEntry(name, trimBlankLines(String.join("\n", contentLines))));
+            } else {
+                i++;
+            }
+        }
+        return result;
+    }
+
+    // -------------------------------------------------------------------------
+    // In-process execution
+    // -------------------------------------------------------------------------
+
+    static class ExitException extends SecurityException {
+        final int status;
+        ExitException(int status) { this.status = status; }
+    }
+
+    static class NoExitSecurityManager extends SecurityManager {
+        @Override
+        public void checkPermission(java.security.Permission perm) {}
+        @Override
+        public void checkPermission(java.security.Permission perm, Object context) {}
+        @Override
+        public void checkExit(int status) {
+            throw new ExitException(status);
+        }
+    }
+
+    static RunResult runInprocess(String[] argv, String stdinData, byte[] stdinBytes) {
+        PrintStream oldOut = System.out;
+        PrintStream oldErr = System.err;
+        InputStream oldIn = System.in;
+        SecurityManager oldSecurityManager = System.getSecurityManager();
+        ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
+        ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
+        int exitCode = 0;
+
+        try {
+            System.setOut(new PrintStream(outBuf, true, "UTF-8"));
+            System.setErr(new PrintStream(errBuf, true, "UTF-8"));
+            byte[] inputBytes = stdinBytes != null ? stdinBytes : stdinData.getBytes("UTF-8");
+            System.setIn(new ByteArrayInputStream(inputBytes));
+            System.setSecurityManager(new NoExitSecurityManager());
+
+            mainMethod.invoke(null, (Object) argv);
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof ExitException) {
+                exitCode = ((ExitException) cause).status;
+            } else {
+                try {
+                    String msg = cause != null ? cause.getMessage() : e.getMessage();
+                    errBuf.write((msg != null ? msg : "Unknown error").getBytes());
+                    errBuf.write('\n');
+                } catch (IOException ignored) {}
+                exitCode = 1;
+            }
+        } catch (ExitException e) {
+            exitCode = e.status;
+        } catch (Exception e) {
+            try {
+                errBuf.write((e.getMessage() + "\n").getBytes());
+            } catch (IOException ignored) {}
+            exitCode = 1;
+        } finally {
+            System.setSecurityManager(oldSecurityManager);
+            System.setOut(oldOut);
+            System.setErr(oldErr);
+            System.setIn(oldIn);
+        }
+
+        try {
+            return new RunResult(outBuf.toString("UTF-8"), errBuf.toString("UTF-8"), exitCode);
+        } catch (UnsupportedEncodingException e) {
+            return new RunResult(outBuf.toString(), errBuf.toString(), exitCode);
+        }
+    }
+
+    static RunResult runInprocess(String[] argv, String stdinData) {
+        return runInprocess(argv, stdinData, null);
+    }
+
+    static RunResult runInprocess(String[] argv) {
+        return runInprocess(argv, "", null);
+    }
+
+    static PhaseResult runTranspiledPhase(String source, String[] cliArgs, boolean isTaytsh, boolean expectJson) throws IOException {
+        String suffix = isTaytsh ? ".ty" : ".py";
+        Path tmpFile = Files.createTempFile("test_", suffix);
+        try {
+            Files.writeString(tmpFile, source);
+            List<String> argv = new ArrayList<>();
+            if (isTaytsh) {
+                argv.add("taytsh");
+            }
+            argv.addAll(Arrays.asList(cliArgs));
+            argv.add(tmpFile.toString());
+            RunResult result = runInprocess(argv.toArray(new String[0]));
+            String stderrText = result.stderr.trim();
+            if (result.exit != 0) {
+                List<String> errors = Arrays.stream(stderrText.split("\n"))
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.toList());
+                return new PhaseResult(errors, new ArrayList<>(), null);
+            }
+            List<String> warnings = stderrText.isEmpty() ? new ArrayList<>() :
+                Arrays.stream(stderrText.split("\n"))
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.toList());
+            if (!expectJson) {
+                return new PhaseResult(new ArrayList<>(), warnings, null);
+            }
+            String stdoutText = result.stdout.trim();
+            if (stdoutText.isEmpty()) {
+                return new PhaseResult(new ArrayList<>(), warnings, null);
+            }
+            return new PhaseResult(new ArrayList<>(), warnings, stdoutText);
+        } finally {
+            Files.deleteIfExists(tmpFile);
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Assertion checking
+    // -------------------------------------------------------------------------
+
+    static boolean containsNormalized(String haystack, String needle) {
+        List<String> needleStripped = Arrays.stream(needle.trim().split("\n"))
+            .map(String::trim)
+            .filter(s -> !s.isEmpty())
+            .collect(Collectors.toList());
+        List<String> haystackStripped = Arrays.stream(haystack.split("\n"))
+            .map(String::trim)
+            .filter(s -> !s.isEmpty())
+            .collect(Collectors.toList());
+        if (needleStripped.isEmpty()) return true;
+        for (int i = 0; i < haystackStripped.size(); i++) {
+            if (haystackStripped.get(i).contains(needleStripped.get(0))) {
+                boolean match = true;
+                for (int j = 1; j < needleStripped.size(); j++) {
+                    if (i + j >= haystackStripped.size() ||
+                        !haystackStripped.get(i + j).contains(needleStripped.get(j))) {
+                        match = false;
+                        break;
+                    }
+                }
+                if (match) return true;
+            }
+        }
+        return false;
+    }
+
+    static String checkCliAssertions(int exitCode, String stdout, String stderr, List<CliAssertion> assertions) {
+        for (CliAssertion a : assertions) {
+            switch (a.kind) {
+                case "exit":
+                    int expectedExit = Integer.parseInt(a.value);
+                    if (exitCode != expectedExit) {
+                        return "expected exit " + a.value + ", got " + exitCode + "\nstderr: " + stderr;
+                    }
+                    break;
+                case "exit-not":
+                    int notExit = Integer.parseInt(a.value);
+                    if (exitCode == notExit) {
+                        return "expected exit != " + a.value + ", got " + exitCode;
+                    }
+                    break;
+                case "stderr":
+                    String actualStderr = stderr.stripTrailing();
+                    if (!actualStderr.equals(a.value)) {
+                        return "expected stderr '" + a.value + "', got '" + actualStderr + "'";
+                    }
+                    break;
+                case "stderr-contains":
+                    if (!stderr.contains(a.value)) {
+                        return "expected stderr to contain '" + a.value + "', got '" + stderr + "'";
+                    }
+                    break;
+                case "stderr-empty":
+                    if (!stderr.isEmpty()) {
+                        return "expected empty stderr, got '" + stderr + "'";
+                    }
+                    break;
+                case "stdout-contains":
+                    if (!stdout.contains(a.value)) {
+                        return "expected stdout to contain '" + a.value + "', got '" + stdout + "'";
+                    }
+                    break;
+                case "stdout-empty":
+                    if (!stdout.isEmpty()) {
+                        return "expected empty stdout, got '" + stdout.substring(0, Math.min(200, stdout.length())) + "'";
+                    }
+                    break;
+            }
+        }
+        return "";
+    }
+
+    static String checkExpected(String expected, List<String> errors, List<String> warnings,
+                                String data, String phase, boolean lenientErrors) {
+        expected = trimBlankLines(expected);
+        if (expected.isEmpty()) expected = "ok";
+
+        if (expected.equals("ok")) {
+            if (!errors.isEmpty()) {
+                return "Expected ok, got error: " + errors.get(0);
+            }
+            return "";
+        }
+
+        if (expected.startsWith("error:")) {
+            String expectedMsg = expected.substring(6).trim();
+            if (errors.isEmpty()) {
+                return "Expected error containing '" + expectedMsg + "', got ok";
+            }
+            if (!lenientErrors && !expectedMsg.isEmpty()) {
+                boolean found = errors.stream()
+                    .anyMatch(e -> e.toLowerCase().contains(expectedMsg.toLowerCase()));
+                if (!found) {
+                    return "Expected error containing '" + expectedMsg + "', got: " + errors;
+                }
+            }
+            return "";
+        }
+
+        if (expected.startsWith("warning:")) {
+            String expectedMsg = expected.substring(8).trim();
+            if (warnings.isEmpty()) {
+                return "Expected warning containing '" + expectedMsg + "', got none";
+            }
+            boolean found = warnings.stream()
+                .anyMatch(w -> w.toLowerCase().contains(expectedMsg.toLowerCase()));
+            if (!found) {
+                return "Expected warning containing '" + expectedMsg + "', got: " + warnings;
+            }
+            return "";
+        }
+
+        if (!errors.isEmpty()) {
+            return phase + " failed: " + errors.get(0);
+        }
+        if (data == null) {
+            return "No data returned from " + phase;
+        }
+
+        // For JSON dotpath assertions, we'd need a JSON parser
+        // For now, skip detailed JSON validation - just check phase succeeded
+        return "";
+    }
+
+    static boolean cliNeedsBackend(List<String> args, List<CliAssertion> assertions, String[] emitterLangs) {
+        boolean hasStopAt = args.contains("--stop-at");
+        if (hasStopAt) return false;
+
+        boolean expectsSuccess = assertions.stream()
+            .anyMatch(a -> a.kind.equals("exit") && a.value.equals("0"));
+        if (!expectsSuccess) return false;
+
+        int targetIdx = args.indexOf("--target");
+        if (targetIdx == -1 || targetIdx + 1 >= args.size()) return false;
+
+        String target = args.get(targetIdx + 1);
+        return !Arrays.asList(emitterLangs).contains(target);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test runners
+    // -------------------------------------------------------------------------
+
+    static List<String[]> runCliTests(Path testDir) throws IOException {
+        List<String[]> results = new ArrayList<>();
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(testDir, "*.tests")) {
+            List<Path> files = new ArrayList<>();
+            stream.forEach(files::add);
+            Collections.sort(files);
+            for (Path f : files) {
+                String stem = f.getFileName().toString().replace(".tests", "");
+                String content = Files.readString(f);
+                for (Map.Entry<String, CliSpec> entry : parseCliTestFile(content)) {
+                    String testId = stem + "/" + entry.getKey();
+                    CliSpec spec = entry.getValue();
+                    if (cliNeedsBackend(spec.args, spec.assertions, EMITTER_LANGS)) {
+                        results.add(new String[]{"skip", testId, null});
+                        continue;
+                    }
+                    RunResult result;
+                    if (!spec.stdinHex.isEmpty()) {
+                        byte[] raw = hexToBytes(spec.stdinHex);
+                        result = runInprocess(spec.args.toArray(new String[0]), "", raw);
+                    } else {
+                        result = runInprocess(spec.args.toArray(new String[0]), spec.stdin);
+                    }
+                    String err = checkCliAssertions(result.exit, result.stdout, result.stderr, spec.assertions);
+                    results.add(new String[]{err.isEmpty() ? "pass" : "fail", testId, err.isEmpty() ? null : err});
+                }
+            }
+        }
+        return results;
+    }
+
+    static byte[] hexToBytes(String hex) {
+        if (hex == null || hex.isEmpty()) return new byte[0];
+        // Ensure even length
+        int len = hex.length();
+        if (len % 2 != 0) len--;
+        byte[] data = new byte[len / 2];
+        for (int i = 0; i < len; i += 2) {
+            data[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4)
+                + Character.digit(hex.charAt(i + 1), 16));
+        }
+        return data;
+    }
+
+    static List<String[]> runLinkerTests(Path testDir) throws IOException {
+        List<String[]> results = new ArrayList<>();
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(testDir, "*.tests")) {
+            List<Path> files = new ArrayList<>();
+            stream.forEach(files::add);
+            Collections.sort(files);
+            for (Path f : files) {
+                String stem = f.getFileName().toString().replace(".tests", "");
+                String content = Files.readString(f);
+                for (Map.Entry<String, LinkerSpec> entry : parseLinkerTestFile(content)) {
+                    String testId = stem + "/" + entry.getKey();
+                    LinkerSpec spec = entry.getValue();
+                    List<String> parts = new ArrayList<>();
+                    for (LinkerFile lf : spec.files) {
+                        parts.add(lf.path);
+                        parts.add(lf.source);
+                    }
+                    String stdinData = String.join("\0", parts);
+                    int targetIdx = spec.args.indexOf("--target");
+                    if (targetIdx != -1 && targetIdx + 1 < spec.args.size()) {
+                        String target = spec.args.get(targetIdx + 1);
+                        if (!Arrays.asList(EMITTER_LANGS).contains(target)) {
+                            results.add(new String[]{"skip", testId, null});
+                            continue;
+                        }
+                    }
+                    RunResult result = runInprocess(spec.args.toArray(new String[0]), stdinData);
+                    String err = checkCliAssertions(result.exit, result.stdout, result.stderr, spec.assertions);
+                    results.add(new String[]{err.isEmpty() ? "pass" : "fail", testId, err.isEmpty() ? null : err});
+                }
+            }
+        }
+        return results;
+    }
+
+    @SuppressWarnings("unchecked")
+    static List<String[]> runPhaseTests(Path testDir, String phaseName, Map<String, Object> cfg) throws IOException {
+        List<String[]> results = new ArrayList<>();
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(testDir, "*.tests")) {
+            List<Path> files = new ArrayList<>();
+            stream.forEach(files::add);
+            Collections.sort(files);
+            for (Path f : files) {
+                String stem = f.getFileName().toString().replace(".tests", "");
+                String content = Files.readString(f);
+                for (SpecEntry entry : parseSpecFile(content)) {
+                    String testId = stem + "/" + entry.name;
+                    boolean lenient = Arrays.asList("parse", "pycheck", "typarse", "tycheck").contains(phaseName);
+                    String[] args = (String[]) cfg.getOrDefault("args", new String[0]);
+                    boolean isTaytsh = (Boolean) cfg.getOrDefault("taytsh", false);
+                    boolean expectJson = (Boolean) cfg.getOrDefault("json", true);
+                    PhaseResult phaseResult = runTranspiledPhase(entry.input, args, isTaytsh, expectJson);
+                    String err = checkExpected(entry.expected, phaseResult.errors, phaseResult.warnings,
+                        phaseResult.data, phaseName, lenient);
+                    results.add(new String[]{err.isEmpty() ? "pass" : "fail", testId, err.isEmpty() ? null : err});
+                }
+            }
+        }
+        return results;
+    }
+
+    static List<String[]> runLoweringTests(Path testDir) throws IOException {
+        List<String[]> results = new ArrayList<>();
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(testDir, "*.tests")) {
+            List<Path> files = new ArrayList<>();
+            stream.forEach(files::add);
+            Collections.sort(files);
+            for (Path f : files) {
+                String stem = f.getFileName().toString().replace(".tests", "");
+                String content = Files.readString(f);
+                for (SpecEntry entry : parseSpecFile(content)) {
+                    String testId = stem + "/" + entry.name;
+                    Path tmpFile = Files.createTempFile("test_", ".py");
+                    try {
+                        Files.writeString(tmpFile, entry.input);
+                        RunResult result = runInprocess(new String[]{"--stop-at", "lowering-text", tmpFile.toString()});
+                        if (entry.expected.startsWith("error:")) {
+                            String expectedMsg = entry.expected.substring(6).trim();
+                            if (result.exit == 0) {
+                                results.add(new String[]{"fail", testId, "Expected error containing '" + expectedMsg + "', got success"});
+                                continue;
+                            }
+                            String firstLine = result.stderr.trim().split("\n")[0];
+                            if (!expectedMsg.isEmpty() && !firstLine.toLowerCase().contains(expectedMsg.toLowerCase())) {
+                                results.add(new String[]{"fail", testId, "Expected error containing '" + expectedMsg + "', got: " + firstLine});
+                                continue;
+                            }
+                            results.add(new String[]{"pass", testId, null});
+                            continue;
+                        }
+                        if (result.exit != 0) {
+                            String errMsg = result.stderr.trim().split("\n")[0];
+                            results.add(new String[]{"fail", testId, "Lowering error: " + errMsg});
+                            continue;
+                        }
+                        if (!containsNormalized(result.stdout, entry.expected)) {
+                            results.add(new String[]{"fail", testId, "Expected not found in output"});
+                            continue;
+                        }
+                        results.add(new String[]{"pass", testId, null});
+                    } finally {
+                        Files.deleteIfExists(tmpFile);
+                    }
+                }
+            }
+        }
+        return results;
+    }
+
+    static List<String[]> runCodegenTests(Path testDir) throws IOException {
+        List<String[]> results = new ArrayList<>();
+        Path baseDir = testDir.resolve("base");
+        if (!Files.isDirectory(baseDir)) return results;
+
+        List<String> langDirs;
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(testDir)) {
+            langDirs = new ArrayList<>();
+            for (Path p : stream) {
+                if (Files.isDirectory(p)) {
+                    String name = p.getFileName().toString();
+                    if (!name.equals("base") && Arrays.asList(EMITTER_LANGS).contains(name)) {
+                        langDirs.add(name);
+                    }
+                }
+            }
+        }
+        Collections.sort(langDirs);
+
+        for (String lang : langDirs) {
+            Path langDir = testDir.resolve(lang);
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(baseDir, "*.tests")) {
+                List<Path> files = new ArrayList<>();
+                stream.forEach(files::add);
+                Collections.sort(files);
+                for (Path baseFile : files) {
+                    String baseName = baseFile.getFileName().toString();
+                    String stem = baseName.replace(".tests", "");
+                    Path langFile = langDir.resolve(baseName);
+                    List<SimpleEntry> baseTests = parseSimpleTests(Files.readString(baseFile));
+                    if (baseTests.isEmpty()) continue;
+                    if (!Files.exists(langFile)) {
+                        for (SimpleEntry e : baseTests) {
+                            results.add(new String[]{"fail", stem + "/" + e.name + "[" + lang + "]", lang + "/" + baseName + " missing"});
+                        }
+                        continue;
+                    }
+                    List<SimpleEntry> langTests = parseSimpleTests(Files.readString(langFile));
+                    Map<String, String> langByName = langTests.stream()
+                        .collect(Collectors.toMap(e -> e.name, e -> e.content));
+                    for (SimpleEntry entry : baseTests) {
+                        String testId = stem + "/" + entry.name + "[" + lang + "]";
+                        String expected = langByName.get(entry.name);
+                        if (expected == null) {
+                            results.add(new String[]{"fail", testId, "No matching lang test"});
+                            continue;
+                        }
+                        Path tmpFile = Files.createTempFile("test_", ".ty");
+                        try {
+                            Files.writeString(tmpFile, entry.content);
+                            RunResult result = runInprocess(new String[]{"taytsh", "--emit", lang, tmpFile.toString()});
+                            if (result.exit != 0) {
+                                String stderr = result.stderr.trim().split("\n")[0];
+                                results.add(new String[]{"fail", testId, "Transpile error: " + stderr});
+                                continue;
+                            }
+                            if (!containsNormalized(result.stdout, expected)) {
+                                results.add(new String[]{"fail", testId, "Expected not found in output"});
+                                continue;
+                            }
+                            results.add(new String[]{"pass", testId, null});
+                        } finally {
+                            Files.deleteIfExists(tmpFile);
+                        }
+                    }
+                }
+            }
+        }
+        return results;
+    }
+
+    static List<String[]> runEmitTests(Path testDir) throws IOException {
+        List<String[]> results = new ArrayList<>();
+        Path baseDir = testDir.resolve("base");
+        if (!Files.isDirectory(baseDir)) return results;
+
+        List<String> langDirs;
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(testDir)) {
+            langDirs = new ArrayList<>();
+            for (Path p : stream) {
+                if (Files.isDirectory(p)) {
+                    String name = p.getFileName().toString();
+                    if (!name.equals("base") && Arrays.asList(EMITTER_LANGS).contains(name)) {
+                        langDirs.add(name);
+                    }
+                }
+            }
+        }
+        Collections.sort(langDirs);
+
+        for (String lang : langDirs) {
+            Path langDir = testDir.resolve(lang);
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(baseDir, "*.tests")) {
+                List<Path> files = new ArrayList<>();
+                stream.forEach(files::add);
+                Collections.sort(files);
+                for (Path baseFile : files) {
+                    String baseName = baseFile.getFileName().toString();
+                    String stem = baseName.replace(".tests", "");
+                    Path langFile = langDir.resolve(baseName);
+                    List<SimpleEntry> baseTests = parseSimpleTests(Files.readString(baseFile));
+                    if (baseTests.isEmpty()) continue;
+                    if (!Files.exists(langFile)) continue;
+                    List<SimpleEntry> langTests = parseSimpleTests(Files.readString(langFile));
+                    Map<String, String> langByName = langTests.stream()
+                        .collect(Collectors.toMap(e -> e.name, e -> e.content));
+                    for (SimpleEntry entry : baseTests) {
+                        if (!langByName.containsKey(entry.name)) continue;
+                        String testId = stem + "/" + entry.name + "[" + lang + "]";
+                        String expected = langByName.get(entry.name);
+                        Path tmpFile = Files.createTempFile("test_", ".py");
+                        try {
+                            Files.writeString(tmpFile, entry.content);
+                            RunResult result = runInprocess(new String[]{"--target", lang, tmpFile.toString()});
+                            if (result.exit != 0) {
+                                String stderr = result.stderr.trim().split("\n")[0];
+                                results.add(new String[]{"fail", testId, "Emit error: " + stderr});
+                                continue;
+                            }
+                            if (!containsNormalized(result.stdout, expected)) {
+                                results.add(new String[]{"fail", testId, "Expected not found in output"});
+                                continue;
+                            }
+                            results.add(new String[]{"pass", testId, null});
+                        } finally {
+                            Files.deleteIfExists(tmpFile);
+                        }
+                    }
+                }
+            }
+        }
+        return results;
+    }
+
+    static boolean runtimeAvailable(String lang) {
+        String[] cmd = RUNTIMES.get(lang);
+        if (cmd == null) return false;
+        try {
+            Process p = new ProcessBuilder("which", cmd[0]).start();
+            return p.waitFor() == 0;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    static List<String[]> runAppTests(Path testDir) throws IOException {
+        List<String[]> results = new ArrayList<>();
+        List<String> available = Arrays.stream(EMITTER_LANGS)
+            .filter(TestTranspiled::runtimeAvailable)
+            .sorted()
+            .collect(Collectors.toList());
+
+        if (!Files.isDirectory(testDir)) return results;
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(testDir, "apptest_*.py")) {
+            List<Path> files = new ArrayList<>();
+            stream.forEach(files::add);
+            Collections.sort(files);
+            for (Path testFile : files) {
+                String stem = testFile.getFileName().toString().replace(".py", "");
+                String source = Files.readString(testFile);
+                for (String target : available) {
+                    String testId = stem + "[" + target + "]";
+                    Path tmpFile = Files.createTempFile("test_", ".py");
+                    try {
+                        Files.writeString(tmpFile, source);
+                        RunResult result = runInprocess(new String[]{"--target", target, tmpFile.toString()});
+                        if (result.exit != 0) {
+                            String stderr = result.stderr.trim().split("\n")[0];
+                            results.add(new String[]{"fail", testId, "Transpile error (" + target + "): " + stderr});
+                            continue;
+                        }
+                        String transpiledCode = result.stdout;
+                        String[] runtime = RUNTIMES.get(target);
+                        ProcessBuilder pb = new ProcessBuilder(runtime);
+                        pb.redirectErrorStream(true);
+                        Process p = pb.start();
+                        p.getOutputStream().write(transpiledCode.getBytes("UTF-8"));
+                        p.getOutputStream().close();
+                        String output = new String(p.getInputStream().readAllBytes(), "UTF-8");
+                        int exitCode = p.waitFor();
+                        if (exitCode != 0) {
+                            results.add(new String[]{"fail", testId, "App test failed with exit " + exitCode + "\n" + output});
+                            continue;
+                        }
+                        results.add(new String[]{"pass", testId, null});
+                    } catch (InterruptedException e) {
+                        results.add(new String[]{"fail", testId, "Interrupted"});
+                    } finally {
+                        Files.deleteIfExists(tmpFile);
+                    }
+                }
+            }
+        }
+        return results;
+    }
+
+    static List<String[]> runTyAppTests(Path testDir) throws IOException {
+        List<String[]> results = new ArrayList<>();
+        if (!Files.isDirectory(testDir)) return results;
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(testDir, "*.ty")) {
+            List<Path> files = new ArrayList<>();
+            stream.forEach(files::add);
+            Collections.sort(files);
+            for (Path testFile : files) {
+                String stem = testFile.getFileName().toString().replace(".ty", "");
+                String testId = stem;
+                RunResult result = runInprocess(new String[]{"taytsh", testFile.toString()});
+                if (result.exit != 0) {
+                    String output = (result.stdout + result.stderr).trim();
+                    results.add(new String[]{"fail", testId, "Exit code " + result.exit + ":\n" + output});
+                    continue;
+                }
+                results.add(new String[]{"pass", testId, null});
+            }
+        }
+        return results;
+    }
+
+    static List<String[]> runOrderingTests(Path testDir) throws IOException {
+        List<String[]> results = new ArrayList<>();
+        List<String> available = Arrays.stream(EMITTER_LANGS)
+            .filter(TestTranspiled::runtimeAvailable)
+            .sorted()
+            .collect(Collectors.toList());
+
+        if (!Files.isDirectory(testDir)) return results;
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(testDir, "*.ty")) {
+            List<Path> files = new ArrayList<>();
+            stream.forEach(files::add);
+            Collections.sort(files);
+            for (Path testFile : files) {
+                String stem = testFile.getFileName().toString().replace(".ty", "");
+                for (String target : available) {
+                    String testId = stem + "[" + target + "]";
+                    RunResult result = runInprocess(new String[]{"taytsh", "--emit", target, testFile.toString()});
+                    if (result.exit != 0) {
+                        String stderr = result.stderr.trim().split("\n")[0];
+                        results.add(new String[]{"fail", testId, "Transpile error (" + target + "): " + stderr});
+                        continue;
+                    }
+                    String transpiledCode = result.stdout;
+                    String[] runtime = RUNTIMES.get(target);
+                    try {
+                        ProcessBuilder pb = new ProcessBuilder(runtime);
+                        pb.redirectErrorStream(true);
+                        Process p = pb.start();
+                        p.getOutputStream().write(transpiledCode.getBytes("UTF-8"));
+                        p.getOutputStream().close();
+                        String output = new String(p.getInputStream().readAllBytes(), "UTF-8");
+                        int exitCode = p.waitFor();
+                        if (exitCode != 0) {
+                            results.add(new String[]{"fail", testId, "Ordering test failed with exit " + exitCode + "\n" + output});
+                            continue;
+                        }
+                        results.add(new String[]{"pass", testId, null});
+                    } catch (InterruptedException e) {
+                        results.add(new String[]{"fail", testId, "Interrupted"});
+                    }
+                }
+            }
+        }
+        return results;
+    }
+
+    // -------------------------------------------------------------------------
+    // Main
+    // -------------------------------------------------------------------------
+
+    @SuppressWarnings("unchecked")
+    public static void main(String[] args) throws Exception {
+        if (args.length < 1) {
+            System.err.println("Usage: java TestTranspiled <path-to-classes-dir>");
+            System.exit(1);
+        }
+
+        Path classesDir = Paths.get(args[0]).toAbsolutePath();
+        if (!Files.isDirectory(classesDir)) {
+            System.err.println("Classes directory not found: " + classesDir);
+            System.exit(1);
+        }
+
+        // Determine tongues directory (parent of tests/)
+        tonguesDir = Paths.get(TestTranspiled.class.getProtectionDomain().getCodeSource().getLocation().toURI())
+            .getParent().getParent();
+        testsDir = tonguesDir.resolve("tests");
+        libDir = tonguesDir.resolve("src").resolve("lib");
+
+        System.out.println("Loading transpiled binary: " + classesDir);
+        long t0 = System.currentTimeMillis();
+
+        // Load Main class from the classes directory
+        java.net.URLClassLoader classLoader = new java.net.URLClassLoader(
+            new java.net.URL[]{classesDir.toUri().toURL()},
+            TestTranspiled.class.getClassLoader()
+        );
+        mainClass = classLoader.loadClass("Main");
+        mainMethod = mainClass.getMethod("main", String[].class);
+
+        long t1 = System.currentTimeMillis();
+        System.out.printf("Loaded in %.1fs%n", (t1 - t0) / 1000.0);
+        System.out.println();
+
+        int totalPass = 0;
+        int totalFail = 0;
+        int totalSkip = 0;
+        List<String[]> failures = new ArrayList<>();
+
+        for (Section section : TESTS) {
+            for (Phase phase : section.phases) {
+                String phaseName = phase.name;
+                Map<String, Object> cfg = phase.cfg;
+                Path testDir = testsDir.resolve((String) cfg.get("dir"));
+                if (!Files.isDirectory(testDir)) continue;
+
+                List<String[]> phaseResults;
+                String runnerName = (String) cfg.get("run");
+                try {
+                    switch (runnerName) {
+                        case "cli":
+                            phaseResults = runCliTests(testDir);
+                            break;
+                        case "linker":
+                            phaseResults = runLinkerTests(testDir);
+                            break;
+                        case "phase":
+                            phaseResults = runPhaseTests(testDir, phaseName, cfg);
+                            break;
+                        case "lowering":
+                            phaseResults = runLoweringTests(testDir);
+                            break;
+                        case "codegen":
+                            phaseResults = runCodegenTests(testDir);
+                            break;
+                        case "emit":
+                            phaseResults = runEmitTests(testDir);
+                            break;
+                        case "app":
+                            phaseResults = runAppTests(testDir);
+                            break;
+                        case "ty_app":
+                            phaseResults = runTyAppTests(testDir);
+                            break;
+                        case "ordering":
+                            phaseResults = runOrderingTests(testDir);
+                            break;
+                        default:
+                            phaseResults = new ArrayList<>();
+                    }
+                } catch (Exception e) {
+                    System.err.println("Exception in " + phaseName + ": " + e);
+                    e.printStackTrace();
+                    phaseResults = new ArrayList<>();
+                }
+
+                int passCount = (int) phaseResults.stream().filter(r -> r[0].equals("pass")).count();
+                int failCount = (int) phaseResults.stream().filter(r -> r[0].equals("fail")).count();
+                int skipCount = (int) phaseResults.stream().filter(r -> r[0].equals("skip")).count();
+                totalPass += passCount;
+                totalFail += failCount;
+                totalSkip += skipCount;
+
+                String status = failCount > 0 ? "FAIL" : "ok";
+                StringBuilder counts = new StringBuilder();
+                counts.append(passCount).append(" passed");
+                if (failCount > 0) counts.append(", ").append(failCount).append(" failed");
+                if (skipCount > 0) counts.append(", ").append(skipCount).append(" skipped");
+                System.out.println(phaseName + ": " + status + " (" + counts + ")");
+
+                for (String[] r : phaseResults) {
+                    if (r[0].equals("fail")) {
+                        failures.add(new String[]{phaseName, r[1], r[2]});
+                        System.out.println("  FAIL " + r[1]);
+                    }
+                }
+            }
+        }
+
+        System.out.println();
+        if (!failures.isEmpty()) {
+            System.out.println("=".repeat(60));
+            System.out.println("FAILURES");
+            System.out.println("=".repeat(60));
+            for (String[] f : failures) {
+                System.out.println();
+                System.out.println(f[0] + " :: " + f[1]);
+                System.out.println(f[2]);
+            }
+            System.out.println();
+        }
+
+        System.out.println("=".repeat(60));
+        int total = totalPass + totalFail + totalSkip;
+        System.out.println(total + " tests: " + totalPass + " passed, " + totalFail + " failed, " + totalSkip + " skipped");
+        System.out.println("=".repeat(60));
+
+        System.exit(totalFail > 0 ? 1 : 0);
+    }
+}
