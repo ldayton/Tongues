@@ -3906,8 +3906,10 @@ class _GoEmitter(Emitter):
             if all(t == go_parts[0] for t in go_parts[1:]):
                 return "[" + str(len(parts)) + "]" + go_parts[0]
             return "[" + str(len(parts)) + "]any"
-        if ann in self._interface_names or ann in self.struct_names:
+        if ann in self._interface_names:
             return ann
+        if ann in self.struct_names:
+            return "*" + ann
         return "any"
 
     def _infer_go_type(self, expr: TExpr) -> str:
