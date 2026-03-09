@@ -2438,6 +2438,9 @@ def _lower_name_call(
         "RuntimeError",
         "KeyError",
         "IndexError",
+        "OSError",
+        "OverflowError",
+        "UnicodeDecodeError",
     ):
         exc_args: list[TArg] = []
         if args and isinstance(args[0], dict):
