@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y ruby ruby-dev build-essential curl \
     && ruby --version | grep -q "3\." \
     && curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:${PATH}"
-RUN gem install rubocop --no-document \
+RUN gem install rubocop parallel --no-document \
     && rubocop --version | grep -q "."
 RUN uv python install "~=3.12.0"
 ARG JUST_VERSION=1.46.0
