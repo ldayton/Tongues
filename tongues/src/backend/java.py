@@ -486,7 +486,7 @@ class _JavaEmitter(Emitter):
         if isinstance(typ, TOptionalType):
             return self._boxed_type(typ.inner)
         if isinstance(typ, TTupleType):
-            return "Object[]"
+            return "List<Object>"
         if isinstance(typ, TFuncType):
             return "Function"
         if isinstance(typ, TUnionType):
@@ -519,6 +519,9 @@ class _JavaEmitter(Emitter):
                 return "Integer"
             if typ.kind == "bytes":
                 return "byte[]"
+        # Use List<Object> for tuples when used as map keys (List has proper equals/hashCode)
+        if isinstance(typ, TTupleType):
+            return "List<Object>"
         return self._type(typ)
 
     def _expr_type_ann(self, expr: TExpr) -> str:
@@ -1611,7 +1614,7 @@ class _JavaEmitter(Emitter):
                 return self._java_type_from_ann(non_nil[0])
             return None
         if ann.startswith("(") and ann.endswith(")"):
-            return "Object[]"
+            return "List<Object>"
         return None
 
     def _java_boxed_from_ann(self, ann: str) -> str | None:
@@ -2071,7 +2074,7 @@ class _JavaEmitter(Emitter):
         for i, t in enumerate(stmt.targets):
             if i in unused_indices:
                 continue
-            rhs = tmp + "[" + str(i) + "]"
+            rhs = tmp + ".get(" + str(i) + ")"
             type_ann = t.annotations.get("type", "")
             if type_ann == "" and isinstance(t, TVar):
                 vtype = self.var_types.get(t.name)
@@ -2395,7 +2398,7 @@ class _JavaEmitter(Emitter):
             self.indent += 1
             for bi in range(len(binding)):
                 bname = binding[bi]
-                rhs = entry_var + "[" + str(bi) + "]"
+                rhs = entry_var + ".get(" + str(bi) + ")"
                 btype = self.var_types.get(bname)
                 if btype is not None:
                     jtype = self._type(btype)
@@ -3210,7 +3213,7 @@ class _JavaEmitter(Emitter):
         sep_arg = self._expr(find_call.args[1].value)
         self._line("int __idx = " + s_arg + "." + method + "(" + sep_arg + ");")
         true_str = (
-            "new Object[]{"
+            "Arrays.asList("
             + s_arg
             + ".substring(0, __idx), "
             + sep_arg
@@ -3218,13 +3221,13 @@ class _JavaEmitter(Emitter):
             + s_arg
             + ".substring(__idx + "
             + sep_arg
-            + ".length())}"
+            + ".length()))"
         )
         false_str: str = ""
         if prov == "partition":
-            false_str = "new Object[]{" + s_arg + ', "", ""}'
+            false_str = "Arrays.asList(" + s_arg + ', "", "")'
         else:
-            false_str = 'new Object[]{"", "", ' + s_arg + "}"
+            false_str = 'Arrays.asList("", "", ' + s_arg + ")"
         self._line("return __idx >= 0 ? " + true_str + " : " + false_str + ";")
 
     def _emit_star_unpack_let(self, safe: str, jtype: str, call: TCall) -> None:
@@ -3317,7 +3320,7 @@ class _JavaEmitter(Emitter):
                 return self._var_aliases[result]
             return result
         if isinstance(expr, TTupleAccess):
-            raw = self._expr(expr.obj) + "[" + str(expr.index) + "]"
+            raw = self._expr(expr.obj) + ".get(" + str(expr.index) + ")"
             type_ann = expr.annotations.get("type", "")
             if type_ann:
                 cast_type = self._tuple_cast_type(type_ann)
@@ -3344,7 +3347,7 @@ class _JavaEmitter(Emitter):
             has_tuple = any(self._is_tuple_expr(e) for e in expr.elements)
             elems = self._join_exprs(expr.elements, ", ")
             if has_tuple:
-                return "new ArrayList<>(List.<Object[]>of(" + elems + "))"
+                return "new ArrayList<>(Arrays.asList(" + elems + "))"
             # Single-element list with array type needs special handling
             if len(expr.elements) == 1 and self._type_is_array(expr.elements[0]):
                 return "new ArrayList<>(Collections.singletonList(" + elems + "))"
@@ -3365,7 +3368,9 @@ class _JavaEmitter(Emitter):
             return "new HashSet<>(Set.of(" + elems + "))"
         if isinstance(expr, TTupleLit):
             elems = self._join_exprs(expr.elements, ", ")
-            return "new Object[]{" + elems + "}"
+            # Use Arrays.asList() for proper equals/hashCode when used as map keys
+            # (List.of() doesn't accept null values)
+            return "Arrays.asList(" + elems + ")"
         if isinstance(expr, TFnLit):
             return self._fn_lit(expr)
         if isinstance(expr, TCall):
