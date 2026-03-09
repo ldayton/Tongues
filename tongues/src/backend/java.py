@@ -911,6 +911,15 @@ class _JavaEmitter(Emitter):
         self.indent += 1
         self._line("if (radix != 0) {")
         self.indent += 1
+        self._line(
+            'if (radix == 16 && (s.startsWith("0x") || s.startsWith("0X"))) s = s.substring(2);'
+        )
+        self._line(
+            'if (radix == 2 && (s.startsWith("0b") || s.startsWith("0B"))) s = s.substring(2);'
+        )
+        self._line(
+            'if (radix == 8 && (s.startsWith("0o") || s.startsWith("0O"))) s = s.substring(2);'
+        )
         self._line("try { return Long.parseLong(s, radix); }")
         self._line(
             "catch (NumberFormatException e) { return Long.parseUnsignedLong(s, radix); }"
@@ -3360,7 +3369,12 @@ class _JavaEmitter(Emitter):
                     self._expr(k) + ", " + self._expr(v) for k, v in expr.entries
                 )
                 return "new HashMap<>(Map.of(" + pairs + "))"
-            return "new HashMap<>()"
+            # Map.of() only supports up to 10 entries, use Map.ofEntries() for larger maps
+            entries = ", ".join(
+                "Map.entry(" + self._expr(k) + ", " + self._expr(v) + ")"
+                for k, v in expr.entries
+            )
+            return "new HashMap<>(Map.ofEntries(" + entries + "))"
         if isinstance(expr, TSetLit):
             if not expr.elements:
                 return "new HashSet<>()"
@@ -3455,8 +3469,20 @@ class _JavaEmitter(Emitter):
                 + obj
                 + ".length()))"
             )
-        hi = obj + ".size()" if hi_is_len else self._expr(hi_expr)
-        return "new ArrayList<>(" + obj + ".subList(" + lo + ", " + hi + "))"
+        if hi_is_len:
+            return "new ArrayList<>(" + obj + ".subList(" + lo + ", " + obj + ".size()))"
+        hi = self._expr(hi_expr)
+        return (
+            "new ArrayList<>("
+            + obj
+            + ".subList("
+            + lo
+            + ", Math.min("
+            + hi
+            + ", "
+            + obj
+            + ".size())))"
+        )
 
     def _emit_index_assign(self, target: TIndex, value: TExpr) -> None:
         obj = self._expr(target.obj)
@@ -3735,6 +3761,41 @@ class _JavaEmitter(Emitter):
             result = self._string_eq(expr.right, expr.left, op, use_objects_equals=True)
             if result is not None:
                 return result
+        # Handle nullable boolean comparisons with Boolean.TRUE.equals() to avoid NPE
+        if op in ("==", "!=") and isinstance(expr.right, TBoolLit):
+            left_ann = expr.left.annotations.get("type", "")
+            # If left side is optional bool, use Boolean.TRUE/FALSE.equals()
+            if "nil" in left_ann and "bool" in left_ann:
+                left_str = self._expr(expr.left)
+                bool_class = "Boolean.TRUE" if expr.right.value else "Boolean.FALSE"
+                if op == "==":
+                    return bool_class + ".equals(" + left_str + ")"
+                return "!" + bool_class + ".equals(" + left_str + ")"
+        if op in ("==", "!=") and isinstance(expr.left, TBoolLit):
+            right_ann = expr.right.annotations.get("type", "")
+            if "nil" in right_ann and "bool" in right_ann:
+                right_str = self._expr(expr.right)
+                bool_class = "Boolean.TRUE" if expr.left.value else "Boolean.FALSE"
+                if op == "==":
+                    return bool_class + ".equals(" + right_str + ")"
+                return "!" + bool_class + ".equals(" + right_str + ")"
+        # Handle nullable int comparisons with Integer.valueOf().equals() to avoid NPE
+        if op in ("==", "!=") and isinstance(expr.right, TIntLit):
+            left_ann = expr.left.annotations.get("type", "")
+            if "nil" in left_ann and "int" in left_ann:
+                left_str = self._expr(expr.left)
+                val_str = str(expr.right.value)
+                if op == "==":
+                    return "Integer.valueOf(" + val_str + ").equals(" + left_str + ")"
+                return "!Integer.valueOf(" + val_str + ").equals(" + left_str + ")"
+        if op in ("==", "!=") and isinstance(expr.left, TIntLit):
+            right_ann = expr.right.annotations.get("type", "")
+            if "nil" in right_ann and "int" in right_ann:
+                right_str = self._expr(expr.right)
+                val_str = str(expr.left.value)
+                if op == "==":
+                    return "Integer.valueOf(" + val_str + ").equals(" + right_str + ")"
+                return "!Integer.valueOf(" + val_str + ").equals(" + right_str + ")"
         if op in ("&&", "and"):
             checks = self._collect_isinstance_raw(expr.left)
             if checks:
@@ -4572,6 +4633,9 @@ class _JavaEmitter(Emitter):
             self._needs_to_byte_array = True
             return "toByteArray(" + self._a(args, 0) + ")"
         if name == "ToRepr":
+            # Float repr doesn't wrap in quotes - just converts to string
+            if self._is_float_expr(args[0].value):
+                return "String.valueOf(" + self._a(args, 0) + ")"
             return '"\\"" + ' + self._a(args, 0) + ' + "\\""'
         if name == "ReplaceSlice":
             self._needs_replace_slice = True

@@ -1618,7 +1618,6 @@ class Checker:
                             resolved = self._narrow_to_type(current, tc_type_name)
                             if resolved is not None:
                                 self.narrow(tc_var, resolved)
-            i += 1
 
     def check_stmt(self, stmt: TStmt) -> None:
         match stmt:
