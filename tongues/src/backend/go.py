@@ -755,6 +755,7 @@ class _GoEmitter(Emitter):
         self._error_structs: set[str] = set()
         self._pointer_structs: set[str] = set()
         self._var_aliases: dict[str, str] = {}
+        self._field_aliases: dict[str, str] = {}
         self._tuple_unpack_counter: int = 0
         self._need_reverse_string: bool = False
         self._in_func: bool = False
@@ -1076,10 +1077,14 @@ class _GoEmitter(Emitter):
 
     def _emit_fn(self, decl: TFnDecl) -> None:
         old_var_types = self.var_types.copy()
+        old_var_aliases = self._var_aliases.copy()
+        old_field_aliases = self._field_aliases.copy()
         old_in_func = self._in_func
         old_ret_type = self._current_ret_type
         self._in_func = True
         self._current_ret_type = decl.ret
+        self._var_aliases = {}
+        self._field_aliases = {}
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
@@ -1098,15 +1103,21 @@ class _GoEmitter(Emitter):
         self.indent -= 1
         self._line("}")
         self.var_types = old_var_types
+        self._var_aliases = old_var_aliases
+        self._field_aliases = old_field_aliases
         self._in_func = old_in_func
         self._current_ret_type = old_ret_type
 
     def _emit_method(self, decl: TFnDecl, struct_name: str) -> None:
         old_var_types = self.var_types.copy()
+        old_var_aliases = self._var_aliases.copy()
+        old_field_aliases = self._field_aliases.copy()
         old_in_func = self._in_func
         old_ret_type = self._current_ret_type
         self._in_func = True
         self._current_ret_type = decl.ret
+        self._var_aliases = {}
+        self._field_aliases = {}
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
@@ -1133,6 +1144,8 @@ class _GoEmitter(Emitter):
         self._line("}")
         self.self_name = old_self
         self.var_types = old_var_types
+        self._var_aliases = old_var_aliases
+        self._field_aliases = old_field_aliases
         self._in_func = old_in_func
         self._current_ret_type = old_ret_type
 
@@ -2119,10 +2132,11 @@ class _GoEmitter(Emitter):
             if name == "Assert":
                 args = expr.args
                 inner = args[0].value
+                # Handle assert isinstance(var, Type) for variables
                 if (
                     isinstance(inner, TCall)
                     and isinstance(inner.func, TVar)
-                    and inner.func.name == "IsInstance"
+                    and inner.func.name in ("IsInstance", "IsType")
                     and isinstance(inner.args[0].value, TVar)
                 ):
                     obj_var = inner.args[0].value
@@ -2149,6 +2163,34 @@ class _GoEmitter(Emitter):
                                 name=type_name,
                             )
                             return
+                # Handle assert isinstance(obj.field, Type) for field accesses
+                if (
+                    isinstance(inner, TCall)
+                    and isinstance(inner.func, TVar)
+                    and inner.func.name in ("IsInstance", "IsType")
+                    and isinstance(inner.args[0].value, TFieldAccess)
+                ):
+                    obj_fa = inner.args[0].value
+                    type_arg = inner.args[1].value
+                    type_name = ""
+                    if isinstance(type_arg, TVar):
+                        type_name = type_arg.name
+                    elif isinstance(type_arg, TStringLit):
+                        type_name = type_arg.value
+                    if type_name and type_name not in self._interface_names:
+                        # Generate a unique alias for the field path
+                        fa_go = self._expr(obj_fa)
+                        # Create alias name from field path: obj.Field -> obj_Field_assert
+                        alias_base = (
+                            fa_go.replace(".", "_")
+                            .replace("(", "")
+                            .replace(")", "")
+                            .replace("*", "")
+                        )
+                        alias = alias_base + "_assert"
+                        self._line(alias + " := " + fa_go + ".(*" + type_name + ")")
+                        self._field_aliases[fa_go] = alias
+                        return
                 cond = self._expr(args[0].value)
                 if len(args) > 1:
                     msg = self._expr(args[1].value)
@@ -3635,6 +3677,8 @@ class _GoEmitter(Emitter):
                 )
                 return obj_s + ".Get" + fname + "()"
             obj_s = self._expr(expr.obj)
+            # Check if obj_s has a field alias (from assert isinstance narrowing)
+            obj_s = self._field_aliases.get(obj_s, obj_s)
             fname = expr.field[0].upper() + expr.field[1:] if expr.field else expr.field
             result = obj_s + "." + fname
             if self._is_optional_primitive_field(expr):
