@@ -895,6 +895,16 @@ class _JavaEmitter(Emitter):
         self._line("}")
         self._line()
         self._line("static int doExit(int code) { throw new SystemExitException(code); }")
+        self._line()
+        self._line("static int parseIntAuto(String s, int radix) {")
+        self.indent += 1
+        self._line("if (radix != 0) return Integer.parseInt(s, radix);")
+        self._line("if (s.startsWith(\"0x\") || s.startsWith(\"0X\")) return Integer.parseInt(s.substring(2), 16);")
+        self._line("if (s.startsWith(\"0b\") || s.startsWith(\"0B\")) return Integer.parseInt(s.substring(2), 2);")
+        self._line("if (s.startsWith(\"0o\") || s.startsWith(\"0O\")) return Integer.parseInt(s.substring(2), 8);")
+        self._line("return Integer.parseInt(s, 10);")
+        self.indent -= 1
+        self._line("}")
         for decl in module.decls:
             if isinstance(decl, TLetStmt):
                 self._line()
@@ -3359,7 +3369,8 @@ class _JavaEmitter(Emitter):
         if ann == "string" or self._is_string_expr(expr.obj):
             if hi_is_len:
                 return obj + ".substring(" + lo + ")"
-            return obj + ".substring(" + lo + ", " + self._expr(hi_expr) + ")"
+            hi = self._expr(hi_expr)
+            return obj + ".substring(" + lo + ", Math.min(" + hi + ", " + obj + ".length()))"
         hi = obj + ".size()" if hi_is_len else self._expr(hi_expr)
         return "new ArrayList<>(" + obj + ".subList(" + lo + ", " + hi + "))"
 
@@ -3886,7 +3897,7 @@ class _JavaEmitter(Emitter):
             return "String.valueOf(" + self._a(args, 0) + ")"
         if name == "ParseInt":
             return (
-                "Integer.parseInt(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                "parseIntAuto(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             )
         if name == "ReadAll":
             return "input"
