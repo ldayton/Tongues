@@ -455,7 +455,19 @@ public class TestTranspiled {
         String source = Files.readString(Paths.get(tyPath));
         // Call taytsh_taytsh_parse(source) -> TModule
         Method parseMethod = mainClass.getMethod("taytsh_taytsh_parse", String.class);
-        Object module = parseMethod.invoke(null, source);
+        Object module;
+        try {
+            module = parseMethod.invoke(null, source);
+        } catch (InvocationTargetException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof NullPointerException && cause.getMessage() != null
+                    && cause.getMessage().contains("annotations")) {
+                throw new RuntimeException(
+                    "Java VM tests not supported: transpiled Java has a bug where TDecl.annotations "
+                    + "is not initialized in subclasses. Run with Python/JS/Ruby/Perl instead.");
+            }
+            throw e;
+        }
         // Call vm_prepare(module) -> CompiledModule
         Method prepareMethod = mainClass.getMethod("vm_prepare", module.getClass());
         _vmCompiled = prepareMethod.invoke(null, module);
