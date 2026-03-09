@@ -58,7 +58,7 @@ _transpile-tongues target:
     declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js [java]=java [taytsh]=ty)
     mkdir -p tongues/.out
     cd tongues && uv run bin/tongues --target {{target}} -o ".out/tongues.${ext[{{target}}]}" src
-    printf '\033[32m[transpile-tongues:{{target}}] %ds\033[0m\n' "$((SECONDS - start))"
+    printf '\033[32m[transpile-tongues-{{target}}] %ds\033[0m\n' "$((SECONDS - start))"
 
 # Transpile the shared test harness to target language
 _transpile-harness target:
@@ -93,12 +93,12 @@ lang target:
     just -f {{justfile()}} _vm-test-tongues {{target}} & pids+=($!)
     start=$SECONDS
     cd tongues
-    ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} .out/tongues.${ext[{{target}}]} --target test-tongues:{{target}}; rc=$?
+    ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} .out/tongues.${ext[{{target}}]} --target test-tongues-{{target}}; rc=$?
     elapsed=$((SECONDS - start))
     if [ $rc -eq 0 ]; then
-        printf '\033[32m[test-tongues:{{target}}] %ds\033[0m\n' "$elapsed"
+        printf '\033[32m[test-tongues-{{target}}] %ds\033[0m\n' "$elapsed"
     else
-        printf '\033[31m[test-tongues:{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
+        printf '\033[31m[test-tongues-{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
         failed=1
     fi
     for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
@@ -117,12 +117,12 @@ lang-java:
     just -f {{justfile()}} _vm-java & pids+=($!)
     start=$SECONDS
     cd tongues
-    java -cp .out/java-classes TestTranspiled .out/java-classes --target test-tongues:java; rc=$?
+    java -cp .out/java-classes TestTranspiled .out/java-classes --target test-tongues-java; rc=$?
     elapsed=$((SECONDS - start))
     if [ $rc -eq 0 ]; then
-        printf '\033[32m[test-tongues:java] %ds\033[0m\n' "$elapsed"
+        printf '\033[32m[test-tongues-java] %ds\033[0m\n' "$elapsed"
     else
-        printf '\033[31m[test-tongues:java] %ds (FAILED)\033[0m\n' "$elapsed"
+        printf '\033[31m[test-tongues-java] %ds (FAILED)\033[0m\n' "$elapsed"
         failed=1
     fi
     for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
@@ -165,9 +165,9 @@ _treewalker-java:
     done
     elapsed=$((SECONDS - start))
     if [ $failed -eq 0 ]; then
-        printf '\033[32m[tw-taytsh-apptests:java] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
+        printf '\033[32m[tw-taytsh-apptests-java] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
     else
-        printf '\033[31m[tw-taytsh-apptests:java] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
+        printf '\033[31m[tw-taytsh-apptests-java] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
         exit 1
     fi
 
@@ -189,9 +189,9 @@ _vm-java:
     done
     elapsed=$((SECONDS - start))
     if [ $failed -eq 0 ]; then
-        printf '\033[32m[vm-taytsh-apptests:java] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
+        printf '\033[32m[vm-taytsh-apptests-java] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
     else
-        printf '\033[31m[vm-taytsh-apptests:java] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
+        printf '\033[31m[vm-taytsh-apptests-java] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
         exit 1
     fi
 
@@ -201,12 +201,12 @@ _test-tongues-java:
     set -uo pipefail
     start=$SECONDS
     cd tongues
-    java -cp .out/java-classes TestTranspiled .out/java-classes --target test-tongues:java; rc=$?
+    java -cp .out/java-classes TestTranspiled .out/java-classes --target test-tongues-java; rc=$?
     elapsed=$((SECONDS - start))
     if [ $rc -eq 0 ]; then
-        printf '\033[32m[test-tongues:java] %ds\033[0m\n' "$elapsed"
+        printf '\033[32m[test-tongues-java] %ds\033[0m\n' "$elapsed"
     else
-        printf '\033[31m[test-tongues:java] %ds (FAILED)\033[0m\n' "$elapsed"
+        printf '\033[31m[test-tongues-java] %ds (FAILED)\033[0m\n' "$elapsed"
     fi
     exit $rc
 
@@ -214,7 +214,7 @@ _test-tongues-java:
 _vm-test-tongues-java:
     #!/usr/bin/env bash
     # VM tests for Java not yet implemented - would require --via-vm support in TestTranspiled.java
-    printf '\033[33m[vm-test-tongues:java] skipped (not implemented)\033[0m\n'
+    printf '\033[33m[vm-test-tongues-java] skipped (not implemented)\033[0m\n'
 
 # Type-check transpiled Python output
 _pyright:
@@ -261,14 +261,14 @@ cross-equivalence target:
     cd tongues
     uv run python3 tests/retranspile.py ".out/tongues.$e" src {{target}} ".out/tongues-2.$e"; rc=$?
     if [ $rc -ne 0 ]; then
-        printf '\033[31m[cross-equivalence:{{target}}] %ds (FAILED)\033[0m\n' "$((SECONDS - start))"
+        printf '\033[31m[cross-equivalence-{{target}}] %ds (FAILED)\033[0m\n' "$((SECONDS - start))"
         exit 1
     fi
     if diff -q ".out/tongues.$e" ".out/tongues-2.$e" >/dev/null 2>&1; then
         rm ".out/tongues-2.$e"
-        printf '\033[32m[cross-equivalence:{{target}}] %ds\033[0m\n' "$((SECONDS - start))"
+        printf '\033[32m[cross-equivalence-{{target}}] %ds\033[0m\n' "$((SECONDS - start))"
     else
-        printf '\033[31m[cross-equivalence:{{target}}] %ds (FAILED)\033[0m\n' "$((SECONDS - start))"
+        printf '\033[31m[cross-equivalence-{{target}}] %ds (FAILED)\033[0m\n' "$((SECONDS - start))"
         diff --unified=3 ".out/tongues.$e" ".out/tongues-2.$e" | head -30
         rm ".out/tongues-2.$e"
         exit 1
@@ -284,12 +284,12 @@ _vm-test-tongues target:
     start=$SECONDS
     cd tongues
     ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} \
-        .out/tongues.${ext[{{target}}]} --via-vm .out/tongues.ty --target vm-test-tongues:{{target}}; rc=$?
+        .out/tongues.${ext[{{target}}]} --via-vm .out/tongues.ty --target vm-test-tongues-{{target}}; rc=$?
     elapsed=$((SECONDS - start))
     if [ $rc -eq 0 ]; then
-        printf '\033[32m[vm-test-tongues:{{target}}] %ds\033[0m\n' "$elapsed"
+        printf '\033[32m[vm-test-tongues-{{target}}] %ds\033[0m\n' "$elapsed"
     else
-        printf '\033[31m[vm-test-tongues:{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
+        printf '\033[31m[vm-test-tongues-{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
     fi
     exit $rc
 
@@ -313,9 +313,9 @@ _treewalker target:
     done
     elapsed=$((SECONDS - start))
     if [ $failed -eq 0 ]; then
-        printf '\033[32m[tw-taytsh-apptests:{{target}}] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
+        printf '\033[32m[tw-taytsh-apptests-{{target}}] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
     else
-        printf '\033[31m[tw-taytsh-apptests:{{target}}] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
+        printf '\033[31m[tw-taytsh-apptests-{{target}}] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
         exit 1
     fi
 
@@ -339,9 +339,9 @@ _vm target:
     done
     elapsed=$((SECONDS - start))
     if [ $failed -eq 0 ]; then
-        printf '\033[32m[vm-taytsh-apptests:{{target}}] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
+        printf '\033[32m[vm-taytsh-apptests-{{target}}] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
     else
-        printf '\033[31m[vm-taytsh-apptests:{{target}}] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
+        printf '\033[31m[vm-taytsh-apptests-{{target}}] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
         exit 1
     fi
 
@@ -363,9 +363,9 @@ _pytest-gen-tycheck:
     uv run --directory tongues pytest tests/test_taytsh_gen_check.py -v; rc=$?
     elapsed=$((SECONDS - start))
     if [ $rc -eq 0 ]; then
-        printf '\033[32m[pytest-gen:tycheck] %ds\033[0m\n' "$elapsed"
+        printf '\033[32m[pytest-gen-tycheck] %ds\033[0m\n' "$elapsed"
     else
-        printf '\033[31m[pytest-gen:tycheck] %ds (FAILED)\033[0m\n' "$elapsed"
+        printf '\033[31m[pytest-gen-tycheck] %ds (FAILED)\033[0m\n' "$elapsed"
     fi
     exit $rc
 
@@ -376,9 +376,9 @@ _pytest-gen-softfloat:
     uv run --directory tongues pytest tests/test_gen_softfloat.py -v; rc=$?
     elapsed=$((SECONDS - start))
     if [ $rc -eq 0 ]; then
-        printf '\033[32m[pytest-gen:softfloat] %ds\033[0m\n' "$elapsed"
+        printf '\033[32m[pytest-gen-softfloat] %ds\033[0m\n' "$elapsed"
     else
-        printf '\033[31m[pytest-gen:softfloat] %ds (FAILED)\033[0m\n' "$elapsed"
+        printf '\033[31m[pytest-gen-softfloat] %ds (FAILED)\033[0m\n' "$elapsed"
     fi
     exit $rc
 

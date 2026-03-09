@@ -1,0 +1,726 @@
+[32m[transpile-tongues:python] 14s[0m
+[32m[transpile-harness:python] 0s[0m
+0 errors, 0 warnings, 0 informations
+[32m[pyright] 1s[0m
+Loading transpiled binary: /Users/lily/source/Tongues-ci/tongues/.out/tongues.py
+Loaded in 0.4s
+
+::group::cli
+cli: ok (54 passed, 14 skipped)
+::endgroup::
+::group::linker
+linker: ok (26 passed)
+::endgroup::
+::group::parse
+parse: ok (420 passed)
+::endgroup::
+::group::subset
+subset: ok (445 passed)
+::endgroup::
+::group::names
+names: ok (74 passed)
+::endgroup::
+::group::sigs
+sigs: ok (46 passed)
+::endgroup::
+::group::fields
+fields: ok (76 passed)
+::endgroup::
+::group::hierarchy
+hierarchy: ok (24 passed)
+::endgroup::
+::group::pycheck
+pycheck: ok (882 passed)
+::endgroup::
+::group::lowering
+lowering: ok (322 passed)
+::endgroup::
+::group::scope
+scope: ok (43 passed)
+::endgroup::
+::group::returns
+returns: ok (63 passed)
+::endgroup::
+::group::liveness
+liveness: ok (65 passed)
+::endgroup::
+::group::strings
+strings: ok (107 passed)
+::endgroup::
+::group::hoisting
+hoisting: ok (33 passed)
+::endgroup::
+::group::ownership
+ownership: ok (67 passed)
+::endgroup::
+::group::callgraph
+callgraph: ok (89 passed)
+::endgroup::
+::group::codegen
+codegen: ok (221 passed)
+::endgroup::
+::group::emit
+emit: ok (47 passed)
+::endgroup::
+::group::app
+app: ok (30 passed)
+::endgroup::
+::group::ordering
+ordering: ok (4 passed)
+::endgroup::
+::group::typarse
+typarse: ok (339 passed)
+::endgroup::
+::group::tycheck
+tycheck: ok (1204 passed)
+::endgroup::
+::group::ty_app
+ty_app: ok (14 passed)
+::endgroup::
+
+============================================================
+[test-tongues:python] 4709 tests: 4695 passed, 0 failed, 14 skipped
+============================================================
+::notice::[test-tongues:python] 4709 tests: 4695 passed, 0 failed, 14 skipped
+[32m[test-tongues:python] 6s[0m
+[32m[vm-taytsh-apptests:python] 6s (14 passed)[0m
+[32m[tw-taytsh-apptests:python] 6s (14 passed)[0m
+[32m[transpile-tongues:taytsh] 14s[0m
+[32m[idempotence] 15s[0m
+Loading transpiled binary: /Users/lily/source/Tongues-ci/tongues/.out/tongues.py
+Loaded in 0.1s
+Loading VM module: /Users/lily/source/Tongues-ci/tongues/.out/tongues.ty
+VM module compiled
+VM compiled in 3.1s
+
+::group::cli
+cli: FAIL (3 passed, 51 failed, 14 skipped)
+  FAIL args/help flag
+  FAIL args/h flag
+  FAIL args/both flags
+  FAIL args/flags order independent
+  FAIL args/strict flag
+  FAIL args/strict-math flag
+  FAIL args/strict-tostring flag
+  FAIL args/strict with stop-at
+  FAIL exit_codes/success
+  FAIL exit_codes/compilation error parse failure
+  FAIL exit_codes/compilation error subset violation
+  FAIL exit_codes/compilation error type error
+  FAIL exit_codes/compilation error names undefined
+  FAIL exit_codes/unknown target exit 2
+  FAIL exit_codes/unknown phase exit 2
+  FAIL exit_codes/unknown flag exit 2
+  FAIL exit_codes/empty input exit 2
+  FAIL exit_codes/invalid utf-8 exit 1
+  FAIL input_handling/zero bytes
+  FAIL input_handling/whitespace only goes to parser
+  FAIL input_handling/no trailing newline
+  FAIL input_handling/invalid utf-8 two byte
+  FAIL phases/stop-at parse
+  FAIL phases/stop-at subset
+  FAIL phases/stop-at names
+  FAIL phases/stop-at signatures
+  FAIL phases/stop-at fields
+  FAIL phases/stop-at hierarchy
+  FAIL phases/stop-at pycheck
+  FAIL phases/stop-at lowering
+  FAIL phases/stop-at analyze
+  FAIL phases/early failure parse error stops pipeline
+  FAIL phases/early failure subset violation stops pipeline
+  FAIL phases/early failure names error stops pipeline
+  FAIL phases/subset pass no output
+  FAIL pipeline/success stdout nonempty stderr empty
+  FAIL pipeline/name reuse across isinstance branches with for loop
+  FAIL pipeline/name reuse for loop var across if-return branches
+  FAIL pipeline/error stderr nonempty stdout empty
+  FAIL skip_directive/skip in line 1
+  FAIL skip_directive/skip in line 5
+  FAIL skip_directive/skip in line 6 not detected
+  FAIL skip_directive/skip only affects subset phase
+  FAIL strict/strict enables strict-math
+  FAIL strict/strict enables strict-tostring
+  FAIL strict/strict-math flag alone
+  FAIL strict/strict-tostring flag alone
+  FAIL strict/pragma strict-math
+  FAIL strict/pragma strict-tostring
+  FAIL strict/pragma both strict modes
+  FAIL targets/target python
+::endgroup::
+::group::linker
+linker: FAIL (2 passed, 24 failed)
+  FAIL merge/basic merge
+  FAIL merge/collision resolved
+  FAIL merge/alias rewriting
+  FAIL merge/module attr rewriting
+  FAIL merge/cycle
+  FAIL merge/unresolved import
+  FAIL merge/nested package
+  FAIL merge/private prefix
+  FAIL merge/dedup keeps one copy
+  FAIL merge/prefix import refs updated
+  FAIL merge/prefix module attr
+  FAIL merge/unsafe dedup demoted to prefix
+  FAIL merge/subset error includes source file
+  FAIL merge/names error includes source file
+  FAIL merge/basic names
+  FAIL merge/basic python emit
+  FAIL merge/alias python emit
+  FAIL merge/cycle python emit
+  FAIL merge/nested python emit
+  FAIL merge/parse output json
+  FAIL merge/strict math pragma
+  FAIL merge/strict tostring pragma
+  FAIL merge/strict flag with project
+  FAIL merge/public prefix
+::endgroup::
+::group::parse
+parse: FAIL (237 passed, 183 failed)
+  FAIL fstrings/simple fstring
+  FAIL fstrings/triple quoted fstring
+  FAIL fstrings/fstring with two exprs
+  FAIL fstrings/empty fstring
+  FAIL fstrings/empty triple fstring
+  FAIL fstrings/empty format spec
+  FAIL fstrings/conversion a
+  FAIL fstrings/conversion with format
+  FAIL fstrings/format width
+  FAIL fstrings/nested format spec
+  FAIL fstrings/format align
+  FAIL fstrings/format from variable
+  FAIL fstrings/format from variable empty
+  FAIL fstrings/format from variable with spec
+  FAIL fstrings/escaped braces
+  FAIL fstrings/escaped with expr
+  FAIL fstrings/escaped open with expr
+  FAIL fstrings/multiple escaped
+  FAIL fstrings/escaped close
+  FAIL fstrings/debug format
+  FAIL fstrings/debug format call
+  FAIL fstrings/multiline fstring
+  FAIL fstrings/multiline with expr
+  FAIL fstrings/line continuation in string part
+  FAIL fstrings/starred tuple in fstring
+  FAIL fstrings/multiple starred
+  FAIL fstrings/mixed starred
+  FAIL fstrings/starred first
+  FAIL fstrings/genexp in fstring
+  FAIL indentation/consistent indent
+  FAIL indentation/multiple dedents
+  FAIL indentation/blank lines in suite
+  FAIL indentation/comment in suite
+  FAIL indentation/nested functions
+  FAIL indentation/class with methods
+  FAIL indentation/try blocks
+  FAIL indentation/if elif else
+  FAIL indentation/for else
+  FAIL indentation/while else
+  FAIL indentation/match cases
+  FAIL indentation/with in function
+  FAIL strings/simple string
+  FAIL strings/single quoted
+  FAIL strings/triple double
+  FAIL strings/triple single
+  FAIL strings/multiline triple
+  FAIL strings/escaped quote
+  FAIL strings/escaped backslash
+  FAIL strings/raw string
+  FAIL strings/raw escaped quote in middle
+  FAIL strings/bytes string
+  FAIL strings/bytes raw
+  FAIL strings/bytes raw alt
+  FAIL strings/unicode string
+  FAIL strings/unicode escape
+  FAIL strings/unicode name
+  FAIL strings/hex escape
+  FAIL strings/octal escape
+  FAIL strings/string concat
+  FAIL strings/string concat multiline
+  FAIL strings/fstring simple
+  FAIL strings/fstring raw
+  FAIL strings/fstring raw alt
+  FAIL valid/comment line
+  FAIL valid/multiply with tab
+  FAIL valid/function with annotation
+  FAIL valid/assert statement
+  FAIL valid/class definition
+  FAIL valid/function definition
+  FAIL valid/import statement
+  FAIL valid/if with suite
+  FAIL valid/named expression
+  FAIL valid/extended annassign
+  FAIL valid/tuple annassign
+  FAIL valid/positional only with default
+  FAIL valid/positional only simple
+  FAIL valid/positional only with keyword default
+  FAIL valid/positional only with keyword
+  FAIL valid/positional only with kwonly
+  FAIL valid/positional only with kwargs
+  FAIL valid/decorator expression add
+  FAIL valid/decorator lambda
+  FAIL valid/decorator walrus lambda
+  FAIL valid/dos line endings
+  FAIL valid/for loop simple
+  FAIL valid/empty list
+  FAIL valid/empty dict
+  FAIL valid/empty tuple
+  FAIL valid/single element tuple
+  FAIL valid/nested function
+  FAIL valid/class with method
+  FAIL valid/try except
+  FAIL valid/try except finally
+  FAIL valid/with statement
+  FAIL valid/with as
+  FAIL valid/multiple with
+  FAIL valid/match statement
+  FAIL valid/match with guard
+  FAIL valid/match wildcard
+  FAIL valid/async function
+  FAIL valid/await expression
+  FAIL valid/async for
+  FAIL valid/async with
+  FAIL valid/yield expression
+  FAIL valid/yield from
+  FAIL valid/list comprehension
+  FAIL valid/nested list comprehension
+  FAIL valid/list comp with if
+  FAIL valid/dict comprehension
+  FAIL valid/set comprehension
+  FAIL valid/generator expression
+  FAIL valid/lambda simple
+  FAIL valid/lambda with args
+  FAIL valid/lambda with defaults
+  FAIL valid/lambda with kwargs
+  FAIL valid/slice simple
+  FAIL valid/slice step
+  FAIL valid/slice open start
+  FAIL valid/slice open end
+  FAIL valid/slice open both
+  FAIL valid/ellipsis
+  FAIL valid/ellipsis subscript
+  FAIL valid/starred in list
+  FAIL valid/starred in tuple
+  FAIL valid/double starred in dict
+  FAIL valid/walrus in if
+  FAIL valid/walrus in while
+  FAIL valid/multiple assignment
+  FAIL valid/augmented assign
+  FAIL valid/annotated assign
+  FAIL valid/annotated no value
+  FAIL valid/binary operators
+  FAIL valid/bitwise operators
+  FAIL valid/comparison chain
+  FAIL valid/boolean operators
+  FAIL valid/ternary expression
+  FAIL valid/unary operators
+  FAIL valid/attribute access
+  FAIL valid/call with args
+  FAIL valid/call with kwargs
+  FAIL valid/call with mixed
+  FAIL valid/multiline string
+  FAIL valid/raw string
+  FAIL valid/bytes literal
+  FAIL valid/unicode string
+  FAIL valid/number literals
+  FAIL valid/complex number
+  FAIL valid/underscore in number
+  FAIL valid/global statement
+  FAIL valid/nonlocal statement
+  FAIL valid/raise simple
+  FAIL valid/raise with message
+  FAIL valid/raise from
+  FAIL valid/bare raise
+  FAIL valid/except as
+  FAIL valid/except tuple
+  FAIL valid/del statement
+  FAIL valid/del multiple
+  FAIL valid/del subscript
+  FAIL valid/del attribute
+  FAIL valid/pass statement
+  FAIL valid/break statement
+  FAIL valid/continue statement
+  FAIL valid/return nothing
+  FAIL valid/return value
+  FAIL valid/class inheritance
+  FAIL valid/class multiple inheritance
+  FAIL valid/class with kwargs
+  FAIL valid/decorator simple
+  FAIL valid/decorator with args
+  FAIL valid/multiple decorators
+  FAIL valid/type alias
+  FAIL valid/type alias generic
+  FAIL valid/type params on function
+  FAIL valid/type params on class
+  FAIL valid/multiple type params
+  FAIL valid/bounded type var
+  FAIL walrus/walrus in parens
+  FAIL walrus/walrus in tuple
+  FAIL walrus/walrus in if
+  FAIL walrus/walrus in while
+  FAIL walrus/walrus in comprehension condition
+  FAIL walrus/walrus in call argument
+::endgroup::
+::group::subset
+subset: FAIL (0 passed, 445 failed)
+  FAIL annotations/int annotation allowed
+  FAIL annotations/float annotation allowed
+  FAIL annotations/str annotation allowed
+  FAIL annotations/bool annotation allowed
+  FAIL annotations/bytes annotation allowed
+  FAIL annotations/object annotation allowed
+  FAIL annotations/None return type allowed
+  FAIL annotations/list with element type allowed
+  FAIL annotations/nested list allowed
+  FAIL annotations/dict with key and value types allowed
+  FAIL annotations/set with element type allowed
+  FAIL annotations/frozenset with element type allowed
+  FAIL annotations/tuple with element types allowed
+  FAIL annotations/single element tuple allowed
+  FAIL annotations/homogeneous tuple allowed
+  FAIL annotations/optional type allowed
+  FAIL annotations/union type allowed
+  FAIL annotations/three-way union allowed
+  FAIL annotations/callable type allowed
+  FAIL annotations/callable with multiple params allowed
+  FAIL annotations/callable with no params allowed
+  FAIL annotations/Optional from typing allowed
+  FAIL annotations/Union from typing allowed
+  FAIL annotations/List from typing allowed
+  FAIL annotations/Dict from typing allowed
+  FAIL annotations/Set from typing allowed
+  FAIL annotations/Tuple from typing allowed
+  FAIL annotations/complex nested types allowed
+  FAIL annotations/callable returning optional allowed
+  FAIL annotations/list of callables allowed
+  FAIL annotations/variable with annotation allowed
+  FAIL annotations/class field with annotation allowed
+  FAIL annotations/class field without annotation allowed
+  FAIL annotations/bare list not allowed
+  FAIL annotations/bare dict not allowed
+  FAIL annotations/bare set not allowed
+  FAIL annotations/bare tuple not allowed
+  FAIL annotations/bare frozenset not allowed
+  FAIL annotations/Any not allowed
+  FAIL annotations/Any in list not allowed
+  FAIL annotations/Any in dict value not allowed
+  FAIL annotations/Any in union not allowed
+  FAIL annotations/TypeVar not allowed
+  FAIL builtins/abs allowed
+  FAIL builtins/min allowed
+  FAIL builtins/max allowed
+  FAIL builtins/sum allowed
+  FAIL builtins/round allowed
+  FAIL builtins/divmod allowed
+  FAIL builtins/pow allowed
+  FAIL builtins/int conversion allowed
+  FAIL builtins/float conversion allowed
+  FAIL builtins/str conversion allowed
+  FAIL builtins/bool conversion allowed
+  FAIL builtins/bytes conversion allowed
+  FAIL builtins/chr allowed
+  FAIL builtins/ord allowed
+  FAIL builtins/list constructor allowed
+  FAIL builtins/dict constructor allowed
+  FAIL builtins/set constructor allowed
+  FAIL builtins/tuple constructor allowed
+  FAIL builtins/frozenset constructor allowed
+  FAIL builtins/len allowed
+  FAIL builtins/sorted allowed
+  FAIL builtins/isinstance allowed
+  FAIL builtins/isinstance with tuple of types allowed
+  FAIL builtins/range in for loop allowed
+  FAIL builtins/enumerate in for loop allowed
+  FAIL builtins/enumerate with start in for loop allowed
+  FAIL builtins/enumerate in list comprehension allowed
+  FAIL builtins/zip in for loop allowed
+  FAIL builtins/zip in list comprehension allowed
+  FAIL builtins/reversed allowed
+  FAIL builtins/reversed range in for loop allowed
+  FAIL builtins/reversed range with start stop in for loop allowed
+  FAIL builtins/zip with three arguments allowed
+  FAIL builtins/zip with bytes allowed
+  FAIL builtins/repr allowed
+  FAIL builtins/ascii allowed
+  FAIL builtins/bin allowed
+  FAIL builtins/hex allowed
+  FAIL builtins/oct allowed
+  FAIL builtins/all allowed
+  FAIL builtins/any allowed
+  FAIL builtins/slice allowed
+  FAIL builtins/object allowed
+  FAIL builtins/super allowed
+  FAIL builtins/print allowed
+  FAIL builtins/print with end allowed
+  FAIL builtins/print with file allowed
+  FAIL builtins/sorted with reverse allowed
+  FAIL builtins/generator expression in list allowed
+  FAIL builtins/generator expression in tuple allowed
+  FAIL builtins/generator expression in set allowed
+  FAIL builtins/generator expression in frozenset allowed
+  FAIL builtins/generator expression in dict allowed
+  FAIL builtins/generator expression in sum allowed
+  FAIL builtins/generator expression in any allowed
+  FAIL builtins/generator expression in all allowed
+  FAIL builtins/generator expression in min allowed
+  FAIL builtins/generator expression in max allowed
+  FAIL builtins/generator expression in sorted allowed
+  FAIL builtins/generator expression in join allowed
+  FAIL builtins/type not allowed
+  FAIL builtins/getattr not allowed
+  FAIL builtins/setattr not allowed
+  FAIL builtins/hasattr not allowed
+  FAIL builtins/delattr not allowed
+  FAIL builtins/vars not allowed
+  FAIL builtins/dir not allowed
+  FAIL builtins/globals not allowed
+  FAIL builtins/locals not allowed
+  FAIL builtins/id not allowed
+  FAIL builtins/callable not allowed
+  FAIL builtins/eval not allowed
+  FAIL builtins/exec not allowed
+  FAIL builtins/compile not allowed
+  FAIL builtins/__import__ not allowed
+  FAIL builtins/iter not allowed
+  FAIL builtins/next not allowed
+  FAIL builtins/map not allowed
+  FAIL builtins/filter not allowed
+  FAIL builtins/open not allowed
+  FAIL builtins/input not allowed
+  FAIL builtins/issubclass not allowed
+  FAIL builtins/hash not allowed
+  FAIL builtins/format not allowed
+  FAIL builtins/memoryview not allowed
+  FAIL builtins/complex not allowed
+  FAIL builtins/aiter not allowed
+  FAIL builtins/anext not allowed
+  FAIL builtins/breakpoint not allowed
+  FAIL builtins/help not allowed
+  FAIL builtins/exit not allowed
+  FAIL builtins/quit not allowed
+  FAIL builtins/min with key allowed
+  FAIL builtins/min with default not allowed
+  FAIL builtins/max with key allowed
+  FAIL builtins/max with default not allowed
+  FAIL builtins/sorted with key allowed
+  FAIL builtins/sorted with key lambda allowed
+  FAIL builtins/min with key lambda allowed
+  FAIL builtins/max with key lambda allowed
+  FAIL builtins/print multiple values not allowed
+  FAIL builtins/print with sep not allowed
+  FAIL builtins/enumerate assigned not allowed
+  FAIL builtins/enumerate returned not allowed
+  FAIL builtins/zip assigned not allowed
+  FAIL builtins/zip returned not allowed
+  FAIL builtins/generator expression assigned not allowed
+  FAIL builtins/generator expression returned not allowed
+  FAIL builtins/generator expression in non-eager call not allowed
+  FAIL classes/simple class allowed
+  FAIL classes/class with init allowed
+  FAIL classes/class with methods allowed
+  FAIL classes/single inheritance allowed
+  FAIL classes/deep inheritance allowed
+  FAIL classes/inherit from object allowed
+  FAIL classes/class with super allowed
+  FAIL classes/method calling other method allowed
+  FAIL classes/dataclass allowed
+  FAIL classes/dataclass with default allowed
+  FAIL classes/dataclass eq allowed
+  FAIL classes/dataclass unsafe_hash allowed
+  FAIL classes/dataclass kw_only allowed
+  FAIL classes/StrEnum class allowed
+  FAIL classes/IntEnum class allowed
+  FAIL classes/__init__ allowed
+  FAIL classes/__new__ allowed
+  FAIL classes/__repr__ allowed
+  FAIL classes/exception multiple inheritance allowed
+  FAIL classes/exception as second base allowed
+  FAIL classes/multiple inheritance not allowed
+  FAIL classes/nested class not allowed
+  FAIL classes/dataclass frozen not allowed
+  FAIL classes/dataclass order not allowed
+  FAIL classes/dataclass field default_factory not allowed
+  FAIL classes/staticmethod not allowed
+  FAIL classes/classmethod not allowed
+  FAIL classes/property not allowed
+  FAIL classes/arbitrary decorator not allowed
+  FAIL classes/__str__ not allowed
+  FAIL classes/__eq__ not allowed
+  FAIL classes/__hash__ not allowed
+  FAIL classes/__len__ not allowed
+  FAIL classes/__getitem__ not allowed
+  FAIL classes/__setitem__ not allowed
+  FAIL classes/__delitem__ not allowed
+  FAIL classes/__contains__ not allowed
+  FAIL classes/__iter__ not allowed
+  FAIL classes/__next__ not allowed
+  FAIL classes/__add__ not allowed
+  FAIL classes/__sub__ not allowed
+  FAIL classes/__mul__ not allowed
+  FAIL classes/__lt__ not allowed
+  FAIL classes/__le__ not allowed
+  FAIL classes/__gt__ not allowed
+  FAIL classes/__ge__ not allowed
+  FAIL classes/__call__ not allowed
+  FAIL classes/__enter__ not allowed
+  FAIL classes/__exit__ not allowed
+  FAIL classes/__bool__ not allowed
+  FAIL functions/simple function allowed
+  FAIL functions/function with default allowed
+  FAIL functions/function with none default allowed
+  FAIL functions/positional-only parameter allowed
+  FAIL functions/positional-only with keyword allowed
+  FAIL functions/keyword-only parameter allowed
+  FAIL functions/keyword-only after regular params allowed
+  FAIL functions/keyword argument in call allowed
+  FAIL functions/positional and keyword args allowed
+  FAIL functions/recursive function allowed
+  FAIL functions/mutually recursive functions allowed
+  FAIL functions/method allowed
+  FAIL functions/generator yield in for loop allowed
+  FAIL functions/generator yield from allowed
+  FAIL functions/nested function not allowed
+  FAIL functions/nested function with parameters
+  FAIL functions/lambda at module level allowed
+  FAIL functions/lambda in key= expression allowed
+  FAIL functions/lambda in callable param allowed
+  FAIL functions/lambda in callable method param allowed
+  FAIL functions/lambda assigned to variable allowed
+  FAIL functions/lambda in return allowed
+  FAIL functions/lambda in list literal allowed
+  FAIL functions/lambda in dict value allowed
+  FAIL functions/lambda in tuple literal allowed
+  FAIL functions/nullary lambda allowed
+  FAIL functions/multi-param lambda allowed
+  FAIL functions/lambda as default not allowed
+  FAIL functions/*args in definition not allowed
+  FAIL functions/**kwargs in definition not allowed
+  FAIL functions/*args and **kwargs in definition not allowed
+  FAIL functions/starred args in call not allowed
+  FAIL functions/kwargs in call not allowed
+  FAIL functions/global not allowed
+  FAIL functions/nonlocal not allowed
+  FAIL functions/async def not allowed
+  FAIL functions/await not allowed
+  FAIL functions/missing return type annotation not allowed
+  FAIL functions/missing parameter type annotation not allowed
+  FAIL functions/arbitrary decorator not allowed
+  FAIL functions/multiple decorators not allowed
+  FAIL functions/generator yield outside for loop not allowed
+  FAIL functions/generator yield in while loop not allowed
+  FAIL functions/mutable default list not allowed
+  FAIL functions/mutable default dict not allowed
+  FAIL functions/mutable default set not allowed
+  FAIL imports/import sys allowed
+  FAIL imports/import os allowed
+  FAIL imports/from typing import Callable allowed
+  FAIL imports/from typing import Optional allowed
+  FAIL imports/from typing import Union allowed
+  FAIL imports/from typing import List allowed
+  FAIL imports/from typing import Dict allowed
+  FAIL imports/from typing import Set allowed
+  FAIL imports/from typing import Tuple allowed
+  FAIL imports/from typing import multiple imports allowed
+  FAIL imports/from dataclasses import dataclass allowed
+  FAIL imports/from dataclasses import field allowed
+  FAIL imports/from collections.abc import Iterator allowed
+  FAIL imports/from collections.abc import Iterable allowed
+  FAIL imports/from collections.abc import Sequence allowed
+  FAIL imports/from collections.abc import Mapping allowed
+  FAIL imports/from __future__ import annotations allowed
+  FAIL imports/relative import allowed
+  FAIL imports/relative import from submodule allowed
+  FAIL imports/from import as alias allowed
+  FAIL imports/no imports needed for builtins
+  FAIL imports/sys.stdin.readline allowed
+  FAIL imports/sys.stdin.read allowed
+  FAIL imports/sys.stdin.buffer.read allowed
+  FAIL imports/sys.stdin.buffer.read with size allowed
+  FAIL imports/sys.stdin.buffer.readline allowed
+  FAIL imports/sys.stdout.buffer.write allowed
+  FAIL imports/sys.stderr.buffer.write allowed
+  FAIL imports/sys.exit allowed
+  FAIL imports/os.getenv with default allowed
+  FAIL imports/import json not allowed
+  FAIL imports/import re not allowed
+  FAIL imports/import math not allowed
+  FAIL imports/import random not allowed
+  FAIL imports/import collections not allowed
+  FAIL imports/from sys import not allowed
+  FAIL imports/from os import path not allowed
+  FAIL imports/from re import match not allowed
+  FAIL imports/import numpy not allowed
+  FAIL imports/import requests not allowed
+  FAIL imports/import as alias not allowed
+  FAIL imports/from collections (not collections.abc) not allowed
+  FAIL imports/from enum import StrEnum allowed
+  FAIL imports/from enum import IntEnum allowed
+  FAIL imports/star import not allowed
+  FAIL match/sequence pattern rejected
+  FAIL match/mapping pattern rejected
+  FAIL match/star pattern rejected
+  FAIL match/match subject expression validated
+  FAIL match/literal value pattern rejected
+  FAIL match/boolean singleton pattern rejected
+  FAIL match/match with guard rejected
+  FAIL operators/equality allowed
+  FAIL operators/inequality allowed
+  FAIL operators/less than allowed
+  FAIL operators/less than or equal allowed
+  FAIL operators/greater than allowed
+  FAIL operators/greater than or equal allowed
+  FAIL operators/comparison chain allowed
+  FAIL operators/three-way comparison chain allowed
+  FAIL operators/in operator allowed
+  FAIL operators/not in operator allowed
+  FAIL operators/in with string allowed
+  FAIL operators/in with dict allowed
+  FAIL operators/in with set allowed
+  FAIL operators/is None allowed
+  FAIL operators/is not None allowed
+  FAIL operators/is True allowed
+  FAIL operators/is False allowed
+  FAIL operators/is with non-None not allowed
+  FAIL operators/is not with non-None not allowed
+  FAIL operators/is with numeric literal not allowed
+  FAIL operators/is comparing two variables not allowed
+  FAIL operators/del statement not allowed
+  FAIL operators/del from list allowed
+  FAIL operators/del from dict allowed
+  FAIL operators/augmented add allowed
+  FAIL operators/augmented subtract allowed
+  FAIL operators/augmented multiply allowed
+  FAIL operators/augmented divide allowed
+  FAIL operators/augmented floor divide allowed
+  FAIL operators/augmented modulo allowed
+  FAIL operators/augmented power allowed
+  FAIL operators/augmented bitwise and allowed
+  FAIL operators/augmented bitwise or allowed
+  FAIL operators/augmented bitwise xor allowed
+  FAIL operators/augmented left shift allowed
+  FAIL operators/augmented right shift allowed
+  FAIL operators/list augmented extend allowed
+  FAIL operators/walrus in if allowed
+  FAIL operators/walrus operator should not warn
+  FAIL operators/walrus in while allowed
+  FAIL operators/walrus in comprehension condition allowed
+  FAIL operators/walrus in list comprehension allowed
+  FAIL operators/simple f-string allowed
+  FAIL operators/f-string with text allowed
+  FAIL operators/f-string with multiple expressions allowed
+  FAIL operators/f-string with expression allowed
+  FAIL operators/nested f-string allowed
+  FAIL operators/f-string repr conversion allowed
+  FAIL operators/f-string str conversion allowed
+  FAIL operators/f-string ascii conversion not allowed
+  FAIL operators/f-string format spec not allowed
+  FAIL operators/f-string width spec not allowed
+  FAIL operators/f-string padding spec not allowed
+  FAIL operators/f-string alignment spec not allowed
+  FAIL operators/arithmetic operators allowed
+  FAIL operators/power operator allowed
+  FAIL operators/unary minus allowed
+  FAIL operators/unary plus allowed
+  FAIL operators/unary not allowed
+  FAIL operators/bitwise not allowed
+  FAIL operators/bitwise and allowed
+  FAIL operators/bitwise o
