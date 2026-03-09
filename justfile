@@ -17,6 +17,7 @@ quick-check:
             just lang-perl & pids+=($!)
             just lang-python & pids+=($!)
             just lang-javascript & pids+=($!)
+            just lang-java & pids+=($!)
             for pid in "${pids[@]}"; do wait "$pid" || rc=1; done
         fi
     } 2>&1 | tee "$log"
@@ -140,7 +141,7 @@ fmt *ARGS:
 _self-transpile target="python":
     #!/usr/bin/env bash
     set -euo pipefail
-    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js [taytsh]=ty)
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js [java]=java [taytsh]=ty)
     mkdir -p tongues/.out
     cd tongues && uv run bin/tongues --target {{target}} -o ".out/tongues.${ext[{{target}}]}" src
     if [ "{{target}}" = "python" ]; then
@@ -182,6 +183,25 @@ lang-ruby:
         | uv run bin/tongues --project --target ruby -o .out/test_harness.rb
     ruby tests/test-transpiled.rb ".out/tongues.rb"
     uv run pytest tests/test_self_consistency.py --transpiled ".out/tongues.rb" -v
+
+# Self-transpile to Java and verify compilation succeeds
+lang-java:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just _self-transpile java
+    echo "Compiling self-transpiled Java..."
+    tmpdir=$(mktemp -d)
+    trap 'rm -rf "$tmpdir"' EXIT
+    cp tongues/.out/tongues.java "$tmpdir/Main.java"
+    if ! javac -encoding UTF-8 "$tmpdir/Main.java" -d "$tmpdir" 2>&1; then
+        echo "Java compilation FAILED"
+        exit 1
+    fi
+    echo "Java compilation succeeded."
+    echo ""
+    echo "============================================================"
+    echo "Java self-transpilation: PASSED"
+    echo "============================================================"
 
 # Self-transpile and test against transpiled Perl binary
 lang-perl:
@@ -358,12 +378,14 @@ test:
         just "lang-$lang"
     }
     _st python & pid_py=$!
+    _st java & pid_java=$!
     _st javascript & pid_js=$!
     _st ruby & pid_rb=$!
     _st perl & pid_pl=$!
     _st taytsh-treewalker & pid_ty_tw=$!
     _st taytsh-vm & pid_ty_vm=$!
     wait $pid_py && results[lang-python]=✅ || { results[lang-python]=❌; failed=1; }
+    wait $pid_java && results[lang-java]=✅ || { results[lang-java]=❌; failed=1; }
     wait $pid_js && results[lang-javascript]=✅ || { results[lang-javascript]=❌; failed=1; }
     wait $pid_rb && results[lang-ruby]=✅ || { results[lang-ruby]=❌; failed=1; }
     wait $pid_pl && results[lang-perl]=✅ || { results[lang-perl]=❌; failed=1; }
@@ -376,7 +398,7 @@ test:
     echo "══════════════════════════════════════"
     printf "%-16s %s\n" "TARGET" "STATUS"
     printf "%-16s %s\n" "──────" "──────"
-    for t in versions tests lang-python lang-javascript lang-ruby lang-perl lang-taytsh-tw lang-taytsh-vm consistency; do
+    for t in versions tests lang-python lang-java lang-javascript lang-ruby lang-perl lang-taytsh-tw lang-taytsh-vm consistency; do
         printf "%-16s %s\n" "$t" "${results[$t]}"
     done
     echo "══════════════════════════════════════"

@@ -1,0 +1,59 @@
+=== math functions
+System.out.println(String.valueOf(Math.abs(-5)));
+
+=== float math functions
+int r = (int) Math.round(3.7);
+
+=== conversion functions
+double f = 42;
+int n = (int) 3.14;
+
+=== ParseInt and ParseFloat
+int n = Integer.parseInt("42", 10);
+
+=== FormatInt
+String hex = Integer.toString(255, 16);
+
+=== RuneToInt and RuneFromInt
+int n = (int) 'A';
+
+=== IsNaN and IsInf
+System.out.println(String.valueOf(Double.isNaN(x)));
+
+=== Len on various types
+System.out.println(String.valueOf("hello".length()));
+
+=== DivMod
+q = 17 / 5;
+r = 17 - q * 5;
+
+=== DivMod negative dividend
+q = -7 / 2;
+r = -7 - q * 2;
+
+=== Sqrt function
+double x = Math.sqrt(2.0);
+
+=== Floor function
+int n = (int) Math.floor(3.7);
+
+=== Ceil function
+int n = (int) Math.ceil(3.2);
+
+=== FloorDiv negative operands
+int q = Math.floorDiv(-7, 2);
+
+=== PythonMod negative dividend
+int r = Math.floorMod(-7, 2);
+
+=== RangeList
+List<Integer> xs = IntStream.range(0, 5).boxed().collect(Collectors.toList());
+
+=== RangeList with step
+List<Integer> xs = IntStream.iterate(0, i -> i < 10, i -> i + 2).boxed().collect(Collectors.toList());
+
+=== ListFrom bytes
+List<Integer> xs = IntStream.range(0, data.length).map(i -> data[i] & 0xFF).boxed().collect(Collectors.toList());
+
+=== IsNil check
+x == null

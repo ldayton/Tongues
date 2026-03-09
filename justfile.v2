@@ -55,7 +55,7 @@ _transpile-tongues target:
     #!/usr/bin/env bash
     set -euo pipefail
     start=$SECONDS
-    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js [taytsh]=ty)
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js [java]=java [taytsh]=ty)
     mkdir -p tongues/.out
     cd tongues && uv run bin/tongues --target {{target}} -o ".out/tongues.${ext[{{target}}]}" src
     printf '\033[32m[transpile-tongues:{{target}}] %ds\033[0m\n' "$((SECONDS - start))"
@@ -104,6 +104,118 @@ lang target:
     for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
     exit $failed
 
+# Self-transpile to Java, compile, and run tests
+lang-java:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    just -f {{justfile()}} _transpile-tongues java
+    just -f {{justfile()}} _compile-java
+    pids=()
+    failed=0
+    just -f {{justfile()}} cross-equivalence java & pids+=($!)
+    just -f {{justfile()}} _treewalker-java & pids+=($!)
+    just -f {{justfile()}} _vm-java & pids+=($!)
+    start=$SECONDS
+    cd tongues
+    java -cp .out/java-classes TestTranspiled .out/java-classes; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[test:java] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[test:java] %ds (FAILED)\033[0m\n' "$elapsed"
+        failed=1
+    fi
+    for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+    exit $failed
+
+# Compile transpiled Java to .class files
+_compile-java:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    start=$SECONDS
+    echo "Compiling self-transpiled Java..."
+    mkdir -p tongues/.out/java-classes
+    cp tongues/.out/tongues.java tongues/.out/java-classes/Main.java
+    if ! javac -encoding UTF-8 tongues/.out/java-classes/Main.java -d tongues/.out/java-classes 2>&1; then
+        printf '\033[31m[compile:java] %ds (FAILED)\033[0m\n' "$((SECONDS - start))"
+        exit 1
+    fi
+    # Also compile the test harness
+    if ! javac -encoding UTF-8 tongues/tests/TestTranspiled.java -d tongues/.out/java-classes 2>&1; then
+        printf '\033[31m[compile:java] harness failed\033[0m\n'
+        exit 1
+    fi
+    printf '\033[32m[compile:java] %ds\033[0m\n' "$((SECONDS - start))"
+
+# Run taytsh app tests through the treewalker with Java binary
+_treewalker-java:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    start=$SECONDS
+    passed=0; failed=0
+    cd tongues
+    for f in tests/taytsh/app/*.ty; do
+        name=$(basename "$f" .ty)
+        if java -cp .out/java-classes Main taytsh "$f" >/dev/null 2>&1; then
+            passed=$((passed + 1))
+        else
+            echo "  FAIL $name"
+            failed=$((failed + 1))
+        fi
+    done
+    elapsed=$((SECONDS - start))
+    if [ $failed -eq 0 ]; then
+        printf '\033[32m[treewalker:java] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
+    else
+        printf '\033[31m[treewalker:java] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
+        exit 1
+    fi
+
+# Run taytsh app tests through the VM with Java binary
+_vm-java:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    start=$SECONDS
+    passed=0; failed=0
+    cd tongues
+    for f in tests/taytsh/app/*.ty; do
+        name=$(basename "$f" .ty)
+        if java -cp .out/java-classes Main taytsh --vm "$f" >/dev/null 2>&1; then
+            passed=$((passed + 1))
+        else
+            echo "  FAIL $name"
+            failed=$((failed + 1))
+        fi
+    done
+    elapsed=$((SECONDS - start))
+    if [ $failed -eq 0 ]; then
+        printf '\033[32m[vm:java] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
+    else
+        printf '\033[31m[vm:java] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
+        exit 1
+    fi
+
+# Run test suite with Java binary
+_test-tongues-java:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    start=$SECONDS
+    cd tongues
+    java -cp .out/java-classes TestTranspiled .out/java-classes; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[test:java] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[test:java] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
+
+# Run test suite through VM with Java binary (not yet implemented)
+_vm-test-tongues-java:
+    #!/usr/bin/env bash
+    # VM tests for Java not yet implemented - would require --via-vm support in TestTranspiled.java
+    printf '\033[33m[vm-test-tongues:java] skipped (not implemented)\033[0m\n'
+
 # Type-check transpiled Python output
 _pyright:
     #!/usr/bin/env bash
@@ -143,7 +255,7 @@ idempotence:
 cross-equivalence target:
     #!/usr/bin/env bash
     set -euo pipefail
-    declare -A ext=([ruby]=rb [perl]=pl [javascript]=js)
+    declare -A ext=([ruby]=rb [perl]=pl [javascript]=js [java]=java)
     e=${ext[{{target}}]}
     start=$SECONDS
     cd tongues

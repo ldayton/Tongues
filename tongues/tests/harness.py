@@ -223,6 +223,7 @@ def check_cli_assertions(
             )
 
 
+from src.backend.java import emit_java as emit_java
 from src.backend.javascript import emit_javascript as emit_javascript
 from src.backend.perl import emit_perl as emit_perl
 from src.backend.python import emit_python as emit_python
@@ -265,12 +266,14 @@ EMITTERS = {
     "perl": emit_perl,
     "ruby": emit_ruby,
     "javascript": emit_javascript,
+    "java": emit_java,
 }
 
 RUNTIMES = {
     "python": [sys.executable],
     "perl": ["perl"],
     "ruby": ["ruby"],
+    "java": [str(Path(__file__).parent / "run-java.sh")],
 }
 
 
@@ -1329,12 +1332,22 @@ def discover_app_tests(
     return results
 
 
+_RUNTIME_DEPS: dict[str, list[str]] = {
+    "java": ["javac", "java"],
+}
+
+
 def _available_targets() -> list[str]:
     """Return targets whose runtimes are available."""
     available = []
     for target in sorted(RUNTIMES):
         cmd = RUNTIMES[target]
-        if target == "python" or shutil.which(cmd[0]):
+        if target == "python":
+            available.append(target)
+        elif target in _RUNTIME_DEPS:
+            if all(shutil.which(dep) for dep in _RUNTIME_DEPS[target]):
+                available.append(target)
+        elif shutil.which(cmd[0]):
             available.append(target)
     return available
 

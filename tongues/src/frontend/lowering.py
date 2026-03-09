@@ -2278,7 +2278,7 @@ def _lower_conversion_call(
                 if isinstance(arg, TIndex):
                     return _make_call(pos, "RuneToInt", [arg])
                 if isinstance(arg, TCall) and arg.func == "ToString":
-                    inner = arg.args[0]
+                    inner = arg.args[0].value
                     if isinstance(inner, TIndex):
                         return _make_call(pos, "RuneToInt", [inner])
                 indexed = TIndex(pos, arg, TIntLit(pos, 0, "0", {}), {})
@@ -3443,7 +3443,7 @@ def _lower_bytes_method(
 ) -> TExpr:
     """Lower bytes method calls."""
     if method == "decode":
-        return _make_call(pos, "Decode", [obj])
+        return _make_call_ann(pos, "Decode", [obj], {"type": "string"})
     if method == "upper":
         return _make_call(pos, "Upper", [obj])
     if method == "lower":
@@ -3727,14 +3727,27 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         and _is_ast(get_node(obj_node, "func"), "Name")
         and get_str(get_node(obj_node, "func"), "id") in ("hex", "oct", "bin")
     ):
-        lower_jv = slice_node.get("lower")
-        upper_jv = slice_node.get("upper")
-        if (
-            isinstance(lower_jv, JDict)
-            and _get_const_int(lower_jv.entries) == 2
-            and (upper_jv is None or isinstance(upper_jv, JNull))
-        ):
-            return _lower_expr(obj_node, env, ctx)
+        fn_id = get_str(get_node(obj_node, "func"), "id")
+        base_map = {"hex": 16, "oct": 8, "bin": 2}
+        if fn_id in base_map:
+            lower_jv = slice_node.get("lower")
+            upper_jv = slice_node.get("upper")
+            if (
+                isinstance(lower_jv, JDict)
+                and _get_const_int(lower_jv.entries) == 2
+                and (upper_jv is None or isinstance(upper_jv, JNull))
+            ):
+                if fn_id == "hex":
+                    return _lower_expr(obj_node, env, ctx)
+                call_args = get_nodes(obj_node, "args")
+                if call_args and isinstance(call_args[0], dict):
+                    arg = _lower_expr(call_args[0], env, ctx)
+                    base_val = base_map[fn_id]
+                    return _make_call(
+                        pos,
+                        "FormatInt",
+                        [arg, TIntLit(pos, base_val, str(base_val), {})],
+                    )
     obj = _lower_expr(obj_node, env, ctx)
     obj_type = _infer_expr_type(obj_node, env, ctx)
     if _is_ast(slice_node, "Slice"):
@@ -5127,7 +5140,7 @@ def _replace_subscript_in_ast(node: ASTNode, key: str, name: str) -> None:
         v = node[k]
         if isinstance(v, dict):
             if _subscript_key(v) == key:
-                node[k] = _make_name_node(name, v)
+                node[k] = JDict(_make_name_node(name, v))
             else:
                 _replace_subscript_in_ast(v, key, name)
         elif isinstance(v, JDict):

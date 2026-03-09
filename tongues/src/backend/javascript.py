@@ -887,7 +887,7 @@ class _JavaScriptEmitter(Emitter):
         body = for_stmt.body
         if len(body) != 1:
             return None
-        src_obj = self._step_slice_source(body[0], let_stmt.name)
+        is_string, src_obj = self._step_slice_source(body[0], let_stmt.name)
         if src_obj is None:
             return None
         src = self._expr(src_obj)
@@ -896,7 +896,6 @@ class _JavaScriptEmitter(Emitter):
         step_expr = range_args[2]
         start_val = self._static_int(start_expr)
         step_val = self._static_int(step_expr)
-        is_string = self._step_slice_is_string(body[0], let_stmt.name)
         spread = "[..." + src + "]" if is_string else src
         suffix = '.join("")' if is_string else ""
         if start_val is not None and step_val is not None:
@@ -944,13 +943,15 @@ class _JavaScriptEmitter(Emitter):
                 )
         return None
 
-    def _step_slice_source(self, stmt: TStmt, acc_name: str) -> TExpr | None:
+    def _step_slice_source(
+        self, stmt: TStmt, acc_name: str
+    ) -> tuple[bool, TExpr | None]:
         if isinstance(stmt, TExprStmt):
             call = stmt.expr
             if isinstance(call, TCall) and self._is_append_to(call, acc_name):
                 elem = call.args[1].value
                 if isinstance(elem, TIndex):
-                    return elem.obj
+                    return False, elem.obj
         if isinstance(stmt, TAssignStmt) and isinstance(stmt.target, TVar):
             if stmt.target.name == acc_name and isinstance(stmt.value, TCall):
                 if (
@@ -965,8 +966,8 @@ class _JavaScriptEmitter(Emitter):
                     ):
                         inner = second.args[0].value
                         if isinstance(inner, TIndex):
-                            return inner.obj
-        return None
+                            return True, inner.obj
+        return False, None
 
     def _step_slice_is_string(self, stmt: TStmt, acc_name: str) -> bool:
         if isinstance(stmt, TAssignStmt) and isinstance(stmt.target, TVar):

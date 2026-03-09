@@ -1,0 +1,54 @@
+=== if-else chain
+} else if (x == 0) {
+    return "zero";
+} else {
+    return "negative";
+}
+
+=== while loop
+while (n > 0) {
+    total += n;
+    n -= 1;
+}
+
+=== while true with break
+while (true) {
+
+=== for range single arg
+for (int i = 0; i < 10; i++) {
+
+=== for range two args
+for (int i = 5; i < 10; i++) {
+
+=== for range three args
+for (int i = 10; i > 0; i--) {
+
+=== for over list single var
+for (int x : xs) {
+
+=== for over map keys
+for (var k : m.keySet()) {
+
+=== for over map key-value pairs
+for (var __entry0 : m.entrySet()) {
+    var k = __entry0.getKey();
+    var v = __entry0.getValue();
+
+=== for over string characters
+for (char ch : "hello".toCharArray()) {
+
+=== for over set
+for (int v : s) {
+
+=== break and continue
+continue;
+
+=== enumerate over list
+for (int i = 0; i < xs.size(); i++) {
+    var v = xs.get(i);
+
+=== negated condition
+if (!done) {
+
+=== ternary expression
+return x < lo ? lo : (x > hi ? hi : x);
