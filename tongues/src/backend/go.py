@@ -4389,6 +4389,11 @@ class _GoEmitter(Emitter):
                 if go_t != "any":
                     return go_t + "{}"
             return "[]any{}"
+        # Python builtins oct() and bin()
+        if isinstance(func, TVar) and func.name == "oct":
+            return '"0o" + strconv.FormatInt(int64(' + self._a(args, 0) + "), 8)"
+        if isinstance(func, TVar) and func.name == "bin":
+            return '"0b" + strconv.FormatInt(int64(' + self._a(args, 0) + "), 2)"
         # Builtin call
         if isinstance(func, TVar) and func.name in BUILTIN_NAMES:
             return self._builtin_call(func.name, args, expr.annotations)
