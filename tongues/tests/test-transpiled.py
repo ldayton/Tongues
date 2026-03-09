@@ -1288,8 +1288,6 @@ def _run_tests_parallel(
 ):
     """Run collected tests in parallel using Pebble ProcessPool with per-test timeout."""
     results = []
-    total = len(collected)
-    completed = 0
     with ProcessPool(
         max_workers=num_workers,
         initializer=_worker_init,
@@ -1304,27 +1302,24 @@ def _run_tests_parallel(
                 result = future.result()
                 results.append(result)
                 status = result[2]
+                err = result[3]
             except FuturesTimeoutError:
-                results.append((phase, test_id, "fail", f"Test timed out after {timeout}s"))
+                err = f"Test timed out after {timeout}s"
+                results.append((phase, test_id, "fail", err))
                 status = "fail"
             except Exception as e:
-                results.append((phase, test_id, "fail", f"Worker error: {e}"))
+                err = f"Worker error: {e}"
+                results.append((phase, test_id, "fail", err))
                 status = "fail"
-            completed += 1
             if status == "pass":
-                char = "."
-            elif status == "fail":
-                char = "F"
+                print(f"PASS {phase}::{test_id}")
+            elif status == "skip":
+                print(f"SKIP {phase}::{test_id}")
             else:
-                char = "s"
-            sys.stdout.write(char)
-            if completed % 100 == 0:
-                sys.stdout.write(f" [{completed}/{total}]\n")
-            sys.stdout.flush()
-    # Final newline if not already on a fresh line
-    if completed % 100 != 0:
-        sys.stdout.write(f" [{completed}/{total}]\n")
-        sys.stdout.flush()
+                print(f"FAIL {phase}::{test_id}")
+                if err:
+                    for line in err.split("\n"):
+                        print(f"  {line}")
     return results
 
 
@@ -1441,119 +1436,25 @@ if __name__ == "__main__":
     total_skip = 0
     failures = []
 
-    # All test types are now parallelized
-    SEQUENTIAL_RUNNERS = {}
-
-    # Parallelizable test types
-    PARALLEL_RUNNERS = {"cli", "phase", "ty_app", "lowering", "linker", "codegen", "emit", "app", "ordering"}
-
-    if num_workers > 1:
-        # Collect parallelizable tests
-        parallel_tests = _collect_tests(TESTS)
-        if parallel_tests:
-            print(f"Collected {len(parallel_tests)} parallelizable tests")
-            t_start = time.monotonic()
-            parallel_results = _run_tests_parallel(
-                parallel_tests, num_workers, transpiled_path, harness_path, via_vm_path
-            )
-            t_elapsed = time.monotonic() - t_start
-            print(f"Parallel execution completed in {t_elapsed:.1f}s")
-            # Group results by phase for reporting
-            phase_results_map = {}
-            for phase, tid, status, err in parallel_results:
-                if phase not in phase_results_map:
-                    phase_results_map[phase] = []
-                phase_results_map[phase].append((status, tid, err))
-            # Report parallel results
-            phase_order = list(dict.fromkeys(t[0] for t in parallel_tests))
-            for phase in phase_order:
-                if phase in phase_results_map:
-                    phase_results = phase_results_map[phase]
-                    pass_count = sum(1 for s, _, _ in phase_results if s == "pass")
-                    fail_count = sum(1 for s, _, _ in phase_results if s == "fail")
-                    skip_count = sum(1 for s, _, _ in phase_results if s == "skip")
-                    total_pass += pass_count
-                    total_fail += fail_count
-                    total_skip += skip_count
-                    status = "FAIL" if fail_count > 0 else "ok"
-                    counts = f"{pass_count} passed"
-                    if fail_count > 0:
-                        counts += f", {fail_count} failed"
-                    if skip_count > 0:
-                        counts += f", {skip_count} skipped"
-                    print(f"{phase}: {status} ({counts})")
-                    for s, tid, err in phase_results:
-                        if s == "fail":
-                            failures.append((phase, tid, err))
-                            print(f"  FAIL {tid}")
-        # Run sequential tests
-        for section_name, phases in TESTS:
-            for phase_name, cfg in phases:
-                runner_name = cfg["run"]
-                if runner_name not in SEQUENTIAL_RUNNERS:
-                    continue
-                test_dir = os.path.join(TESTS_DIR, cfg["dir"])
-                if not os.path.isdir(test_dir):
-                    continue
-                phase_results = SEQUENTIAL_RUNNERS[runner_name](test_dir)
-                pass_count = sum(1 for s, _, _ in phase_results if s == "pass")
-                fail_count = sum(1 for s, _, _ in phase_results if s == "fail")
-                skip_count = sum(1 for s, _, _ in phase_results if s == "skip")
-                total_pass += pass_count
-                total_fail += fail_count
-                total_skip += skip_count
-                status = "FAIL" if fail_count > 0 else "ok"
-                counts = f"{pass_count} passed"
-                if fail_count > 0:
-                    counts += f", {fail_count} failed"
-                if skip_count > 0:
-                    counts += f", {skip_count} skipped"
-                print(f"{phase_name}: {status} ({counts})")
-                for s, tid, err in phase_results:
-                    if s == "fail":
-                        failures.append((phase_name, tid, err))
-                        print(f"  FAIL {tid}")
-    else:
-        # Sequential execution (original behavior)
-        RUNNERS = {
-            "cli": run_cli_tests,
-            "linker": run_linker_tests,
-            "lowering": run_lowering_tests,
-            "codegen": run_codegen_tests,
-            "emit": run_emit_tests,
-            "app": run_app_tests,
-            "ty_app": run_ty_app_tests,
-            "ordering": run_ordering_tests,
-        }
-        for section_name, phases in TESTS:
-            for phase_name, cfg in phases:
-                test_dir = os.path.join(TESTS_DIR, cfg["dir"])
-                if not os.path.isdir(test_dir):
-                    continue
-                runner_name = cfg["run"]
-                if runner_name == "phase":
-                    phase_results = run_phase_tests(test_dir, phase_name, cfg)
-                elif runner_name in RUNNERS:
-                    phase_results = RUNNERS[runner_name](test_dir)
-                else:
-                    phase_results = []
-                pass_count = sum(1 for s, _, _ in phase_results if s == "pass")
-                fail_count = sum(1 for s, _, _ in phase_results if s == "fail")
-                skip_count = sum(1 for s, _, _ in phase_results if s == "skip")
-                total_pass += pass_count
-                total_fail += fail_count
-                total_skip += skip_count
-                status = "FAIL" if fail_count > 0 else "ok"
-                counts = f"{pass_count} passed"
-                if fail_count > 0:
-                    counts += f", {fail_count} failed"
-                if skip_count > 0:
-                    counts += f", {skip_count} skipped"
-                print(f"{phase_name}: {status} ({counts})")
-                for s, tid, err in phase_results:
-                    if s == "fail":
-                        failures.append((phase_name, tid, err))
-                        print(f"  FAIL {tid}")
+    # Collect and run all tests in parallel
+    parallel_tests = _collect_tests(TESTS)
+    if parallel_tests:
+        print(f"Collected {len(parallel_tests)} tests")
+        t_start = time.monotonic()
+        parallel_results = _run_tests_parallel(
+            parallel_tests, num_workers, transpiled_path, harness_path, via_vm_path
+        )
+        t_elapsed = time.monotonic() - t_start
+        print(f"Completed in {t_elapsed:.1f}s")
+        # Count results and collect failures
+        for phase, tid, status, err in parallel_results:
+            if status == "pass":
+                total_pass += 1
+            elif status == "fail":
+                total_fail += 1
+                failures.append((phase, tid, err))
+            else:
+                total_skip += 1
                 
     print()
     if failures:
@@ -1561,14 +1462,10 @@ if __name__ == "__main__":
         print(f"FAILURES [{target_name}]" if target_name else "FAILURES")
         print("=" * 60)
         for phase, tid, err in failures:
-            print()
-            print(f"{phase} :: {tid}")
-            print(err)
+            print(f"  {phase}::{tid}")
             # GitHub Actions error annotation
-            title = f"{phase} :: {tid}"
-            print(
-                f"::error title={title}::{err.splitlines()[0] if err else 'Test failed'}"
-            )
+            title = f"{phase}::{tid}"
+            print(f"::error title={title}::{err.splitlines()[0] if err else 'Test failed'}")
         print()
 
     print("=" * 60)
