@@ -3396,7 +3396,7 @@ class _GoEmitter(Emitter):
             saved_var_types: list[tuple[str, TType | None]] = []
             if pat.name is not None and not pat_unused:
                 bname = _restore_name(pat.name, case.annotations)
-                if bname != switch_var:
+                if bname != switch_var and _stmts_ref_var(case.body, pat.name):
                     if bname in self.struct_names or bname in self._interface_names:
                         self._var_aliases[bname] = switch_var
                         aliases_added.append(bname)
@@ -4154,9 +4154,38 @@ class _GoEmitter(Emitter):
         prov = expr.annotations.get("provenance", "")
         if prov == "none_coalesce":
             return self._none_coalesce(expr)
-        # Go has no ternary operator — this should not normally be reached
-        # as ternaries should be handled at the statement level
-        return self._expr(expr.then_expr)
+        # Go has no ternary operator - emit as IIFE
+        # Try to get type from annotation first
+        ann_type = expr.annotations.get("type", "")
+        if ann_type:
+            ret_type = self._ann_type_to_go(ann_type)
+        else:
+            then_type = self._infer_go_type(expr.then_expr)
+            else_type = self._infer_go_type(expr.else_expr)
+            # Determine return type - use then_type if else is nil, or common type
+            if isinstance(expr.else_expr, TNilLit):
+                ret_type = then_type or "any"
+            elif isinstance(expr.then_expr, TNilLit):
+                ret_type = else_type or "any"
+            elif then_type == else_type:
+                ret_type = then_type or "any"
+            else:
+                # Try using then_type as it's usually the non-nil branch
+                ret_type = then_type or else_type or "any"
+        cond = self._expr(expr.cond)
+        then = self._expr(expr.then_expr)
+        els = self._expr(expr.else_expr)
+        return (
+            "func() "
+            + ret_type
+            + " { if "
+            + cond
+            + " { return "
+            + then
+            + " } else { return "
+            + els
+            + " } }()"
+        )
 
     def _none_coalesce(self, expr: TTernary) -> str:
         cond = expr.cond
