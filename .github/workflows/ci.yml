@@ -81,7 +81,7 @@ jobs:
             tongues/.out/test_harness.js
 
   # ---------------------------------------------------------------------------
-  # Python: test, retranspile, fixed-point, treewalker, vm, pyright
+  # Python: test, idempotence, treewalker, vm, pyright
   # ---------------------------------------------------------------------------
 
   test-tongues-python:
@@ -97,7 +97,7 @@ jobs:
       - run: docker run --rm -v $PWD:/workspace tongues-python
           python3 tongues/tests/test-transpiled.py .out/tongues.py
 
-  retranspile-python:
+  idempotence:
     runs-on: ubuntu-latest
     needs: transpile-python
     steps:
@@ -107,19 +107,7 @@ jobs:
           name: transpiled-python
           path: tongues/.out
       - run: docker build -t tongues-python docker/python
-      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _retranspile python
-
-  fixed-point-python:
-    runs-on: ubuntu-latest
-    needs: transpile-python
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
-        with:
-          name: transpiled-python
-          path: tongues/.out
-      - run: docker build -t tongues-python docker/python
-      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 fixed-point python
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 idempotence
 
   pyright:
     runs-on: ubuntu-latest
@@ -158,7 +146,7 @@ jobs:
       - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _vm python
 
   # ---------------------------------------------------------------------------
-  # Ruby: test, retranspile, fixed-point, treewalker, vm
+  # Ruby: test, cross-equivalence, treewalker, vm
   # ---------------------------------------------------------------------------
 
   test-tongues-ruby:
@@ -174,7 +162,7 @@ jobs:
       - run: docker run --rm -v $PWD:/workspace tongues-ruby
           ruby tongues/tests/test-transpiled.rb .out/tongues.rb
 
-  retranspile-ruby:
+  cross-equivalence-ruby:
     runs-on: ubuntu-latest
     needs: transpile-ruby
     steps:
@@ -184,19 +172,7 @@ jobs:
           name: transpiled-ruby
           path: tongues/.out
       - run: docker build -t tongues-ruby docker/ruby
-      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile.v2 _retranspile ruby
-
-  fixed-point-ruby:
-    runs-on: ubuntu-latest
-    needs: transpile-ruby
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
-        with:
-          name: transpiled-ruby
-          path: tongues/.out
-      - run: docker build -t tongues-ruby docker/ruby
-      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile.v2 fixed-point ruby
+      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile.v2 cross-equivalence ruby
 
   treewalker-apptests-ruby:
     runs-on: ubuntu-latest
@@ -223,7 +199,7 @@ jobs:
       - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile.v2 _vm ruby
 
   # ---------------------------------------------------------------------------
-  # Perl: test, retranspile, fixed-point, treewalker, vm
+  # Perl: test, cross-equivalence, treewalker, vm
   # ---------------------------------------------------------------------------
 
   test-tongues-perl:
@@ -239,7 +215,7 @@ jobs:
       - run: docker run --rm -v $PWD:/workspace tongues-perl
           perl tongues/tests/test-transpiled.pl .out/tongues.pl
 
-  retranspile-perl:
+  cross-equivalence-perl:
     runs-on: ubuntu-latest
     needs: transpile-perl
     steps:
@@ -249,19 +225,7 @@ jobs:
           name: transpiled-perl
           path: tongues/.out
       - run: docker build -t tongues-perl docker/perl
-      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile.v2 _retranspile perl
-
-  fixed-point-perl:
-    runs-on: ubuntu-latest
-    needs: transpile-perl
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
-        with:
-          name: transpiled-perl
-          path: tongues/.out
-      - run: docker build -t tongues-perl docker/perl
-      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile.v2 fixed-point perl
+      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile.v2 cross-equivalence perl
 
   treewalker-apptests-perl:
     runs-on: ubuntu-latest
@@ -288,7 +252,7 @@ jobs:
       - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile.v2 _vm perl
 
   # ---------------------------------------------------------------------------
-  # JavaScript: test, fixed-point, treewalker, vm (no retranspile, pending #224)
+  # JavaScript: test, cross-equivalence, treewalker, vm
   # ---------------------------------------------------------------------------
 
   test-tongues-javascript:
@@ -304,7 +268,7 @@ jobs:
       - run: docker run --rm -v $PWD:/workspace tongues-javascript
           node tongues/tests/test-transpiled.js .out/tongues.js
 
-  fixed-point-javascript:
+  cross-equivalence-javascript:
     runs-on: ubuntu-latest
     needs: transpile-javascript
     steps:
@@ -314,7 +278,7 @@ jobs:
           name: transpiled-javascript
           path: tongues/.out
       - run: docker build -t tongues-javascript docker/javascript
-      - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile.v2 fixed-point javascript
+      - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile.v2 cross-equivalence javascript
 
   treewalker-apptests-javascript:
     runs-on: ubuntu-latest
@@ -442,26 +406,23 @@ jobs:
       - pytest-gen-tycheck
       - pytest-gen-softfloat
       - test-tongues-python
-      - retranspile-python
-      - fixed-point-python
+      - idempotence
       - treewalker-apptests-python
       - vm-apptests-python
       - vm-test-tongues-python
       - pyright
       - test-tongues-ruby
-      - retranspile-ruby
-      - fixed-point-ruby
+      - cross-equivalence-ruby
       - treewalker-apptests-ruby
       - vm-apptests-ruby
       - vm-test-tongues-ruby
       - test-tongues-perl
-      - retranspile-perl
-      - fixed-point-perl
+      - cross-equivalence-perl
       - treewalker-apptests-perl
       - vm-apptests-perl
       - vm-test-tongues-perl
       - test-tongues-javascript
-      - fixed-point-javascript
+      - cross-equivalence-javascript
       - treewalker-apptests-javascript
       - vm-apptests-javascript
       - vm-test-tongues-javascript
@@ -473,26 +434,23 @@ jobs:
             "${{ needs.pytest-gen-tycheck.result }}" \
             "${{ needs.pytest-gen-softfloat.result }}" \
             "${{ needs.test-tongues-python.result }}" \
-            "${{ needs.retranspile-python.result }}" \
-            "${{ needs.fixed-point-python.result }}" \
+            "${{ needs.idempotence.result }}" \
             "${{ needs.treewalker-apptests-python.result }}" \
             "${{ needs.vm-apptests-python.result }}" \
             "${{ needs.vm-test-tongues-python.result }}" \
             "${{ needs.pyright.result }}" \
             "${{ needs.test-tongues-ruby.result }}" \
-            "${{ needs.retranspile-ruby.result }}" \
-            "${{ needs.fixed-point-ruby.result }}" \
+            "${{ needs.cross-equivalence-ruby.result }}" \
             "${{ needs.treewalker-apptests-ruby.result }}" \
             "${{ needs.vm-apptests-ruby.result }}" \
             "${{ needs.vm-test-tongues-ruby.result }}" \
             "${{ needs.test-tongues-perl.result }}" \
-            "${{ needs.retranspile-perl.result }}" \
-            "${{ needs.fixed-point-perl.result }}" \
+            "${{ needs.cross-equivalence-perl.result }}" \
             "${{ needs.treewalker-apptests-perl.result }}" \
             "${{ needs.vm-apptests-perl.result }}" \
             "${{ needs.vm-test-tongues-perl.result }}" \
             "${{ needs.test-tongues-javascript.result }}" \
-            "${{ needs.fixed-point-javascript.result }}" \
+            "${{ needs.cross-equivalence-javascript.result }}" \
             "${{ needs.treewalker-apptests-javascript.result }}" \
             "${{ needs.vm-apptests-javascript.result }}" \
             "${{ needs.vm-test-tongues-javascript.result }}"; do
