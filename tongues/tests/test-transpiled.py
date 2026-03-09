@@ -3,16 +3,20 @@
 
 Loads the transpiled file once, then runs all .tests cases in-process.
 Shared parsing/assertion logic is transpiled from tests/shared/test_harness.py.
+
+Supports parallel execution with -n <num> or -n auto (like pytest-xdist).
 """
 
 import glob
 import importlib.util
 import io
+import multiprocessing
 import os
 import subprocess
 import sys
 import tempfile
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 TONGUES_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TESTS_DIR = os.path.join(TONGUES_DIR, "tests")
@@ -231,6 +235,13 @@ _main_func = None
 _use_vm = False
 _vm_compiled = None
 
+# Worker process state (used by parallel execution)
+_worker_mod = None
+_worker_main_func = None
+_worker_harness_mod = None
+_worker_use_vm = False
+_worker_vm_compiled = None
+
 
 # ---------------------------------------------------------------------------
 # VM mode: parse + compile .ty once, invoke per test
@@ -314,6 +325,14 @@ def run_inprocess(argv, stdin_data="", stdin_bytes=None):
     return {"stdout": out.getvalue(), "stderr": err.getvalue(), "exit": code}
 
 
+def _get_json_parse():
+    """Get json_parse function from harness module (works in main and worker processes)."""
+    if _worker_harness_mod is not None:
+        return _worker_harness_mod.json_parse
+    # Fall back to global (main process)
+    return json_parse
+
+
 def run_transpiled_phase(source, cli_args, is_taytsh=False, expect_json=True):
     suffix = ".ty" if is_taytsh else ".py"
     fd, tmp_path = tempfile.mkstemp(suffix=suffix)
@@ -338,7 +357,7 @@ def run_transpiled_phase(source, cli_args, is_taytsh=False, expect_json=True):
     if not stdout_text:
         return {"errors": [], "warnings": warnings, "data": None, "reveals": []}
     try:
-        data = json_parse(stdout_text)
+        data = _get_json_parse()(stdout_text)
     except Exception:
         return {
             "errors": [f"Invalid JSON output: {stdout_text[:200]}"],
@@ -823,19 +842,248 @@ def _runtime_available(cmd):
 
 
 # ---------------------------------------------------------------------------
+# Parallel execution support
+# ---------------------------------------------------------------------------
+
+
+def _get_cpu_count():
+    """Get available CPU count, preferring sched_getaffinity for container awareness."""
+    try:
+        return len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        return os.cpu_count() or 1
+
+
+def _parse_num_workers(value):
+    """Parse -n argument: 'auto' or integer."""
+    if value == "auto":
+        return _get_cpu_count()
+    try:
+        n = int(value)
+        if n < 1:
+            raise ValueError("Worker count must be positive")
+        return n
+    except ValueError:
+        print(f"Invalid -n value: {value}", file=sys.stderr)
+        sys.exit(1)
+
+
+def _worker_init(transpiled_path, harness_path, via_vm_path):
+    """Initialize worker process: load transpiled module and harness."""
+    global _worker_mod, _worker_main_func, _worker_harness_mod
+    global \
+        _worker_use_vm, \
+        _worker_vm_compiled, \
+        _vm_mod, \
+        _vm_compiled, \
+        _main_func, \
+        _use_vm
+    # Load transpiled module
+    spec = importlib.util.spec_from_file_location("tongues_transpiled", transpiled_path)
+    _worker_mod = importlib.util.module_from_spec(spec)
+    sys.modules["tongues_transpiled"] = _worker_mod
+    spec.loader.exec_module(_worker_mod)
+    _worker_main_func = getattr(_worker_mod, "main", None)
+    # Load harness module
+    harness_spec = importlib.util.spec_from_file_location(
+        "test_harness_transpiled", harness_path
+    )
+    _worker_harness_mod = importlib.util.module_from_spec(harness_spec)
+    sys.modules["test_harness_transpiled"] = _worker_harness_mod
+    harness_spec.loader.exec_module(_worker_harness_mod)
+    # Import harness functions into globals
+    for name in dir(_worker_harness_mod):
+        if not name.startswith("_"):
+            globals()[name] = getattr(_worker_harness_mod, name)
+    # Set up module-level references for run_inprocess
+    _vm_mod = _worker_mod
+    _main_func = _worker_main_func
+    # Load VM module if requested
+    if via_vm_path:
+        with open(via_vm_path) as f:
+            source = f.read()
+        module = _worker_mod.taytsh_taytsh_parse(source)
+        _worker_vm_compiled = _worker_mod.vm_prepare(module)
+        _vm_compiled = _worker_vm_compiled
+        _worker_use_vm = True
+        _use_vm = True
+
+
+def _run_single_test(args):
+    """Run a single test case in a worker process. Returns (phase, test_id, status, error)."""
+    global _main_func, _use_vm, _vm_mod, _vm_compiled
+    # Restore worker state to module globals
+    _main_func = _worker_main_func
+    _use_vm = _worker_use_vm
+    _vm_mod = _worker_mod
+    _vm_compiled = _worker_vm_compiled
+    # Get harness functions from the loaded module
+    h = _worker_harness_mod
+    phase_name, test_id, test_type, test_data = args
+    try:
+        if test_type == "cli":
+            spec = test_data
+            if spec.stdin_hex:
+                raw = bytes.fromhex(spec.stdin_hex)
+                result = run_inprocess(
+                    spec.args, stdin_data=raw.decode("latin-1"), stdin_bytes=raw
+                )
+            else:
+                result = run_inprocess(spec.args, stdin_data=spec.stdin)
+            err = h.check_cli_assertions(
+                result["exit"], result["stdout"], result["stderr"], spec.assertions
+            )
+            if err:
+                return (phase_name, test_id, "fail", err)
+            return (phase_name, test_id, "pass", None)
+        elif test_type == "phase":
+            entry, cfg = test_data
+            phase_result = run_transpiled_phase(
+                entry.input_,
+                cfg["args"],
+                is_taytsh=cfg["taytsh"],
+                expect_json=cfg["json"],
+            )
+            reveals = phase_result["reveals"]
+            if (
+                phase_name in ("pycheck", "tycheck")
+                and not phase_result["errors"]
+                and phase_result["data"]
+            ):
+                if isinstance(phase_result["data"], h.JsonObject):
+                    try:
+                        reveals_arr = h.json_get_items(
+                            h.json_get_field(phase_result["data"], "reveals")
+                        )
+                        reveals = [
+                            (
+                                int(h.json_get_number(h.json_get_field(r, "line"))),
+                                h.json_get_string(h.json_get_field(r, "type")),
+                            )
+                            for r in reveals_arr
+                        ]
+                    except Exception:
+                        pass
+            lenient = phase_name in ("parse", "pycheck", "typarse", "tycheck")
+            err = h.check_expected(
+                entry.expected,
+                phase_result["errors"],
+                phase_result["warnings"],
+                phase_result["data"],
+                reveals,
+                phase_name,
+                lenient,
+            )
+            if err:
+                return (phase_name, test_id, "fail", err)
+            return (phase_name, test_id, "pass", None)
+        elif test_type == "ty_app":
+            test_file = test_data
+            result = run_inprocess(["taytsh", test_file])
+            if result["exit"] != 0:
+                output = (result["stdout"] + result["stderr"]).strip()
+                return (
+                    phase_name,
+                    test_id,
+                    "fail",
+                    f"Exit code {result['exit']}:\n{output}",
+                )
+            return (phase_name, test_id, "pass", None)
+        elif test_type == "skip":
+            return (phase_name, test_id, "skip", None)
+        else:
+            return (phase_name, test_id, "fail", f"Unknown test type: {test_type}")
+    except Exception as e:
+        import traceback
+
+        return (
+            phase_name,
+            test_id,
+            "fail",
+            f"Exception: {e}\n{traceback.format_exc()}",
+        )
+
+
+def _collect_tests(tests_config):
+    """Collect all tests without running them. Returns list of (phase, test_id, type, data)."""
+    collected = []
+    for section_name, phases in tests_config:
+        for phase_name, cfg in phases:
+            test_dir = os.path.join(TESTS_DIR, cfg["dir"])
+            if not os.path.isdir(test_dir):
+                continue
+            runner_name = cfg["run"]
+            if runner_name == "cli":
+                for f in sorted(glob.glob(os.path.join(test_dir, "*.tests"))):
+                    stem = os.path.splitext(os.path.basename(f))[0]
+                    with open(f) as fh:
+                        content = fh.read()
+                    for name, spec in parse_cli_test_file(content):
+                        test_id = f"{stem}/{name}"
+                        if cli_needs_backend(spec.args, spec.assertions, EMITTER_LANGS):
+                            collected.append((phase_name, test_id, "skip", None))
+                        else:
+                            collected.append((phase_name, test_id, "cli", spec))
+            elif runner_name == "phase":
+                for f in sorted(glob.glob(os.path.join(test_dir, "*.tests"))):
+                    stem = os.path.splitext(os.path.basename(f))[0]
+                    with open(f) as fh:
+                        content = fh.read()
+                    for entry in parse_spec_file(content):
+                        test_id = f"{stem}/{entry.name}"
+                        collected.append((phase_name, test_id, "phase", (entry, cfg)))
+            elif runner_name == "ty_app":
+                for test_file in sorted(glob.glob(os.path.join(test_dir, "*.ty"))):
+                    stem = os.path.splitext(os.path.basename(test_file))[0]
+                    collected.append((phase_name, stem, "ty_app", test_file))
+            # Note: linker, lowering, codegen, emit, app, ordering tests are complex
+            # and not parallelized - they run sequentially in the main process
+    return collected
+
+
+def _run_tests_parallel(
+    collected, num_workers, transpiled_path, harness_path, via_vm_path
+):
+    """Run collected tests in parallel using process pool."""
+    results = []
+    with ProcessPoolExecutor(
+        max_workers=num_workers,
+        initializer=_worker_init,
+        initargs=(transpiled_path, harness_path, via_vm_path),
+    ) as executor:
+        futures = {executor.submit(_run_single_test, t): t for t in collected}
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+                results.append(result)
+            except Exception as e:
+                test = futures[future]
+                results.append((test[0], test[1], "fail", f"Worker error: {e}"))
+    return results
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print(
-            "Usage: python test-transpiled.py <transpiled.py> [--via-vm <tongues.ty>] [--target <name>]",
+            "Usage: python test-transpiled.py <transpiled.py> [options]",
+            file=sys.stderr,
+        )
+        print("Options:", file=sys.stderr)
+        print("  --via-vm <tongues.ty>  Run tests through the VM", file=sys.stderr)
+        print("  --target <name>        Set target name for reporting", file=sys.stderr)
+        print(
+            "  -n <num|auto>          Number of parallel workers (default: 1)",
             file=sys.stderr,
         )
         sys.exit(1)
 
     via_vm_path = None
     target_name = None
+    num_workers = 1
     filtered_argv = []
     i = 1
     while i < len(sys.argv):
@@ -851,6 +1099,12 @@ if __name__ == "__main__":
                 print("--target requires a name", file=sys.stderr)
                 sys.exit(1)
             target_name = sys.argv[i + 1]
+            i += 2
+        elif sys.argv[i] == "-n":
+            if i + 1 >= len(sys.argv):
+                print("-n requires a number or 'auto'", file=sys.stderr)
+                sys.exit(1)
+            num_workers = _parse_num_workers(sys.argv[i + 1])
             i += 2
         else:
             filtered_argv.append(sys.argv[i])
@@ -913,54 +1167,139 @@ if __name__ == "__main__":
         _use_vm = True
 
     print()
+    if num_workers > 1:
+        print(f"Running with {num_workers} workers")
 
     total_pass = 0
     total_fail = 0
     total_skip = 0
     failures = []
 
-    RUNNERS = {
-        "cli": run_cli_tests,
+    # Runners that must run sequentially (complex setup or external processes)
+    SEQUENTIAL_RUNNERS = {
         "linker": run_linker_tests,
         "lowering": run_lowering_tests,
         "codegen": run_codegen_tests,
         "emit": run_emit_tests,
         "app": run_app_tests,
-        "ty_app": run_ty_app_tests,
         "ordering": run_ordering_tests,
     }
 
-    for section_name, phases in TESTS:
-        for phase_name, cfg in phases:
-            test_dir = os.path.join(TESTS_DIR, cfg["dir"])
-            if not os.path.isdir(test_dir):
-                continue
-            print(f"::group::{phase_name}")
-            runner_name = cfg["run"]
-            if runner_name == "phase":
-                phase_results = run_phase_tests(test_dir, phase_name, cfg)
-            elif runner_name in RUNNERS:
-                phase_results = RUNNERS[runner_name](test_dir)
-            else:
-                phase_results = []
-            pass_count = sum(1 for s, _, _ in phase_results if s == "pass")
-            fail_count = sum(1 for s, _, _ in phase_results if s == "fail")
-            skip_count = sum(1 for s, _, _ in phase_results if s == "skip")
-            total_pass += pass_count
-            total_fail += fail_count
-            total_skip += skip_count
-            status = "FAIL" if fail_count > 0 else "ok"
-            counts = f"{pass_count} passed"
-            if fail_count > 0:
-                counts += f", {fail_count} failed"
-            if skip_count > 0:
-                counts += f", {skip_count} skipped"
-            print(f"{phase_name}: {status} ({counts})")
-            for s, tid, err in phase_results:
-                if s == "fail":
-                    failures.append((phase_name, tid, err))
-                    print(f"  FAIL {tid}")
-            print("::endgroup::")
+    # Parallelizable test types
+    PARALLEL_RUNNERS = {"cli", "phase", "ty_app"}
+
+    if num_workers > 1:
+        # Collect parallelizable tests
+        parallel_tests = _collect_tests(TESTS)
+        if parallel_tests:
+            print(f"Collected {len(parallel_tests)} parallelizable tests")
+            t_start = time.monotonic()
+            parallel_results = _run_tests_parallel(
+                parallel_tests, num_workers, transpiled_path, harness_path, via_vm_path
+            )
+            t_elapsed = time.monotonic() - t_start
+            print(f"Parallel execution completed in {t_elapsed:.1f}s")
+            # Group results by phase for reporting
+            phase_results_map = {}
+            for phase, tid, status, err in parallel_results:
+                if phase not in phase_results_map:
+                    phase_results_map[phase] = []
+                phase_results_map[phase].append((status, tid, err))
+            # Report parallel results
+            for phase in dict.fromkeys(t[0] for t in parallel_tests):
+                if phase in phase_results_map:
+                    phase_results = phase_results_map[phase]
+                    print(f"::group::{phase}")
+                    pass_count = sum(1 for s, _, _ in phase_results if s == "pass")
+                    fail_count = sum(1 for s, _, _ in phase_results if s == "fail")
+                    skip_count = sum(1 for s, _, _ in phase_results if s == "skip")
+                    total_pass += pass_count
+                    total_fail += fail_count
+                    total_skip += skip_count
+                    status = "FAIL" if fail_count > 0 else "ok"
+                    counts = f"{pass_count} passed"
+                    if fail_count > 0:
+                        counts += f", {fail_count} failed"
+                    if skip_count > 0:
+                        counts += f", {skip_count} skipped"
+                    print(f"{phase}: {status} ({counts})")
+                    for s, tid, err in phase_results:
+                        if s == "fail":
+                            failures.append((phase, tid, err))
+                            print(f"  FAIL {tid}")
+                    print("::endgroup::")
+        # Run sequential tests
+        for section_name, phases in TESTS:
+            for phase_name, cfg in phases:
+                runner_name = cfg["run"]
+                if runner_name not in SEQUENTIAL_RUNNERS:
+                    continue
+                test_dir = os.path.join(TESTS_DIR, cfg["dir"])
+                if not os.path.isdir(test_dir):
+                    continue
+                print(f"::group::{phase_name}")
+                phase_results = SEQUENTIAL_RUNNERS[runner_name](test_dir)
+                pass_count = sum(1 for s, _, _ in phase_results if s == "pass")
+                fail_count = sum(1 for s, _, _ in phase_results if s == "fail")
+                skip_count = sum(1 for s, _, _ in phase_results if s == "skip")
+                total_pass += pass_count
+                total_fail += fail_count
+                total_skip += skip_count
+                status = "FAIL" if fail_count > 0 else "ok"
+                counts = f"{pass_count} passed"
+                if fail_count > 0:
+                    counts += f", {fail_count} failed"
+                if skip_count > 0:
+                    counts += f", {skip_count} skipped"
+                print(f"{phase_name}: {status} ({counts})")
+                for s, tid, err in phase_results:
+                    if s == "fail":
+                        failures.append((phase_name, tid, err))
+                        print(f"  FAIL {tid}")
+                print("::endgroup::")
+    else:
+        # Sequential execution (original behavior)
+        RUNNERS = {
+            "cli": run_cli_tests,
+            "linker": run_linker_tests,
+            "lowering": run_lowering_tests,
+            "codegen": run_codegen_tests,
+            "emit": run_emit_tests,
+            "app": run_app_tests,
+            "ty_app": run_ty_app_tests,
+            "ordering": run_ordering_tests,
+        }
+        for section_name, phases in TESTS:
+            for phase_name, cfg in phases:
+                test_dir = os.path.join(TESTS_DIR, cfg["dir"])
+                if not os.path.isdir(test_dir):
+                    continue
+                print(f"::group::{phase_name}")
+                runner_name = cfg["run"]
+                if runner_name == "phase":
+                    phase_results = run_phase_tests(test_dir, phase_name, cfg)
+                elif runner_name in RUNNERS:
+                    phase_results = RUNNERS[runner_name](test_dir)
+                else:
+                    phase_results = []
+                pass_count = sum(1 for s, _, _ in phase_results if s == "pass")
+                fail_count = sum(1 for s, _, _ in phase_results if s == "fail")
+                skip_count = sum(1 for s, _, _ in phase_results if s == "skip")
+                total_pass += pass_count
+                total_fail += fail_count
+                total_skip += skip_count
+                status = "FAIL" if fail_count > 0 else "ok"
+                counts = f"{pass_count} passed"
+                if fail_count > 0:
+                    counts += f", {fail_count} failed"
+                if skip_count > 0:
+                    counts += f", {skip_count} skipped"
+                print(f"{phase_name}: {status} ({counts})")
+                for s, tid, err in phase_results:
+                    if s == "fail":
+                        failures.append((phase_name, tid, err))
+                        print(f"  FAIL {tid}")
+                print("::endgroup::")
 
     print()
     if failures:

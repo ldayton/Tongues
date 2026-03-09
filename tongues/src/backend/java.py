@@ -1222,6 +1222,7 @@ class _JavaEmitter(Emitter):
         self._line("import java.util.*;")
         self._line("import java.util.stream.*;")
         self._line("import java.util.function.*;")
+        self._line("import java.util.regex.Pattern;")
         self._line("import java.io.*;")
         self._line("import java.nio.file.*;")
         self._line("import java.nio.charset.*;")
@@ -1241,12 +1242,24 @@ class _JavaEmitter(Emitter):
             self._emit_error_struct(decl)
             return
         extends = ""
+        # Collect parent field names to avoid re-declaring inherited fields
+        parent_field_names: set[str] = set()
         if parent is not None:
             extends = " extends " + _safe_name(parent)
+            # Check _struct_field_decls for parent's declared fields
+            parent_fields = self._struct_field_decls.get(parent, [])
+            for pf in parent_fields:
+                parent_field_names.add(pf.name)
+            # Also check _interface_fields for common fields hoisted to parent
+            interface_fields = self._interface_fields.get(parent, [])
+            for pf in interface_fields:
+                parent_field_names.add(pf.name)
         self._line("static class " + name + extends + " {")
         self.indent += 1
+        # Only declare fields that are NOT inherited from parent
         for f in decl.fields:
-            self._line(self._type(f.typ) + " " + _safe_name(f.name) + ";")
+            if f.name not in parent_field_names:
+                self._line(self._type(f.typ) + " " + _safe_name(f.name) + ";")
         if decl.fields:
             params = ", ".join(
                 self._type(f.typ) + " " + _safe_name(f.name) for f in decl.fields
@@ -1320,20 +1333,28 @@ class _JavaEmitter(Emitter):
         name = _safe_name(decl.name)
         parent = decl.annotations.get("_parent_interface", "")
         extends = ""
+        # Collect parent field names to avoid re-declaring inherited fields
+        parent_field_names: set[str] = set()
         if parent:
             extends = " extends " + _safe_name(parent)
+            # Get fields from parent interface
+            if parent in self._interface_fields:
+                for pf in self._interface_fields[parent]:
+                    parent_field_names.add(pf.name)
+            # Also check struct_field_decls for parent fields
+            parent_decl_fields = self._struct_field_decls.get(parent, [])
+            for pf in parent_decl_fields:
+                parent_field_names.add(pf.name)
         self._line("static class " + name + extends + " {")
         self.indent += 1
         declared_fields: set[str] = set()
+        # Only declare fields NOT inherited from parent
         for f in decl.fields:
-            self._line(self._type(f.typ) + " " + _safe_name(f.name) + ";")
+            if f.name not in parent_field_names:
+                self._line(self._type(f.typ) + " " + _safe_name(f.name) + ";")
             declared_fields.add(f.name)
-        parent_fields: set[str] = set()
-        if parent and parent in self._interface_fields:
-            for pf in self._interface_fields[parent]:
-                parent_fields.add(pf.name)
         for f in self._interface_fields.get(decl.name, []):
-            if f.name not in declared_fields and f.name not in parent_fields:
+            if f.name not in declared_fields and f.name not in parent_field_names:
                 self._line(self._type(f.typ) + " " + _safe_name(f.name) + ";")
         parent_methods: set[str] = set()
         if parent and parent in self._interface_methods:
@@ -3879,6 +3900,11 @@ class _JavaEmitter(Emitter):
     def _method_call(self, func: TFieldAccess, args: list[TArg]) -> str:
         obj = self._expr(func.obj)
         method = _safe_name(func.field).lower()
+        if method == "split":
+            # Java String.split takes a regex, Python str.split takes a literal
+            # Escape regex special characters in the separator
+            sep = self._a(args, 0)
+            return "List.of(" + obj + ".split(Pattern.quote(" + sep + ")))"
         if method == "zfill":
             self._needs_zfill = True
             return "_zfill(" + obj + ", " + self._a(args, 0) + ")"
@@ -4248,7 +4274,14 @@ class _JavaEmitter(Emitter):
             if self._is_bytes_expr(args[0].value):
                 self._needs_bytes_helpers = True
                 return "_bytesSplit(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
-            return "List.of(" + self._a(args, 0) + ".split(" + self._a(args, 1) + "))"
+            # Use Pattern.quote to escape regex special characters
+            return (
+                "List.of("
+                + self._a(args, 0)
+                + ".split(Pattern.quote("
+                + self._a(args, 1)
+                + ")))"
+            )
         if name == "SplitN":
             if self._is_bytes_expr(args[0].value):
                 self._needs_bytes_helpers = True
@@ -4264,9 +4297,9 @@ class _JavaEmitter(Emitter):
             return (
                 "new ArrayList<>(List.of("
                 + self._a(args, 0)
-                + ".split("
+                + ".split(Pattern.quote("
                 + self._a(args, 1)
-                + ", "
+                + "), "
                 + self._a(args, 2)
                 + ")))"
             )
