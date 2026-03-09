@@ -1804,7 +1804,6 @@ class NameResolver:
                 self._register_module_name(stmt, info)
             elif node_type == "Assign":
                 targets = get_nodes(stmt, "targets")
-                value = get_node(stmt, "value")
                 for tgt in targets:
                     if get_str(tgt, "_type") == "Name":
                         name = get_str(tgt, "id")

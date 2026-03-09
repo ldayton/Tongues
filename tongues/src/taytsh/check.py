@@ -1356,31 +1356,31 @@ class Checker:
             if isinstance(decl, TStructDecl):
                 if decl.name not in self.types:
                     continue
-                st2 = self.types[decl.name]
-                if not isinstance(st2, StructT):
-                    continue
-                # Resolve fields
-                min_f = 0
-                for f in decl.fields:
-                    ft = self.resolve_type(f.typ)
-                    st2.fields[f.name] = ft
-                    st2.field_order.append(f.name)
-                    if not f.has_default:
-                        min_f += 1
-                st2.min_fields = min_f
-                # Resolve methods
-                for m in decl.methods:
-                    mparams: list[Type] = []
-                    min_mp = 0
-                    for p in m.params:
-                        if p.typ is not None:
-                            mparams.append(self.resolve_type(p.typ))
-                            if not p.has_default:
-                                min_mp += 1
-                    mret = self.resolve_type(m.ret)
-                    st2.methods[m.name] = FnT(
-                        kind="fn", params=mparams, ret=mret, min_params=min_mp
-                    )
+                st2_raw = self.types[decl.name]
+                if isinstance(st2_raw, StructT):
+                    st2 = st2_raw
+                    # Resolve fields
+                    min_f = 0
+                    for f in decl.fields:
+                        ft = self.resolve_type(f.typ)
+                        st2.fields[f.name] = ft
+                        st2.field_order.append(f.name)
+                        if not f.has_default:
+                            min_f += 1
+                    st2.min_fields = min_f
+                    # Resolve methods
+                    for m in decl.methods:
+                        mparams: list[Type] = []
+                        min_mp = 0
+                        for p in m.params:
+                            if p.typ is not None:
+                                mparams.append(self.resolve_type(p.typ))
+                                if not p.has_default:
+                                    min_mp += 1
+                        mret = self.resolve_type(m.ret)
+                        st2.methods[m.name] = FnT(
+                            kind="fn", params=mparams, ret=mret, min_params=min_mp
+                        )
                 # Register with parent interface
                 if decl.parent is not None:
                     if decl.parent not in self.types:
@@ -1926,18 +1926,19 @@ class Checker:
         # Merge isinstance-narrowed variable types after if block
         # Only merge when the variable was reassigned in the then body
         # (otherwise the narrowing is temporary and the original type should be restored)
-        for ni in range(len(narrowings)):
-            if ni not in isinstance_indices:
+        for idx in isinstance_indices:
+            if idx >= len(narrowings):
                 continue
-            name = narrowings[ni][0]
-            then_type = narrowings[ni][1]
-            if "." in name:
+            nm_tuple = narrowings[idx]
+            nm_name: str = nm_tuple[0]
+            nm_then_type: Type = nm_tuple[1]
+            if "." in nm_name:
                 continue
-            t_type = then_exit_types.get(name)
-            e_type = else_exit_types.get(name)
+            t_type = then_exit_types.get(nm_name)
+            e_type = else_exit_types.get(nm_name)
             if t_type is None or e_type is None:
                 continue
-            if type_eq(t_type, then_type):
+            if type_eq(t_type, nm_then_type):
                 continue
             merged: Type
             if then_exits:
@@ -1949,7 +1950,7 @@ class Checker:
             else:
                 merged = UnionT(kind="union", members=[t_type, e_type])
             if self.scopes:
-                self.scopes[-1][name] = merged
+                self.scopes[-1][nm_name] = merged
 
     def check_while_stmt(self, stmt: TWhileStmt) -> None:
         cond_type = self.check_expr(stmt.cond, BOOL_T)
@@ -3294,7 +3295,8 @@ class Checker:
         elem_expected: Type | None = None
         if expected is not None and isinstance(expected, ListT):
             elem_expected = expected.element
-        first = self.check_expr(expr.elements[0], elem_expected)
+        first_elem = expr.elements[0]
+        first = self.check_expr(first_elem, elem_expected)
         if first is None:
             return None
         check_type = elem_expected if elem_expected is not None else first
@@ -3304,7 +3306,7 @@ class Checker:
                 + type_name(first)
                 + " to "
                 + type_name(check_type),
-                expr.elements[0].pos,
+                first_elem.pos,
             )
         for el in expr.elements[1:]:
             elem = self.check_expr(el, check_type)
@@ -3439,7 +3441,7 @@ class Checker:
                         + type_name(arrow_type)
                         + " to "
                         + type_name(ret),
-                        expr.body[0].pos,
+                        first.pos,
                     )
         else:
             self.check_stmts(expr.body)
@@ -3672,10 +3674,9 @@ class Checker:
                 return None
             t1 = _bctx_arg(ctx, 0)
             t2 = _bctx_arg(ctx, 1)
+            t1_fd: Type | None = None
             if t1 is not None:
                 t1_fd = _unwrap_nil_union(t1)
-            else:
-                t1_fd = None
             if (
                 t1_fd is not None
                 and t1_fd.kind != TY_ERROR
@@ -3780,18 +3781,15 @@ class Checker:
                     return BYTES_T
                 if isinstance(t1u, ListT) and isinstance(t2u, ListT):
                     return t1u
-                if isinstance(t1u, (ListT, TupleT)) and isinstance(
-                    t2u, (ListT, TupleT)
-                ):
-                    if isinstance(t1u, ListT):
-                        return t1u
+                if isinstance(t1u, ListT) and isinstance(t2u, (ListT, TupleT)):
+                    return t1u
+                if isinstance(t1u, TupleT) and isinstance(t2u, (ListT, TupleT)):
                     if isinstance(t2u, ListT):
                         return t2u
-                    if isinstance(t1u, TupleT):
-                        return ListT(
-                            kind="list",
-                            element=t1u.elements[0] if t1u.elements else ERROR_T,
-                        )
+                    return ListT(
+                        kind="list",
+                        element=t1u.elements[0] if t1u.elements else ERROR_T,
+                    )
                 self.error("Concat requires two strings, two bytes, or two lists", pos)
             return STRING_T
 
@@ -4260,10 +4258,9 @@ class Checker:
                 return None
             t1 = _bctx_arg(ctx, 0)
             t2 = _bctx_arg(ctx, 1)
+            t2_rp: Type | None = None
             if t2 is not None:
                 t2_rp = _unwrap_nil_union(t2)
-            else:
-                t2_rp = None
             if t2_rp is not None and not type_eq(t2_rp, INT_T):
                 self.error("Repeat count must be int", pos)
             if t1 is not None:
@@ -4309,10 +4306,9 @@ class Checker:
             if not _bctx_require_range(ctx, 1, 2):
                 return None
             t = _bctx_arg(ctx, 0)
+            t_so: Type | None = None
             if t is not None:
                 t_so = _unwrap_nil_union(t)
-            else:
-                t_so = None
             has_key = n == 2 and isinstance(_bctx_arg(ctx, 1), FnT)
             if t_so is not None and isinstance(t_so, ListT):
                 if not has_key and t_so.element.kind not in (
@@ -4486,10 +4482,9 @@ class Checker:
             if not _bctx_require(ctx, 1):
                 return None
             t = _bctx_arg(ctx, 0)
+            t_rfi: Type | None = None
             if t is not None:
                 t_rfi = _unwrap_nil_union(t)
-            else:
-                t_rfi = None
             if (
                 t_rfi is not None
                 and t_rfi.kind != TY_ERROR
@@ -4511,20 +4506,18 @@ class Checker:
                 return None
             t1 = _bctx_arg(ctx, 0)
             t2 = _bctx_arg(ctx, 1)
+            t1_pi: Type | None = None
             if t1 is not None:
                 t1_pi = _unwrap_nil_union(t1)
-            else:
-                t1_pi = None
             if (
                 t1_pi is not None
                 and t1_pi.kind != TY_ERROR
                 and not type_eq(t1_pi, STRING_T)
             ):
                 self.error("ParseInt requires string as first argument", pos)
+            t2_pi: Type | None = None
             if t2 is not None:
                 t2_pi = _unwrap_nil_union(t2)
-            else:
-                t2_pi = None
             if (
                 t2_pi is not None
                 and t2_pi.kind != TY_ERROR
@@ -4547,20 +4540,18 @@ class Checker:
                 return None
             t1 = _bctx_arg(ctx, 0)
             t2 = _bctx_arg(ctx, 1)
+            t1_fi: Type | None = None
             if t1 is not None:
                 t1_fi = _unwrap_nil_union(t1)
-            else:
-                t1_fi = None
             if (
                 t1_fi is not None
                 and t1_fi.kind != TY_ERROR
                 and not type_eq(t1_fi, INT_T)
             ):
                 self.error("FormatInt requires int as first argument", pos)
+            t2_fi: Type | None = None
             if t2 is not None:
                 t2_fi = _unwrap_nil_union(t2)
-            else:
-                t2_fi = None
             if (
                 t2_fi is not None
                 and t2_fi.kind != TY_ERROR
@@ -4615,10 +4606,9 @@ class Checker:
             i = 1
             while i < n:
                 at = _bctx_arg(ctx, i)
+                at_uw: Type | None = None
                 if at is not None:
                     at_uw = _unwrap_nil_union(at)
-                else:
-                    at_uw = None
                 if (
                     at_uw is not None
                     and at_uw.kind != TY_ERROR

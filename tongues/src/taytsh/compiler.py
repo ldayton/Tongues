@@ -1670,7 +1670,6 @@ class Compiler:
             if ct is not None and isinstance(ct, EnumT):
                 idx = len(fc.constants)
                 fc.constants.append(VStr(expr.obj.name))
-                idx2 = len(fc.constants)
                 fc.constants.append(VStr(expr.field))
                 fc.emit(OP_LOAD_ENUM, idx, expr.pos.line)
                 return

@@ -2790,7 +2790,8 @@ class VM:
                     if obj._shadow is None:
                         _shadow_build_map(obj)
                     shadow = obj._shadow
-                    found_idx = shadow.get(hk) if shadow is not None else None
+                    assert shadow is not None
+                    found_idx: int | None = shadow.get(hk)
                     if found_idx is not None:
                         self.stack.append(obj.values[found_idx])
                     elif len(args) >= 2:
@@ -2834,7 +2835,10 @@ class VM:
 
     def _find_method(self, type_name: str, method_name: str) -> int | None:
         """Find a method index for a struct type. Returns code object index or None."""
-        return self._method_cache.get((type_name, method_name))
+        key = (type_name, method_name)
+        if key in self._method_cache:
+            return self._method_cache[key]
+        return None
 
     def _call_method_sync(self, obj: Val, code_idx: int, args: list[Val]) -> Val:
         """Synchronously call a method and return its result."""

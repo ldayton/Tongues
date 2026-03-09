@@ -371,15 +371,23 @@ class _Emitter:
             current = None
 
         # Emit first branch
-        self._emit_line("if " + self._render_expr(branches[0][0], _PREC_TERNARY) + " {")
-        self._emit_stmt_block(branches[0][1])
+        first_branch = branches[0]
+        first_cond: TExpr = first_branch[0]
+        first_body: list[TStmt] = first_branch[1]
+        self._emit_line("if " + self._render_expr(first_cond, _PREC_TERNARY) + " {")
+        self._emit_stmt_block(first_body)
 
         # else-if branches
-        for cond, body in branches[1:]:
+        i = 1
+        while i < len(branches):
+            br = branches[i]
+            br_cond: TExpr = br[0]
+            br_body: list[TStmt] = br[1]
             self._emit_line(
-                "} else if " + self._render_expr(cond, _PREC_TERNARY) + " {"
+                "} else if " + self._render_expr(br_cond, _PREC_TERNARY) + " {"
             )
-            self._emit_stmt_block(body)
+            self._emit_stmt_block(br_body)
+            i += 1
 
         # final else
         if final_else is not None:
@@ -657,7 +665,9 @@ class _Emitter:
         if isinstance(expr, TFnLit):
             params = self._render_param_list(expr.params)
             ret = self._render_type(expr.ret)
-            first = expr.body[0] if expr.body else None
+            first: TStmt | None = None
+            if expr.body:
+                first = expr.body[0]
             if expr.annotations.get("fn_lit.arrow") == "true" and isinstance(
                 first, TExprStmt
             ):
@@ -721,9 +731,17 @@ class _Emitter:
                 final_else = else_body
                 current = None
 
-            out = f"if {self._render_expr(branches[0][0], _PREC_TERNARY)} {self._render_inline_block(branches[0][1])}"
-            for cond, body in branches[1:]:
+            first_branch = branches[0]
+            first_cond: TExpr = first_branch[0]
+            first_body: list[TStmt] = first_branch[1]
+            out = f"if {self._render_expr(first_cond, _PREC_TERNARY)} {self._render_inline_block(first_body)}"
+            i = 1
+            while i < len(branches):
+                br = branches[i]
+                cond: TExpr = br[0]
+                body: list[TStmt] = br[1]
                 out += f" else if {self._render_expr(cond, _PREC_TERNARY)} {self._render_inline_block(body)}"
+                i += 1
             if final_else is not None:
                 out += f" else {self._render_inline_block(final_else)}"
             return out

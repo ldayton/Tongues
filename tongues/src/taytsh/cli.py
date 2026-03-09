@@ -57,25 +57,25 @@ def cli_main(argv: list[str] | None = None) -> int:
         return 2
 
     raw: bytes = b""
+    source: str = ""
+    module: TModule = TModule([], False, False)
+    err_code = 0
     try:
         with open(filepath, "rb") as f:
             raw = f.read()
+        source = raw.decode("utf-8")
+        module = parse(source)
     except OSError as e:
         print("taytsh: " + filepath + ": " + str(e), file=sys.stderr)
-        return 1
-    source: str = ""
-    try:
-        source = raw.decode("utf-8")
+        err_code = 1
     except ValueError:
         print("taytsh: " + filepath + ": invalid utf-8", file=sys.stderr)
-        return 1
-
-    module: TModule = TModule([], False, False)
-    try:
-        module = parse(source)
+        err_code = 1
     except Exception as e:
         print(str(e), file=sys.stderr)
-        return 1
+        err_code = 1
+    if err_code != 0:
+        return err_code
 
     if strict or strict_math:
         module.strict_math = True

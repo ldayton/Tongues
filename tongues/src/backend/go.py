@@ -541,6 +541,117 @@ def _expr_ref_var(expr: TExpr, name: str) -> bool:
     return False
 
 
+def _body_has_var(stmts: list[TStmt], name: str) -> bool:
+    """Check if stmts contain a TVar with the given name (direct check)."""
+    for s in stmts:
+        if _stmt_has_var(s, name):
+            return True
+    return False
+
+
+def _stmt_has_var(stmt: TStmt, name: str) -> bool:
+    """Check if statement contains a TVar with the given name."""
+    if isinstance(stmt, TReturnStmt):
+        if stmt.value is not None:
+            return _expr_has_var(stmt.value, name)
+    elif isinstance(stmt, TExprStmt):
+        return _expr_has_var(stmt.expr, name)
+    elif isinstance(stmt, TLetStmt):
+        if stmt.value is not None:
+            return _expr_has_var(stmt.value, name)
+    elif isinstance(stmt, TAssignStmt):
+        return _expr_has_var(stmt.value, name) or _expr_has_var(stmt.target, name)
+    elif isinstance(stmt, TOpAssignStmt):
+        return _expr_has_var(stmt.value, name) or _expr_has_var(stmt.target, name)
+    elif isinstance(stmt, TIfStmt):
+        if _expr_has_var(stmt.cond, name):
+            return True
+        if _body_has_var(stmt.then_body, name):
+            return True
+        if stmt.else_body is not None:
+            return _body_has_var(stmt.else_body, name)
+    elif isinstance(stmt, TForStmt):
+        if _expr_has_var(stmt.iterable, name):
+            return True
+        return _body_has_var(stmt.body, name)
+    elif isinstance(stmt, TWhileStmt):
+        if _expr_has_var(stmt.cond, name):
+            return True
+        return _body_has_var(stmt.body, name)
+    elif isinstance(stmt, TThrowStmt):
+        return _expr_has_var(stmt.expr, name)
+    elif isinstance(stmt, TTryStmt):
+        if _body_has_var(stmt.body, name):
+            return True
+        for c in stmt.catches:
+            if _body_has_var(c.body, name):
+                return True
+        if stmt.finally_body is not None:
+            return _body_has_var(stmt.finally_body, name)
+    elif isinstance(stmt, TMatchStmt):
+        if _expr_has_var(stmt.expr, name):
+            return True
+        for c in stmt.cases:
+            if _body_has_var(c.body, name):
+                return True
+        if stmt.default is not None and stmt.default.body is not None:
+            return _body_has_var(stmt.default.body, name)
+    elif isinstance(stmt, TTupleAssignStmt):
+        if _expr_has_var(stmt.value, name):
+            return True
+        for t in stmt.targets:
+            if _expr_has_var(t, name):
+                return True
+    return False
+
+
+def _expr_has_var(expr: TExpr, name: str) -> bool:
+    """Check if expression contains a TVar with the given name."""
+    if isinstance(expr, TVar):
+        return expr.name == name
+    if isinstance(expr, TBinaryOp):
+        return _expr_has_var(expr.left, name) or _expr_has_var(expr.right, name)
+    if isinstance(expr, TUnaryOp):
+        return _expr_has_var(expr.operand, name)
+    if isinstance(expr, TCall):
+        # For method calls (TFieldAccess), we need to check the object for variable refs.
+        # For simple constructor/function calls (TVar), skip - function names are not
+        # variable uses, and this avoids false positives when a pattern binding name
+        # happens to match a constructor name.
+        if isinstance(expr.func, TFieldAccess):
+            if _expr_has_var(expr.func, name):
+                return True
+        for a in expr.args:
+            if _expr_has_var(a.value, name):
+                return True
+    if isinstance(expr, TFieldAccess):
+        return _expr_has_var(expr.obj, name)
+    if isinstance(expr, TIndex):
+        return _expr_has_var(expr.obj, name) or _expr_has_var(expr.index, name)
+    if isinstance(expr, TTernary):
+        return (
+            _expr_has_var(expr.cond, name)
+            or _expr_has_var(expr.then_expr, name)
+            or _expr_has_var(expr.else_expr, name)
+        )
+    if isinstance(expr, TListLit):
+        for e in expr.elements:
+            if _expr_has_var(e, name):
+                return True
+    if isinstance(expr, TTupleLit):
+        for e in expr.elements:
+            if _expr_has_var(e, name):
+                return True
+    if isinstance(expr, TSlice):
+        if _expr_has_var(expr.obj, name):
+            return True
+        if expr.low is not None and _expr_has_var(expr.low, name):
+            return True
+        if expr.high is not None and _expr_has_var(expr.high, name):
+            return True
+    return False
+
+
 def _has_try_stmt(stmts: list[TStmt]) -> bool:
     for s in stmts:
         if isinstance(s, TTryStmt):
@@ -773,7 +884,7 @@ class _GoEmitter(Emitter):
         self._in_func: bool = False
         self._current_ret_type: TType | None = None
         self._try_action_var: str | None = None
-        self._try_result_var: str | None = None
+        self._try_result_var: str = ""
         self._fn_params: dict[str, list[TParam]] = {}
         self._fn_ret_types: dict[str, TType | None] = {}
         self._interface_methods: dict[str, list[TFnDecl]] = {}
@@ -1200,20 +1311,27 @@ class _GoEmitter(Emitter):
         return False
 
     def _needs_ptr_wrap_return(self, value: TExpr) -> bool:
-        """Check if a return value needs &-wrapping for optional primitive returns."""
+        """Check if a return value needs &-wrapping for optional primitive/tuple returns."""
         if isinstance(value, TNilLit):
             return False
         rt = self._current_ret_type
-        if not (isinstance(rt, TOptionalType) and isinstance(rt.inner, TPrimitive)):
-            return False
-        # Don't wrap if the value already produces a pointer type
-        ann = value.annotations.get("type", "")
-        if ann.endswith("?") or "nil" in ann.split(" | "):
-            return False
-        # Don't wrap field access on optional primitive fields (already dereffed)
-        if isinstance(value, TFieldAccess) and self._is_optional_primitive_field(value):
-            return False
-        return True
+        # Handle optional primitives
+        if isinstance(rt, TOptionalType) and isinstance(rt.inner, TPrimitive):
+            # Don't wrap if the value already produces a pointer type
+            ann = value.annotations.get("type", "")
+            if ann.endswith("?") or "nil" in ann.split(" | "):
+                return False
+            # Don't wrap field access on optional primitive fields (already dereffed)
+            if isinstance(value, TFieldAccess) and self._is_optional_primitive_field(
+                value
+            ):
+                return False
+            return True
+        # Handle optional tuples (returns *[n]T, need &[n]T{} for values)
+        if isinstance(rt, TOptionalType) and isinstance(rt.inner, TTupleType):
+            if isinstance(value, TTupleLit):
+                return True
+        return False
 
     def _is_optional_return_match(self, value: TExpr) -> bool:
         """Check if value is an optional primitive var matching the return type."""
@@ -1288,7 +1406,7 @@ class _GoEmitter(Emitter):
         return result
 
     def _expr_no_narrowing(self, expr: TExpr) -> str:
-        """Emit expression without TVar narrowing type assertion."""
+        """Emit expression without narrowing type assertion."""
         if isinstance(expr, TVar):
             if expr.name == self.self_name:
                 return "self"
@@ -1297,6 +1415,26 @@ class _GoEmitter(Emitter):
             if self._needs_deref(expr):
                 return "*" + name
             return name
+        if isinstance(expr, TFieldAccess):
+            # Check if the inner obj is a TFieldAccess with narrowing
+            # (for cases like st.expr.func where st.expr is narrowed to TCall)
+            if isinstance(expr.obj, TFieldAccess):
+                obj_narrowed = expr.obj.annotations.get("scope.narrowed_type", "")
+                if (
+                    obj_narrowed != ""
+                    and obj_narrowed in self.struct_names
+                    and obj_narrowed not in self._interface_names
+                ):
+                    inner_obj_s = self._expr_no_narrowing(expr.obj)
+                    fname = (
+                        expr.field[0].upper() + expr.field[1:]
+                        if expr.field
+                        else expr.field
+                    )
+                    return inner_obj_s + ".(*" + obj_narrowed + ")." + fname
+            obj_s = self._expr(expr.obj)
+            fname = expr.field[0].upper() + expr.field[1:] if expr.field else expr.field
+            return obj_s + "." + fname
         return self._expr(expr)
 
     def _field_access_no_deref(self, expr: TFieldAccess) -> str:
@@ -1350,10 +1488,14 @@ class _GoEmitter(Emitter):
             inner = typ.inner
             if isinstance(inner, TPrimitive):
                 return "*" + self._type(inner)
+            if isinstance(inner, TTupleType):
+                return "*" + self._type(inner)
             return self._type(inner)
         if isinstance(typ, TFuncType):
             param_types = typ.params[:-1]
-            ret_type = typ.params[-1] if typ.params else None
+            ret_type: TType | None = None
+            if typ.params:
+                ret_type = typ.params[-1]
             params_str = ", ".join(self._type(t) for t in param_types)
             ret_str = ""
             if ret_type is not None:
@@ -1447,7 +1589,15 @@ class _GoEmitter(Emitter):
                             )
                             i += 2
                             continue
-                        self._line(safe + " := " + self._expr(next_stmt.value))
+                        val_s = self._expr(next_stmt.value)
+                        # Add type assertion for array/tuple element access
+                        if isinstance(next_stmt.value, (TIndex, TTupleAccess)):
+                            go_type = self._type(stmt.typ)
+                            if go_type not in ("any", ""):
+                                val_inferred = self._infer_go_type(next_stmt.value)
+                                if val_inferred == "any":
+                                    val_s = val_s + ".(" + go_type + ")"
+                        self._line(safe + " := " + val_s)
                         i += 2
                         continue
             if isinstance(stmt, TLetStmt):
@@ -1466,12 +1616,13 @@ class _GoEmitter(Emitter):
         let_names: list[str] = [stmt.name]
         let_stmts: list[TLetStmt] = [stmt]
         while j < len(stmts):
-            s_j = stmts[j]
-            if not isinstance(s_j, TLetStmt):
+            s_j_stmt = stmts[j]
+            if isinstance(s_j_stmt, TLetStmt):
+                let_names.append(s_j_stmt.name)
+                let_stmts.append(s_j_stmt)
+                j += 1
+            else:
                 break
-            let_names.append(s_j.name)
-            let_stmts.append(s_j)
-            j += 1
         if j >= len(stmts):
             return 0
         next_s = stmts[j]
@@ -1523,6 +1674,37 @@ class _GoEmitter(Emitter):
                 self._emit_let(stmt)
             case TAssignStmt():
                 val_s = self._expr(stmt.value)
+                # Add type assertion for array/tuple element access when target type is known
+                if isinstance(stmt.value, (TIndex, TTupleAccess)):
+                    if isinstance(stmt.target, TVar):
+                        tgt_var: TVar = stmt.target
+                        tgt_vt = self.var_types.get(tgt_var.name)
+                        if tgt_vt is not None:
+                            go_type = self._type(tgt_vt)
+                            # Skip if target is any, empty, or a fixed-size array type
+                            # Slices ([]T) are OK, but fixed arrays ([n]T) are not
+                            is_fixed_array = (
+                                len(go_type) > 1
+                                and go_type[0] == "["
+                                and go_type[1].isdigit()
+                            )
+                            if go_type not in ("any", "") and not is_fixed_array:
+                                # Check if value expression would return any
+                                # For TIndex on arrays of any, we need assertion
+                                if isinstance(stmt.value, TIndex):
+                                    obj = stmt.value.obj
+                                    if isinstance(obj, TVar):
+                                        obj_type = self.var_types.get(obj.name)
+                                        obj_go = (
+                                            self._type(obj_type)
+                                            if obj_type is not None
+                                            else ""
+                                        )
+                                        # Only add assertion for arrays/slices with 'any' element type
+                                        if obj_go.endswith("]any") or obj_go == "[]any":
+                                            val_s = val_s + ".(" + go_type + ")"
+                                elif isinstance(stmt.value, TTupleAccess):
+                                    val_s = val_s + ".(" + go_type + ")"
                 if self._is_empty_map_or_set_call(stmt.value):
                     inferred = self._infer_list_type(stmt.target)
                     if inferred is not None:
@@ -1620,7 +1802,7 @@ class _GoEmitter(Emitter):
                 self._emit_expr_stmt(stmt)
             case TReturnStmt():
                 if stmt.value is not None:
-                    if self._try_result_var is not None:
+                    if self._try_result_var != "":
                         self._line(
                             self._try_result_var + " = " + self._expr(stmt.value)
                         )
@@ -1646,7 +1828,8 @@ class _GoEmitter(Emitter):
                         if isinstance(ret_t, TOptionalType) and isinstance(
                             ret_t.inner, TTupleType
                         ):
-                            self._line("return " + self._type(ret_t.inner) + "{}")
+                            # Optional tuples are *[n]T, return nil
+                            self._line("return nil")
                         elif isinstance(ret_t, TTupleType):
                             self._line("return " + self._type(ret_t) + "{}")
                         else:
@@ -1657,6 +1840,15 @@ class _GoEmitter(Emitter):
                         vname = _restore_name(stmt.value.name, stmt.value.annotations)
                         vname = self._var_aliases.get(vname, vname)
                         self._line("return " + vname)
+                    elif isinstance(stmt.value, TTupleLit):
+                        # Ensure tuple literal uses return type's element types
+                        ret_t = self._current_ret_type
+                        if isinstance(ret_t, TTupleType):
+                            ret_go = self._type(ret_t)
+                            elems = self._join_exprs(stmt.value.elements, ", ")
+                            self._line("return " + ret_go + "{" + elems + "}")
+                        else:
+                            self._line("return " + self._expr(stmt.value))
                     else:
                         self._line("return " + self._expr(stmt.value))
                 else:
@@ -1788,7 +1980,15 @@ class _GoEmitter(Emitter):
                 self._line("__atmp := " + val_s)
                 self._line(safe + " := &__atmp")
                 return
-            if self._in_func:
+            # If declared type is an interface but value is concrete, use explicit typing
+            go_decl_type = self._type(stmt.typ)
+            needs_explicit = False
+            if isinstance(stmt.typ, TIdentType):
+                if stmt.typ.name in self._interface_names:
+                    needs_explicit = True
+            if needs_explicit:
+                self._line("var " + safe + " " + go_decl_type + " = " + val_s)
+            elif self._in_func:
                 self._line(safe + " := " + val_s)
             else:
                 self._line("var " + safe + " = " + val_s)
@@ -2511,6 +2711,9 @@ class _GoEmitter(Emitter):
         if role == "elem":
             if isinstance(vt, TListType):
                 self.var_types[var_name] = vt.element
+            elif isinstance(vt, TPrimitive) and vt.kind == "string":
+                # Iterating over a string in Go yields runes
+                self.var_types[var_name] = TPrimitive(pos=iterable.pos, kind="rune")
         elif role == "key":
             if isinstance(vt, TMapType):
                 self.var_types[var_name] = vt.key
@@ -2875,6 +3078,15 @@ class _GoEmitter(Emitter):
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TPrimitive) and typ.kind == "bytes"
+        if isinstance(expr, TFieldAccess):
+            # Check if it's a .value field on a VBytes type
+            ft = self._resolve_field_type(expr)
+            if isinstance(ft, TPrimitive) and ft.kind == "bytes":
+                return True
+            # Check if obj is narrowed to VBytes and field is 'value'
+            narrowed = expr.obj.annotations.get("scope.narrowed_type", "")
+            if narrowed == "VBytes" and expr.field == "value":
+                return True
         return False
 
     def _field_access_raw(self, expr: TFieldAccess) -> str:
@@ -2929,6 +3141,18 @@ class _GoEmitter(Emitter):
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TPrimitive) and typ.kind == "string"
+        return False
+
+    def _is_rune_expr(self, expr: TExpr) -> bool:
+        """Check if expression has rune type (e.g., from string iteration)."""
+        ann: str = expr.annotations.get("type", "")
+        if ann == "rune":
+            return True
+        if isinstance(expr, TRuneLit):
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TPrimitive) and typ.kind == "rune"
         return False
 
     def _infer_elem_type(self, expr: TExpr) -> str:
@@ -3051,6 +3275,12 @@ class _GoEmitter(Emitter):
                         return True
                 if s.default is not None and self._has_return_value(s.default.body):
                     return True
+            if isinstance(s, TTryStmt):
+                if self._has_return_value(s.body):
+                    return True
+                for c in s.catches:
+                    if self._has_return_value(c.body):
+                        return True
         return False
 
     def _emit_try(self, stmt: TTryStmt) -> None:
@@ -3079,10 +3309,15 @@ class _GoEmitter(Emitter):
                     needs_result = True
                     break
         old_try_result = self._try_result_var
+        emit_try_return = False
         if needs_result and self._current_ret_type is not None:
-            ret_type_s = self._type(self._current_ret_type)
-            self._line("var __tryResult " + ret_type_s)
-            self._try_result_var = "__tryResult"
+            if self._try_result_var == "":
+                # Only declare new __tryResult if not inside an outer try
+                ret_type_s = self._type(self._current_ret_type)
+                self._line("var __tryResult " + ret_type_s)
+                self._try_result_var = "__tryResult"
+                emit_try_return = True
+            # else: reuse outer try's result var, don't emit return at end
         if has_finally and stmt.finally_body is not None:
             self._line("func() {")
             self.indent += 1
@@ -3130,7 +3365,7 @@ class _GoEmitter(Emitter):
             self._line("break")
             self.indent -= 1
             self._line("}")
-        if needs_result and self._current_ret_type is not None:
+        if emit_try_return:
             self._line("return __tryResult")
 
     def _emit_try_unused_vars(self, body: list[TStmt]) -> None:
@@ -3217,14 +3452,11 @@ class _GoEmitter(Emitter):
             self._emit_typed_catches(catches)
 
     def _emit_typed_catches(self, catches: list[TCatch]) -> None:
-        # If any catch uses the variable, keep bindings for all
-        all_unused = all(
-            c.annotations.get("liveness.catch_var_unused") == "true" for c in catches
-        )
         first = True
         opened_if = False
         for catch in catches:
-            unused = all_unused
+            # Check per-catch if the variable is unused
+            unused = catch.annotations.get("liveness.catch_var_unused") == "true"
             types = catch.types
             if not types:
                 if first:
@@ -3303,61 +3535,78 @@ class _GoEmitter(Emitter):
             # If scrutinee is already a concrete type, skip the switch
             if isinstance(stmt.expr, TVar):
                 vt = self.var_types.get(stmt.expr.name)
+                go_t = ""
                 if vt is not None:
                     go_t = self._type(vt).lstrip("*")
-                    if go_t not in self._interface_names and go_t != "any":
-                        # Concrete type — emit matching case body directly
-                        for c in stmt.cases:
-                            if isinstance(c.pattern, TPatternType):
-                                if (
-                                    c.pattern.name is not None
-                                    and c.pattern.annotations.get(
-                                        "liveness.match_var_unused"
-                                    )
-                                    != "true"
-                                ):
-                                    safe = _restore_name(
-                                        c.pattern.name, c.pattern.annotations
-                                    )
-                                    self._line(safe + " := " + self._expr(stmt.expr))
-                                self._emit_stmts(c.body)
-                                return
-                        if stmt.default is not None:
-                            self._emit_stmts(stmt.default.body)
-                        return
+                else:
+                    # Fallback: check type annotation
+                    ann_type = stmt.expr.annotations.get("type", "")
+                    if ann_type != "" and not ann_type.endswith("?"):
+                        # Convert Python type to Go type for concrete check
+                        go_t = self._ann_type_to_go(ann_type)
+                if go_t != "" and go_t not in self._interface_names and go_t != "any":
+                    # Concrete type — emit matching case body directly
+                    for c in stmt.cases:
+                        if isinstance(c.pattern, TPatternType):
+                            if (
+                                c.pattern.name is not None
+                                and c.pattern.annotations.get(
+                                    "liveness.match_var_unused"
+                                )
+                                != "true"
+                            ):
+                                safe = _restore_name(
+                                    c.pattern.name, c.pattern.annotations
+                                )
+                                self._line(safe + " := " + self._expr(stmt.expr))
+                            self._emit_stmts(c.body)
+                            return
+                    if stmt.default is not None:
+                        self._emit_stmts(stmt.default.body)
+                    return
             switch_var = self._find_switch_var(stmt)
-            # Check if any case needs the binding
-            any_used = False
-            for c in stmt.cases:
-                if (
-                    isinstance(c.pattern, TPatternType)
-                    and c.pattern.name is not None
-                    and c.pattern.annotations.get("liveness.match_var_unused") != "true"
-                ):
-                    any_used = True
-                    break
-            has_default_binding = (
-                stmt.default is not None and stmt.default.name is not None
-            )
-            needs_capture = any_used or has_default_binding
-            if not needs_capture and isinstance(stmt.expr, TVar):
+            # Check if any case needs the binding - must actually reference it
+            # Use _body_has_var for consistent checking
+            scrutinee_name: str | None = None
+            if isinstance(stmt.expr, TVar):
                 scrutinee_name = stmt.expr.name
-                for c in stmt.cases:
-                    if _stmts_ref_var(c.body, scrutinee_name):
+            needs_capture = False
+            for c in stmt.cases:
+                if isinstance(c.pattern, TPatternType):
+                    c_pname: str | None = c.pattern.name
+                    # Check if body references pattern binding name
+                    if c_pname is not None and _body_has_var(c.body, c_pname):
                         needs_capture = True
                         break
+                    # Also check if body references original scrutinee variable
+                    if scrutinee_name is not None and _body_has_var(
+                        c.body, scrutinee_name
+                    ):
+                        needs_capture = True
+                        break
+            if not needs_capture and stmt.default is not None:
+                d_name: str | None = stmt.default.name
+                if d_name is not None and stmt.default.body is not None:
+                    if _body_has_var(stmt.default.body, d_name):
+                        needs_capture = True
             if needs_capture:
                 self._line("switch " + switch_var + " := " + expr_s + ".(type) {")
             else:
+                # No binding needed - use simple switch without capture
                 self._line("switch " + expr_s + ".(type) {")
+                # Force switch_var to something that won't be emitted
+                switch_var = ""
             for case in stmt.cases:
-                self._emit_match_case_type(case, stmt, not any_used, switch_var, expr_s)
+                self._emit_match_case_type(
+                    case, stmt, not needs_capture, switch_var, expr_s
+                )
             if stmt.default is not None:
                 if stmt.default.name is not None:
                     dname = _restore_name(stmt.default.name, stmt.default.annotations)
                     self._line("default:")
                     self.indent += 1
-                    self._line(dname + " := " + switch_var)
+                    if switch_var:
+                        self._line(dname + " := " + switch_var)
                     self._emit_stmts(stmt.default.body)
                     self.indent -= 1
                 else:
@@ -3478,7 +3727,11 @@ class _GoEmitter(Emitter):
             saved_var_types: list[tuple[str, TType | None]] = []
             if pat.name is not None and not pat_unused:
                 bname = _restore_name(pat.name, case.annotations)
-                if bname != switch_var and _stmts_ref_var(case.body, pat.name):
+                if (
+                    switch_var
+                    and bname != switch_var
+                    and _stmts_ref_var(case.body, pat.name)
+                ):
                     if bname in self.struct_names or bname in self._interface_names:
                         self._var_aliases[bname] = switch_var
                         aliases_added.append(bname)
@@ -3491,8 +3744,10 @@ class _GoEmitter(Emitter):
                             self.var_types[pat.name] = case_type
             if isinstance(stmt.expr, TVar):
                 scrutinee = _restore_name(stmt.expr.name, stmt.expr.annotations)
-                if scrutinee != switch_var and _stmts_ref_var(
-                    case.body, stmt.expr.name
+                if (
+                    switch_var
+                    and scrutinee != switch_var
+                    and _stmts_ref_var(case.body, stmt.expr.name)
                 ):
                     self._line(scrutinee + " := " + switch_var)
                 if case_type is not None:
@@ -3780,7 +4035,22 @@ class _GoEmitter(Emitter):
             # Enum variant access: Color.Red → ColorRed
             if isinstance(expr.obj, TVar) and expr.obj.name in self._enum_names:
                 return expr.obj.name + expr.field
+            # Check if the TFieldAccess expression itself has been narrowed
+            # (e.g., c.pattern narrowed to TPatternType after isinstance check)
+            self_narrowed = expr.annotations.get("scope.narrowed_type", "")
+            if (
+                self_narrowed != ""
+                and self_narrowed in self.struct_names
+                and self_narrowed not in self._interface_names
+            ):
+                obj_s = self._expr(expr.obj)
+                fname = (
+                    expr.field[0].upper() + expr.field[1:] if expr.field else expr.field
+                )
+                return obj_s + "." + fname + ".(*" + self_narrowed + ")"
             # Type assertion for narrowed interface variables or field paths
+            # Check both: narrowing on the obj (for accessing field on narrowed var)
+            # and narrowing on the expression itself (for using narrowed field access)
             narrowed = expr.obj.annotations.get("scope.narrowed_type", "")
             if (
                 narrowed != ""
@@ -3801,6 +4071,22 @@ class _GoEmitter(Emitter):
                         ):
                             return obj_s + "." + fname
                 return obj_s + ".(*" + narrowed + ")." + fname
+            # Also check if the obj is a TFieldAccess that itself has narrowing
+            # (for cases like st.expr.func where st.expr is narrowed to TCall)
+            if isinstance(expr.obj, TFieldAccess):
+                obj_narrowed = expr.obj.annotations.get("scope.narrowed_type", "")
+                if (
+                    obj_narrowed != ""
+                    and obj_narrowed in self.struct_names
+                    and obj_narrowed not in self._interface_names
+                ):
+                    obj_s = self._expr_no_narrowing(expr.obj)
+                    fname = (
+                        expr.field[0].upper() + expr.field[1:]
+                        if expr.field
+                        else expr.field
+                    )
+                    return obj_s + ".(*" + obj_narrowed + ")." + fname
             # Interface common field accessor
             if self._is_interface_field_access(expr):
                 obj_s = self._expr(expr.obj)
@@ -3835,7 +4121,18 @@ class _GoEmitter(Emitter):
                     and not idx_s.startswith("*")
                 ):
                     idx_s = "*" + idx_s
-            return obj_s + "[" + idx_s + "]"
+            result = obj_s + "[" + idx_s + "]"
+            # Add type assertion for tuple element access
+            if isinstance(expr.obj, TVar) and isinstance(expr.index, TIntLit):
+                obj_vt = self.var_types.get(expr.obj.name)
+                if isinstance(obj_vt, TTupleType):
+                    idx_val = expr.index.value
+                    if 0 <= idx_val < len(obj_vt.elements):
+                        elem_t: TType = obj_vt.elements[idx_val]
+                        elem_go_type = self._type(elem_t)
+                        if elem_go_type != "any":
+                            result = result + ".(" + elem_go_type + ")"
+            return result
         if isinstance(expr, TSlice):
             return self._slice(expr)
         if isinstance(expr, TBinaryOp):
@@ -4058,6 +4355,17 @@ class _GoEmitter(Emitter):
             typ = self.var_types.get(expr.name)
             if typ is not None:
                 return self._type(typ)
+        if isinstance(expr, TIndex):
+            # Try to get element type from container
+            obj_ann = expr.obj.annotations.get("type", "")
+            if obj_ann.startswith("list[") and obj_ann.endswith("]"):
+                inner = obj_ann[5:-1]
+                return self._ann_type_to_go(inner)
+        if isinstance(expr, TFieldAccess):
+            # Try to resolve field type
+            ft = self._resolve_field_type(expr)
+            if ft is not None:
+                return self._type(ft)
         return "any"
 
     def _is_len_call(self, expr: TExpr) -> bool:
@@ -4105,9 +4413,9 @@ class _GoEmitter(Emitter):
 
     def _binary(self, expr: TBinaryOp) -> str:
         op = expr.op
-        # Handle 1 << 64 which overflows compile-time constants in Go
+        # Handle 1 << 63 and higher which overflows compile-time constants in Go
         # Use runtime evaluation to allow proper overflow behavior
-        if op == "<<" and isinstance(expr.right, TIntLit) and expr.right.value >= 64:
+        if op == "<<" and isinstance(expr.right, TIntLit) and expr.right.value >= 63:
             shift_val = expr.right.value
             return (
                 "(func() int { s := "
@@ -4148,6 +4456,17 @@ class _GoEmitter(Emitter):
                     + self._expr(expr.right)
                     + ")"
                 )
+        # Float modulo: Go's % operator doesn't work on floats
+        if op == "%" and (
+            self._is_float_expr(expr.left) or self._is_float_expr(expr.right)
+        ):
+            return (
+                "math.Mod("
+                + self._expr(expr.left)
+                + ", "
+                + self._expr(expr.right)
+                + ")"
+            )
         # isinstance tuple
         if op == "||" and expr.annotations.get("provenance") == "isinstance_tuple":
             types: list[str] = []
@@ -4163,7 +4482,9 @@ class _GoEmitter(Emitter):
                 )
         # bytes comparisons: use bytes.Equal
         if op in ("==", "!=") and (
-            isinstance(expr.left, TBytesLit) or isinstance(expr.right, TBytesLit)
+            isinstance(expr.left, TBytesLit)
+            or isinstance(expr.right, TBytesLit)
+            or (self._is_bytes_expr(expr.left) and self._is_bytes_expr(expr.right))
         ):
             left_str = self._expr(expr.left)
             right_str = self._expr(expr.right)
@@ -4182,11 +4503,23 @@ class _GoEmitter(Emitter):
             if isinstance(expr.left, TIndex):
                 idx_type = self._get_map_value_type(expr.left)
                 # Known string map patterns: Annotations field
-                if idx_type == "" and isinstance(expr.left.obj, TFieldAccess):
-                    if expr.left.obj.field == "annotations":
+                if isinstance(expr.left.obj, TFieldAccess):
+                    if expr.left.obj.field.lower() == "annotations":
                         idx_type = "string"
                 if idx_type == "string":
                     return self._expr(expr.left) + " " + op + ' ""'
+            # Get(map, key) returning string: use "" instead of nil
+            if (
+                isinstance(expr.left, TCall)
+                and isinstance(expr.left.func, TVar)
+                and expr.left.func.name == "Get"
+                and len(expr.left.args) == 2
+            ):
+                map_arg = expr.left.args[0].value
+                # Known string map patterns: Annotations field
+                if isinstance(map_arg, TFieldAccess):
+                    if map_arg.field.lower() == "annotations":
+                        return self._expr(expr.left) + " " + op + ' ""'
         if op in ("==", "!=") and isinstance(expr.left, TNilLit):
             if isinstance(expr.right, TVar):
                 name = _restore_name(expr.right.name, expr.right.annotations)
@@ -4197,18 +4530,47 @@ class _GoEmitter(Emitter):
             if isinstance(expr.right, TIndex):
                 idx_type = self._get_map_value_type(expr.right)
                 # Known string map patterns: Annotations field
-                if idx_type == "" and isinstance(expr.right.obj, TFieldAccess):
-                    if expr.right.obj.field == "annotations":
+                if isinstance(expr.right.obj, TFieldAccess):
+                    if expr.right.obj.field.lower() == "annotations":
                         idx_type = "string"
                 if idx_type == "string":
                     return '"" ' + op + " " + self._expr(expr.right)
+            # Get(map, key) returning string: use "" instead of nil
+            if (
+                isinstance(expr.right, TCall)
+                and isinstance(expr.right.func, TVar)
+                and expr.right.func.name == "Get"
+                and len(expr.right.args) == 2
+            ):
+                map_arg = expr.right.args[0].value
+                # Known string map patterns: Annotations field
+                if isinstance(map_arg, TFieldAccess):
+                    if map_arg.field.lower() == "annotations":
+                        return '"" ' + op + " " + self._expr(expr.right)
         left_str = self._maybe_paren(expr.left, op, is_left=True)
         right_str = self._maybe_paren(expr.right, op, is_left=False)
+        # Handle comparisons on tuple/array elements that are `any` in Go
+        # Need to add type assertions for <, >, <=, >= since Go doesn't allow
+        # these operators on interface{} types
+        if op in ("<", ">", "<=", ">="):
+            left_elem_type = self._get_tuple_elem_type(expr.left)
+            right_elem_type = self._get_tuple_elem_type(expr.right)
+            if left_elem_type is not None and right_elem_type is not None:
+                # Both are tuple element accesses - add type assertions
+                go_type = self._type(left_elem_type)
+                left_str = left_str + ".(" + go_type + ")"
+                right_str = right_str + ".(" + go_type + ")"
         # Deref *string when comparing with string literal or non-pointer string
         if op in ("==", "!="):
             l_opt = self._is_opt_prim_expr(expr.left)
             r_opt = self._is_opt_prim_expr(expr.right)
-            if l_opt and not r_opt and not left_str.startswith("*"):
+            if l_opt and r_opt:
+                # Both are optional primitives - dereference both to compare values
+                if not left_str.startswith("*"):
+                    left_str = "*" + left_str
+                if not right_str.startswith("*"):
+                    right_str = "*" + right_str
+            elif l_opt and not r_opt and not left_str.startswith("*"):
                 left_str = "*" + left_str
             elif r_opt and not l_opt and not right_str.startswith("*"):
                 right_str = "*" + right_str
@@ -4226,7 +4588,8 @@ class _GoEmitter(Emitter):
             ann = expr.annotations.get("type", "")
             if ann.endswith("?"):
                 inner = ann[:-1]
-                if inner in ("int", "float", "string", "bool", "rune"):
+                # Include "str" as well as "string" for Python annotations
+                if inner in ("int", "float", "string", "str", "bool", "rune"):
                     return True
             # Check function return type from declarations
             if isinstance(expr.func, TVar):
@@ -4236,6 +4599,34 @@ class _GoEmitter(Emitter):
                 ):
                     return True
         return False
+
+    def _get_tuple_elem_type(self, expr: TExpr) -> TType | None:
+        """Get the element type if expr is an index into a tuple with known types."""
+        # Handle TTupleAccess (obj.0, obj.1)
+        if isinstance(expr, TTupleAccess):
+            if isinstance(expr.obj, TVar):
+                vname = expr.obj.name
+                vt = self.var_types.get(vname)
+                if isinstance(vt, TTupleType):
+                    idx = expr.index
+                    if 0 <= idx < len(vt.elements):
+                        return vt.elements[idx]
+            return None
+        # Handle TIndex (obj[0], obj[1])
+        if not isinstance(expr, TIndex):
+            return None
+        if not isinstance(expr.obj, TVar):
+            return None
+        if not isinstance(expr.index, TIntLit):
+            return None
+        vname = expr.obj.name
+        vt = self.var_types.get(vname)
+        if not isinstance(vt, TTupleType):
+            return None
+        idx = expr.index.value
+        if 0 <= idx < len(vt.elements):
+            return vt.elements[idx]
+        return None
 
     def _unary(self, expr: TUnaryOp) -> str:
         op = expr.op
@@ -4254,13 +4645,41 @@ class _GoEmitter(Emitter):
             if isinstance(expr.operand, (TTernary,)):
                 return "!(" + self._expr(expr.operand) + ")"
             if self._is_isnil_call(expr.operand) and isinstance(expr.operand, TCall):
-                # !IsNil(x) → x != nil
+                # !IsNil(x) → x != nil (or x != "" for string maps)
                 nil_arg = expr.operand.args[0].value
                 if isinstance(nil_arg, TVar):
                     raw = _restore_name(nil_arg.name, nil_arg.annotations)
                     return raw + " != nil"
                 if isinstance(nil_arg, TFieldAccess):
-                    return self._field_access_raw(nil_arg) + " != nil"
+                    fa_str = self._field_access_raw(nil_arg)
+                    # Check if field is a non-pointer string (compare to "" not nil)
+                    # First check if the obj (or obj.obj for nested) has narrowing
+                    fa_type: TType | None = None
+                    narrowed_struct = ""
+                    # Check obj itself for narrowing annotation
+                    if isinstance(nil_arg.obj, (TVar, TFieldAccess)):
+                        narrowed_struct = nil_arg.obj.annotations.get(
+                            "scope.narrowed_type", ""
+                        )
+                    if narrowed_struct != "" and narrowed_struct in self.struct_names:
+                        # Look up field in the narrowed struct
+                        for fd in self.struct_field_types.get(narrowed_struct, []):
+                            if fd.name == nil_arg.field:
+                                fa_type = fd.typ
+                                break
+                    if fa_type is None:
+                        fa_type = self._resolve_field_type(nil_arg)
+                    if isinstance(fa_type, TPrimitive) and fa_type.kind == "string":
+                        return fa_str + ' != ""'
+                    return fa_str + " != nil"
+                # Check for Get(map, key) where map value is string
+                if isinstance(nil_arg, TCall) and isinstance(nil_arg.func, TVar):
+                    func_var = nil_arg.func
+                    if func_var.name == "Get" and len(nil_arg.args) == 2:
+                        map_arg = nil_arg.args[0].value
+                        if isinstance(map_arg, TFieldAccess):
+                            if map_arg.field.lower() == "annotations":
+                                return self._a(expr.operand.args, 0) + ' != ""'
                 return self._a(expr.operand.args, 0) + " != nil"
             return "!" + self._expr(expr.operand)
         if op == "*" and isinstance(expr.operand, TVar):
@@ -4693,6 +5112,16 @@ class _GoEmitter(Emitter):
         if field == "endswith":
             pkg = "bytes" if self._is_bytes_expr(func.obj) else "strings"
             return pkg + ".HasSuffix(" + obj_str + ", " + self._a(args, 0) + ")"
+        if field == "zfill":
+            # zfill pads with leading zeros to reach specified width
+            width = self._a(args, 0)
+            return (
+                "func() string { s := "
+                + obj_str
+                + "; w := "
+                + width
+                + '; if len(s) >= w { return s }; return strings.Repeat("0", w-len(s)) + s }()'
+            )
         args = self._fill_default_args(func, args)
         params = self._lookup_params(func)
         arg_strs = self._join_args(args, ", ", params)
@@ -4702,16 +5131,19 @@ class _GoEmitter(Emitter):
         if ann is None:
             ann = {}
         if name == "FloorDiv":
-            return (
-                "int(math.Floor(float64("
-                + self._a(args, 0)
-                + ") / float64("
-                + self._a(args, 1)
-                + ")))"
-            )
+            a = self._a(args, 0)
+            b = self._a(args, 1)
+            # If either argument is float, return float64
+            if self._is_float_expr(args[0].value) or self._is_float_expr(args[1].value):
+                return "math.Floor(float64(" + a + ") / float64(" + b + "))"
+            return "int(math.Floor(float64(" + a + ") / float64(" + b + ")))"
         if name == "PythonMod":
             a = self._a(args, 0)
             b = self._a(args, 1)
+            # Check if either argument is a float
+            if self._is_float_expr(args[0].value) or self._is_float_expr(args[1].value):
+                # Use math.Mod for floats, implementing Python modulo semantics
+                return "math.Mod(math.Mod(" + a + ", " + b + ") + " + b + ", " + b + ")"
             return "((" + a + " % " + b + ") + " + b + ") % " + b
         if name == "Append":
             obj = self._a(args, 0)
@@ -4842,6 +5274,17 @@ class _GoEmitter(Emitter):
             return (
                 pkg + ".HasSuffix(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             )
+        if name == "Zfill":
+            # zfill pads with leading zeros to reach specified width
+            s = self._a(args, 0)
+            width = self._a(args, 1)
+            return (
+                "func() string { s := "
+                + s
+                + "; w := "
+                + width
+                + '; if len(s) >= w { return s }; return strings.Repeat("0", w-len(s)) + s }()'
+            )
         if name == "Repeat":
             if self._is_string_expr(args[0].value):
                 return (
@@ -4882,16 +5325,22 @@ class _GoEmitter(Emitter):
             a = self._a(args, 0)
             if a.startswith("*"):
                 a = "(" + a + ")"
+            if self._is_rune_expr(args[0].value):
+                return "unicode.IsDigit(" + a + ")"
             return "unicode.IsDigit(rune(" + a + "[0]))"
         if name == "IsAlpha":
             a = self._a(args, 0)
             if a.startswith("*"):
                 a = "(" + a + ")"
+            if self._is_rune_expr(args[0].value):
+                return "unicode.IsLetter(" + a + ")"
             return "unicode.IsLetter(rune(" + a + "[0]))"
         if name == "IsAlnum":
             a = self._a(args, 0)
             if a.startswith("*"):
                 a = "(" + a + ")"
+            if self._is_rune_expr(args[0].value):
+                return "(unicode.IsLetter(" + a + ") || unicode.IsDigit(" + a + "))"
             return (
                 "(unicode.IsLetter(rune("
                 + a
@@ -4903,16 +5352,22 @@ class _GoEmitter(Emitter):
             a = self._a(args, 0)
             if a.startswith("*"):
                 a = "(" + a + ")"
+            if self._is_rune_expr(args[0].value):
+                return "unicode.IsSpace(" + a + ")"
             return "unicode.IsSpace(rune(" + a + "[0]))"
         if name == "IsUpper":
             a = self._a(args, 0)
             if a.startswith("*"):
                 a = "(" + a + ")"
+            if self._is_rune_expr(args[0].value):
+                return "unicode.IsUpper(" + a + ")"
             return "unicode.IsUpper(rune(" + a + "[0]))"
         if name == "IsLower":
             a = self._a(args, 0)
             if a.startswith("*"):
                 a = "(" + a + ")"
+            if self._is_rune_expr(args[0].value):
+                return "unicode.IsLower(" + a + ")"
             return "unicode.IsLower(rune(" + a + "[0]))"
         if name == "Encode":
             return "[]byte(" + self._a(args, 0) + ")"
@@ -5746,6 +6201,32 @@ class _GoEmitter(Emitter):
                         + "; return &v }()"
                     )
                 else:
+                    # Check for narrowed type from isinstance check
+                    narrowed = a.value.annotations.get("scope.narrowed_type", "")
+                    if (
+                        narrowed != ""
+                        and narrowed in self.struct_names
+                        and narrowed not in self._interface_names
+                    ):
+                        # Only add type assertion if the expression is an interface
+                        needs_assert = False
+                        if isinstance(a.value, TVar):
+                            vt = self.var_types.get(a.value.name)
+                            if vt is not None:
+                                go_t = self._type(vt).lstrip("*")
+                                if go_t in self._interface_names or go_t == "any":
+                                    needs_assert = True
+                        elif isinstance(a.value, TFieldAccess):
+                            # Field accesses on interface types need assertion
+                            needs_assert = True
+                        if needs_assert:
+                            parts.append(
+                                self._expr_no_narrowing(a.value)
+                                + ".(*"
+                                + narrowed
+                                + ")"
+                            )
+                            continue
                     parts.append(self._expr(a.value))
             elif self._needs_deref_from_expected(a.value):
                 parts.append("*" + self._expr(a.value))
@@ -5758,6 +6239,29 @@ class _GoEmitter(Emitter):
                     + "; return &v }()"
                 )
             else:
+                # Check for narrowed type from isinstance check
+                narrowed = a.value.annotations.get("scope.narrowed_type", "")
+                if (
+                    narrowed != ""
+                    and narrowed in self.struct_names
+                    and narrowed not in self._interface_names
+                ):
+                    # Only add type assertion if the expression is an interface
+                    needs_assert = False
+                    if isinstance(a.value, TVar):
+                        vt = self.var_types.get(a.value.name)
+                        if vt is not None:
+                            go_t = self._type(vt).lstrip("*")
+                            if go_t in self._interface_names or go_t == "any":
+                                needs_assert = True
+                    elif isinstance(a.value, TFieldAccess):
+                        # Field accesses on interface types need assertion
+                        needs_assert = True
+                    if needs_assert:
+                        parts.append(
+                            self._expr_no_narrowing(a.value) + ".(*" + narrowed + ")"
+                        )
+                        continue
                 parts.append(self._expr(a.value))
         return sep.join(parts)
 

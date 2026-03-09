@@ -1817,12 +1817,9 @@ class _JavaScriptEmitter(Emitter):
     def _emit_multi_catch(self, catches: list[TCatch], catch_name: str) -> None:
         first = True
         has_typed = False
-        has_untyped = False
         for catch in catches:
             if catch.types:
                 has_typed = True
-            else:
-                has_untyped = True
         for catch in catches:
             if catch.types:
                 types: list[str] = []
@@ -3004,7 +3001,9 @@ class _JavaScriptEmitter(Emitter):
         params = [p for p in key_fn.params if p.typ is not None]
         if len(params) == 1:
             pname = _restore_name(params[0].name, params[0].annotations)
-            first = key_fn.body[0] if key_fn.body else None
+            first: TStmt | None = None
+            if key_fn.body:
+                first = key_fn.body[0]
             if isinstance(first, (TReturnStmt,)) and first.value is not None:
                 key_expr = self._expr(first.value)
                 key_a = key_expr.replace(pname, "a", 1)
@@ -3037,7 +3036,9 @@ class _JavaScriptEmitter(Emitter):
         params = [p for p in key_fn.params if p.typ is not None]
         if len(params) == 1:
             pname = _restore_name(params[0].name, params[0].annotations)
-            first = key_fn.body[0] if key_fn.body else None
+            first: TStmt | None = None
+            if key_fn.body:
+                first = key_fn.body[0]
             if isinstance(first, (TReturnStmt,)) and first.value is not None:
                 key_expr = self._expr(first.value)
             elif isinstance(first, TExprStmt):

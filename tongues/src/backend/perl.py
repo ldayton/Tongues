@@ -874,7 +874,9 @@ class _PerlEmitter(Emitter):
         iterable = self._expr(for_stmt.iterable)
         body = for_stmt.body
         if prov == "list_comprehension":
-            binding_name = for_stmt.binding[0] if for_stmt.binding else None
+            binding_name: str | None = None
+            if for_stmt.binding:
+                binding_name = for_stmt.binding[0]
             if len(body) == 1 and isinstance(body[0], TExprStmt):
                 call = body[0].expr
                 if isinstance(call, TCall) and self._is_append_to(call, let_stmt.name):
@@ -979,8 +981,12 @@ class _PerlEmitter(Emitter):
         start_expr = range_args[0]
         step_expr = range_args[2]
         step_s = self._expr(step_expr)
-        start_val = start_expr.value if isinstance(start_expr, TIntLit) else 0
-        step_val = step_expr.value if isinstance(step_expr, TIntLit) else None
+        start_val = 0
+        if isinstance(start_expr, TIntLit):
+            start_val = start_expr.value
+        step_val: int | None = None
+        if isinstance(step_expr, TIntLit):
+            step_val = step_expr.value
         offset = start_val % step_val if step_val is not None else start_val
         if is_string:
             return (
@@ -1069,7 +1075,9 @@ class _PerlEmitter(Emitter):
             return None
         acc = "$" + _restore_name(let_stmt.name, let_stmt.annotations)
         iterable = self._expr(for_stmt.iterable)
-        binding_name = for_stmt.binding[0] if for_stmt.binding else None
+        binding_name: str | None = None
+        if for_stmt.binding:
+            binding_name = for_stmt.binding[0]
         if self._is_set_expr(for_stmt.iterable):
             iter_spread = "keys %{" + iterable + "}"
         else:
@@ -1510,11 +1518,9 @@ class _PerlEmitter(Emitter):
         safe = self._deref_safe(it)
         if len(binding) == 1:
             name = "$" + _restore_name(binding[0], ann)
-            iter_type: TType | None = (
-                self.var_types.get(iterable.name)
-                if isinstance(iterable, TVar)
-                else None
-            )
+            iter_type: TType | None = None
+            if isinstance(iterable, TVar):
+                iter_type = self.var_types.get(iterable.name)
             if self._is_map_expr(iterable):
                 if isinstance(iter_type, TMapType) and isinstance(
                     iter_type.key, TTupleType
@@ -3516,7 +3522,9 @@ class _PerlEmitter(Emitter):
             and isinstance(cond.func, TVar)
             and cond.func.name == func_name
         ):
-            return self._expr(cond.args[0].value), self._expr(cond.args[1].value)
+            s: str | None = self._expr(cond.args[0].value)
+            p: str = self._expr(cond.args[1].value)
+            return s, p
         return None, ""
 
     def _format_interpolated(self, args: list[TArg]) -> str:

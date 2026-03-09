@@ -1606,7 +1606,7 @@ class Parser:
         """Parse decorated function or class."""
         decorators: list[ASTNode] = []
         while self.match_op("@"):
-            tok = self.advance()
+            self.advance()
             decorator = self.parse_namedexpr_test()
             decorators.append(decorator)
             self.skip_newlines()
@@ -3485,15 +3485,15 @@ class Parser:
     def parse_strings(self) -> ASTNode:
         """Parse one or more string literals (concatenation)."""
         tok = self.current()
-        strings: list[Token] = []
+        str_tokens: list[Token] = []
         while self.match(TK_STRING):
-            strings.append(self.advance())
+            str_tokens.append(self.advance())
 
         # Check for f-strings and string/bytes mixing
         has_fstring = False
         has_bytes = False
         has_str = False
-        for s_tok in strings:
+        for s_tok in str_tokens:
             val = s_tok.value
             quote_pos = 0
             while quote_pos < len(val) and val[quote_pos] not in "\"'":
@@ -3512,11 +3512,11 @@ class Parser:
         if has_fstring:
             # Parse f-string content to extract literal parts and {expr} parts
             values: list[ASTNode] = []
-            for s in strings:
+            for s in str_tokens:
                 fstring_values = parse_fstring(s.value, s.lineno, s.col)
                 for fval in fstring_values:
                     values.append(fval)
-            last_str = strings[len(strings) - 1]
+            last_str = str_tokens[len(str_tokens) - 1]
             fields: ASTNode = {"values": _wrap_nodes(values)}
             return end_from_token(
                 make_node("JoinedStr", tok.lineno, tok.col, fields),
@@ -3525,17 +3525,17 @@ class Parser:
 
         # Regular strings - concatenate
         combined = parse_string_value(
-            strings[0].value, strings[0].lineno, strings[0].col
+            str_tokens[0].value, str_tokens[0].lineno, str_tokens[0].col
         )
         k = 1
-        while k < len(strings):
+        while k < len(str_tokens):
             next_val = parse_string_value(
-                strings[k].value, strings[k].lineno, strings[k].col
+                str_tokens[k].value, str_tokens[k].lineno, str_tokens[k].col
             )
             combined = combined + next_val
             k += 1
 
-        last_str = strings[len(strings) - 1]
+        last_str = str_tokens[len(str_tokens) - 1]
         combined_v: JsonValue = JStr(combined)
         fields: dict[str, JsonValue] = {"value": combined_v}
         if has_bytes:

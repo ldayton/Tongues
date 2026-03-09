@@ -992,16 +992,23 @@ def _value_eq(a: Value, b: Value) -> bool:
             return False
         if a.struct_name != b.struct_name:
             return False
-        if a.fields.keys() != b.fields.keys():
+        if len(a.fields) != len(b.fields):
             return False
         for k in a.fields.keys():
+            if k not in b.fields:
+                return False
             if not _value_eq(a.fields[k], b.fields[k]):
                 return False
         return True
     if isinstance(a, VFunc):
         if not isinstance(b, VFunc):
             return False
-        return type_eq(a.typ, b.typ) and a.name == b.name and a.kind == b.kind
+        b_func: VFunc = b
+        return (
+            type_eq(a.typ, b_func.typ)
+            and a.name == b_func.name
+            and a.kind == b_func.kind
+        )
     raise TaytshRuntimeFault("unsupported equality", None)
 
 
@@ -1857,7 +1864,7 @@ class Runtime:
         if isinstance(it, VBytes):
             bi = 0
             while bi < len(it.value):
-                bv = it.value[bi]
+                bv: int = it.value[bi]
                 env.push_scope()
                 try:
                     if len(st.binding) == 1:
@@ -2421,7 +2428,7 @@ class Runtime:
         if isinstance(obj, VBytes) and isinstance(idx, VInt):
             if idx.value < 0 or idx.value >= len(obj.value):
                 self._throw_err("IndexError", "index out of bounds")
-            bval = obj.value[idx.value]
+            bval: int = obj.value[idx.value]
             return VByte(bval)
         if isinstance(obj, VMap):
             key = _as_hashable(idx)
@@ -2715,7 +2722,7 @@ def _strict_tostring(v: Value, rt: Runtime, *, in_composite: bool = False) -> st
         hex_list: list[str] = []
         bi = 0
         while bi < len(v.value):
-            bvi = v.value[bi]
+            bvi: int = v.value[bi]
             hex_list.append("\\x" + hex_chars[bvi >> 4] + hex_chars[bvi & 0x0F])
             bi += 1
         hex_parts = "".join(hex_list)
@@ -2961,7 +2968,8 @@ def _bi_floor_div(rt: Runtime, args: list[Value]) -> Value:
             raise TaytshRuntimeFault("FloorDiv expects numeric types", None)
         if fb == 0.0:
             rt._throw_err("ZeroDivisionError", "division by zero")
-        return VFloat(fa // fb)
+        result: float = fa // fb
+        return VFloat(result)
     if not isinstance(a, VInt) or not isinstance(b, VInt):
         raise TaytshRuntimeFault("FloorDiv expects numeric types", None)
     if b.value == 0:
@@ -2989,7 +2997,9 @@ def _bi_python_mod(rt: Runtime, args: list[Value]) -> Value:
             raise TaytshRuntimeFault("PythonMod expects numeric types", None)
         if fb == 0.0:
             rt._throw_err("ZeroDivisionError", "division by zero")
-        return VFloat(fa % fb)
+        # Python modulo semantics: result has same sign as divisor
+        mod_result = ((fa % fb) + fb) % fb
+        return VFloat(mod_result)
     if not isinstance(a, VInt) or not isinstance(b, VInt):
         raise TaytshRuntimeFault("PythonMod expects numeric types", None)
     if b.value == 0:
@@ -3361,8 +3371,9 @@ def _bi_split_whitespace(rt: Runtime, args: list[Value]) -> Value:
 def _bi_join(rt: Runtime, args: list[Value]) -> Value:
     sep = args[0]
     parts = args[1]
+    bs: list[bytes] = []
+    strs: list[str] = []
     if isinstance(sep, VBytes) and isinstance(parts, VList):
-        bs: list[bytes] = []
         for e in parts.elements:
             if isinstance(e, VBytes):
                 bs.append(e.value)
@@ -3371,7 +3382,6 @@ def _bi_join(rt: Runtime, args: list[Value]) -> Value:
         return VBytes(sep.value.join(bs))
     if not isinstance(sep, VString) or not isinstance(parts, VList):
         raise TaytshRuntimeFault("Join expects string, list[string]", None)
-    strs: list[str] = []
     for e in parts.elements:
         if isinstance(e, VString):
             strs.append(e.value)
@@ -3521,17 +3531,28 @@ def _bi_repeat(rt: Runtime, args: list[Value]) -> Value:
     n = args[1]
     if not isinstance(n, VInt):
         raise TaytshRuntimeFault("Repeat expects int count", None)
+    count = max(0, n.value)
     if isinstance(a, VString):
-        return VString(a.value * max(0, n.value))
+        return VString(a.value * count)
     if isinstance(a, VList):
-        return VList(list(a.elements) * max(0, n.value), a.typ)
+        result: list[Value] = []
+        i = 0
+        while i < count:
+            for e in a.elements:
+                result.append(e)
+            i += 1
+        return VList(result, a.typ)
     if isinstance(a, VTuple):
         elem_ty = a.typ.elements[0] if a.typ.elements else ERROR_T
-        return VList(
-            list(a.elements) * max(0, n.value), ListT(kind="list", element=elem_ty)
-        )
+        result2: list[Value] = []
+        j = 0
+        while j < count:
+            for e in a.elements:
+                result2.append(e)
+            j += 1
+        return VList(result2, ListT(kind="list", element=elem_ty))
     if isinstance(a, VBytes):
-        return VBytes(a.value * max(0, n.value))
+        return VBytes(a.value * count)
     raise TaytshRuntimeFault("Repeat expects string or list", None)
 
 
