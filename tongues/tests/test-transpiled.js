@@ -702,10 +702,6 @@ if (failures.length > 0) {
         console.log();
         console.log(`${phase} :: ${tid}`);
         console.log(err);
-        // GitHub Actions error annotation
-        const title = `${phase} :: ${tid}`;
-        const firstLine = err ? err.split("\n")[0] : "Test failed";
-        console.log(`::error title=${title}::${firstLine}`);
     }
     console.log();
 }

@@ -769,10 +769,6 @@ if (@failures) {
         say "";
         say "$phase :: $tid";
         say $err;
-        # GitHub Actions error annotation
-        my $title = "$phase :: $tid";
-        my $first_line = $err ? (split /\n/, $err)[0] : "Test failed";
-        say "::error title=$title::$first_line";
     }
     say "";
 }

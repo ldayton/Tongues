@@ -1283,10 +1283,6 @@ public class TestTranspiled {
                 System.out.println();
                 System.out.println(f[0] + " :: " + f[1]);
                 System.out.println(f[2]);
-                // GitHub Actions error annotation
-                String title = f[0] + " :: " + f[1];
-                String firstLine = f[2] != null && !f[2].isEmpty() ? f[2].split("\n")[0] : "Test failed";
-                System.out.println("::error title=" + title + "::" + firstLine);
             }
             System.out.println();
         }

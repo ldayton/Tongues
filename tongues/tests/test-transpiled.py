@@ -1586,11 +1586,6 @@ if __name__ == "__main__":
         print("=" * 60)
         for phase, tid, err in failures:
             print(f"  {phase}::{tid}")
-            # GitHub Actions error annotation
-            title = f"{phase}::{tid}"
-            print(
-                f"::error title={title}::{err.splitlines()[0] if err else 'Test failed'}"
-            )
         print()
 
     print("=" * 60)
