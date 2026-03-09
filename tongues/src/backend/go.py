@@ -702,6 +702,14 @@ func strictSortedF64(xs []float64) []float64 {
 \tslices.Sort(out)
 \treturn out
 }""",
+    "int_slice_to_bytes": """\
+func _intSliceToBytes(s []int) []byte {
+\tb := make([]byte, len(s))
+\tfor i, v := range s {
+\t\tb[i] = byte(v)
+\t}
+\treturn b
+}""",
 }
 
 # Map from util.py helper names to Go function names
@@ -945,6 +953,12 @@ class _GoEmitter(Emitter):
             self._line("return string(runes)")
             self.indent -= 1
             self._line("}")
+        # Emit used strict math helpers
+        for helper_name in sorted(self._used_strict_helpers):
+            if helper_name in _STRICT_MATH_HELPERS:
+                self._line()
+                for hline in _STRICT_MATH_HELPERS[helper_name].split("\n"):
+                    self.lines.append(hline)
 
     # ── Enum ──────────────────────────────────────────────────
 
@@ -5171,9 +5185,12 @@ class _GoEmitter(Emitter):
         if name == "SetFromList":
             return self._setfromlist_call(args)
         if name == "Bytes":
+            if self._is_int_expr(args[0].value):
+                return "make([]byte, " + self._a(args, 0) + ")"
             return "[]byte(" + self._a(args, 0) + ")"
         if name == "BytesFrom":
-            return "[]byte{" + self._a(args, 0) + "}"
+            self._used_strict_helpers.add("int_slice_to_bytes")
+            return "_intSliceToBytes(" + self._a(args, 0) + ")"
         if name == "ReadBytes":
             return "[]byte{}"
         if name == "ReadBytesN":
