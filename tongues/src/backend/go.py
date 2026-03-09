@@ -1667,7 +1667,7 @@ class _GoEmitter(Emitter):
                         var_typ = fn_ret
         self.var_types[stmt.name] = var_typ
         if remaining is not None and not _stmts_ref_var(remaining, stmt.name):
-            if stmt.value is not None:
+            if stmt.value is not None and safe != "_":
                 self._line("_ = " + self._expr(stmt.value))
             return
         unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
@@ -3051,7 +3051,7 @@ class _GoEmitter(Emitter):
         self._scan_var_refs(body, used)
         for name in let_names:
             safe = _safe_name(name)
-            if name not in used:
+            if name not in used and safe != "_":
                 self._line("_ = " + safe)
 
     def _scan_var_refs(self, stmts: list[TStmt], used: set[str]) -> None:
