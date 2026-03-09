@@ -25,5 +25,18 @@ code = code.replace(/^let /gm, "var ");
 globalThis.require = require;
 process.argv = ["node", resolved, ...process.argv.slice(3)];
 
+// Intercept process.exit to wait for stdout to flush
+const originalExit = process.exit;
+process.exit = (code) => {
+    // Force synchronous write of any pending stdout data
+    if (process.stdout._writableState && process.stdout._writableState.buffered.length > 0) {
+        const nodeFs = require("fs");
+        for (const chunk of process.stdout._writableState.buffered) {
+            nodeFs.writeSync(1, chunk.chunk);
+        }
+    }
+    originalExit(code);
+};
+
 vm.runInThisContext(code, { filename: resolved });
 main();
