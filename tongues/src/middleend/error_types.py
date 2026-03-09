@@ -146,14 +146,41 @@ def _find_assign_ann(name: str, stmts: list[TStmt]) -> str:
     for stmt in stmts:
         if isinstance(stmt, TAssignStmt):
             if isinstance(stmt.target, TVar) and stmt.target.name == name:
-                return stmt.value.annotations.get("type", "")
+                ann = stmt.value.annotations.get("type", "")
+                if ann and ann != "error":
+                    return ann
         if isinstance(stmt, TIfStmt):
             result = _find_assign_ann(name, stmt.then_body)
-            if result:
+            if result and result != "error":
                 return result
             if stmt.else_body is not None:
                 result = _find_assign_ann(name, stmt.else_body)
-                if result:
+                if result and result != "error":
+                    return result
+        elif isinstance(stmt, TWhileStmt):
+            result = _find_assign_ann(name, stmt.body)
+            if result and result != "error":
+                return result
+        elif isinstance(stmt, TForStmt):
+            result = _find_assign_ann(name, stmt.body)
+            if result and result != "error":
+                return result
+        elif isinstance(stmt, TMatchStmt):
+            for case in stmt.cases:
+                result = _find_assign_ann(name, case.body)
+                if result and result != "error":
+                    return result
+            if stmt.default is not None:
+                result = _find_assign_ann(name, stmt.default.body)
+                if result and result != "error":
+                    return result
+        elif isinstance(stmt, TTryStmt):
+            result = _find_assign_ann(name, stmt.body)
+            if result and result != "error":
+                return result
+            for catch in stmt.catches:
+                result = _find_assign_ann(name, catch.body)
+                if result and result != "error":
                     return result
     return ""
 

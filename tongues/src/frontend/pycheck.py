@@ -3430,6 +3430,32 @@ def _subscript_key(node: ASTNode) -> str:
     return base + ":" + str(slc_v.value)
 
 
+def _preserve_subscript_type(
+    target: ASTNode, narrowed: TypeNode, env: TypeEnv
+) -> TypeNode:
+    """Keep parameterized type when isinstance narrows a subscript to bare container."""
+    val_node = get_node(target, "value")
+    if not val_node or not _is_type(val_node, ["Name"]):
+        return narrowed
+    base_name = get_str(val_node, "id")
+    base_type = env.get_type(base_name)
+    if not isinstance(base_type, SliceType):
+        return narrowed
+    elem = base_type.element
+    if contains_any(elem):
+        return narrowed
+    same_container = False
+    if isinstance(narrowed, MapType) and isinstance(elem, MapType):
+        same_container = True
+    elif isinstance(narrowed, SliceType) and isinstance(elem, SliceType):
+        same_container = True
+    elif isinstance(narrowed, SetType) and isinstance(elem, SetType):
+        same_container = True
+    if same_container:
+        return elem
+    return narrowed
+
+
 def _narrow_isinstance(
     test: ASTNode,
     then_env: TypeEnv,
@@ -3482,6 +3508,8 @@ def _narrow_isinstance(
         narrowed = py_type_to_type_dict(
             narrow_name, ctx.known_classes, sig_errors, 0, 0
         )
+        if contains_any(narrowed) and _is_type(target, ["Subscript"]):
+            narrowed = _preserve_subscript_type(target, narrowed, then_env)
         then_env.narrow(name, narrowed)
     elif len(narrow_names) > 1:
         sig_errors: list[TypeCollectError] = []

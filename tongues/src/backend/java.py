@@ -554,6 +554,31 @@ class _JavaEmitter(Emitter):
             return "set[" + self._type_to_ann(typ.element) + "]"
         return ""
 
+    def _raw_binding_value_cast(self, expr: TExpr) -> str | None:
+        """Return cast type for .get() on a raw-typed pattern binding, or None."""
+        if not isinstance(expr, TVar):
+            return None
+        n = _restore_name(expr.name, expr.annotations)
+        alias = self._var_aliases.get(n)
+        if alias is None:
+            return None
+        if alias not in self._narrowed_types:
+            return None
+        typ = self.var_types.get(expr.name)
+        if isinstance(typ, TMapType):
+            return self._boxed_type(typ.value)
+        if isinstance(typ, TListType):
+            return self._boxed_type(typ.element)
+        return None
+
+    def _is_raw_binding_var(self, expr: TExpr) -> bool:
+        """Check if expr is a TVar that resolved to a raw pattern binding."""
+        if not isinstance(expr, TVar):
+            return False
+        n = _restore_name(expr.name, expr.annotations)
+        alias = self._var_aliases.get(n)
+        return alias is not None and alias in self._narrowed_types
+
     def _iterable_tuple_types(self, iterable: TExpr) -> list[str]:
         """Get the Java types for each element of a tuple iterable (list[tuple[...]])."""
         typ: TType | None = None
@@ -3183,12 +3208,20 @@ class _JavaEmitter(Emitter):
         idx = self._expr(expr.index)
         ann = expr.obj.annotations.get("type", "")
         if ann.startswith("map[") or self._is_map_type(expr.obj):
-            return obj + ".get(" + idx + ")"
+            result = obj + ".get(" + idx + ")"
+            cast = self._raw_binding_value_cast(expr.obj)
+            if cast is not None:
+                return "(" + cast + ") " + result
+            return result
         if ann == "bytes" or self._is_bytes_expr(expr.obj):
             return obj + "[" + idx + "]"
         if ann == "string" or self._is_string_expr(expr.obj):
             return obj + ".charAt(" + idx + ")"
-        return obj + ".get(" + idx + ")"
+        result = obj + ".get(" + idx + ")"
+        cast = self._raw_binding_value_cast(expr.obj)
+        if cast is not None:
+            return "(" + cast + ") " + result
+        return result
 
     def _is_string_expr(self, expr: TExpr) -> bool:
         ann = expr.annotations.get("type", "")
@@ -3588,7 +3621,17 @@ class _JavaEmitter(Emitter):
             self._needs_zfill = True
             return "_zfill(" + obj + ", " + self._a(args, 0) + ")"
         if method == "keys":
+            if isinstance(func.obj, TVar) and self._is_raw_binding_var(func.obj):
+                typ = self.var_types.get(func.obj.name)
+                if isinstance(typ, TMapType):
+                    key_type = self._boxed_type(typ.key)
+                    return "new ArrayList<" + key_type + ">(" + obj + ".keySet())"
             return "new ArrayList<>(" + obj + ".keySet())"
+        if method == "find" and self._is_bytes_expr(func.obj):
+            self._needs_bytes_helpers = True
+            return "_bytesIndexOf(" + obj + ", " + self._join_args(args, ", ") + ")"
+        if method == "decode" and self._is_bytes_expr(func.obj):
+            return "new String(" + obj + ", StandardCharsets.UTF_8)"
         if method == "hex" and self._is_bytes_expr(func.obj):
             self._needs_hex_helper = True
             return "_bytesHex(" + obj + ")"
@@ -4252,6 +4295,8 @@ class _JavaEmitter(Emitter):
                 return e + ".length()"
         if isinstance(expr, TStringLit):
             return e + ".length()"
+        if self._is_bytes_expr(expr):
+            return e + ".length"
         return e + ".size()"
 
     def _is_map_type(self, expr: TExpr) -> bool:
