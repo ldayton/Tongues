@@ -68,7 +68,7 @@ RUNTIMES = {
 $vm_compiled = nil
 
 def load_vm_module(ty_path)
-  source = File.read(ty_path)
+  source = File.read(ty_path, encoding: "BINARY")
   mod = taytsh_taytsh_parse(source)
   $vm_compiled = vm_prepare(mod)
   puts "VM module compiled"
