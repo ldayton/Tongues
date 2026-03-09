@@ -316,7 +316,7 @@ jobs:
       - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile.v2 _vm javascript
 
   # ---------------------------------------------------------------------------
-  # Java: compile only (no runtime tests yet)
+  # Java: compile, cross-equivalence, treewalker, vm
   # ---------------------------------------------------------------------------
 
   compile-java:
@@ -329,12 +329,59 @@ jobs:
           name: transpiled-java
           path: tongues/.out
       - run: docker build -t tongues-java docker/java
-      - run: |
-          docker run --rm -v $PWD:/workspace tongues-java bash -c '
-            tmpdir=$(mktemp -d)
-            cp tongues/.out/tongues.java "$tmpdir/Main.java"
-            javac -encoding UTF-8 "$tmpdir/Main.java" -d "$tmpdir"
-          '
+      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile.v2 _compile-java
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compiled-java
+          path: tongues/.out/java-classes/
+
+  cross-equivalence-java:
+    runs-on: ubuntu-latest
+    needs: compile-java
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-java
+          path: tongues/.out
+      - uses: actions/download-artifact@v4
+        with:
+          name: compiled-java
+          path: tongues/.out/java-classes
+      - run: docker build -t tongues-java docker/java
+      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile.v2 cross-equivalence java
+
+  treewalker-apptests-java:
+    runs-on: ubuntu-latest
+    needs: compile-java
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-java
+          path: tongues/.out
+      - uses: actions/download-artifact@v4
+        with:
+          name: compiled-java
+          path: tongues/.out/java-classes
+      - run: docker build -t tongues-java docker/java
+      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile.v2 _treewalker-java
+
+  vm-apptests-java:
+    runs-on: ubuntu-latest
+    needs: compile-java
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-java
+          path: tongues/.out
+      - uses: actions/download-artifact@v4
+        with:
+          name: compiled-java
+          path: tongues/.out/java-classes
+      - run: docker build -t tongues-java docker/java
+      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile.v2 _vm-java
 
   # ---------------------------------------------------------------------------
   # Taytsh VM: full tongues test suite through VM per language
@@ -459,6 +506,9 @@ jobs:
       - vm-apptests-javascript
       - vm-test-tongues-javascript
       - compile-java
+      - cross-equivalence-java
+      - treewalker-apptests-java
+      - vm-apptests-java
     runs-on: ubuntu-latest
     steps:
       - run: |
@@ -487,7 +537,10 @@ jobs:
             "${{ needs.treewalker-apptests-javascript.result }}" \
             "${{ needs.vm-apptests-javascript.result }}" \
             "${{ needs.vm-test-tongues-javascript.result }}" \
-            "${{ needs.compile-java.result }}"; do
+            "${{ needs.compile-java.result }}" \
+            "${{ needs.cross-equivalence-java.result }}" \
+            "${{ needs.treewalker-apptests-java.result }}" \
+            "${{ needs.vm-apptests-java.result }}"; do
             if [ "$result" != "success" ]; then
               echo "One or more jobs failed"
               exit 1

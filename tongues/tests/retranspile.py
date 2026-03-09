@@ -142,11 +142,39 @@ def run_javascript(binary_path, stdin_data, target):
     )
 
 
+def run_java(binary_path, stdin_data, target):
+    import shutil
+    import tempfile
+
+    # Compile the Java file to a temp directory
+    tmpdir = tempfile.mkdtemp()
+    try:
+        shutil.copy(binary_path, os.path.join(tmpdir, "Main.java"))
+        compile_result = subprocess.run(
+            ["javac", "-encoding", "UTF-8", "Main.java"],
+            cwd=tmpdir,
+            capture_output=True,
+        )
+        if compile_result.returncode != 0:
+            print(
+                f"Java compilation failed: {compile_result.stderr.decode(errors='replace')}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        return run_subprocess(
+            ["java", "-cp", tmpdir, "Main", "--project", "--target", target],
+            stdin_data,
+        )
+    finally:
+        shutil.rmtree(tmpdir)
+
+
 RUNNERS = {
     ".py": run_python,
     ".rb": run_ruby,
     ".pl": run_perl,
     ".js": run_javascript,
+    ".java": run_java,
 }
 
 

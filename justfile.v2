@@ -104,21 +104,81 @@ lang target:
     for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
     exit $failed
 
-# Self-transpile to Java and verify compilation succeeds
+# Self-transpile to Java, compile, and run tests
 lang-java:
     #!/usr/bin/env bash
-    set -euo pipefail
+    set -uo pipefail
     just -f {{justfile()}} _transpile-tongues java
+    just -f {{justfile()}} _compile-java
+    pids=()
+    failed=0
+    just -f {{justfile()}} cross-equivalence java & pids+=($!)
+    just -f {{justfile()}} _treewalker-java & pids+=($!)
+    just -f {{justfile()}} _vm-java & pids+=($!)
+    for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+    exit $failed
+
+# Compile transpiled Java to .class files
+_compile-java:
+    #!/usr/bin/env bash
+    set -euo pipefail
     start=$SECONDS
     echo "Compiling self-transpiled Java..."
-    tmpdir=$(mktemp -d)
-    trap 'rm -rf "$tmpdir"' EXIT
-    cp tongues/.out/tongues.java "$tmpdir/Main.java"
-    if ! javac -encoding UTF-8 "$tmpdir/Main.java" -d "$tmpdir" 2>&1; then
+    mkdir -p tongues/.out/java-classes
+    cp tongues/.out/tongues.java tongues/.out/java-classes/Main.java
+    if ! javac -encoding UTF-8 tongues/.out/java-classes/Main.java -d tongues/.out/java-classes 2>&1; then
         printf '\033[31m[compile:java] %ds (FAILED)\033[0m\n' "$((SECONDS - start))"
         exit 1
     fi
     printf '\033[32m[compile:java] %ds\033[0m\n' "$((SECONDS - start))"
+
+# Run taytsh app tests through the treewalker with Java binary
+_treewalker-java:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    start=$SECONDS
+    passed=0; failed=0
+    cd tongues
+    for f in tests/taytsh/app/*.ty; do
+        name=$(basename "$f" .ty)
+        if java -cp .out/java-classes Main taytsh "$f" >/dev/null 2>&1; then
+            passed=$((passed + 1))
+        else
+            echo "  FAIL $name"
+            failed=$((failed + 1))
+        fi
+    done
+    elapsed=$((SECONDS - start))
+    if [ $failed -eq 0 ]; then
+        printf '\033[32m[treewalker:java] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
+    else
+        printf '\033[31m[treewalker:java] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
+        exit 1
+    fi
+
+# Run taytsh app tests through the VM with Java binary
+_vm-java:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    start=$SECONDS
+    passed=0; failed=0
+    cd tongues
+    for f in tests/taytsh/app/*.ty; do
+        name=$(basename "$f" .ty)
+        if java -cp .out/java-classes Main taytsh --vm "$f" >/dev/null 2>&1; then
+            passed=$((passed + 1))
+        else
+            echo "  FAIL $name"
+            failed=$((failed + 1))
+        fi
+    done
+    elapsed=$((SECONDS - start))
+    if [ $failed -eq 0 ]; then
+        printf '\033[32m[vm:java] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
+    else
+        printf '\033[31m[vm:java] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
+        exit 1
+    fi
 
 # Type-check transpiled Python output
 _pyright:
@@ -159,7 +219,7 @@ idempotence:
 cross-equivalence target:
     #!/usr/bin/env bash
     set -euo pipefail
-    declare -A ext=([ruby]=rb [perl]=pl [javascript]=js)
+    declare -A ext=([ruby]=rb [perl]=pl [javascript]=js [java]=java)
     e=${ext[{{target}}]}
     start=$SECONDS
     cd tongues
