@@ -14,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: docker build -t tongues-python docker/python
-      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 style
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile style
 
   # ---------------------------------------------------------------------------
   # Transpile jobs — one per language, upload artifacts for downstream jobs
@@ -26,8 +26,8 @@ jobs:
       - uses: actions/checkout@v6
       - run: docker build -t tongues-python docker/python
       - run: |
-          docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _transpile-tongues python
-          docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _transpile-harness python
+          docker run --rm -v $PWD:/workspace tongues-python just -f justfile _transpile-tongues python
+          docker run --rm -v $PWD:/workspace tongues-python just -f justfile _transpile-harness python
       - uses: actions/upload-artifact@v4
         with:
           name: transpiled-python
@@ -41,8 +41,8 @@ jobs:
       - uses: actions/checkout@v6
       - run: docker build -t tongues-ruby docker/ruby
       - run: |
-          docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile.v2 _transpile-tongues ruby
-          docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile.v2 _transpile-harness ruby
+          docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile _transpile-tongues ruby
+          docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile _transpile-harness ruby
       - uses: actions/upload-artifact@v4
         with:
           name: transpiled-ruby
@@ -56,8 +56,8 @@ jobs:
       - uses: actions/checkout@v6
       - run: docker build -t tongues-perl docker/perl
       - run: |
-          docker run --rm -v $PWD:/workspace tongues-perl just -f justfile.v2 _transpile-tongues perl
-          docker run --rm -v $PWD:/workspace tongues-perl just -f justfile.v2 _transpile-harness perl
+          docker run --rm -v $PWD:/workspace tongues-perl just -f justfile _transpile-tongues perl
+          docker run --rm -v $PWD:/workspace tongues-perl just -f justfile _transpile-harness perl
       - uses: actions/upload-artifact@v4
         with:
           name: transpiled-perl
@@ -71,8 +71,8 @@ jobs:
       - uses: actions/checkout@v6
       - run: docker build -t tongues-javascript docker/javascript
       - run: |
-          docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile.v2 _transpile-tongues javascript
-          docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile.v2 _transpile-harness javascript
+          docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile _transpile-tongues javascript
+          docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile _transpile-harness javascript
       - uses: actions/upload-artifact@v4
         with:
           name: transpiled-javascript
@@ -85,8 +85,8 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - run: docker build -t tongues-java docker/java
-      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile.v2 _transpile-tongues java
-      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile.v2 _compile-java
+      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile _transpile-tongues java
+      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile _compile-java
       - uses: actions/upload-artifact@v4
         with:
           name: transpiled-java
@@ -121,7 +121,7 @@ jobs:
           name: transpiled-python
           path: tongues/.out
       - run: docker build -t tongues-python docker/python
-      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 idempotence
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile idempotence
 
   pyright:
     runs-on: ubuntu-latest
@@ -133,7 +133,7 @@ jobs:
           name: transpiled-python
           path: tongues/.out
       - run: docker build -t tongues-python docker/python
-      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _pyright
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _pyright
 
   treewalker-apptests-python:
     runs-on: ubuntu-latest
@@ -145,7 +145,7 @@ jobs:
           name: transpiled-python
           path: tongues/.out
       - run: docker build -t tongues-python docker/python
-      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _treewalker python
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _treewalker python
 
   vm-apptests-python:
     runs-on: ubuntu-latest
@@ -157,7 +157,7 @@ jobs:
           name: transpiled-python
           path: tongues/.out
       - run: docker build -t tongues-python docker/python
-      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _vm python
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _vm python
 
   # ---------------------------------------------------------------------------
   # Ruby: test, cross-equivalence, treewalker, vm
@@ -186,7 +186,7 @@ jobs:
           name: transpiled-ruby
           path: tongues/.out
       - run: docker build -t tongues-ruby docker/ruby
-      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile.v2 cross-equivalence ruby
+      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile cross-equivalence ruby
 
   treewalker-apptests-ruby:
     runs-on: ubuntu-latest
@@ -198,7 +198,7 @@ jobs:
           name: transpiled-ruby
           path: tongues/.out
       - run: docker build -t tongues-ruby docker/ruby
-      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile.v2 _treewalker ruby
+      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile _treewalker ruby
 
   vm-apptests-ruby:
     runs-on: ubuntu-latest
@@ -210,7 +210,7 @@ jobs:
           name: transpiled-ruby
           path: tongues/.out
       - run: docker build -t tongues-ruby docker/ruby
-      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile.v2 _vm ruby
+      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile _vm ruby
 
   # ---------------------------------------------------------------------------
   # Perl: test, cross-equivalence, treewalker, vm
@@ -239,7 +239,7 @@ jobs:
           name: transpiled-perl
           path: tongues/.out
       - run: docker build -t tongues-perl docker/perl
-      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile.v2 cross-equivalence perl
+      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile cross-equivalence perl
 
   treewalker-apptests-perl:
     runs-on: ubuntu-latest
@@ -251,7 +251,7 @@ jobs:
           name: transpiled-perl
           path: tongues/.out
       - run: docker build -t tongues-perl docker/perl
-      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile.v2 _treewalker perl
+      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile _treewalker perl
 
   vm-apptests-perl:
     runs-on: ubuntu-latest
@@ -263,7 +263,7 @@ jobs:
           name: transpiled-perl
           path: tongues/.out
       - run: docker build -t tongues-perl docker/perl
-      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile.v2 _vm perl
+      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile _vm perl
 
   # ---------------------------------------------------------------------------
   # JavaScript: test, cross-equivalence, treewalker, vm
@@ -292,7 +292,7 @@ jobs:
           name: transpiled-javascript
           path: tongues/.out
       - run: docker build -t tongues-javascript docker/javascript
-      - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile.v2 cross-equivalence javascript
+      - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile cross-equivalence javascript
 
   treewalker-apptests-javascript:
     runs-on: ubuntu-latest
@@ -304,7 +304,7 @@ jobs:
           name: transpiled-javascript
           path: tongues/.out
       - run: docker build -t tongues-javascript docker/javascript
-      - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile.v2 _treewalker javascript
+      - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile _treewalker javascript
 
   vm-apptests-javascript:
     runs-on: ubuntu-latest
@@ -316,7 +316,7 @@ jobs:
           name: transpiled-javascript
           path: tongues/.out
       - run: docker build -t tongues-javascript docker/javascript
-      - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile.v2 _vm javascript
+      - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile _vm javascript
 
   # ---------------------------------------------------------------------------
   # Java: test, cross-equivalence, treewalker, vm
@@ -332,7 +332,7 @@ jobs:
           name: transpiled-java
           path: tongues/.out
       - run: docker build -t tongues-java docker/java
-      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile.v2 _test-tongues-java
+      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile _test-tongues-java
 
   cross-equivalence-java:
     runs-on: ubuntu-latest
@@ -344,7 +344,7 @@ jobs:
           name: transpiled-java
           path: tongues/.out
       - run: docker build -t tongues-java docker/java
-      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile.v2 cross-equivalence java
+      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile cross-equivalence java
 
   treewalker-apptests-java:
     runs-on: ubuntu-latest
@@ -356,7 +356,7 @@ jobs:
           name: transpiled-java
           path: tongues/.out
       - run: docker build -t tongues-java docker/java
-      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile.v2 _treewalker-java
+      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile _treewalker-java
 
   vm-apptests-java:
     runs-on: ubuntu-latest
@@ -368,7 +368,7 @@ jobs:
           name: transpiled-java
           path: tongues/.out
       - run: docker build -t tongues-java docker/java
-      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile.v2 _vm-java
+      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile _vm-java
 
   # ---------------------------------------------------------------------------
   # Taytsh VM: full tongues test suite through VM per language
@@ -384,7 +384,7 @@ jobs:
           name: transpiled-javascript
           path: tongues/.out
       - run: docker build -t tongues-javascript docker/javascript
-      - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile.v2 _vm-test-tongues javascript
+      - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile _vm-test-tongues javascript
 
   vm-test-tongues-perl:
     runs-on: ubuntu-latest
@@ -396,7 +396,7 @@ jobs:
           name: transpiled-perl
           path: tongues/.out
       - run: docker build -t tongues-perl docker/perl
-      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile.v2 _vm-test-tongues perl
+      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile _vm-test-tongues perl
 
   vm-test-tongues-ruby:
     runs-on: ubuntu-latest
@@ -408,7 +408,7 @@ jobs:
           name: transpiled-ruby
           path: tongues/.out
       - run: docker build -t tongues-ruby docker/ruby
-      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile.v2 _vm-test-tongues ruby
+      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile _vm-test-tongues ruby
 
   vm-test-tongues-python:
     runs-on: ubuntu-latest
@@ -420,7 +420,7 @@ jobs:
           name: transpiled-python
           path: tongues/.out
       - run: docker build -t tongues-python docker/python
-      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _vm-test-tongues python
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _vm-test-tongues python
 
   vm-test-tongues-java:
     runs-on: ubuntu-latest
@@ -432,7 +432,7 @@ jobs:
           name: transpiled-java
           path: tongues/.out
       - run: docker build -t tongues-java docker/java
-      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile.v2 _vm-test-tongues-java
+      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile _vm-test-tongues-java
 
   # ---------------------------------------------------------------------------
   # Generative / property-based tests
@@ -459,7 +459,7 @@ jobs:
           name: docker-python
           path: /tmp
       - run: docker load -i /tmp/tongues-python.tar
-      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _pytest-gen-tycheck
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _pytest-gen-tycheck
 
   pytest-gen-softfloat:
     runs-on: ubuntu-latest
@@ -471,7 +471,7 @@ jobs:
           name: docker-python
           path: /tmp
       - run: docker load -i /tmp/tongues-python.tar
-      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile.v2 _pytest-gen-softfloat
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _pytest-gen-softfloat
 
   # ---------------------------------------------------------------------------
   # Gate — single status check for branch protection
