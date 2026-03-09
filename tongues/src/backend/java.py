@@ -4079,9 +4079,9 @@ class _JavaEmitter(Emitter):
         if name == "Format":
             return self._format_call(args)
         if name == "RuneToInt":
-            return "(int) " + self._a(args, 0)
+            return "(int) (" + self._a(args, 0) + ")"
         if name == "RuneFromInt":
-            return "(char) " + self._a(args, 0)
+            return "(char) (" + self._a(args, 0) + ")"
         if name == "Len":
             return self._len_expr(args[0].value)
         if name == "Abs":
