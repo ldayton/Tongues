@@ -894,14 +894,22 @@ class _JavaEmitter(Emitter):
         self.indent -= 1
         self._line("}")
         self._line()
-        self._line("static int doExit(int code) { throw new SystemExitException(code); }")
+        self._line(
+            "static int doExit(int code) { throw new SystemExitException(code); }"
+        )
         self._line()
         self._line("static int parseIntAuto(String s, int radix) {")
         self.indent += 1
         self._line("if (radix != 0) return Integer.parseInt(s, radix);")
-        self._line("if (s.startsWith(\"0x\") || s.startsWith(\"0X\")) return Integer.parseInt(s.substring(2), 16);")
-        self._line("if (s.startsWith(\"0b\") || s.startsWith(\"0B\")) return Integer.parseInt(s.substring(2), 2);")
-        self._line("if (s.startsWith(\"0o\") || s.startsWith(\"0O\")) return Integer.parseInt(s.substring(2), 8);")
+        self._line(
+            'if (s.startsWith("0x") || s.startsWith("0X")) return Integer.parseInt(s.substring(2), 16);'
+        )
+        self._line(
+            'if (s.startsWith("0b") || s.startsWith("0B")) return Integer.parseInt(s.substring(2), 2);'
+        )
+        self._line(
+            'if (s.startsWith("0o") || s.startsWith("0O")) return Integer.parseInt(s.substring(2), 8);'
+        )
         self._line("return Integer.parseInt(s, 10);")
         self.indent -= 1
         self._line("}")
@@ -931,7 +939,9 @@ class _JavaEmitter(Emitter):
                 )
             self._emit_stmts(top_stmts)
             self.indent -= 1
-            self._line("} catch (SystemExitException e) { if (System.getProperty(\"tongues.test\") == null) System.exit(e.code); else throw e; }")
+            self._line(
+                '} catch (SystemExitException e) { if (System.getProperty("tongues.test") == null) System.exit(e.code); else throw e; }'
+            )
             self.indent -= 1
             self._line("}")
         if self._needs_argv:
@@ -1395,7 +1405,9 @@ class _JavaEmitter(Emitter):
                 )
             self._emit_stmts(decl.body)
             self.indent -= 1
-            self._line("} catch (SystemExitException e) { if (System.getProperty(\"tongues.test\") == null) System.exit(e.code); else throw e; }")
+            self._line(
+                '} catch (SystemExitException e) { if (System.getProperty("tongues.test") == null) System.exit(e.code); else throw e; }'
+            )
             self.indent -= 1
             self._line("}")
         else:
@@ -3370,7 +3382,16 @@ class _JavaEmitter(Emitter):
             if hi_is_len:
                 return obj + ".substring(" + lo + ")"
             hi = self._expr(hi_expr)
-            return obj + ".substring(" + lo + ", Math.min(" + hi + ", " + obj + ".length()))"
+            return (
+                obj
+                + ".substring("
+                + lo
+                + ", Math.min("
+                + hi
+                + ", "
+                + obj
+                + ".length()))"
+            )
         hi = obj + ".size()" if hi_is_len else self._expr(hi_expr)
         return "new ArrayList<>(" + obj + ".subList(" + lo + ", " + hi + "))"
 
@@ -3896,9 +3917,7 @@ class _JavaEmitter(Emitter):
         if name == "ToString":
             return "String.valueOf(" + self._a(args, 0) + ")"
         if name == "ParseInt":
-            return (
-                "parseIntAuto(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
-            )
+            return "parseIntAuto(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "ReadAll":
             return "input"
         if name == "Unwrap":
