@@ -1300,6 +1300,8 @@ class _GoEmitter(Emitter):
                 return "[]byte"
             if k == "void":
                 return ""
+            if k == "error":
+                return "any"
             return k
         if isinstance(typ, TListType):
             return "[]" + self._type(typ.element)
@@ -1637,7 +1639,16 @@ class _GoEmitter(Emitter):
 
     def _emit_let(self, stmt: TLetStmt, remaining: list[TStmt] | None = None) -> None:
         safe = _restore_name(stmt.name, stmt.annotations)
-        self.var_types[stmt.name] = stmt.typ
+        var_typ = stmt.typ
+        # Infer better type from function return type for calls assigned to any-typed vars
+        if isinstance(var_typ, TPrimitive) and var_typ.kind == "error":
+            if stmt.value is not None and isinstance(stmt.value, TCall):
+                call_func = stmt.value.func
+                if isinstance(call_func, TVar):
+                    fn_ret = self._fn_ret_types.get(call_func.name)
+                    if isinstance(fn_ret, TType):
+                        var_typ = fn_ret
+        self.var_types[stmt.name] = var_typ
         if remaining is not None and not _stmts_ref_var(remaining, stmt.name):
             if stmt.value is not None:
                 self._line("_ = " + self._expr(stmt.value))
@@ -1691,6 +1702,11 @@ class _GoEmitter(Emitter):
                 obj_vt = self.var_types.get(val.obj.name)
                 if isinstance(obj_vt, TTupleType):
                     go_type = self._type(stmt.typ)
+                    # Infer element type from tuple if stmt type is any
+                    if go_type == "any" and isinstance(val.index, TIntLit):
+                        idx = val.index.value
+                        if 0 <= idx < len(obj_vt.elements):
+                            go_type = self._type(obj_vt.elements[idx])
                     if go_type != "any" and go_type != self._type(obj_vt):
                         val_s = val_s + ".(" + go_type + ")"
             if is_opt_prim and self._let_needs_ptr_wrap(val):
