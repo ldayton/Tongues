@@ -112,6 +112,7 @@ from .types import (
     STR_TYPE,  # noqa: F401 — used by _collection_element_type (added on main)
     VOID_TYPE,
     ANY_TYPE,
+    combine_types,
     contains_any,
     JsonValue,
     JStr,
@@ -470,6 +471,10 @@ def _backpatch_hoisted(pos: Pos, name: str, typ: TypeNode, env: _Env) -> None:
     placeholder = env.hoisted_stmts.get(name)
     if placeholder is None:
         return
+    # Merge with existing type if variable was assigned in another branch
+    existing = env.var_types.get(name)
+    if existing is not None:
+        typ = combine_types([existing, typ])
     ttype = _typenode_to_ttype(pos, typ)
     placeholder.typ = ttype
     if _type_has_zero_value(typ):
@@ -4611,19 +4616,21 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             return [TExprStmt(pos, expr, {})]
         value = _lower_expr(value_node, env, ctx)
         val_type: TypeNode = _infer_expr_type(value_node, env, ctx)
-        if _is_type_dict(val_type, ["void"]):
-            val_type = PrimitiveType("error")
         safe = _safe_name(name)
         ann = _name_ann(safe, name)
         if name not in env.declared and name not in env.loop_bindings:
             env.declared.add(name)
-            env.var_types[name] = val_type
-            ttype = _typenode_to_ttype(pos, val_type)
+            decl_type: TypeNode = val_type
+            if _is_type_dict(decl_type, ["void"]):
+                decl_type = PrimitiveType("error")
+            env.var_types[name] = decl_type
+            ttype = _typenode_to_ttype(pos, decl_type)
             stmts: list[TStmt] = [TLetStmt(pos, safe, ttype, value, ann)]
             stmts.extend(_method_side_effects(value_node, env, ctx))
             return stmts
         # Re-assignment
         if name in env.hoisted_stmts:
+            # Pass original type (including void for None) so combine_types works
             _backpatch_hoisted(pos, name, val_type, env)
         target: TExpr = TVar(pos, safe, ann)
         stmts: list[TStmt] = [TAssignStmt(pos, target, value, {})]

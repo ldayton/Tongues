@@ -408,3 +408,17 @@ def f(data: bytes) -> int:
 ---
 let b: int = ByteToInt(_raw_b)
 ---
+
+=== hoisted variable assigned None in branch should be optional
+class Foo:
+    def __init__(self, value: int) -> None:
+        self.value = value
+def f(x: Foo | None) -> Foo | None:
+    if x is not None:
+        result = x
+    else:
+        result = None
+    return result
+---
+let result: Foo?
+---
