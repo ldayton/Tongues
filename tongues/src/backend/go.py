@@ -1711,6 +1711,19 @@ class _GoEmitter(Emitter):
                 stmt.typ.inner, TPrimitive
             )
             val_s = self._expr_preserve_ptr(val) if is_opt_prim else self._expr(val)
+            # Tuple element access: add type assertion if target type is known
+            if isinstance(val, TTupleAccess) and isinstance(val.obj, TVar):
+                obj_vt = self.var_types.get(val.obj.name)
+                if isinstance(obj_vt, TTupleType):
+                    go_type = self._type(stmt.typ)
+                    # Infer element type from tuple if stmt type is any
+                    if go_type == "any":
+                        idx = val.index
+                        if 0 <= idx < len(obj_vt.elements):
+                            go_type = self._type(obj_vt.elements[idx])
+                    if go_type != "any" and go_type != self._type(obj_vt):
+                        val_s = val_s + ".(" + go_type + ")"
+            # Legacy TIndex handling for tuple-like access
             if isinstance(val, TIndex) and isinstance(val.obj, TVar):
                 obj_vt = self.var_types.get(val.obj.name)
                 if isinstance(obj_vt, TTupleType):
