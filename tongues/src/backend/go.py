@@ -5356,7 +5356,7 @@ class _GoEmitter(Emitter):
     def _formatint_call(self, args: list[TArg]) -> str:
         n = self._a(args, 0)
         base = self._a(args, 1)
-        return "strconv.FormatInt(" + n + ", " + base + ")"
+        return "strconv.FormatInt(int64(" + n + "), " + base + ")"
 
     def _range_list_call(self, args: list[TArg]) -> str:
         start = self._a(args, 0) if len(args) >= 2 else "0"
