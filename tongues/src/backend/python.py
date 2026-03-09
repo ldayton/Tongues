@@ -1296,7 +1296,11 @@ class _PythonEmitter(Emitter):
             self.indent += 1
             unused = pat.annotations.get("liveness.match_var_unused") == "true"
             if not unused:
-                self._line(_safe_name(pat.name) + " = " + expr_str)
+                # Avoid shadowing the type name with the binding variable
+                var_name = _safe_name(pat.name)
+                if var_name == type_name:
+                    var_name = "_m_" + var_name
+                self._line(var_name + " = " + expr_str)
             if not case.body:
                 if unused:
                     self._line("pass")
