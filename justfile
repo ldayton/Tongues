@@ -214,7 +214,8 @@ _test-tongues-java:
 _vm-test-tongues-java:
     #!/usr/bin/env bash
     # VM tests for Java not yet implemented - would require --via-vm support in TestTranspiled.java
-    printf '\033[33m[vm-test-tongues-java] skipped (not implemented)\033[0m\n'
+    printf '\033[31m[vm-test-tongues-java] not implemented\033[0m\n'
+    exit 1
 
 # Type-check transpiled Python output
 _pyright:
