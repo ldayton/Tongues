@@ -198,6 +198,24 @@ _vm-java:
         exit 1
     fi
 
+# Run tongues test suite only (no transpile, no other tests)
+# Usage: just test-tongues python [-n auto|<num>]
+test-tongues target *args:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
+    declare -A runner=([python]=python3 [ruby]=ruby [perl]=perl [javascript]=node)
+    start=$SECONDS
+    cd tongues
+    ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} .out/tongues.${ext[{{target}}]} {{args}} --target test-tongues-{{target}}; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[test-tongues-{{target}}] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[test-tongues-{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
+
 # Run test suite with Java binary
 _test-tongues-java:
     #!/usr/bin/env bash
@@ -292,7 +310,7 @@ cross-equivalence target:
     fi
 
 # Run full test suite through the VM in target language
-_vm-test-tongues target:
+_vm-test-tongues target *args:
     #!/usr/bin/env bash
     set -uo pipefail
     declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
@@ -301,7 +319,7 @@ _vm-test-tongues target:
     start=$SECONDS
     cd tongues
     ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} \
-        .out/tongues.${ext[{{target}}]} --via-vm .out/tongues.ty --target vm-test-tongues-{{target}}; rc=$?
+        .out/tongues.${ext[{{target}}]} --via-vm .out/tongues.ty {{args}} --target vm-test-tongues-{{target}}; rc=$?
     elapsed=$((SECONDS - start))
     if [ $rc -eq 0 ]; then
         printf '\033[32m[vm-test-tongues-{{target}}] %ds\033[0m\n' "$elapsed"

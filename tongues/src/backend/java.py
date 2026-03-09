@@ -900,17 +900,45 @@ class _JavaEmitter(Emitter):
         self._line()
         self._line("static int parseIntAuto(String s, int radix) {")
         self.indent += 1
-        self._line("if (radix != 0) return Integer.parseInt(s, radix);")
+        self._line("return (int) parseLongAuto(s, radix);")
+        self.indent -= 1
+        self._line("}")
+        self._line()
+        self._line("static long parseLongAuto(String s, int radix) {")
+        self.indent += 1
+        self._line("if (radix != 0) {")
+        self.indent += 1
+        self._line("try { return Long.parseLong(s, radix); }")
         self._line(
-            'if (s.startsWith("0x") || s.startsWith("0X")) return Integer.parseInt(s.substring(2), 16);'
+            "catch (NumberFormatException e) { return Long.parseUnsignedLong(s, radix); }"
         )
+        self.indent -= 1
+        self._line("}")
+        self._line('if (s.startsWith("0x") || s.startsWith("0X")) {')
+        self.indent += 1
+        self._line("try { return Long.parseLong(s.substring(2), 16); }")
         self._line(
-            'if (s.startsWith("0b") || s.startsWith("0B")) return Integer.parseInt(s.substring(2), 2);'
+            "catch (NumberFormatException e) { return Long.parseUnsignedLong(s.substring(2), 16); }"
         )
+        self.indent -= 1
+        self._line("}")
+        self._line('if (s.startsWith("0b") || s.startsWith("0B")) {')
+        self.indent += 1
+        self._line("try { return Long.parseLong(s.substring(2), 2); }")
         self._line(
-            'if (s.startsWith("0o") || s.startsWith("0O")) return Integer.parseInt(s.substring(2), 8);'
+            "catch (NumberFormatException e) { return Long.parseUnsignedLong(s.substring(2), 2); }"
         )
-        self._line("return Integer.parseInt(s, 10);")
+        self.indent -= 1
+        self._line("}")
+        self._line('if (s.startsWith("0o") || s.startsWith("0O")) {')
+        self.indent += 1
+        self._line("try { return Long.parseLong(s.substring(2), 8); }")
+        self._line(
+            "catch (NumberFormatException e) { return Long.parseUnsignedLong(s.substring(2), 8); }"
+        )
+        self.indent -= 1
+        self._line("}")
+        self._line("return Long.parseLong(s, 10);")
         self.indent -= 1
         self._line("}")
         for decl in module.decls:
@@ -1500,7 +1528,13 @@ class _JavaEmitter(Emitter):
         self._ret_type = ret
         params = self._params(method_params)
         fname = _safe_name(decl.name).lower()
-        self._line(ret + " " + fname + "(" + params + ") throws Exception {")
+        # Python's __repr__ becomes Java's toString
+        if fname == "__repr__":
+            fname = "toString"
+            # toString must be public and cannot throw checked exceptions
+            self._line("public " + ret + " " + fname + "(" + params + ") {")
+        else:
+            self._line(ret + " " + fname + "(" + params + ") throws Exception {")
         self.indent += 1
         self._emit_stmts(decl.body)
         self.indent -= 1
@@ -3079,7 +3113,10 @@ class _JavaEmitter(Emitter):
                 self._var_aliases = old_aliases
                 self._narrowed_types = old_narrowed
         if stmt.default:
-            self._emit_switch_case("default", stmt.default.body)
+            self._emit_switch_case("case null, default", stmt.default.body)
+        else:
+            # Handle null to avoid NPE on null switch values
+            self._line("case null, default -> {}")
         self.indent -= 1
         self._line("}")
 
@@ -3470,6 +3507,13 @@ class _JavaEmitter(Emitter):
                 return True
         return False
 
+    def _is_nullable_string_expr(self, expr: TExpr) -> bool:
+        """Check if expr is an optional string (String | None)."""
+        ann = expr.annotations.get("type", "")
+        if ann in ("string | nil", "nil | string"):
+            return True
+        return False
+
     def _is_rune_expr(self, expr: TExpr) -> bool:
         ann = expr.annotations.get("type", "")
         if ann == "rune":
@@ -3539,11 +3583,14 @@ class _JavaEmitter(Emitter):
                     return True
         return False
 
-    def _string_eq(self, str_expr: TExpr, other: TExpr, op: str) -> str | None:
+    def _string_eq(
+        self, str_expr: TExpr, other: TExpr, op: str, use_objects_equals: bool = False
+    ) -> str | None:
         """Emit idiomatic equality for a string-typed expression.
 
         Optimizes ToString(rune_expr) == "x" → rune_expr == 'x'.
         Falls back to .equals() for string comparisons.
+        Uses Objects.equals() for nullable strings.
         """
         char_op = "==" if op == "==" else "!="
         rune_inner = self._unwrap_tostring_rune(str_expr)
@@ -3570,6 +3617,10 @@ class _JavaEmitter(Emitter):
         b = self._expr(other)
         if self._is_concat_expr(str_expr):
             a = "(" + a + ")"
+        if use_objects_equals:
+            if op == "==":
+                return "Objects.equals(" + a + ", " + b + ")"
+            return "!Objects.equals(" + a + ", " + b + ")"
         if op == "==":
             return a + ".equals(" + b + ")"
         return "!" + a + ".equals(" + b + ")"
@@ -3668,6 +3719,15 @@ class _JavaEmitter(Emitter):
                 return result
         if op in ("==", "!=") and self._is_string_expr(expr.right):
             result = self._string_eq(expr.right, expr.left, op)
+            if result is not None:
+                return result
+        # Handle nullable strings with Objects.equals()
+        if op in ("==", "!=") and self._is_nullable_string_expr(expr.left):
+            result = self._string_eq(expr.left, expr.right, op, use_objects_equals=True)
+            if result is not None:
+                return result
+        if op in ("==", "!=") and self._is_nullable_string_expr(expr.right):
+            result = self._string_eq(expr.right, expr.left, op, use_objects_equals=True)
             if result is not None:
                 return result
         if op in ("&&", "and"):
