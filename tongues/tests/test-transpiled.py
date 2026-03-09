@@ -1288,6 +1288,7 @@ def _run_tests_parallel(
 ):
     """Run collected tests in parallel using Pebble ProcessPool with per-test timeout."""
     results = []
+    vm_tag = "[vm] " if via_vm_path else ""
     with ProcessPool(
         max_workers=num_workers,
         initializer=_worker_init,
@@ -1312,11 +1313,11 @@ def _run_tests_parallel(
                 results.append((phase, test_id, "fail", err))
                 status = "fail"
             if status == "pass":
-                print(f"PASS {phase}::{test_id}")
+                print(f"PASS {vm_tag}{phase}::{test_id}")
             elif status == "skip":
-                print(f"SKIP {phase}::{test_id}")
+                print(f"SKIP {vm_tag}{phase}::{test_id}")
             else:
-                print(f"FAIL {phase}::{test_id}")
+                print(f"FAIL {vm_tag}{phase}::{test_id}")
                 if err:
                     for line in err.split("\n"):
                         print(f"  {line}")
@@ -1344,7 +1345,7 @@ if __name__ == "__main__":
 
     via_vm_path = None
     target_name = None
-    num_workers = 1
+    num_workers = _get_cpu_count()
     filtered_argv = []
     i = 1
     while i < len(sys.argv):
