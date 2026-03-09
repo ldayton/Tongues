@@ -83,10 +83,37 @@ function loadGlobal(filePath) {
 }
 
 // ---------------------------------------------------------------------------
+// VM mode: parse + compile .ty once, invoke per test
+// ---------------------------------------------------------------------------
+
+let _vmCompiled = null;
+
+function loadVmModule(tyPath) {
+    const source = nodeFs.readFileSync(tyPath, "utf-8");
+    const module = taytsh_taytsh_parse(source);
+    _vmCompiled = vm_prepare(module);
+    console.log("VM module compiled");
+}
+
+function runVmInprocess(argv, stdinData) {
+    if (stdinData === undefined) stdinData = "";
+    const stdinBuf = typeof stdinData === "string"
+        ? Buffer.from(stdinData, "utf-8")
+        : (Buffer.isBuffer(stdinData) ? stdinData : Buffer.from(stdinData));
+    const instance = new VM(_vmCompiled);
+    const result = instance.invoke(stdinBuf, argv);
+    return {
+        stdout: typeof result.stdout === "string" ? result.stdout : result.stdout.toString("utf-8"),
+        stderr: typeof result.stderr === "string" ? result.stderr : result.stderr.toString("utf-8"),
+        exit: result.exit_code,
+    };
+}
+
+// ---------------------------------------------------------------------------
 // In-process execution
 // ---------------------------------------------------------------------------
 
-function runInprocess(argv, stdinData) {
+let runInprocess = function runInprocess(argv, stdinData) {
     if (stdinData === undefined) stdinData = "";
     const origArgv = process.argv;
     const origStdoutWrite = process.stdout.write;
@@ -126,7 +153,7 @@ function runInprocess(argv, stdinData) {
         nodeFs.readFileSync = origReadFileSync;
     }
     return { stdout: outBuf, stderr: errBuf, exit: exitCode };
-}
+};
 
 function runTranspiledPhase(source, cliArgs, isTaytsh, expectJson) {
     if (expectJson === undefined) expectJson = true;
@@ -555,8 +582,18 @@ function runOrderingTests(testDir) {
 // ---------------------------------------------------------------------------
 
 if (process.argv.length < 3) {
-    process.stderr.write("Usage: node test-transpiled.js <transpiled.js>\n");
+    process.stderr.write("Usage: node test-transpiled.js <transpiled.js> [--via-vm <tongues.ty>]\n");
     process.exit(1);
+}
+
+const viaVmIdx = process.argv.indexOf("--via-vm");
+let viaVmPath = null;
+if (viaVmIdx !== -1) {
+    if (viaVmIdx + 1 >= process.argv.length) {
+        process.stderr.write("--via-vm requires a path to a .ty file\n");
+        process.exit(1);
+    }
+    viaVmPath = nodePath.resolve(TONGUES_DIR, process.argv[viaVmIdx + 1]);
 }
 
 const transpiledPath = nodePath.resolve(TONGUES_DIR, process.argv[2]);
@@ -576,6 +613,18 @@ try {
 }
 const t1 = Date.now();
 console.log(`Loaded in ${((t1 - t0) / 1000).toFixed(1)}s`);
+
+if (viaVmPath) {
+    if (!nodeFs.existsSync(viaVmPath)) {
+        process.stderr.write(`VM module not found: ${viaVmPath}\n`);
+        process.exit(1);
+    }
+    console.log(`Loading VM module: ${viaVmPath}`);
+    const vmT0 = Date.now();
+    loadVmModule(viaVmPath);
+    console.log(`VM compiled in ${((Date.now() - vmT0) / 1000).toFixed(1)}s`);
+    runInprocess = runVmInprocess;
+}
 
 const harnessPath = nodePath.join(TONGUES_DIR, ".out", "test_harness.js");
 if (!nodeFs.existsSync(harnessPath)) {

@@ -91,6 +91,7 @@ lang target:
     just -f {{justfile()}} fixed-point {{target}} & pids+=($!)
     just -f {{justfile()}} _treewalker {{target}} & pids+=($!)
     just -f {{justfile()}} _vm {{target}} & pids+=($!)
+    just -f {{justfile()}} _vm-test-tongues {{target}} & pids+=($!)
     start=$SECONDS
     cd tongues
     ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} .out/tongues.${ext[{{target}}]}; rc=$?
@@ -154,6 +155,25 @@ fixed-point target:
         printf '\033[32m[fixed-point:{{target}}] %ds\033[0m\n' "$elapsed"
     else
         printf '\033[31m[fixed-point:{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
+
+# Run full test suite through the VM in target language
+_vm-test-tongues target:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
+    declare -A runner=([python]=python3 [ruby]=ruby [perl]=perl [javascript]=node)
+    just -f {{justfile()}} _transpile-tongues taytsh
+    start=$SECONDS
+    cd tongues
+    ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} \
+        .out/tongues.${ext[{{target}}]} --via-vm .out/tongues.ty; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[vm-test-tongues:{{target}}] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[vm-test-tongues:{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
     fi
     exit $rc
 
