@@ -5076,7 +5076,13 @@ class _GoEmitter(Emitter):
                 return (
                     "checkedPowI64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
                 )
-            return "math.Pow(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+            a = self._a(args, 0)
+            b = self._a(args, 1)
+            if self._is_int_expr(args[0].value):
+                return (
+                    "int(math.Pow(float64(" + a + "), float64(" + b + ")))"
+                )
+            return "math.Pow(" + a + ", " + b + ")"
         if name == "ToString":
             return self._tostring_call(args)
         if name == "ToRepr":
