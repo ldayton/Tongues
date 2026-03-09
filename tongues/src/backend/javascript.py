@@ -1831,6 +1831,8 @@ class _JavaScriptEmitter(Emitter):
             else:
                 has_untyped = True
         for catch in catches:
+            orig_name = _restore_name(catch.name, catch.annotations)
+            needs_alias = orig_name != catch_name
             if catch.types:
                 types: list[str] = []
                 for t in catch.types:
@@ -1842,15 +1844,21 @@ class _JavaScriptEmitter(Emitter):
                 keyword = "if" if first else "} else if"
                 self._line(keyword + " (" + cond + ") {")
                 self.indent += 1
+                if needs_alias:
+                    self._line("let " + orig_name + " = " + catch_name + ";")
                 self._emit_stmts(catch.body)
                 self.indent -= 1
                 first = False
             else:
                 if first:
+                    if needs_alias:
+                        self._line("let " + orig_name + " = " + catch_name + ";")
                     self._emit_stmts(catch.body)
                 else:
                     self._line("} else {")
                     self.indent += 1
+                    if needs_alias:
+                        self._line("let " + orig_name + " = " + catch_name + ";")
                     self._emit_stmts(catch.body)
                     self.indent -= 1
                 first = False
