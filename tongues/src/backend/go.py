@@ -1561,8 +1561,32 @@ class _GoEmitter(Emitter):
                                 tgt_s + " = " + self._expr_preserve_ptr(stmt.value)
                             )
                     else:
+                        # Ternary with specific target type: add type assertion
+                        val_expr = stmt.value
+                        if isinstance(val_expr, TTernary):
+                            vt2 = self.var_types.get(stmt.target.name)
+                            if vt2 is not None:
+                                tern_inferred = self._infer_go_type(val_expr.then_expr)
+                                tern_go_type = self._type(vt2)
+                                if tern_inferred == "any" and tern_go_type not in (
+                                    "any",
+                                    "",
+                                ):
+                                    val_s = val_s + ".(" + tern_go_type + ")"
                         self._line(self._expr(stmt.target) + " = " + val_s)
                 else:
+                    # Ternary with specific target type: add type assertion for TVar targets
+                    val_expr = stmt.value
+                    if isinstance(val_expr, TTernary) and isinstance(stmt.target, TVar):
+                        tgt_vt = self.var_types.get(stmt.target.name)
+                        if tgt_vt is not None:
+                            tern_inferred = self._infer_go_type(val_expr.then_expr)
+                            tern_go_type = self._type(tgt_vt)
+                            if tern_inferred == "any" and tern_go_type not in (
+                                "any",
+                                "",
+                            ):
+                                val_s = val_s + ".(" + tern_go_type + ")"
                     self._line(self._expr(stmt.target) + " = " + val_s)
             case TTupleAssignStmt():
                 self._emit_tuple_assign(stmt)
@@ -1752,6 +1776,13 @@ class _GoEmitter(Emitter):
                         if 0 <= idx < len(obj_vt.elements):
                             go_type = self._type(obj_vt.elements[idx])
                     if go_type != "any" and go_type != self._type(obj_vt):
+                        val_s = val_s + ".(" + go_type + ")"
+            # Ternary with specific target type: add type assertion
+            if isinstance(val, TTernary):
+                go_type = self._type(stmt.typ)
+                if go_type not in ("any", ""):
+                    inferred = self._infer_go_type(val.then_expr)
+                    if inferred == "any":
                         val_s = val_s + ".(" + go_type + ")"
             if is_opt_prim and self._let_needs_ptr_wrap(val):
                 self._line("__atmp := " + val_s)
@@ -2277,6 +2308,37 @@ class _GoEmitter(Emitter):
                 val_expr = args[1].value
                 if self._is_empty_map_or_set_call(val_expr):
                     val = self._append_empty_collection(args[0].value, val_expr)
+                elif isinstance(val_expr, TTupleLit):
+                    # For tuple appends, use interface type if available
+                    list_arg = args[0].value
+                    list_ann = list_arg.annotations.get("type", "")
+                    # Try variable type - get full list type and extract element
+                    if isinstance(list_arg, TVar):
+                        vt = self.var_types.get(list_arg.name)
+                        if isinstance(vt, TListType):
+                            # Get Go representation of the element type
+                            tup_type = self._type(vt.element)
+                            # tup_type is like "[2]Val" or "[2]*SomeStruct"
+                            elems = self._join_exprs(val_expr.elements, ", ")
+                            val = tup_type + "{" + elems + "}"
+                            self._line(obj + " = append(" + obj + ", " + val + ")")
+                            return
+                    elem_type = "any"
+                    if list_ann.startswith("list[tuple["):
+                        tup_inner = list_ann[11:-2]
+                        tup_parts = tup_inner.split(", ")
+                        if tup_parts and all(p == tup_parts[0] for p in tup_parts[1:]):
+                            elem_type = self._ann_type_to_go(tup_parts[0])
+                    elems = self._join_exprs(val_expr.elements, ", ")
+                    val = (
+                        "["
+                        + str(len(val_expr.elements))
+                        + "]"
+                        + elem_type
+                        + "{"
+                        + elems
+                        + "}"
+                    )
                 else:
                     val = self._expr(val_expr)
                 self._line(obj + " = append(" + obj + ", " + val + ")")
@@ -2746,6 +2808,26 @@ class _GoEmitter(Emitter):
         if isinstance(expr, TFieldAccess):
             return isinstance(self._resolve_field_type(expr), TSetType)
         return False
+
+    def _get_map_value_type(self, idx_expr: TIndex) -> str:
+        """Get the Go type of a map index expression's value."""
+        obj = idx_expr.obj
+        ann = obj.annotations.get("type", "")
+        if ann.startswith("map["):
+            # Parse map[K]V to extract V
+            bracket = ann.find("]")
+            if bracket != -1:
+                val_type = ann[bracket + 1 :]
+                return self._ann_type_to_go(val_type)
+        if isinstance(obj, TVar):
+            typ = self.var_types.get(obj.name)
+            if isinstance(typ, TMapType):
+                return self._type(typ.value)
+        if isinstance(obj, TFieldAccess):
+            ft = self._resolve_field_type(obj)
+            if isinstance(ft, TMapType):
+                return self._type(ft.value)
+        return ""
 
     def _is_map_for(self, stmt: TForStmt) -> bool:
         if stmt.annotations.get("for.items") == "true":
@@ -3773,7 +3855,18 @@ class _GoEmitter(Emitter):
         if isinstance(expr, TTupleLit):
             elems = self._join_exprs(expr.elements, ", ")
             elem_type = "any"
-            if expr.elements:
+            # Check expected_type annotation first for interface element types
+            for key in ("expected_type", "type"):
+                ann = expr.annotations.get(key, "")
+                if ann.startswith("tuple["):
+                    tup_str = ann[6:-1]
+                    elem_parts = tup_str.split(", ")
+                    if elem_parts and all(p == elem_parts[0] for p in elem_parts[1:]):
+                        et = self._ann_type_to_go(elem_parts[0])
+                        if et != "any":
+                            elem_type = et
+                            break
+            if elem_type == "any" and expr.elements:
                 types = [self._infer_go_type(e) for e in expr.elements]
                 if types[0] and all(t == types[0] for t in types[1:]):
                     elem_type = types[0]
@@ -4004,10 +4097,25 @@ class _GoEmitter(Emitter):
                     + ")-"
                     + self._expr(idx.right)
                 )
+        # Handle literal negative index: arr[-1] -> arr[len(arr)-1]
+        if isinstance(idx, TUnaryOp) and idx.op == "-":
+            if isinstance(idx.operand, TIntLit):
+                return "len(" + self._expr(expr.obj) + ")-" + idx.operand.raw
         return None
 
     def _binary(self, expr: TBinaryOp) -> str:
         op = expr.op
+        # Handle 1 << 64 which overflows compile-time constants in Go
+        # Use runtime evaluation to allow proper overflow behavior
+        if op == "<<" and isinstance(expr.right, TIntLit) and expr.right.value >= 64:
+            shift_val = expr.right.value
+            return (
+                "(func() int { s := "
+                + str(shift_val)
+                + "; return "
+                + self._expr(expr.left)
+                + " << s })()"
+            )
         # Detect NaN/Inf special float division patterns
         if op == "/" and isinstance(expr.right, TFloatLit) and expr.right.raw == "0.0":
             if isinstance(expr.left, TFloatLit):
@@ -4070,12 +4178,30 @@ class _GoEmitter(Emitter):
                 return name + " " + op + " nil"
             if isinstance(expr.left, TFieldAccess):
                 return self._field_access_raw(expr.left) + " " + op + " nil"
+            # Map index returning string: use "" instead of nil
+            if isinstance(expr.left, TIndex):
+                idx_type = self._get_map_value_type(expr.left)
+                # Known string map patterns: Annotations field
+                if idx_type == "" and isinstance(expr.left.obj, TFieldAccess):
+                    if expr.left.obj.field == "annotations":
+                        idx_type = "string"
+                if idx_type == "string":
+                    return self._expr(expr.left) + " " + op + ' ""'
         if op in ("==", "!=") and isinstance(expr.left, TNilLit):
             if isinstance(expr.right, TVar):
                 name = _restore_name(expr.right.name, expr.right.annotations)
                 return "nil " + op + " " + name
             if isinstance(expr.right, TFieldAccess):
                 return "nil " + op + " " + self._field_access_raw(expr.right)
+            # Map index returning string: use "" instead of nil
+            if isinstance(expr.right, TIndex):
+                idx_type = self._get_map_value_type(expr.right)
+                # Known string map patterns: Annotations field
+                if idx_type == "" and isinstance(expr.right.obj, TFieldAccess):
+                    if expr.right.obj.field == "annotations":
+                        idx_type = "string"
+                if idx_type == "string":
+                    return '"" ' + op + " " + self._expr(expr.right)
         left_str = self._maybe_paren(expr.left, op, is_left=True)
         right_str = self._maybe_paren(expr.right, op, is_left=False)
         # Deref *string when comparing with string literal or non-pointer string
@@ -4558,6 +4684,15 @@ class _GoEmitter(Emitter):
         field = func.field
         if field == "hex" and not args:
             return 'fmt.Sprintf("%x", ' + obj_str + ")"
+        # Python bytes methods
+        if field == "find":
+            return "bytes.Index(" + obj_str + ", " + self._a(args, 0) + ")"
+        if field == "decode":
+            # Go strings are UTF-8, just convert bytes to string
+            return "string(" + obj_str + ")"
+        if field == "endswith":
+            pkg = "bytes" if self._is_bytes_expr(func.obj) else "strings"
+            return pkg + ".HasSuffix(" + obj_str + ", " + self._a(args, 0) + ")"
         args = self._fill_default_args(func, args)
         params = self._lookup_params(func)
         arg_strs = self._join_args(args, ", ", params)
@@ -4627,31 +4762,28 @@ class _GoEmitter(Emitter):
             is_bytes = self._is_bytes_expr(args[0].value)
             pkg = "bytes" if is_bytes else "strings"
             if len(args) == 1:
-                return pkg + '.TrimLeft(' + self._a(args, 0) + ', " \\t\\n\\r")'
+                return pkg + ".TrimLeft(" + self._a(args, 0) + ', " \\t\\n\\r")'
             cutset = self._a(args, 1)
             if is_bytes:
                 cutset = "string(" + cutset + ")"
-            return (
-                pkg + ".TrimLeft(" + self._a(args, 0) + ", " + cutset + ")"
-            )
+            return pkg + ".TrimLeft(" + self._a(args, 0) + ", " + cutset + ")"
         if name == "TrimEnd":
             is_bytes = self._is_bytes_expr(args[0].value)
             pkg = "bytes" if is_bytes else "strings"
             if len(args) == 1:
-                return pkg + '.TrimRight(' + self._a(args, 0) + ', " \\t\\n\\r")'
+                return pkg + ".TrimRight(" + self._a(args, 0) + ', " \\t\\n\\r")'
             cutset = self._a(args, 1)
             if is_bytes:
                 cutset = "string(" + cutset + ")"
-            return (
-                pkg + ".TrimRight(" + self._a(args, 0) + ", " + cutset + ")"
-            )
+            return pkg + ".TrimRight(" + self._a(args, 0) + ", " + cutset + ")"
         if name == "Split":
             pkg = "bytes" if self._is_bytes_expr(args[0].value) else "strings"
             return pkg + ".Split(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "SplitN":
             pkg = "bytes" if self._is_bytes_expr(args[0].value) else "strings"
             return (
-                pkg + ".SplitN("
+                pkg
+                + ".SplitN("
                 + self._a(args, 0)
                 + ", "
                 + self._a(args, 1)
@@ -4679,7 +4811,8 @@ class _GoEmitter(Emitter):
         if name == "Replace":
             pkg = "bytes" if self._is_bytes_expr(args[0].value) else "strings"
             return (
-                pkg + ".ReplaceAll("
+                pkg
+                + ".ReplaceAll("
                 + self._a(args, 0)
                 + ", "
                 + self._a(args, 1)
@@ -4690,7 +4823,8 @@ class _GoEmitter(Emitter):
         if name == "ReplaceCount":
             pkg = "bytes" if self._is_bytes_expr(args[0].value) else "strings"
             return (
-                pkg + ".Replace("
+                pkg
+                + ".Replace("
                 + self._a(args, 0)
                 + ", "
                 + self._a(args, 1)
@@ -4743,9 +4877,7 @@ class _GoEmitter(Emitter):
                     + "]; return ok }()"
                 )
             pkg = "bytes" if self._is_bytes_expr(first_arg) else "strings"
-            return (
-                pkg + ".Contains(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
-            )
+            return pkg + ".Contains(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "IsDigit":
             a = self._a(args, 0)
             if a.startswith("*"):
@@ -5127,9 +5259,7 @@ class _GoEmitter(Emitter):
             a = self._a(args, 0)
             b = self._a(args, 1)
             if self._is_int_expr(args[0].value):
-                return (
-                    "int(math.Pow(float64(" + a + "), float64(" + b + ")))"
-                )
+                return "int(math.Pow(float64(" + a + "), float64(" + b + ")))"
             return "math.Pow(" + a + ", " + b + ")"
         if name == "ToString":
             return self._tostring_call(args)
