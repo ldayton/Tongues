@@ -368,19 +368,16 @@ public class TestTranspiled {
     // In-process execution
     // -------------------------------------------------------------------------
 
-    static class ExitException extends SecurityException {
-        final int status;
-        ExitException(int status) { this.status = status; }
-    }
+    static Class<?> systemExitExceptionClass = null;
+    static java.lang.reflect.Field systemExitCodeField = null;
 
-    static class NoExitSecurityManager extends SecurityManager {
-        @Override
-        public void checkPermission(java.security.Permission perm) {}
-        @Override
-        public void checkPermission(java.security.Permission perm, Object context) {}
-        @Override
-        public void checkExit(int status) {
-            throw new ExitException(status);
+    static {
+        try {
+            systemExitExceptionClass = Class.forName("Main$SystemExitException");
+            systemExitCodeField = systemExitExceptionClass.getDeclaredField("code");
+            systemExitCodeField.setAccessible(true);
+        } catch (Exception e) {
+            // Will be null if not found
         }
     }
 
@@ -388,7 +385,6 @@ public class TestTranspiled {
         PrintStream oldOut = System.out;
         PrintStream oldErr = System.err;
         InputStream oldIn = System.in;
-        SecurityManager oldSecurityManager = System.getSecurityManager();
         ByteArrayOutputStream outBuf = new ByteArrayOutputStream();
         ByteArrayOutputStream errBuf = new ByteArrayOutputStream();
         int exitCode = 0;
@@ -398,13 +394,16 @@ public class TestTranspiled {
             System.setErr(new PrintStream(errBuf, true, "UTF-8"));
             byte[] inputBytes = stdinBytes != null ? stdinBytes : stdinData.getBytes("UTF-8");
             System.setIn(new ByteArrayInputStream(inputBytes));
-            System.setSecurityManager(new NoExitSecurityManager());
 
             mainMethod.invoke(null, (Object) argv);
         } catch (InvocationTargetException e) {
             Throwable cause = e.getCause();
-            if (cause instanceof ExitException) {
-                exitCode = ((ExitException) cause).status;
+            if (systemExitExceptionClass != null && systemExitExceptionClass.isInstance(cause)) {
+                try {
+                    exitCode = systemExitCodeField.getInt(cause);
+                } catch (Exception ex) {
+                    exitCode = 1;
+                }
             } else {
                 try {
                     String msg = cause != null ? cause.getMessage() : e.getMessage();
@@ -413,15 +412,12 @@ public class TestTranspiled {
                 } catch (IOException ignored) {}
                 exitCode = 1;
             }
-        } catch (ExitException e) {
-            exitCode = e.status;
         } catch (Exception e) {
             try {
                 errBuf.write((e.getMessage() + "\n").getBytes());
             } catch (IOException ignored) {}
             exitCode = 1;
         } finally {
-            System.setSecurityManager(oldSecurityManager);
             System.setOut(oldOut);
             System.setErr(oldErr);
             System.setIn(oldIn);
@@ -1064,6 +1060,9 @@ public class TestTranspiled {
             .getParent().getParent();
         testsDir = tonguesDir.resolve("tests");
         libDir = tonguesDir.resolve("src").resolve("lib");
+
+        // Enable test mode so SystemExitException propagates instead of calling System.exit
+        System.setProperty("tongues.test", "1");
 
         System.out.println("Loading transpiled binary: " + classesDir);
         long t0 = System.currentTimeMillis();

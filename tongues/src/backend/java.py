@@ -886,6 +886,15 @@ class _JavaEmitter(Emitter):
                     self._line()
                     self._emit_interface(decl)
         self._emit_builtin_exception_stubs(module)
+        self._line()
+        self._line("static class SystemExitException extends RuntimeException {")
+        self.indent += 1
+        self._line("final int code;")
+        self._line("SystemExitException(int code) { this.code = code; }")
+        self.indent -= 1
+        self._line("}")
+        self._line()
+        self._line("static int doExit(int code) { throw new SystemExitException(code); }")
         for decl in module.decls:
             if isinstance(decl, TLetStmt):
                 self._line()
@@ -904,11 +913,15 @@ class _JavaEmitter(Emitter):
             self.indent += 1
             if self._needs_argv:
                 self._line("_argv = Arrays.asList(args);")
+            self._line("try {")
+            self.indent += 1
             if self._needs_read_all:
                 self._line(
                     "String input = new String(System.in.readAllBytes(), StandardCharsets.UTF_8);"
                 )
             self._emit_stmts(top_stmts)
+            self.indent -= 1
+            self._line("} catch (SystemExitException e) { if (System.getProperty(\"tongues.test\") == null) System.exit(e.code); else throw e; }")
             self.indent -= 1
             self._line("}")
         if self._needs_argv:
@@ -1341,10 +1354,10 @@ class _JavaEmitter(Emitter):
         if decl.name == "Main":
             self._ret_is_void = True
             self._line("public static void main(String[] args) throws Exception {")
+            self.indent += 1
             if self._needs_argv:
-                self.indent += 1
                 self._line("_argv = Arrays.asList(args);")
-                self.indent -= 1
+            self._line("try {")
         else:
             ret = "void"
             if decl.ret is not None:
@@ -1365,14 +1378,20 @@ class _JavaEmitter(Emitter):
                 + ") throws Exception {"
             )
         self.indent += 1
-        if decl.name == "Main" and self._needs_read_all:
-            self._line(
-                "String input = new String(System.in.readAllBytes(), StandardCharsets.UTF_8);"
-            )
-        self._emit_stmts(decl.body)
-        self.indent -= 1
-        self._line("}")
-        if decl.name != "Main":
+        if decl.name == "Main":
+            if self._needs_read_all:
+                self._line(
+                    "String input = new String(System.in.readAllBytes(), StandardCharsets.UTF_8);"
+                )
+            self._emit_stmts(decl.body)
+            self.indent -= 1
+            self._line("} catch (SystemExitException e) { if (System.getProperty(\"tongues.test\") == null) System.exit(e.code); else throw e; }")
+            self.indent -= 1
+            self._line("}")
+        else:
+            self._emit_stmts(decl.body)
+            self.indent -= 1
+            self._line("}")
             self._emit_fn_overloads(decl, is_static=True)
         self.var_types = old_var_types
         self._ret_is_void = old_ret
@@ -3931,7 +3950,7 @@ class _JavaEmitter(Emitter):
         if name == "Sorted" and self.strict_math and self._is_float_list(args[0].value):
             return "strictSortedF64(" + self._a(args, 0) + ")"
         if name == "Exit":
-            return "System.exit(" + self._a(args, 0) + ")"
+            return "doExit(" + self._a(args, 0) + ")"
         if name == "IntToFloat":
             return self._a(args, 0)
         if name == "FloatToInt":

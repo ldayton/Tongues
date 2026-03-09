@@ -183,6 +183,13 @@ def _to_lower_camel(name: str) -> str:
     return name[0].lower() + name[1:]
 
 
+# Python method names that differ in JavaScript
+_PY_TO_JS_METHOD: dict[str, str] = {
+    "startswith": "startsWith",
+    "endswith": "endsWith",
+}
+
+
 def _restore_name(name: str, annotations: Ann) -> str:
     key = "name.original." + name
     if key in annotations:
@@ -2564,7 +2571,11 @@ class _JavaScriptEmitter(Emitter):
                 return "(" + obj_str + ".get(" + key + ") ?? " + default + ")"
             return "(" + obj_str + ".get(" + key + ") ?? null)"
         arg_strs = self._join_args(args, ", ")
-        field = _safe_name(_to_lower_camel(method))
+        js_method = _PY_TO_JS_METHOD.get(method, "")
+        if js_method != "":
+            field = js_method
+        else:
+            field = _safe_name(_to_lower_camel(method))
         return obj_str + "." + field + "(" + arg_strs + ")"
 
     def _builtin_call(self, name: str, args: list[TArg], ann: Ann | None = None) -> str:
@@ -2918,9 +2929,9 @@ class _JavaScriptEmitter(Emitter):
             return "!Number.isFinite(" + self._a(args, 0) + ")"
         # I/O
         if name == "WriteOut":
-            return "process.stdout.write(" + self._a(args, 0) + ")"
+            return "fs.writeSync(1, " + self._a(args, 0) + ")"
         if name == "WriteErr":
-            return "process.stderr.write(" + self._a(args, 0) + ")"
+            return "fs.writeSync(2, " + self._a(args, 0) + ")"
         if name == "WritelnOut":
             return "console.log(" + self._a(args, 0) + ")"
         if name == "WritelnErr":
