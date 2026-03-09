@@ -4,12 +4,13 @@
 // Native Node.js test harness for transpiled Tongues binaries.
 // Loads the transpiled file once, then runs all .tests cases in-process.
 // Shared parsing/assertion logic is transpiled from tests/shared/test_harness.py.
+// Supports parallel execution with -n <num> or -n auto (like pytest-xdist).
 
 const nodeFs = require("fs");
 const nodePath = require("path");
 const vm = require("vm");
 const os = require("os");
-const { spawnSync } = require("child_process");
+const { spawnSync, fork } = require("child_process");
 
 const TONGUES_DIR = nodePath.resolve(__dirname, "..");
 const TESTS_DIR = nodePath.join(TONGUES_DIR, "tests");
@@ -575,11 +576,437 @@ function runOrderingTests(testDir) {
 }
 
 // ---------------------------------------------------------------------------
+// Parallel execution support
+// ---------------------------------------------------------------------------
+
+// Helper to extract plain JSON-serializable data from spec/entry objects
+function serializeCliSpec(spec) {
+    return {
+        args: Array.from(spec.args),
+        stdin: spec.stdin,
+        stdin_hex: spec.stdin_hex,
+        assertions: Array.from(spec.assertions).map(a => ({
+            type: a.type,
+            value: a.value,
+        })),
+    };
+}
+function serializeLinkerSpec(spec) {
+    return {
+        args: Array.from(spec.args),
+        files: Array.from(spec.files).map(f => ({ path: f.path, source: f.source })),
+        assertions: Array.from(spec.assertions).map(a => ({
+            type: a.type,
+            value: a.value,
+        })),
+    };
+}
+function serializeEntry(entry) {
+    return { name: entry.name, input: entry.input, expected: entry.expected };
+}
+function serializeSimpleEntry(entry) {
+    return { name: entry.name, content: entry.content };
+}
+
+function collectTests() {
+    const collected = [];
+    for (const [sectionName, phases] of TESTS) {
+        for (const [phaseName, cfg] of phases) {
+            const testDir = nodePath.join(TESTS_DIR, cfg.dir);
+            if (!nodeFs.existsSync(testDir)) continue;
+            // Serialize cfg to plain object
+            const plainCfg = { dir: cfg.dir, run: cfg.run, taytsh: cfg.taytsh, args: cfg.args ? Array.from(cfg.args) : null, json: cfg.json, glob: cfg.glob };
+            switch (cfg.run) {
+                case "cli":
+                    for (const f of globTests(testDir)) {
+                        const stem = basename(f, ".tests");
+                        const content = nodeFs.readFileSync(f, "utf-8");
+                        const tests = parse_cli_test_file(content);
+                        for (const [name, spec] of tests) {
+                            const testId = `${stem}/${name}`;
+                            if (cli_needs_backend(spec.args, spec.assertions, EMITTER_LANGS)) {
+                                collected.push([phaseName, testId, "skip", null]);
+                            } else {
+                                collected.push([phaseName, testId, "cli", serializeCliSpec(spec)]);
+                            }
+                        }
+                    }
+                    break;
+                case "linker":
+                    for (const f of globTests(testDir)) {
+                        const stem = basename(f, ".tests");
+                        const content = nodeFs.readFileSync(f, "utf-8");
+                        const tests = parse_linker_test_file(content);
+                        for (const [name, spec] of tests) {
+                            const testId = `${stem}/${name}`;
+                            const args = spec.args;
+                            const targetIdx = args.indexOf("--target");
+                            if (targetIdx !== -1 && !EMITTER_LANGS.includes(args[targetIdx + 1])) {
+                                collected.push([phaseName, testId, "skip", null]);
+                            } else {
+                                collected.push([phaseName, testId, "linker", serializeLinkerSpec(spec)]);
+                            }
+                        }
+                    }
+                    break;
+                case "phase":
+                    for (const f of globTests(testDir, cfg.glob)) {
+                        const stem = basename(f, ".tests");
+                        const content = nodeFs.readFileSync(f, "utf-8");
+                        const tests = parse_spec_file(content);
+                        for (const entry of tests) {
+                            const testId = `${stem}/${entry.name}`;
+                            collected.push([phaseName, testId, "phase", { entry: serializeEntry(entry), cfg: plainCfg }]);
+                        }
+                    }
+                    break;
+                case "lowering":
+                    for (const f of globTests(testDir)) {
+                        const stem = basename(f, ".tests");
+                        const content = nodeFs.readFileSync(f, "utf-8");
+                        const tests = parse_spec_file(content);
+                        for (const entry of tests) {
+                            const testId = `${stem}/${entry.name}`;
+                            collected.push([phaseName, testId, "lowering", serializeEntry(entry)]);
+                        }
+                    }
+                    break;
+                case "codegen": {
+                    const baseDir = nodePath.join(testDir, "base");
+                    if (!nodeFs.existsSync(baseDir)) break;
+                    const langDirs = subdirs(testDir).filter(d => d !== "base" && EMITTER_LANGS.includes(d));
+                    for (const lang of langDirs) {
+                        const langDir = nodePath.join(testDir, lang);
+                        for (const baseFile of globTests(baseDir)) {
+                            const baseName = nodePath.basename(baseFile);
+                            const stem = basename(baseFile, ".tests");
+                            const langFile = nodePath.join(langDir, baseName);
+                            const baseContent = nodeFs.readFileSync(baseFile, "utf-8");
+                            const baseTests = parse_simple_tests(baseContent);
+                            if (baseTests.length === 0) continue;
+                            if (!nodeFs.existsSync(langFile)) {
+                                for (const entry of baseTests) {
+                                    collected.push([phaseName, `${stem}/${entry.name}[${lang}]`, "prefail", `${lang}/${baseName} missing`]);
+                                }
+                                continue;
+                            }
+                            const langContent = nodeFs.readFileSync(langFile, "utf-8");
+                            const langTests = parse_simple_tests(langContent);
+                            const baseNames = baseTests.map(e => e.name);
+                            const langNames = langTests.map(e => e.name);
+                            if (baseNames.join("\0") !== langNames.join("\0")) {
+                                for (const entry of baseTests) {
+                                    collected.push([phaseName, `${stem}/${entry.name}[${lang}]`, "prefail", "base/lang name mismatch"]);
+                                }
+                                continue;
+                            }
+                            const langByName = new Map(langTests.map(e => [e.name, e.content]));
+                            for (const entry of baseTests) {
+                                const testId = `${stem}/${entry.name}[${lang}]`;
+                                // Already serializable - content, expected, lang are all strings
+                                collected.push([phaseName, testId, "codegen", { content: String(entry.content), expected: String(langByName.get(entry.name)), lang }]);
+                            }
+                        }
+                    }
+                    break;
+                }
+                case "emit": {
+                    const baseDir = nodePath.join(testDir, "base");
+                    if (!nodeFs.existsSync(baseDir)) break;
+                    const langDirs = subdirs(testDir).filter(d => d !== "base" && EMITTER_LANGS.includes(d));
+                    for (const lang of langDirs) {
+                        const langDir = nodePath.join(testDir, lang);
+                        for (const baseFile of globTests(baseDir)) {
+                            const baseName = nodePath.basename(baseFile);
+                            const stem = basename(baseFile, ".tests");
+                            const langFile = nodePath.join(langDir, baseName);
+                            const baseContent = nodeFs.readFileSync(baseFile, "utf-8");
+                            const baseTests = parse_simple_tests(baseContent);
+                            if (baseTests.length === 0) continue;
+                            if (!nodeFs.existsSync(langFile)) continue;
+                            const langContent = nodeFs.readFileSync(langFile, "utf-8");
+                            const langTests = parse_simple_tests(langContent);
+                            const langByName = new Map(langTests.map(e => [e.name, e.content]));
+                            for (const entry of baseTests) {
+                                if (!langByName.has(entry.name)) continue;
+                                const testId = `${stem}/${entry.name}[${lang}]`;
+                                // Already serializable
+                                collected.push([phaseName, testId, "emit", { content: String(entry.content), expected: String(langByName.get(entry.name)), lang }]);
+                            }
+                        }
+                    }
+                    break;
+                }
+                case "app": {
+                    const available = Object.keys(RUNTIMES).filter(runtimeAvailable).sort();
+                    const appFiles = nodeFs.existsSync(testDir)
+                        ? nodeFs.readdirSync(testDir).filter(f => f.startsWith("apptest_") && f.endsWith(".py")).sort().map(f => nodePath.join(testDir, f))
+                        : [];
+                    for (const testFile of appFiles) {
+                        const stem = basename(testFile, ".py");
+                        const source = nodeFs.readFileSync(testFile, "utf-8");
+                        let libNames = find_lib_imports(source);
+                        const seen = new Set(libNames);
+                        const queue = [...libNames];
+                        while (queue.length > 0) {
+                            const name = queue.shift();
+                            const libPath = nodePath.join(LIB_DIR, `${name}.py`);
+                            if (!nodeFs.existsSync(libPath)) continue;
+                            const deps = find_lib_imports(nodeFs.readFileSync(libPath, "utf-8"));
+                            for (const dep of deps) {
+                                if (!seen.has(dep)) {
+                                    seen.add(dep);
+                                    libNames.push(dep);
+                                    queue.push(dep);
+                                }
+                            }
+                        }
+                        // libParts is array of [string, string] - already serializable
+                        const libParts = libNames.map(name => {
+                            const libPath = nodePath.join(LIB_DIR, `${name}.py`);
+                            return [`lib/${name}.py`, nodeFs.readFileSync(libPath, "utf-8")];
+                        });
+                        for (const target of available) {
+                            const testId = `${stem}[${target}]`;
+                            collected.push([phaseName, testId, "app", { source: String(source), libParts, target }]);
+                        }
+                    }
+                    break;
+                }
+                case "ty_app":
+                    for (const testFile of globFiles(testDir, "*.ty")) {
+                        const stem = basename(testFile, ".ty");
+                        collected.push([phaseName, stem, "ty_app", testFile]);
+                    }
+                    break;
+                case "ordering": {
+                    const available = Object.keys(RUNTIMES).filter(runtimeAvailable).sort();
+                    for (const testFile of globFiles(testDir, "*.ty")) {
+                        const stem = basename(testFile, ".ty");
+                        for (const target of available) {
+                            const testId = `${stem}[${target}]`;
+                            collected.push([phaseName, testId, "ordering", { testFile, target }]);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+    }
+    return collected;
+}
+
+function runSingleTest(phaseName, testId, testType, testData) {
+    switch (testType) {
+        case "skip":
+            return [phaseName, testId, "skip", null];
+        case "prefail":
+            return [phaseName, testId, "fail", testData];
+        case "cli": {
+            const spec = testData;
+            let stdinData;
+            if (spec.stdin_hex !== "") {
+                stdinData = Buffer.from(spec.stdin_hex, "hex");
+            } else {
+                stdinData = spec.stdin;
+            }
+            const result = runInprocess(spec.args, stdinData);
+            const err = check_cli_assertions(result.exit, result.stdout, result.stderr, spec.assertions);
+            return [phaseName, testId, err === "" ? "pass" : "fail", err === "" ? null : err];
+        }
+        case "linker": {
+            const spec = testData;
+            const parts = [];
+            for (const lf of spec.files) {
+                parts.push(lf.path, lf.source);
+            }
+            const stdinData = parts.join("\0");
+            const result = runInprocess(spec.args, stdinData);
+            const err = check_cli_assertions(result.exit, result.stdout, result.stderr, spec.assertions);
+            return [phaseName, testId, err === "" ? "pass" : "fail", err === "" ? null : err];
+        }
+        case "phase": {
+            const { entry, cfg } = testData;
+            const lenient = ["parse", "pycheck", "typarse", "tycheck"].includes(phaseName);
+            const phaseResult = runTranspiledPhase(entry.input, cfg.args, cfg.taytsh, cfg.json);
+            let reveals = phaseResult.reveals;
+            if (["pycheck", "tycheck"].includes(phaseName) && phaseResult.errors.length === 0 && phaseResult.data) {
+                if (phaseResult.data instanceof JsonObject) {
+                    try {
+                        const revealsArr = json_get_items(json_get_field(phaseResult.data, "reveals"));
+                        reveals = revealsArr.map(r => [
+                            Math.trunc(json_get_number(json_get_field(r, "line"))),
+                            json_get_string(json_get_field(r, "type")),
+                        ]);
+                    } catch {}
+                }
+            }
+            let err;
+            try {
+                err = check_expected(entry.expected, phaseResult.errors, phaseResult.warnings,
+                    phaseResult.data, reveals, phaseName, lenient);
+            } catch (exc) {
+                err = "harness crash: " + (exc instanceof Error ? exc.message : String(exc));
+            }
+            return [phaseName, testId, err === "" ? "pass" : "fail", err === "" ? null : err];
+        }
+        case "lowering": {
+            const entry = testData;
+            const tmpFile = nodePath.join(os.tmpdir(), `test_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
+            nodeFs.writeFileSync(tmpFile, entry.input);
+            const result = runInprocess(["--stop-at", "lowering-text", tmpFile]);
+            try { nodeFs.unlinkSync(tmpFile); } catch {}
+            if (entry.expected.startsWith("error:")) {
+                const expectedMsg = entry.expected.slice(6).trim();
+                if (result.exit === 0) {
+                    return [phaseName, testId, "fail", `Expected error containing '${expectedMsg}', got success`];
+                }
+                const stderr = result.stderr.trim();
+                const firstLine = stderr.split("\n")[0] || "";
+                if (expectedMsg !== "" && !firstLine.toLowerCase().includes(expectedMsg.toLowerCase())) {
+                    return [phaseName, testId, "fail", `Expected error containing '${expectedMsg}', got: ${firstLine}`];
+                }
+                return [phaseName, testId, "pass", null];
+            }
+            if (result.exit !== 0) {
+                const errMsg = result.stderr.trim().split("\n")[0] || "lowering failed";
+                return [phaseName, testId, "fail", `Lowering error: ${errMsg}`];
+            }
+            if (!contains_normalized(result.stdout, entry.expected)) {
+                return [phaseName, testId, "fail", `Expected not found in output:\n--- expected ---\n${entry.expected}\n--- got ---\n${result.stdout}`];
+            }
+            return [phaseName, testId, "pass", null];
+        }
+        case "codegen": {
+            const { content, expected, lang } = testData;
+            const tmpFile = nodePath.join(os.tmpdir(), `test_${Date.now()}_${Math.random().toString(36).slice(2)}.ty`);
+            nodeFs.writeFileSync(tmpFile, content);
+            const result = runInprocess(["taytsh", "--emit", lang, tmpFile]);
+            try { nodeFs.unlinkSync(tmpFile); } catch {}
+            if (result.exit !== 0) {
+                const stderr = result.stderr.trim().split("\n")[0] || "transpile failed";
+                return [phaseName, testId, "fail", `Transpile error: ${stderr}`];
+            }
+            if (!contains_normalized(result.stdout, expected)) {
+                return [phaseName, testId, "fail", `Expected not found in output:\n--- expected ---\n${expected}\n--- got ---\n${result.stdout}`];
+            }
+            return [phaseName, testId, "pass", null];
+        }
+        case "emit": {
+            const { content, expected, lang } = testData;
+            const tmpFile = nodePath.join(os.tmpdir(), `test_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
+            nodeFs.writeFileSync(tmpFile, content);
+            const result = runInprocess(["--target", lang, tmpFile]);
+            try { nodeFs.unlinkSync(tmpFile); } catch {}
+            if (result.exit !== 0) {
+                const stderr = result.stderr.trim().split("\n")[0] || "emit failed";
+                return [phaseName, testId, "fail", `Emit error: ${stderr}`];
+            }
+            if (!contains_normalized(result.stdout, expected)) {
+                return [phaseName, testId, "fail", `Expected not found in output:\n--- expected ---\n${expected}\n--- got ---\n${result.stdout}`];
+            }
+            return [phaseName, testId, "pass", null];
+        }
+        case "app": {
+            const { source, libParts, target } = testData;
+            let result;
+            if (libParts.length === 0) {
+                const tmpFile = nodePath.join(os.tmpdir(), `test_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
+                nodeFs.writeFileSync(tmpFile, source);
+                result = runInprocess(["--target", target, tmpFile]);
+                try { nodeFs.unlinkSync(tmpFile); } catch {}
+            } else {
+                const stdinData = build_project_input("apptest.py", source, libParts);
+                result = runInprocess(["--project", "--target", target], stdinData);
+            }
+            if (result.exit !== 0) {
+                const stderr = result.stderr.trim().split("\n")[0] || "transpile failed";
+                return [phaseName, testId, "fail", `Transpile error (${target}): ${stderr}`];
+            }
+            const transpiledCode = result.stdout;
+            const runtime = RUNTIMES[target];
+            const run = spawnSync(runtime[0], runtime.slice(1), {
+                input: transpiledCode,
+                encoding: "utf-8",
+                timeout: 10000,
+            });
+            const output = (run.stdout || "") + (run.stderr || "");
+            if (run.status !== 0) {
+                return [phaseName, testId, "fail", `App test failed with exit ${run.status}\n${output}`];
+            }
+            return [phaseName, testId, "pass", null];
+        }
+        case "ty_app": {
+            const testFile = testData;
+            const result = runInprocess(["taytsh", testFile]);
+            if (result.exit !== 0) {
+                const output = (result.stdout + result.stderr).trim();
+                return [phaseName, testId, "fail", `Exit code ${result.exit}:\n${output}`];
+            }
+            return [phaseName, testId, "pass", null];
+        }
+        case "ordering": {
+            const { testFile, target } = testData;
+            const result = runInprocess(["taytsh", "--emit", target, testFile]);
+            if (result.exit !== 0) {
+                const stderr = result.stderr.trim().split("\n")[0] || "transpile failed";
+                return [phaseName, testId, "fail", `Transpile error (${target}): ${stderr}`];
+            }
+            const transpiledCode = result.stdout;
+            const runtime = RUNTIMES[target];
+            const run = spawnSync(runtime[0], runtime.slice(1), {
+                input: transpiledCode,
+                encoding: "utf-8",
+                timeout: 10000,
+            });
+            const output = (run.stdout || "") + (run.stderr || "");
+            if (run.status !== 0) {
+                return [phaseName, testId, "fail", `Ordering test failed with exit ${run.status}\n${output}`];
+            }
+            return [phaseName, testId, "pass", null];
+        }
+        default:
+            return [phaseName, testId, "fail", `Unknown test type: ${testType}`];
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Worker mode (when spawned via fork)
+// ---------------------------------------------------------------------------
+
+if (process.env._TONGUES_WORKER === "1") {
+    // Worker process - initialize and process tasks via IPC
+    const transpiledPath = process.env._TONGUES_TRANSPILED;
+    const harnessPath = process.env._TONGUES_HARNESS;
+    const viaVmPath = process.env._TONGUES_VM || null;
+    loadGlobal(transpiledPath);
+    loadGlobal(harnessPath);
+    if (viaVmPath) {
+        loadVmModule(viaVmPath);
+        runInprocess = runVmInprocess;
+    }
+    process.send({ type: "ready" });
+    process.on("message", (msg) => {
+        if (msg.type === "task") {
+            const { id, phaseName, testId, testType, testData } = msg;
+            try {
+                const result = runSingleTest(phaseName, testId, testType, testData);
+                process.send({ type: "result", id, result });
+            } catch (err) {
+                process.send({ type: "result", id, result: [phaseName, testId, "fail", `Worker error: ${err.message || err}`] });
+            }
+        } else if (msg.type === "exit") {
+            process.exit(0);
+        }
+    });
+} else {
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
 if (process.argv.length < 3) {
-    process.stderr.write("Usage: node test-transpiled.js <transpiled.js> [--via-vm <tongues.ty>] [--target <name>]\n");
+    process.stderr.write("Usage: node test-transpiled.js <transpiled.js> [--via-vm <tongues.ty>] [--target <name>] [-n <num|auto>]\n");
     process.exit(1);
 }
 
@@ -601,6 +1028,22 @@ if (targetIdx !== -1) {
         process.exit(1);
     }
     targetName = process.argv[targetIdx + 1];
+}
+
+// Parse -n argument for parallel workers (default: auto = CPU count)
+const nIdx = process.argv.indexOf("-n");
+let numWorkers = os.cpus().length;
+if (nIdx !== -1) {
+    if (nIdx + 1 >= process.argv.length) {
+        process.stderr.write("-n requires a number or 'auto'\n");
+        process.exit(1);
+    }
+    const nVal = process.argv[nIdx + 1];
+    numWorkers = nVal === "auto" ? os.cpus().length : parseInt(nVal, 10);
+    if (isNaN(numWorkers) || numWorkers < 1) {
+        process.stderr.write("-n requires a positive number or 'auto'\n");
+        process.exit(1);
+    }
 }
 
 const transpiledPath = nodePath.resolve(TONGUES_DIR, process.argv[2]);
@@ -644,96 +1087,194 @@ try {
     process.stderr.write(`Failed to load transpiled harness:\n${e}\n`);
     process.exit(1);
 }
+
+// Collect all tests
+const collected = collectTests();
+console.log(`Collected ${collected.length} tests`);
+console.log(`Running with ${numWorkers} workers`);
 console.log();
 
+const vmTag = viaVmPath ? "[vm] " : "";
 let totalPass = 0;
 let totalFail = 0;
 let totalSkip = 0;
 const failures = [];
 
-for (const [sectionName, phases] of TESTS) {
-    for (const [phaseName, cfg] of phases) {
-        const testDir = nodePath.join(TESTS_DIR, cfg.dir);
-        if (!nodeFs.existsSync(testDir)) continue;
-        console.log(`::group::${phaseName}`);
-        let phaseResults;
-        switch (cfg.run) {
-            case "cli":      phaseResults = runCliTests(testDir); break;
-            case "linker":   phaseResults = runLinkerTests(testDir); break;
-            case "phase":    phaseResults = runPhaseTests(testDir, phaseName, cfg); break;
-            case "lowering": phaseResults = runLoweringTests(testDir); break;
-            case "codegen":  phaseResults = runCodegenTests(testDir); break;
-            case "emit":     phaseResults = runEmitTests(testDir); break;
-            case "app":      phaseResults = runAppTests(testDir); break;
-            case "ty_app":   phaseResults = runTyAppTests(testDir); break;
-            case "ordering": phaseResults = runOrderingTests(testDir); break;
-            default:         phaseResults = []; break;
+async function runParallel() {
+    const tStart = Date.now();
+    // Fork worker processes
+    const workers = [];
+    const workerEnv = {
+        _TONGUES_WORKER: "1",
+        _TONGUES_TRANSPILED: transpiledPath,
+        _TONGUES_HARNESS: harnessPath,
+        _TONGUES_VM: viaVmPath || "",
+    };
+    for (let i = 0; i < numWorkers; i++) {
+        const worker = fork(__filename, [], { env: { ...process.env, ...workerEnv }, silent: true });
+        workers.push({ proc: worker, busy: false, ready: false, pending: null });
+    }
+    // Wait for all workers to be ready
+    await Promise.all(workers.map(w => new Promise(resolve => {
+        w.proc.once("message", (msg) => {
+            if (msg.type === "ready") { w.ready = true; resolve(); }
+        });
+    })));
+    // Task queue and results
+    const taskQueue = collected.map((t, i) => ({ id: i, task: t }));
+    const results = new Array(collected.length);
+    let completed = 0;
+    let nextTask = 0;
+    // Dispatch tasks to workers
+    function dispatch(worker) {
+        if (nextTask >= taskQueue.length) return;
+        const { id, task } = taskQueue[nextTask++];
+        const [phaseName, testId, testType, testData] = task;
+        worker.busy = true;
+        worker.pending = { id, timeout: setTimeout(() => {
+            // Timeout - kill and respawn worker
+            worker.proc.kill();
+            results[id] = [phaseName, testId, "fail", "Test timed out after 3s"];
+            completed++;
+            printResult(results[id]);
+            // Respawn
+            const newProc = fork(__filename, [], { env: { ...process.env, ...workerEnv }, silent: true });
+            worker.proc = newProc;
+            worker.busy = false;
+            worker.ready = false;
+            newProc.once("message", (msg) => {
+                if (msg.type === "ready") { worker.ready = true; dispatch(worker); }
+            });
+            newProc.on("message", handleMessage.bind(null, worker));
+        }, 3000) };
+        worker.proc.send({ type: "task", id, phaseName, testId, testType, testData });
+    }
+    function handleMessage(worker, msg) {
+        if (msg.type === "result") {
+            clearTimeout(worker.pending.timeout);
+            results[msg.id] = msg.result;
+            completed++;
+            printResult(msg.result);
+            worker.busy = false;
+            worker.pending = null;
+            dispatch(worker);
         }
-        let pass = 0, failCount = 0, skip = 0;
-        for (const [s] of phaseResults) {
-            if (s === "pass") pass++;
-            else if (s === "fail") failCount++;
-            else if (s === "skip") skip++;
+    }
+    function printResult([phaseName, testId, status, err]) {
+        if (status === "pass") {
+            console.log(`PASS ${vmTag}${phaseName}::${testId}`);
+            totalPass++;
+        } else if (status === "skip") {
+            console.log(`SKIP ${vmTag}${phaseName}::${testId}`);
+            totalSkip++;
+        } else {
+            console.log(`FAIL ${vmTag}${phaseName}::${testId}`);
+            if (err) {
+                for (const line of String(err).split("\n")) {
+                    console.log(`  ${line}`);
+                }
+            }
+            totalFail++;
+            failures.push([phaseName, testId, err]);
         }
-        totalPass += pass;
-        totalFail += failCount;
-        totalSkip += skip;
-        const status = failCount > 0 ? "FAIL" : "ok";
-        let counts = `${pass} passed`;
-        if (failCount > 0) counts += `, ${failCount} failed`;
-        if (skip > 0) counts += `, ${skip} skipped`;
-        console.log(`${phaseName}: ${status} (${counts})`);
-        for (const [s, tid, err] of phaseResults) {
-            if (s === "fail") {
-                failures.push([phaseName, tid, err]);
-                console.log(`  FAIL ${tid}`);
+    }
+    // Set up message handlers and start dispatching
+    for (const worker of workers) {
+        worker.proc.on("message", handleMessage.bind(null, worker));
+        dispatch(worker);
+    }
+    // Wait for all tasks to complete
+    await new Promise(resolve => {
+        const check = setInterval(() => {
+            if (completed >= collected.length) {
+                clearInterval(check);
+                resolve();
+            }
+        }, 50);
+    });
+    // Terminate workers
+    for (const worker of workers) {
+        worker.proc.send({ type: "exit" });
+    }
+    const tElapsed = (Date.now() - tStart) / 1000;
+    console.log(`Completed in ${tElapsed.toFixed(1)}s`);
+}
+
+function runSerial() {
+    const tStart = Date.now();
+    for (const [phaseName, testId, testType, testData] of collected) {
+        const [, , status, err] = runSingleTest(phaseName, testId, testType, testData);
+        if (status === "pass") {
+            console.log(`PASS ${vmTag}${phaseName}::${testId}`);
+            totalPass++;
+        } else if (status === "skip") {
+            console.log(`SKIP ${vmTag}${phaseName}::${testId}`);
+            totalSkip++;
+        } else {
+            console.log(`FAIL ${vmTag}${phaseName}::${testId}`);
+            if (err) {
+                for (const line of err.split("\n")) {
+                    console.log(`  ${line}`);
+                }
+            }
+            totalFail++;
+            failures.push([phaseName, testId, err]);
+        }
+    }
+    const tElapsed = (Date.now() - tStart) / 1000;
+    console.log(`Completed in ${tElapsed.toFixed(1)}s`);
+}
+
+// Run tests - wrap in async IIFE for parallel execution
+(async () => {
+    if (numWorkers > 1) {
+        await runParallel();
+    } else {
+        runSerial();
+    }
+
+    console.log();
+    if (failures.length > 0) {
+        console.log("=".repeat(60));
+        console.log(targetName ? `FAILURES [${targetName}]` : "FAILURES");
+        console.log("=".repeat(60));
+        for (const [phase, tid, err] of failures) {
+            console.log(`  ${phase}::${tid}`);
+        }
+        console.log();
+    }
+
+    console.log("=".repeat(60));
+    const total = totalPass + totalFail + totalSkip;
+    const prefix = targetName ? `[${targetName}] ` : "";
+    const summaryLine = `${prefix}${total} tests: ${totalPass} passed, ${totalFail} failed, ${totalSkip} skipped`;
+    console.log(summaryLine);
+    console.log("=".repeat(60));
+
+    // GitHub Actions notice annotation
+    if (totalFail === 0) {
+        console.log(`::notice::${summaryLine}`);
+    }
+
+    // GitHub Actions job summary
+    const summaryFile = process.env.GITHUB_STEP_SUMMARY;
+    if (summaryFile) {
+        const statusEmoji = totalFail === 0 ? "✅" : "❌";
+        let md = `## ${statusEmoji} ${targetName || "Test Results"}\n\n`;
+        md += `| Passed | Failed | Skipped | Total |\n`;
+        md += `|--------|--------|---------|-------|\n`;
+        md += `| ${totalPass} | ${totalFail} | ${totalSkip} | ${total} |\n\n`;
+        if (failures.length > 0) {
+            md += "### Failures\n\n";
+            for (const [phase, tid, err] of failures) {
+                md += `<details><summary><code>${phase} :: ${tid}</code></summary>\n\n`;
+                md += `\`\`\`\n${err}\n\`\`\`\n\n</details>\n\n`;
             }
         }
-        console.log("::endgroup::");
+        nodeFs.appendFileSync(summaryFile, md);
     }
-}
 
-console.log();
-if (failures.length > 0) {
-    console.log("=".repeat(60));
-    console.log(targetName ? `FAILURES [${targetName}]` : "FAILURES");
-    console.log("=".repeat(60));
-    for (const [phase, tid, err] of failures) {
-        console.log();
-        console.log(`${phase} :: ${tid}`);
-        console.log(err);
-    }
-    console.log();
-}
+    process.exit(totalFail > 0 ? 1 : 0);
+})();
 
-console.log("=".repeat(60));
-const total = totalPass + totalFail + totalSkip;
-const prefix = targetName ? `[${targetName}] ` : "";
-const summaryLine = `${prefix}${total} tests: ${totalPass} passed, ${totalFail} failed, ${totalSkip} skipped`;
-console.log(summaryLine);
-console.log("=".repeat(60));
-
-// GitHub Actions notice annotation
-if (totalFail === 0) {
-    console.log(`::notice::${summaryLine}`);
-}
-
-// GitHub Actions job summary
-const summaryFile = process.env.GITHUB_STEP_SUMMARY;
-if (summaryFile) {
-    const statusEmoji = totalFail === 0 ? "✅" : "❌";
-    let md = `## ${statusEmoji} ${targetName || "Test Results"}\n\n`;
-    md += `| Passed | Failed | Skipped | Total |\n`;
-    md += `|--------|--------|---------|-------|\n`;
-    md += `| ${totalPass} | ${totalFail} | ${totalSkip} | ${total} |\n\n`;
-    if (failures.length > 0) {
-        md += "### Failures\n\n";
-        for (const [phase, tid, err] of failures) {
-            md += `<details><summary><code>${phase} :: ${tid}</code></summary>\n\n`;
-            md += `\`\`\`\n${err}\n\`\`\`\n\n</details>\n\n`;
-        }
-    }
-    nodeFs.appendFileSync(summaryFile, md);
-}
-
-process.exit(totalFail > 0 ? 1 : 0);
+} // end if not worker mode
