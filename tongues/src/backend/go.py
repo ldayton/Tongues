@@ -4537,30 +4537,50 @@ class _GoEmitter(Emitter):
         if name == "IndexOf":
             return "slices.Index(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Upper":
-            return "strings.ToUpper(" + self._a(args, 0) + ")"
+            pkg = "bytes" if self._is_bytes_expr(args[0].value) else "strings"
+            return pkg + ".ToUpper(" + self._a(args, 0) + ")"
         if name == "Lower":
-            return "strings.ToLower(" + self._a(args, 0) + ")"
+            pkg = "bytes" if self._is_bytes_expr(args[0].value) else "strings"
+            return pkg + ".ToLower(" + self._a(args, 0) + ")"
         if name == "Trim":
+            is_bytes = self._is_bytes_expr(args[0].value)
+            pkg = "bytes" if is_bytes else "strings"
             if len(args) == 1:
-                return "strings.TrimSpace(" + self._a(args, 0) + ")"
-            return "strings.Trim(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                return pkg + ".TrimSpace(" + self._a(args, 0) + ")"
+            # bytes.Trim always takes string cutset, so convert if needed
+            cutset = self._a(args, 1)
+            if is_bytes:
+                cutset = "string(" + cutset + ")"
+            return pkg + ".Trim(" + self._a(args, 0) + ", " + cutset + ")"
         if name == "TrimStart":
+            is_bytes = self._is_bytes_expr(args[0].value)
+            pkg = "bytes" if is_bytes else "strings"
             if len(args) == 1:
-                return "strings.TrimLeft(" + self._a(args, 0) + ', " \\t\\n\\r")'
+                return pkg + '.TrimLeft(' + self._a(args, 0) + ', " \\t\\n\\r")'
+            cutset = self._a(args, 1)
+            if is_bytes:
+                cutset = "string(" + cutset + ")"
             return (
-                "strings.TrimLeft(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                pkg + ".TrimLeft(" + self._a(args, 0) + ", " + cutset + ")"
             )
         if name == "TrimEnd":
+            is_bytes = self._is_bytes_expr(args[0].value)
+            pkg = "bytes" if is_bytes else "strings"
             if len(args) == 1:
-                return "strings.TrimRight(" + self._a(args, 0) + ', " \\t\\n\\r")'
+                return pkg + '.TrimRight(' + self._a(args, 0) + ', " \\t\\n\\r")'
+            cutset = self._a(args, 1)
+            if is_bytes:
+                cutset = "string(" + cutset + ")"
             return (
-                "strings.TrimRight(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                pkg + ".TrimRight(" + self._a(args, 0) + ", " + cutset + ")"
             )
         if name == "Split":
-            return "strings.Split(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+            pkg = "bytes" if self._is_bytes_expr(args[0].value) else "strings"
+            return pkg + ".Split(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "SplitN":
+            pkg = "bytes" if self._is_bytes_expr(args[0].value) else "strings"
             return (
-                "strings.SplitN("
+                pkg + ".SplitN("
                 + self._a(args, 0)
                 + ", "
                 + self._a(args, 1)
@@ -4569,20 +4589,26 @@ class _GoEmitter(Emitter):
                 + ")"
             )
         if name == "SplitWhitespace":
-            return "strings.Fields(" + self._a(args, 0) + ")"
+            pkg = "bytes" if self._is_bytes_expr(args[0].value) else "strings"
+            return pkg + ".Fields(" + self._a(args, 0) + ")"
         if name == "Join":
-            return "strings.Join(" + self._a(args, 1) + ", " + self._a(args, 0) + ")"
+            pkg = "bytes" if self._is_bytes_expr(args[0].value) else "strings"
+            return pkg + ".Join(" + self._a(args, 1) + ", " + self._a(args, 0) + ")"
         if name == "Find":
-            return "strings.Index(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+            pkg = "bytes" if self._is_bytes_expr(args[0].value) else "strings"
+            return pkg + ".Index(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "RFind":
+            pkg = "bytes" if self._is_bytes_expr(args[0].value) else "strings"
             return (
-                "strings.LastIndex(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                pkg + ".LastIndex(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             )
         if name == "Count":
-            return "strings.Count(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+            pkg = "bytes" if self._is_bytes_expr(args[0].value) else "strings"
+            return pkg + ".Count(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Replace":
+            pkg = "bytes" if self._is_bytes_expr(args[0].value) else "strings"
             return (
-                "strings.ReplaceAll("
+                pkg + ".ReplaceAll("
                 + self._a(args, 0)
                 + ", "
                 + self._a(args, 1)
@@ -4591,8 +4617,9 @@ class _GoEmitter(Emitter):
                 + ")"
             )
         if name == "ReplaceCount":
+            pkg = "bytes" if self._is_bytes_expr(args[0].value) else "strings"
             return (
-                "strings.Replace("
+                pkg + ".Replace("
                 + self._a(args, 0)
                 + ", "
                 + self._a(args, 1)
@@ -4601,17 +4628,23 @@ class _GoEmitter(Emitter):
                 + ", 1)"
             )
         if name == "StartsWith":
+            pkg = "bytes" if self._is_bytes_expr(args[0].value) else "strings"
             return (
-                "strings.HasPrefix(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                pkg + ".HasPrefix(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             )
         if name == "EndsWith":
+            pkg = "bytes" if self._is_bytes_expr(args[0].value) else "strings"
             return (
-                "strings.HasSuffix(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                pkg + ".HasSuffix(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             )
         if name == "Repeat":
             if self._is_string_expr(args[0].value):
                 return (
                     "strings.Repeat(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                )
+            if self._is_bytes_expr(args[0].value):
+                return (
+                    "bytes.Repeat(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
                 )
             first = args[0].value
             if isinstance(first, TListLit) and first.elements:
@@ -4638,8 +4671,9 @@ class _GoEmitter(Emitter):
                     + self._a(args, 1)
                     + "]; return ok }()"
                 )
+            pkg = "bytes" if self._is_bytes_expr(first_arg) else "strings"
             return (
-                "strings.Contains(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                pkg + ".Contains(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             )
         if name == "IsDigit":
             a = self._a(args, 0)
@@ -5022,6 +5056,8 @@ class _GoEmitter(Emitter):
             return "math.Pow(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "ToString":
             return self._tostring_call(args)
+        if name == "ToRepr":
+            return 'fmt.Sprintf("%#v", ' + self._a(args, 0) + ")"
         if name == "WritelnOut":
             return "fmt.Println(" + self._a(args, 0) + ")"
         if name == "WriteOut":
