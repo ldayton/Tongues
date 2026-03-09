@@ -726,7 +726,26 @@ class _JavaEmitter(Emitter):
         return "null"
 
     def _field_default(self, fld: TFieldDecl) -> str:
-        raise NotImplementedError
+        """Return the Java default value for a field with has_default=True."""
+        typ = fld.typ
+        if isinstance(typ, TListType):
+            return "new ArrayList<>()"
+        if isinstance(typ, TMapType):
+            return "new HashMap<>()"
+        if isinstance(typ, TSetType):
+            return "new HashSet<>()"
+        if (
+            fld.has_default
+            and isinstance(typ, TIdentType)
+            and typ.name in self.struct_names
+        ):
+            target_fields = self._struct_field_decls.get(typ.name, [])
+            has_noarg = len(target_fields) == 0 or all(
+                f.has_default for f in target_fields
+            )
+            if has_noarg:
+                return "new " + _safe_name(typ.name) + "()"
+        return self._field_zero(typ)
 
     def _field_zero(self, typ: TType) -> str:
         """Return the Java zero/default value for a type."""
@@ -1228,7 +1247,7 @@ class _JavaEmitter(Emitter):
                             self._line("this." + safe + " = " + safe + ";")
                         else:
                             self._line(
-                                "this." + safe + " = " + self._field_zero(f.typ) + ";"
+                                "this." + safe + " = " + self._field_default(f) + ";"
                             )
                     self.indent -= 1
                     self._line("}")
@@ -1958,7 +1977,7 @@ class _JavaEmitter(Emitter):
                 continue
             rhs = tmp + "[" + str(i) + "]"
             type_ann = t.annotations.get("type", "")
-            if not type_ann and isinstance(t, TVar):
+            if type_ann == "" and isinstance(t, TVar):
                 vtype = self.var_types.get(t.name)
                 if vtype is not None:
                     type_ann = self._type_to_ann(vtype)
