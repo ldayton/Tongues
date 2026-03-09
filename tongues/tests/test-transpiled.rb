@@ -62,10 +62,36 @@ RUNTIMES = {
 }
 
 # ---------------------------------------------------------------------------
+# VM mode: parse + compile .ty once, invoke per test
+# ---------------------------------------------------------------------------
+
+$vm_compiled = nil
+
+def load_vm_module(ty_path)
+  source = File.read(ty_path)
+  mod = taytsh_taytsh_parse(source)
+  $vm_compiled = vm_prepare(mod)
+  puts "VM module compiled"
+end
+
+def run_vm_inprocess(argv, stdin_data: "")
+  builtins = XBuiltinDispatch.allocate
+  builtins.instance_variable_set(:@vm, nil)
+  builtins.instance_variable_set(:@_table, {})
+  instance = VM.new(module_: $vm_compiled, builtins: builtins)
+  builtins.vm = instance
+  result = instance.invoke(stdin_data, argv)
+  { stdout: result.stdout.to_s, stderr: result.stderr.to_s, exit: result.exit_code }
+end
+
+# ---------------------------------------------------------------------------
 # In-process execution
 # ---------------------------------------------------------------------------
 
+$use_vm = false
+
 def run_inprocess(argv, stdin_data: "")
+  return run_vm_inprocess(argv, stdin_data: stdin_data) if $use_vm
   old_argv = ARGV.dup
   old_stdout = $stdout
   old_stderr = $stderr
@@ -490,11 +516,28 @@ end
 # ---------------------------------------------------------------------------
 
 if ARGV.length < 1
-  $stderr.puts "Usage: ruby test-transpiled.rb <transpiled.rb>"
+  $stderr.puts "Usage: ruby test-transpiled.rb <transpiled.rb> [--via-vm <tongues.ty>]"
   exit 1
 end
 
-transpiled_path = File.expand_path(ARGV[0], TONGUES_DIR)
+via_vm_path = nil
+filtered_argv = []
+i = 0
+while i < ARGV.length
+  if ARGV[i] == "--via-vm"
+    if i + 1 >= ARGV.length
+      $stderr.puts "--via-vm requires a path to a .ty file"
+      exit 1
+    end
+    via_vm_path = File.expand_path(ARGV[i + 1], TONGUES_DIR)
+    i += 2
+  else
+    filtered_argv << ARGV[i]
+    i += 1
+  end
+end
+
+transpiled_path = File.expand_path(filtered_argv[0], TONGUES_DIR)
 unless File.exist?(transpiled_path)
   $stderr.puts "Transpiled file not found: #{transpiled_path}"
   exit 1
@@ -511,6 +554,18 @@ rescue SyntaxError => e
 end
 t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 puts "Loaded in #{"%.1f" % (t1 - t0)}s"
+
+if via_vm_path
+  unless File.exist?(via_vm_path)
+    $stderr.puts "VM module not found: #{via_vm_path}"
+    exit 1
+  end
+  puts "Loading VM module: #{via_vm_path}"
+  vm_t0 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  load_vm_module(via_vm_path)
+  puts "VM compiled in #{"%.1f" % (Process.clock_gettime(Process::CLOCK_MONOTONIC) - vm_t0)}s"
+  $use_vm = true
+end
 
 harness_path = File.join(TONGUES_DIR, ".out", "test_harness.rb")
 unless File.exist?(harness_path)

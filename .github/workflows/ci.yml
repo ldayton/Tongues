@@ -368,6 +368,18 @@ jobs:
       - run: docker build -t tongues-perl docker/perl
       - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile.v2 _vm-test-tongues perl
 
+  vm-test-tongues-ruby:
+    runs-on: ubuntu-latest
+    needs: transpile-ruby
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-ruby
+          path: tongues/.out
+      - run: docker build -t tongues-ruby docker/ruby
+      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile.v2 _vm-test-tongues ruby
+
   # ---------------------------------------------------------------------------
   # Generative / property-based tests
   # ---------------------------------------------------------------------------
@@ -428,6 +440,7 @@ jobs:
       - fixed-point-ruby
       - treewalker-apptests-ruby
       - vm-apptests-ruby
+      - vm-test-tongues-ruby
       - test-tongues-perl
       - retranspile-perl
       - fixed-point-perl
@@ -457,6 +470,7 @@ jobs:
             "${{ needs.fixed-point-ruby.result }}" \
             "${{ needs.treewalker-apptests-ruby.result }}" \
             "${{ needs.vm-apptests-ruby.result }}" \
+            "${{ needs.vm-test-tongues-ruby.result }}" \
             "${{ needs.test-tongues-perl.result }}" \
             "${{ needs.retranspile-perl.result }}" \
             "${{ needs.fixed-point-perl.result }}" \
