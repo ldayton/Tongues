@@ -512,6 +512,10 @@ def _expr_ref_var(expr: TExpr, name: str) -> bool:
     if isinstance(expr, TSlice):
         if _expr_ref_var(expr.obj, name):
             return True
+        if _expr_ref_var(expr.low, name):
+            return True
+        if _expr_ref_var(expr.high, name):
+            return True
     if isinstance(expr, TTernary):
         return (
             _expr_ref_var(expr.cond, name)
@@ -2232,6 +2236,25 @@ class _GoEmitter(Emitter):
                     end = idx + "+1"
                 self._line(
                     obj + " = slices.Delete(" + obj + ", " + idx + ", " + end + ")"
+                )
+                return
+            if name == "ReplaceSlice":
+                args = expr.args
+                obj = self._expr(args[0].value)
+                lo = self._expr(args[1].value)
+                hi = self._expr(args[2].value)
+                new_elems = self._expr(args[3].value)
+                self._line(
+                    obj
+                    + " = slices.Replace("
+                    + obj
+                    + ", "
+                    + lo
+                    + ", "
+                    + hi
+                    + ", "
+                    + new_elems
+                    + "...)"
                 )
                 return
             if name == "Append":
