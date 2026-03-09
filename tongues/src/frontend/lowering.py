@@ -2141,7 +2141,7 @@ def _lower_conversion_call(
                 if isinstance(arg, TIndex):
                     return _make_call(pos, "RuneToInt", [arg])
                 if isinstance(arg, TCall) and arg.func == "ToString":
-                    inner = arg.args[0]
+                    inner = arg.args[0].value
                     if isinstance(inner, TIndex):
                         return _make_call(pos, "RuneToInt", [inner])
                 indexed = TIndex(pos, arg, TIntLit(pos, 0, "0", {}), {})
@@ -3292,7 +3292,7 @@ def _lower_bytes_method(
 ) -> TExpr:
     """Lower bytes method calls."""
     if method == "decode":
-        return _make_call(pos, "Decode", [obj])
+        return _make_call_ann(pos, "Decode", [obj], {"type": "string"})
     if method == "upper":
         return _make_call(pos, "Upper", [obj])
     if method == "lower":
@@ -4973,7 +4973,7 @@ def _replace_subscript_in_ast(node: ASTNode, key: str, name: str) -> None:
         v = node[k]
         if isinstance(v, dict):
             if _subscript_key(v) == key:
-                node[k] = _make_name_node(name, v)
+                node[k] = JDict(_make_name_node(name, v))
             else:
                 _replace_subscript_in_ast(v, key, name)
         elif isinstance(v, JDict):

@@ -3554,7 +3554,7 @@ def _narrow_typeguard(
     if not func:
         return
     args = get_nodes(test, "args")
-    func_info = None
+    func_info: FuncInfo | None = None
     if _is_type(func, ["Name"]):
         fname = get_str(func, "id")
         if fname:

@@ -1816,8 +1816,8 @@ class _BuiltinDispatch:
         return VStr("")
 
     def _read_line(self, args: list[Val]) -> Val:
-        data = self.vm.stdin_data
-        pos = self.vm.stdin_pos
+        data: bytes = self.vm.stdin_data
+        pos: int = self.vm.stdin_pos
         if pos >= len(data):
             return VStr("")
         end = data[pos:].find(b"\n")
@@ -1834,9 +1834,9 @@ class _BuiltinDispatch:
         return VStr(line)
 
     def _read_all(self, args: list[Val]) -> Val:
-        data = self.vm.stdin_data
-        pos = self.vm.stdin_pos
-        rest = data[pos:].decode("utf-8", errors="replace")
+        data: bytes = self.vm.stdin_data
+        pos: int = self.vm.stdin_pos
+        rest: str = data[pos:].decode("utf-8", errors="replace")
         self.vm.stdin_pos = len(data)
         return VStr(rest)
 

@@ -3775,18 +3775,15 @@ class Checker:
                     return BYTES_T
                 if isinstance(t1u, ListT) and isinstance(t2u, ListT):
                     return t1u
-                if isinstance(t1u, (ListT, TupleT)) and isinstance(
-                    t2u, (ListT, TupleT)
-                ):
-                    if isinstance(t1u, ListT):
-                        return t1u
-                    if isinstance(t2u, ListT):
-                        return t2u
-                    if isinstance(t1u, TupleT):
-                        return ListT(
-                            kind="list",
-                            element=t1u.elements[0] if t1u.elements else ERROR_T,
-                        )
+                if isinstance(t1u, ListT) and isinstance(t2u, TupleT):
+                    return t1u
+                if isinstance(t1u, TupleT) and isinstance(t2u, ListT):
+                    return t2u
+                if isinstance(t1u, TupleT) and isinstance(t2u, TupleT):
+                    return ListT(
+                        kind="list",
+                        element=t1u.elements[0] if t1u.elements else ERROR_T,
+                    )
                 self.error("Concat requires two strings, two bytes, or two lists", pos)
             return STRING_T
 

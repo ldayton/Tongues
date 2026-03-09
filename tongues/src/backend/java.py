@@ -423,6 +423,12 @@ class _JavaEmitter(Emitter):
         self._needs_replace_slice: bool = False
         self._needs_concat_lists: bool = False
         self._needs_concat_bytes: bool = False
+        self._needs_union_sets: bool = False
+        self._needs_intersect_sets: bool = False
+        self._needs_difference_sets: bool = False
+        self._needs_merge_maps: bool = False
+        self._needs_repeat_list: bool = False
+        self._needs_repeat_bytes: bool = False
         self._needs_zfill: bool = False
         self._needs_bytes_helpers: bool = False
         self._needs_hex_helper: bool = False
@@ -457,6 +463,8 @@ class _JavaEmitter(Emitter):
                 return "int"
             if typ.kind == "bytes":
                 return "byte[]"
+            if typ.kind == "nil" or typ.kind == "void":
+                return "void"
         if isinstance(typ, TIdentType):
             mapped = _ISTYPE_MAP.get(typ.name)
             if mapped is not None:
@@ -925,6 +933,68 @@ class _JavaEmitter(Emitter):
             self._line("return r;")
             self.indent -= 1
             self._line("}")
+        if self._needs_union_sets:
+            self._line()
+            self._line("static <T> HashSet<T> _unionSets(HashSet<T> a, HashSet<T> b) {")
+            self.indent += 1
+            self._line("HashSet<T> r = new HashSet<>(a);")
+            self._line("r.addAll(b);")
+            self._line("return r;")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_intersect_sets:
+            self._line()
+            self._line(
+                "static <T> HashSet<T> _intersectSets(HashSet<T> a, HashSet<T> b) {"
+            )
+            self.indent += 1
+            self._line("HashSet<T> r = new HashSet<>(a);")
+            self._line("r.retainAll(b);")
+            self._line("return r;")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_difference_sets:
+            self._line()
+            self._line(
+                "static <T> HashSet<T> _differenceSets(HashSet<T> a, HashSet<T> b) {"
+            )
+            self.indent += 1
+            self._line("HashSet<T> r = new HashSet<>(a);")
+            self._line("r.removeAll(b);")
+            self._line("return r;")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_merge_maps:
+            self._line()
+            self._line(
+                "static <K, V> HashMap<K, V> _mergeMaps(HashMap<K, V> a, HashMap<K, V> b) {"
+            )
+            self.indent += 1
+            self._line("HashMap<K, V> r = new HashMap<>(a);")
+            self._line("r.putAll(b);")
+            self._line("return r;")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_repeat_list:
+            self._line()
+            self._line("static <T> List<T> _repeatList(List<T> xs, int n) {")
+            self.indent += 1
+            self._line("List<T> r = new ArrayList<>();")
+            self._line("for (int i = 0; i < n; i++) r.addAll(xs);")
+            self._line("return r;")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_repeat_bytes:
+            self._line()
+            self._line("static byte[] _repeatBytes(byte[] xs, int n) {")
+            self.indent += 1
+            self._line("byte[] r = new byte[xs.length * n];")
+            self._line(
+                "for (int i = 0; i < n; i++) System.arraycopy(xs, 0, r, i * xs.length, xs.length);"
+            )
+            self._line("return r;")
+            self.indent -= 1
+            self._line("}")
         if self._needs_zfill:
             self._line()
             self._line("static String _zfill(String s, int width) {")
@@ -1303,7 +1373,7 @@ class _JavaEmitter(Emitter):
             self.indent += 1
             args: list[str] = []
             for p in used:
-                args.append(_safe_name(p.name))
+                args.append(_restore_name(p.name, p.annotations))
             for p in defaulted[i:]:
                 args.append(self._param_zero(p))
             call = fname + "(" + ", ".join(args) + ")"
@@ -1750,9 +1820,28 @@ class _JavaEmitter(Emitter):
             jtype = "long"
             self._wide_vars.add(stmt.name)
         if stmt.value is not None:
-            self._line(
-                "static " + jtype + " " + safe + " = " + self._expr(stmt.value) + ";"
-            )
+            # Static field initializers can't call exception-throwing functions
+            if self._expr_contains_call(stmt.value):
+                self._line("static " + jtype + " " + safe + ";")
+                self._line("static {")
+                self.indent += 1
+                self._line("try {")
+                self.indent += 1
+                self._line(safe + " = " + self._expr(stmt.value) + ";")
+                self.indent -= 1
+                self._line("} catch (Exception e) { throw new RuntimeException(e); }")
+                self.indent -= 1
+                self._line("}")
+            else:
+                self._line(
+                    "static "
+                    + jtype
+                    + " "
+                    + safe
+                    + " = "
+                    + self._expr(stmt.value)
+                    + ";"
+                )
         else:
             self._line("static " + jtype + " " + safe + ";")
 
@@ -1761,6 +1850,24 @@ class _JavaEmitter(Emitter):
         self.var_types[stmt.name] = stmt.typ
         unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
         jtype = self._type(stmt.typ)
+        # Fallback: if type is error/Object, try to infer from value annotation
+        if jtype == "Object" and stmt.value is not None:
+            val_ann = stmt.value.annotations.get("type", "")
+            if val_ann == "string":
+                jtype = "String"
+                self.var_types[stmt.name] = TPrimitive(stmt.pos, "string")
+            elif val_ann == "bytes":
+                jtype = "byte[]"
+                self.var_types[stmt.name] = TPrimitive(stmt.pos, "bytes")
+            elif val_ann == "int":
+                jtype = "int"
+                self.var_types[stmt.name] = TPrimitive(stmt.pos, "int")
+            elif val_ann == "float":
+                jtype = "double"
+                self.var_types[stmt.name] = TPrimitive(stmt.pos, "float")
+            elif val_ann == "bool":
+                jtype = "boolean"
+                self.var_types[stmt.name] = TPrimitive(stmt.pos, "bool")
         if stmt.annotations.get("intwidth.wide") == "true" and jtype == "int":
             jtype = "long"
         if stmt.value is not None and not unused:
@@ -2225,6 +2332,9 @@ class _JavaEmitter(Emitter):
         self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
     ) -> tuple[str, str] | None:
         """Try to emit any/all as stream expression. Returns (lhs, rhs) or None."""
+        # Tuple bindings require the loop form for proper unpacking
+        if len(for_stmt.binding) > 1:
+            return None
         acc = _safe_name(let_stmt.name)
         binder = _safe_name(for_stmt.binding[0])
         iterable = self._expr(for_stmt.iterable)
@@ -2247,6 +2357,9 @@ class _JavaEmitter(Emitter):
             cond = (
                 self._strip_not(outer_if.cond) if prov == "all_call" else outer_if.cond
             )
+            # Lambdas can't throw checked exceptions, so fall back to loop form
+            if self._expr_contains_call(cond):
+                return None
             cond_s = self._expr(cond)
             lhs = "boolean " + acc
             rhs = stream_src + "." + func + "(" + binder + " -> " + cond_s + ")"
@@ -2260,12 +2373,17 @@ class _JavaEmitter(Emitter):
                 and isinstance(inner_if.then_body[0], TAssignStmt)
                 and isinstance(inner_if.then_body[1], TBreakStmt)
             ):
-                filter_s = self._expr(outer_if.cond)
                 cond = (
                     self._strip_not(inner_if.cond)
                     if prov == "all_call"
                     else inner_if.cond
                 )
+                # Lambdas can't throw checked exceptions, so fall back to loop form
+                if self._expr_contains_call(outer_if.cond) or self._expr_contains_call(
+                    cond
+                ):
+                    return None
+                filter_s = self._expr(outer_if.cond)
                 cond_s = self._expr(cond)
                 lhs = "boolean " + acc
                 rhs = (
@@ -2945,10 +3063,14 @@ class _JavaEmitter(Emitter):
     def _emit_partition_return_impl(self, expr: TTernary, prov: str) -> None:
         """Emit partition/rpartition as temp var + ternary return."""
         cond = expr.cond
-        if not isinstance(cond, TBinaryOp) or cond.op != ">=":
+        if not isinstance(cond, TBinaryOp):
             self._line("return " + self._expr(expr) + ";")
             return
-        find_call = cond.left
+        cond_bin: TBinaryOp = cond
+        if cond_bin.op != ">=":
+            self._line("return " + self._expr(expr) + ";")
+            return
+        find_call = cond_bin.left
         if not isinstance(find_call, TCall):
             self._line("return " + self._expr(expr) + ";")
             return
@@ -3092,10 +3214,13 @@ class _JavaEmitter(Emitter):
         if isinstance(expr, TListLit):
             if not expr.elements:
                 return "new ArrayList<>()"
-            has_tuple = any(isinstance(e, TTupleLit) for e in expr.elements)
+            has_tuple = any(self._is_tuple_expr(e) for e in expr.elements)
             elems = self._join_exprs(expr.elements, ", ")
             if has_tuple:
                 return "new ArrayList<>(List.<Object[]>of(" + elems + "))"
+            # Single-element list with array type needs special handling
+            if len(expr.elements) == 1 and self._type_is_array(expr.elements[0]):
+                return "new ArrayList<>(Collections.singletonList(" + elems + "))"
             return "new ArrayList<>(List.of(" + elems + "))"
         if isinstance(expr, TMapLit):
             if not expr.entries:
@@ -3254,6 +3379,64 @@ class _JavaEmitter(Emitter):
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
             return isinstance(typ, TPrimitive) and typ.kind == "rune"
+        return False
+
+    def _is_tuple_expr(self, expr: TExpr) -> bool:
+        if isinstance(expr, TTupleLit):
+            return True
+        ann = expr.annotations.get("type", "")
+        if ann.startswith("tuple["):
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TTupleType)
+        return False
+
+    def _type_is_array(self, expr: TExpr) -> bool:
+        """Check if expression has an array type (tuple or bytes → Object[]/byte[])."""
+        if isinstance(expr, (TTupleLit, TBytesLit)):
+            return True
+        ann = expr.annotations.get("type", "")
+        if ann.startswith("tuple[") or ann == "bytes":
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            if isinstance(typ, TTupleType):
+                return True
+            if isinstance(typ, TOptionalType) and isinstance(typ.inner, TTupleType):
+                return True
+        return False
+
+    def _expr_contains_call(self, expr: TExpr) -> bool:
+        """Check if an expression contains a function call (recursively)."""
+        if isinstance(expr, TCall):
+            return True
+        if isinstance(expr, TBinaryOp):
+            return self._expr_contains_call(expr.left) or self._expr_contains_call(
+                expr.right
+            )
+        if isinstance(expr, TUnaryOp):
+            return self._expr_contains_call(expr.operand)
+        if isinstance(expr, TIndex):
+            return self._expr_contains_call(expr.obj) or self._expr_contains_call(
+                expr.index
+            )
+        if isinstance(expr, TFieldAccess):
+            return self._expr_contains_call(expr.obj)
+        if isinstance(expr, TTernary):
+            return (
+                self._expr_contains_call(expr.cond)
+                or self._expr_contains_call(expr.then_expr)
+                or self._expr_contains_call(expr.else_expr)
+            )
+        if isinstance(expr, TListLit):
+            for e in expr.elements:
+                if self._expr_contains_call(e):
+                    return True
+        if isinstance(expr, TTupleLit):
+            for e in expr.elements:
+                if self._expr_contains_call(e):
+                    return True
         return False
 
     def _string_eq(self, str_expr: TExpr, other: TExpr, op: str) -> str | None:
@@ -3856,33 +4039,17 @@ class _JavaEmitter(Emitter):
             self._needs_concat_lists = True
             return "_concatLists(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Merge":
-            a = self._a(args, 0)
-            b = self._a(args, 1)
-            return "new HashMap<>(" + a + ") {{ putAll(" + b + "); }}"
+            self._needs_merge_maps = True
+            return "_mergeMaps(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Union":
-            return (
-                "new HashSet<>("
-                + self._a(args, 0)
-                + ") {{ addAll("
-                + self._a(args, 1)
-                + "); }}"
-            )
+            self._needs_union_sets = True
+            return "_unionSets(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Intersection":
-            return (
-                "new HashSet<>("
-                + self._a(args, 0)
-                + ") {{ retainAll("
-                + self._a(args, 1)
-                + "); }}"
-            )
+            self._needs_intersect_sets = True
+            return "_intersectSets(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Difference":
-            return (
-                "new HashSet<>("
-                + self._a(args, 0)
-                + ") {{ removeAll("
-                + self._a(args, 1)
-                + "); }}"
-            )
+            self._needs_difference_sets = True
+            return "_differenceSets(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "SetFromList":
             inner = args[0].value
             if (
@@ -3951,6 +4118,11 @@ class _JavaEmitter(Emitter):
             type_ann = first.annotations.get("type", "")
             if type_ann == "string" or self._is_string_expr(first):
                 return self._a(args, 0) + ".repeat(" + self._a(args, 1) + ")"
+            if type_ann == "bytes" or self._is_bytes_expr(first):
+                self._needs_repeat_bytes = True
+                return (
+                    "_repeatBytes(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                )
             if isinstance(first, TListLit) and len(first.elements) == 1:
                 elem = self._expr(first.elements[0])
                 return (
@@ -3960,13 +4132,8 @@ class _JavaEmitter(Emitter):
                     + elem
                     + "))"
                 )
-            return (
-                "new ArrayList<>(Collections.nCopies("
-                + self._a(args, 1)
-                + ", "
-                + self._a(args, 0)
-                + "))"
-            )
+            self._needs_repeat_list = True
+            return "_repeatList(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "RangeList":
             if len(args) == 1:
                 return (
@@ -4290,6 +4457,8 @@ class _JavaEmitter(Emitter):
             if isinstance(typ, (TListType, TMapType, TSetType)):
                 return e + ".size()"
             if isinstance(typ, TIdentType) and typ.name == "bytes":
+                return e + ".length"
+            if isinstance(typ, TPrimitive) and typ.kind == "bytes":
                 return e + ".length"
             if isinstance(typ, TPrimitive) and typ.kind == "string":
                 return e + ".length()"
