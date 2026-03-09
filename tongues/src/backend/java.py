@@ -1000,9 +1000,7 @@ class _JavaEmitter(Emitter):
             self._line("}")
         if self._needs_list_compare:
             self._line()
-            self._line(
-                "@SuppressWarnings(\"unchecked\")"
-            )
+            self._line('@SuppressWarnings("unchecked")')
             self._line(
                 "static <T extends Comparable<T>> int _listCompare(List<T> a, List<T> b) {"
             )
@@ -1155,10 +1153,8 @@ class _JavaEmitter(Emitter):
             self._line("}")
         if self._needs_pop_item:
             self._line()
-            self._line("@SuppressWarnings(\"unchecked\")")
-            self._line(
-                "static <K, V> List<Object> _popItem(LinkedHashMap<K, V> m) {"
-            )
+            self._line('@SuppressWarnings("unchecked")')
+            self._line("static <K, V> List<Object> _popItem(LinkedHashMap<K, V> m) {")
             self.indent += 1
             self._line("var it = m.entrySet().iterator();")
             self._line("Map.Entry<K, V> last = null;")
@@ -4518,11 +4514,7 @@ class _JavaEmitter(Emitter):
                 c in sep_arg.value for c in r"\.[]{}()*+-?^$|"
             ):
                 return (
-                    "List.of("
-                    + self._a(args, 0)
-                    + ".split("
-                    + self._a(args, 1)
-                    + "))"
+                    "List.of(" + self._a(args, 0) + ".split(" + self._a(args, 1) + "))"
                 )
             # Use Pattern.quote to escape regex special characters
             return (
@@ -4662,10 +4654,7 @@ class _JavaEmitter(Emitter):
                 c in sep_arg.value for c in r"\.[]{}()*+-?^$|"
             ):
                 return (
-                    self._a(args, 0)
-                    + ".split("
-                    + self._a(args, 1)
-                    + ", -1).length - 1"
+                    self._a(args, 0) + ".split(" + self._a(args, 1) + ", -1).length - 1"
                 )
             return (
                 self._a(args, 0)

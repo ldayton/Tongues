@@ -1006,17 +1006,34 @@ def _run_single_test(args):
             if entry.expected.startswith("error:"):
                 expected_msg = entry.expected[6:].strip()
                 if result["exit"] == 0:
-                    return (phase_name, test_id, "fail", f"Expected error containing '{expected_msg}', got success")
+                    return (
+                        phase_name,
+                        test_id,
+                        "fail",
+                        f"Expected error containing '{expected_msg}', got success",
+                    )
                 stderr_line = (result["stderr"].strip().split("\n") or [""])[0]
                 if expected_msg and expected_msg.lower() not in stderr_line.lower():
-                    return (phase_name, test_id, "fail", f"Expected error containing '{expected_msg}', got: {stderr_line}")
+                    return (
+                        phase_name,
+                        test_id,
+                        "fail",
+                        f"Expected error containing '{expected_msg}', got: {stderr_line}",
+                    )
                 return (phase_name, test_id, "pass", None)
             if result["exit"] != 0:
-                err_msg = (result["stderr"].strip().split("\n") or ["lowering failed"])[0]
+                err_msg = (result["stderr"].strip().split("\n") or ["lowering failed"])[
+                    0
+                ]
                 return (phase_name, test_id, "fail", f"Lowering error: {err_msg}")
             output = result["stdout"]
             if not h.contains_normalized(output, entry.expected):
-                return (phase_name, test_id, "fail", f"Expected not found in output:\n--- expected ---\n{entry.expected}\n--- got ---\n{output}")
+                return (
+                    phase_name,
+                    test_id,
+                    "fail",
+                    f"Expected not found in output:\n--- expected ---\n{entry.expected}\n--- got ---\n{output}",
+                )
             return (phase_name, test_id, "pass", None)
         elif test_type == "linker":
             spec = test_data
@@ -1042,11 +1059,18 @@ def _run_single_test(args):
             finally:
                 os.unlink(tmp_path)
             if result["exit"] != 0:
-                stderr = (result["stderr"].strip().split("\n") or ["transpile failed"])[0]
+                stderr = (result["stderr"].strip().split("\n") or ["transpile failed"])[
+                    0
+                ]
                 return (phase_name, test_id, "fail", f"Transpile error: {stderr}")
             output = result["stdout"]
             if not h.contains_normalized(output, expected):
-                return (phase_name, test_id, "fail", f"Expected not found in output:\n--- expected ---\n{expected}\n--- got ---\n{output}")
+                return (
+                    phase_name,
+                    test_id,
+                    "fail",
+                    f"Expected not found in output:\n--- expected ---\n{expected}\n--- got ---\n{output}",
+                )
             return (phase_name, test_id, "pass", None)
         elif test_type == "emit":
             lang, input_content, expected = test_data
@@ -1062,7 +1086,12 @@ def _run_single_test(args):
                 return (phase_name, test_id, "fail", f"Emit error: {stderr}")
             output = result["stdout"]
             if not h.contains_normalized(output, expected):
-                return (phase_name, test_id, "fail", f"Expected not found in output:\n--- expected ---\n{expected}\n--- got ---\n{output}")
+                return (
+                    phase_name,
+                    test_id,
+                    "fail",
+                    f"Expected not found in output:\n--- expected ---\n{expected}\n--- got ---\n{output}",
+                )
             return (phase_name, test_id, "pass", None)
         elif test_type == "app":
             target, source, lib_parts = test_data
@@ -1076,17 +1105,37 @@ def _run_single_test(args):
                     os.unlink(tmp_path)
             else:
                 stdin_data = h.build_project_input("apptest.py", source, lib_parts)
-                result = run_inprocess(["--project", "--target", target], stdin_data=stdin_data)
+                result = run_inprocess(
+                    ["--project", "--target", target], stdin_data=stdin_data
+                )
             if result["exit"] != 0:
-                stderr = (result["stderr"].strip().split("\n") or ["transpile failed"])[0]
-                return (phase_name, test_id, "fail", f"Transpile error ({target}): {stderr}")
+                stderr = (result["stderr"].strip().split("\n") or ["transpile failed"])[
+                    0
+                ]
+                return (
+                    phase_name,
+                    test_id,
+                    "fail",
+                    f"Transpile error ({target}): {stderr}",
+                )
             transpiled_code = result["stdout"]
             runtime = RUNTIMES[target]
             try:
-                proc = subprocess.run(runtime, input=transpiled_code, capture_output=True, text=True, timeout=30)
+                proc = subprocess.run(
+                    runtime,
+                    input=transpiled_code,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
                 if proc.returncode != 0:
                     output = proc.stdout + proc.stderr
-                    return (phase_name, test_id, "fail", f"App test failed with exit {proc.returncode}\n{output}")
+                    return (
+                        phase_name,
+                        test_id,
+                        "fail",
+                        f"App test failed with exit {proc.returncode}\n{output}",
+                    )
             except subprocess.TimeoutExpired:
                 return (phase_name, test_id, "fail", "App test timed out")
             return (phase_name, test_id, "pass", None)
@@ -1094,15 +1143,33 @@ def _run_single_test(args):
             target, test_file = test_data
             result = run_inprocess(["taytsh", "--emit", target, test_file])
             if result["exit"] != 0:
-                stderr = (result["stderr"].strip().split("\n") or ["transpile failed"])[0]
-                return (phase_name, test_id, "fail", f"Transpile error ({target}): {stderr}")
+                stderr = (result["stderr"].strip().split("\n") or ["transpile failed"])[
+                    0
+                ]
+                return (
+                    phase_name,
+                    test_id,
+                    "fail",
+                    f"Transpile error ({target}): {stderr}",
+                )
             transpiled_code = result["stdout"]
             runtime = RUNTIMES[target]
             try:
-                proc = subprocess.run(runtime, input=transpiled_code, capture_output=True, text=True, timeout=30)
+                proc = subprocess.run(
+                    runtime,
+                    input=transpiled_code,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
                 if proc.returncode != 0:
                     output = proc.stdout + proc.stderr
-                    return (phase_name, test_id, "fail", f"Ordering test failed with exit {proc.returncode}\n{output}")
+                    return (
+                        phase_name,
+                        test_id,
+                        "fail",
+                        f"Ordering test failed with exit {proc.returncode}\n{output}",
+                    )
             except subprocess.TimeoutExpired:
                 return (phase_name, test_id, "fail", "Ordering test timed out")
             return (phase_name, test_id, "pass", None)
@@ -1183,13 +1250,20 @@ def _collect_tests(tests_config):
                 base_dir = os.path.join(test_dir, "base")
                 if not os.path.isdir(base_dir):
                     continue
-                lang_dirs = sorted([
-                    d for d in os.listdir(test_dir)
-                    if d != "base" and os.path.isdir(os.path.join(test_dir, d)) and d in EMITTER_LANGS
-                ])
+                lang_dirs = sorted(
+                    [
+                        d
+                        for d in os.listdir(test_dir)
+                        if d != "base"
+                        and os.path.isdir(os.path.join(test_dir, d))
+                        and d in EMITTER_LANGS
+                    ]
+                )
                 for lang in lang_dirs:
                     lang_dir = os.path.join(test_dir, lang)
-                    for base_file in sorted(glob.glob(os.path.join(base_dir, "*.tests"))):
+                    for base_file in sorted(
+                        glob.glob(os.path.join(base_dir, "*.tests"))
+                    ):
                         basename = os.path.basename(base_file)
                         stem = os.path.splitext(basename)[0]
                         lang_file = os.path.join(lang_dir, basename)
@@ -1199,7 +1273,14 @@ def _collect_tests(tests_config):
                             continue
                         if not os.path.exists(lang_file):
                             for entry in base_tests:
-                                collected.append((phase_name, f"{stem}/{entry.name}[{lang}]", "prefail", f"{lang}/{basename} missing"))
+                                collected.append(
+                                    (
+                                        phase_name,
+                                        f"{stem}/{entry.name}[{lang}]",
+                                        "prefail",
+                                        f"{lang}/{basename} missing",
+                                    )
+                                )
                             continue
                         with open(lang_file) as fh:
                             lang_tests = parse_simple_tests(fh.read())
@@ -1207,23 +1288,44 @@ def _collect_tests(tests_config):
                         lang_names = [e.name for e in lang_tests]
                         if base_names != lang_names:
                             for entry in base_tests:
-                                collected.append((phase_name, f"{stem}/{entry.name}[{lang}]", "prefail", "base/lang name mismatch"))
+                                collected.append(
+                                    (
+                                        phase_name,
+                                        f"{stem}/{entry.name}[{lang}]",
+                                        "prefail",
+                                        "base/lang name mismatch",
+                                    )
+                                )
                             continue
                         lang_by_name = {e.name: e.content for e in lang_tests}
                         for entry in base_tests:
                             test_id = f"{stem}/{entry.name}[{lang}]"
-                            collected.append((phase_name, test_id, "codegen", (lang, entry.content, lang_by_name[entry.name])))
+                            collected.append(
+                                (
+                                    phase_name,
+                                    test_id,
+                                    "codegen",
+                                    (lang, entry.content, lang_by_name[entry.name]),
+                                )
+                            )
             elif runner_name == "emit":
                 base_dir = os.path.join(test_dir, "base")
                 if not os.path.isdir(base_dir):
                     continue
-                lang_dirs = sorted([
-                    d for d in os.listdir(test_dir)
-                    if d != "base" and os.path.isdir(os.path.join(test_dir, d)) and d in EMITTER_LANGS
-                ])
+                lang_dirs = sorted(
+                    [
+                        d
+                        for d in os.listdir(test_dir)
+                        if d != "base"
+                        and os.path.isdir(os.path.join(test_dir, d))
+                        and d in EMITTER_LANGS
+                    ]
+                )
                 for lang in lang_dirs:
                     lang_dir = os.path.join(test_dir, lang)
-                    for base_file in sorted(glob.glob(os.path.join(base_dir, "*.tests"))):
+                    for base_file in sorted(
+                        glob.glob(os.path.join(base_dir, "*.tests"))
+                    ):
                         basename = os.path.basename(base_file)
                         stem = os.path.splitext(basename)[0]
                         lang_file = os.path.join(lang_dir, basename)
@@ -1240,10 +1342,21 @@ def _collect_tests(tests_config):
                             if entry.name not in lang_by_name:
                                 continue  # emit silently skips missing test names
                             test_id = f"{stem}/{entry.name}[{lang}]"
-                            collected.append((phase_name, test_id, "emit", (lang, entry.content, lang_by_name[entry.name])))
+                            collected.append(
+                                (
+                                    phase_name,
+                                    test_id,
+                                    "emit",
+                                    (lang, entry.content, lang_by_name[entry.name]),
+                                )
+                            )
             elif runner_name == "app":
-                available = [lang for lang, cmd in RUNTIMES.items() if _runtime_available(cmd)]
-                for test_file in sorted(glob.glob(os.path.join(test_dir, "apptest_*.py"))):
+                available = [
+                    lang for lang, cmd in RUNTIMES.items() if _runtime_available(cmd)
+                ]
+                for test_file in sorted(
+                    glob.glob(os.path.join(test_dir, "apptest_*.py"))
+                ):
                     stem = os.path.splitext(os.path.basename(test_file))[0]
                     with open(test_file) as fh:
                         source = fh.read()
@@ -1271,14 +1384,20 @@ def _collect_tests(tests_config):
                             lib_parts.append((f"lib/{name}.py", fh.read()))
                     for target in available:
                         test_id = f"{stem}[{target}]"
-                        collected.append((phase_name, test_id, "app", (target, source, lib_parts)))
+                        collected.append(
+                            (phase_name, test_id, "app", (target, source, lib_parts))
+                        )
             elif runner_name == "ordering":
-                available = [lang for lang, cmd in RUNTIMES.items() if _runtime_available(cmd)]
+                available = [
+                    lang for lang, cmd in RUNTIMES.items() if _runtime_available(cmd)
+                ]
                 for test_file in sorted(glob.glob(os.path.join(test_dir, "*.ty"))):
                     stem = os.path.splitext(os.path.basename(test_file))[0]
                     for target in available:
                         test_id = f"{stem}[{target}]"
-                        collected.append((phase_name, test_id, "ordering", (target, test_file)))
+                        collected.append(
+                            (phase_name, test_id, "ordering", (target, test_file))
+                        )
             # All test types are now parallelized
     return collected
 
@@ -1295,7 +1414,10 @@ def _run_tests_parallel(
         initargs=(transpiled_path, harness_path, via_vm_path),
     ) as pool:
         # Schedule all tasks with timeout (Pebble kills workers that exceed timeout)
-        futures = [(pool.schedule(_run_single_test, args=(t,), timeout=timeout), t) for t in collected]
+        futures = [
+            (pool.schedule(_run_single_test, args=(t,), timeout=timeout), t)
+            for t in collected
+        ]
         # Collect results
         for future, test in futures:
             phase, test_id, *_ = test
@@ -1456,7 +1578,7 @@ if __name__ == "__main__":
                 failures.append((phase, tid, err))
             else:
                 total_skip += 1
-                
+
     print()
     if failures:
         print("=" * 60)
@@ -1466,7 +1588,9 @@ if __name__ == "__main__":
             print(f"  {phase}::{tid}")
             # GitHub Actions error annotation
             title = f"{phase}::{tid}"
-            print(f"::error title={title}::{err.splitlines()[0] if err else 'Test failed'}")
+            print(
+                f"::error title={title}::{err.splitlines()[0] if err else 'Test failed'}"
+            )
         print()
 
     print("=" * 60)
