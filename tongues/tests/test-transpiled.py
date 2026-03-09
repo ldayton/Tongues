@@ -230,6 +230,38 @@ RUNTIMES = {
 
 # Reference to the transpiled module's main function, set after loading.
 _main_func = None
+_use_vm = False
+_vm_compiled = None
+
+
+# ---------------------------------------------------------------------------
+# VM mode: parse + compile .ty once, invoke per test
+# ---------------------------------------------------------------------------
+
+
+_vm_mod = None  # reference to the transpiled module for VM API access
+
+
+def _load_vm_module(ty_path):
+    global _vm_compiled
+    with open(ty_path) as f:
+        source = f.read()
+    module = _vm_mod.taytsh_taytsh_parse(source)
+    _vm_compiled = _vm_mod.vm_prepare(module)
+    print("VM module compiled")
+
+
+def _run_vm_inprocess(argv, stdin_data="", stdin_bytes=None):
+    raw = stdin_bytes if stdin_bytes is not None else stdin_data.encode("utf-8")
+    instance = _vm_mod.VM(module=_vm_compiled)
+    instance.builtins.vm = instance
+    try:
+        result = instance.invoke(raw, argv)
+    except Exception as e:
+        return {"stdout": "", "stderr": str(e), "exit": 1}
+    stdout = result.stdout if isinstance(result.stdout, str) else result.stdout.decode("utf-8")
+    stderr = result.stderr if isinstance(result.stderr, str) else result.stderr.decode("utf-8")
+    return {"stdout": stdout, "stderr": stderr, "exit": result.exit_code}
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +280,8 @@ class _StdinWrapper(io.StringIO):
 
 
 def run_inprocess(argv, stdin_data="", stdin_bytes=None):
+    if _use_vm:
+        return _run_vm_inprocess(argv, stdin_data=stdin_data, stdin_bytes=stdin_bytes)
     old_argv = sys.argv[:]
     old_stdout = sys.stdout
     old_stderr = sys.stderr
@@ -788,13 +822,31 @@ def _runtime_available(cmd):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python test-transpiled.py <transpiled.py>", file=sys.stderr)
+        print(
+            "Usage: python test-transpiled.py <transpiled.py> [--via-vm <tongues.ty>]",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
+    via_vm_path = None
+    filtered_argv = []
+    i = 1
+    while i < len(sys.argv):
+        if sys.argv[i] == "--via-vm":
+            if i + 1 >= len(sys.argv):
+                print("--via-vm requires a path to a .ty file", file=sys.stderr)
+                sys.exit(1)
+            raw = sys.argv[i + 1]
+            via_vm_path = raw if os.path.isabs(raw) else os.path.join(TONGUES_DIR, raw)
+            i += 2
+        else:
+            filtered_argv.append(sys.argv[i])
+            i += 1
+
     transpiled_path = (
-        os.path.join(TONGUES_DIR, sys.argv[1])
-        if not os.path.isabs(sys.argv[1])
-        else sys.argv[1]
+        os.path.join(TONGUES_DIR, filtered_argv[0])
+        if not os.path.isabs(filtered_argv[0])
+        else filtered_argv[0]
     )
     if not os.path.exists(transpiled_path):
         print(f"Transpiled file not found: {transpiled_path}", file=sys.stderr)
@@ -834,6 +886,19 @@ if __name__ == "__main__":
     for name in dir(harness_mod):
         if not name.startswith("_"):
             globals()[name] = getattr(harness_mod, name)
+
+    _vm_mod = mod
+
+    if via_vm_path is not None:
+        if not os.path.exists(via_vm_path):
+            print(f"VM module not found: {via_vm_path}", file=sys.stderr)
+            sys.exit(1)
+        print(f"Loading VM module: {via_vm_path}")
+        vm_t0 = time.monotonic()
+        _load_vm_module(via_vm_path)
+        print(f"VM compiled in {time.monotonic() - vm_t0:.1f}s")
+        _use_vm = True
+
     print()
 
     total_pass = 0
