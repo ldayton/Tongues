@@ -356,6 +356,18 @@ jobs:
       - run: docker build -t tongues-javascript docker/javascript
       - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile.v2 _vm-test-tongues javascript
 
+  vm-test-tongues-perl:
+    runs-on: ubuntu-latest
+    needs: transpile-perl
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-perl
+          path: tongues/.out
+      - run: docker build -t tongues-perl docker/perl
+      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile.v2 _vm-test-tongues perl
+
   # ---------------------------------------------------------------------------
   # Generative / property-based tests
   # ---------------------------------------------------------------------------
@@ -421,6 +433,7 @@ jobs:
       - fixed-point-perl
       - treewalker-apptests-perl
       - vm-apptests-perl
+      - vm-test-tongues-perl
       - test-tongues-javascript
       - fixed-point-javascript
       - treewalker-apptests-javascript
@@ -449,6 +462,7 @@ jobs:
             "${{ needs.fixed-point-perl.result }}" \
             "${{ needs.treewalker-apptests-perl.result }}" \
             "${{ needs.vm-apptests-perl.result }}" \
+            "${{ needs.vm-test-tongues-perl.result }}" \
             "${{ needs.test-tongues-javascript.result }}" \
             "${{ needs.fixed-point-javascript.result }}" \
             "${{ needs.treewalker-apptests-javascript.result }}" \
