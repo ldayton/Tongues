@@ -16,7 +16,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ProcessPoolExecutor
 
 TONGUES_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TESTS_DIR = os.path.join(TONGUES_DIR, "tests")
@@ -1046,19 +1046,34 @@ def _run_tests_parallel(
 ):
     """Run collected tests in parallel using process pool."""
     results = []
-    with ProcessPoolExecutor(
+    total = len(collected)
+    completed = 0
+    executor = ProcessPoolExecutor(
         max_workers=num_workers,
         initializer=_worker_init,
         initargs=(transpiled_path, harness_path, via_vm_path),
-    ) as executor:
-        futures = {executor.submit(_run_single_test, t): t for t in collected}
-        for future in as_completed(futures):
-            try:
-                result = future.result()
-                results.append(result)
-            except Exception as e:
-                test = futures[future]
-                results.append((test[0], test[1], "fail", f"Worker error: {e}"))
+    )
+    try:
+        for result in executor.map(_run_single_test, collected, chunksize=1):
+            results.append(result)
+            completed += 1
+            status = result[2]
+            if status == "pass":
+                char = "."
+            elif status == "fail":
+                char = "F"
+            else:
+                char = "s"
+            sys.stdout.write(char)
+            if completed % 100 == 0:
+                sys.stdout.write(f" [{completed}/{total}]\n")
+            sys.stdout.flush()
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+    # Final newline if not already on a fresh line
+    if completed % 100 != 0:
+        sys.stdout.write(f" [{completed}/{total}]\n")
+        sys.stdout.flush()
     return results
 
 
@@ -1206,7 +1221,8 @@ if __name__ == "__main__":
                     phase_results_map[phase] = []
                 phase_results_map[phase].append((status, tid, err))
             # Report parallel results
-            for phase in dict.fromkeys(t[0] for t in parallel_tests):
+            phase_order = list(dict.fromkeys(t[0] for t in parallel_tests))
+            for phase in phase_order:
                 if phase in phase_results_map:
                     phase_results = phase_results_map[phase]
                     print(f"::group::{phase}")
