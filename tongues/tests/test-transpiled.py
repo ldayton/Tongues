@@ -10,13 +10,13 @@ Supports parallel execution with -n <num> or -n auto (like pytest-xdist).
 import glob
 import importlib.util
 import io
-import multiprocessing
 import os
 import subprocess
 import sys
 import tempfile
 import time
-from concurrent.futures import ProcessPoolExecutor
+from pebble import ProcessPool
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 
 TONGUES_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TESTS_DIR = os.path.join(TONGUES_DIR, "tests")
@@ -260,25 +260,30 @@ def _load_vm_module(ty_path):
     print("VM module compiled")
 
 
-def _run_vm_inprocess(argv, stdin_data="", stdin_bytes=None):
+def _run_vm_inprocess(argv, stdin_data="", stdin_bytes=None, timeout=10):
+    """Run VM with timeout. Hung invocations continue in background."""
+    import threading
+
     raw = stdin_bytes if stdin_bytes is not None else stdin_data.encode("utf-8")
-    instance = _vm_mod.VM(module=_vm_compiled)
-    instance.builtins.vm = instance
-    try:
-        result = instance.invoke(raw, ["tongues"] + list(argv))
-    except Exception as e:
-        return {"stdout": "", "stderr": str(e), "exit": 1}
-    stdout = (
-        result.stdout
-        if isinstance(result.stdout, str)
-        else result.stdout.decode("utf-8")
-    )
-    stderr = (
-        result.stderr
-        if isinstance(result.stderr, str)
-        else result.stderr.decode("utf-8")
-    )
-    return {"stdout": stdout, "stderr": stderr, "exit": result.exit_code}
+    result = [None]
+
+    def run():
+        try:
+            instance = _vm_mod.VM(module=_vm_compiled)
+            instance.builtins.vm = instance
+            r = instance.invoke(raw, ["tongues"] + list(argv))
+            stdout = r.stdout if isinstance(r.stdout, str) else r.stdout.decode("utf-8")
+            stderr = r.stderr if isinstance(r.stderr, str) else r.stderr.decode("utf-8")
+            result[0] = {"stdout": stdout, "stderr": stderr, "exit": r.exit_code}
+        except Exception as e:
+            result[0] = {"stdout": "", "stderr": str(e), "exit": 1}
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    t.join(timeout=timeout)
+    if result[0] is None:
+        return {"stdout": "", "stderr": f"VM timed out after {timeout}s", "exit": 1}
+    return result[0]
 
 
 # ---------------------------------------------------------------------------
@@ -989,6 +994,121 @@ def _run_single_test(args):
                     f"Exit code {result['exit']}:\n{output}",
                 )
             return (phase_name, test_id, "pass", None)
+        elif test_type == "lowering":
+            entry = test_data
+            fd, tmp_path = tempfile.mkstemp(suffix=".py")
+            try:
+                with os.fdopen(fd, "w") as tf:
+                    tf.write(entry.input_)
+                result = run_inprocess(["--stop-at", "lowering-text", tmp_path])
+            finally:
+                os.unlink(tmp_path)
+            if entry.expected.startswith("error:"):
+                expected_msg = entry.expected[6:].strip()
+                if result["exit"] == 0:
+                    return (phase_name, test_id, "fail", f"Expected error containing '{expected_msg}', got success")
+                stderr_line = (result["stderr"].strip().split("\n") or [""])[0]
+                if expected_msg and expected_msg.lower() not in stderr_line.lower():
+                    return (phase_name, test_id, "fail", f"Expected error containing '{expected_msg}', got: {stderr_line}")
+                return (phase_name, test_id, "pass", None)
+            if result["exit"] != 0:
+                err_msg = (result["stderr"].strip().split("\n") or ["lowering failed"])[0]
+                return (phase_name, test_id, "fail", f"Lowering error: {err_msg}")
+            output = result["stdout"]
+            if not h.contains_normalized(output, entry.expected):
+                return (phase_name, test_id, "fail", f"Expected not found in output:\n--- expected ---\n{entry.expected}\n--- got ---\n{output}")
+            return (phase_name, test_id, "pass", None)
+        elif test_type == "linker":
+            spec = test_data
+            parts = []
+            for lf in spec.files:
+                parts.append(lf.path)
+                parts.append(lf.source)
+            stdin_data = "\0".join(parts)
+            result = run_inprocess(spec.args, stdin_data=stdin_data)
+            err = h.check_cli_assertions(
+                result["exit"], result["stdout"], result["stderr"], spec.assertions
+            )
+            if err:
+                return (phase_name, test_id, "fail", err)
+            return (phase_name, test_id, "pass", None)
+        elif test_type == "codegen":
+            lang, input_content, expected = test_data
+            fd, tmp_path = tempfile.mkstemp(suffix=".ty")
+            try:
+                with os.fdopen(fd, "w") as tf:
+                    tf.write(input_content)
+                result = run_inprocess(["taytsh", "--emit", lang, tmp_path])
+            finally:
+                os.unlink(tmp_path)
+            if result["exit"] != 0:
+                stderr = (result["stderr"].strip().split("\n") or ["transpile failed"])[0]
+                return (phase_name, test_id, "fail", f"Transpile error: {stderr}")
+            output = result["stdout"]
+            if not h.contains_normalized(output, expected):
+                return (phase_name, test_id, "fail", f"Expected not found in output:\n--- expected ---\n{expected}\n--- got ---\n{output}")
+            return (phase_name, test_id, "pass", None)
+        elif test_type == "emit":
+            lang, input_content, expected = test_data
+            fd, tmp_path = tempfile.mkstemp(suffix=".py")
+            try:
+                with os.fdopen(fd, "w") as tf:
+                    tf.write(input_content)
+                result = run_inprocess(["--target", lang, tmp_path])
+            finally:
+                os.unlink(tmp_path)
+            if result["exit"] != 0:
+                stderr = (result["stderr"].strip().split("\n") or ["emit failed"])[0]
+                return (phase_name, test_id, "fail", f"Emit error: {stderr}")
+            output = result["stdout"]
+            if not h.contains_normalized(output, expected):
+                return (phase_name, test_id, "fail", f"Expected not found in output:\n--- expected ---\n{expected}\n--- got ---\n{output}")
+            return (phase_name, test_id, "pass", None)
+        elif test_type == "app":
+            target, source, lib_parts = test_data
+            if not lib_parts:
+                fd, tmp_path = tempfile.mkstemp(suffix=".py")
+                try:
+                    with os.fdopen(fd, "w") as tf:
+                        tf.write(source)
+                    result = run_inprocess(["--target", target, tmp_path])
+                finally:
+                    os.unlink(tmp_path)
+            else:
+                stdin_data = h.build_project_input("apptest.py", source, lib_parts)
+                result = run_inprocess(["--project", "--target", target], stdin_data=stdin_data)
+            if result["exit"] != 0:
+                stderr = (result["stderr"].strip().split("\n") or ["transpile failed"])[0]
+                return (phase_name, test_id, "fail", f"Transpile error ({target}): {stderr}")
+            transpiled_code = result["stdout"]
+            runtime = RUNTIMES[target]
+            try:
+                proc = subprocess.run(runtime, input=transpiled_code, capture_output=True, text=True, timeout=30)
+                if proc.returncode != 0:
+                    output = proc.stdout + proc.stderr
+                    return (phase_name, test_id, "fail", f"App test failed with exit {proc.returncode}\n{output}")
+            except subprocess.TimeoutExpired:
+                return (phase_name, test_id, "fail", "App test timed out")
+            return (phase_name, test_id, "pass", None)
+        elif test_type == "ordering":
+            target, test_file = test_data
+            result = run_inprocess(["taytsh", "--emit", target, test_file])
+            if result["exit"] != 0:
+                stderr = (result["stderr"].strip().split("\n") or ["transpile failed"])[0]
+                return (phase_name, test_id, "fail", f"Transpile error ({target}): {stderr}")
+            transpiled_code = result["stdout"]
+            runtime = RUNTIMES[target]
+            try:
+                proc = subprocess.run(runtime, input=transpiled_code, capture_output=True, text=True, timeout=30)
+                if proc.returncode != 0:
+                    output = proc.stdout + proc.stderr
+                    return (phase_name, test_id, "fail", f"Ordering test failed with exit {proc.returncode}\n{output}")
+            except subprocess.TimeoutExpired:
+                return (phase_name, test_id, "fail", "Ordering test timed out")
+            return (phase_name, test_id, "pass", None)
+        elif test_type == "prefail":
+            # Pre-collected failure (e.g., missing file, name mismatch)
+            return (phase_name, test_id, "fail", test_data)
         elif test_type == "skip":
             return (phase_name, test_id, "skip", None)
         else:
@@ -1036,28 +1156,161 @@ def _collect_tests(tests_config):
                 for test_file in sorted(glob.glob(os.path.join(test_dir, "*.ty"))):
                     stem = os.path.splitext(os.path.basename(test_file))[0]
                     collected.append((phase_name, stem, "ty_app", test_file))
-            # Note: linker, lowering, codegen, emit, app, ordering tests are complex
-            # and not parallelized - they run sequentially in the main process
+            elif runner_name == "lowering":
+                for f in sorted(glob.glob(os.path.join(test_dir, "*.tests"))):
+                    stem = os.path.splitext(os.path.basename(f))[0]
+                    with open(f) as fh:
+                        content = fh.read()
+                    for entry in parse_spec_file(content):
+                        test_id = f"{stem}/{entry.name}"
+                        collected.append((phase_name, test_id, "lowering", entry))
+            elif runner_name == "linker":
+                for f in sorted(glob.glob(os.path.join(test_dir, "*.tests"))):
+                    stem = os.path.splitext(os.path.basename(f))[0]
+                    with open(f) as fh:
+                        content = fh.read()
+                    for name, spec in parse_linker_test_file(content):
+                        test_id = f"{stem}/{name}"
+                        # Check if target is supported
+                        if "--target" in spec.args:
+                            idx = spec.args.index("--target")
+                            target = spec.args[idx + 1]
+                            if target not in EMITTER_LANGS:
+                                collected.append((phase_name, test_id, "skip", None))
+                                continue
+                        collected.append((phase_name, test_id, "linker", spec))
+            elif runner_name == "codegen":
+                base_dir = os.path.join(test_dir, "base")
+                if not os.path.isdir(base_dir):
+                    continue
+                lang_dirs = sorted([
+                    d for d in os.listdir(test_dir)
+                    if d != "base" and os.path.isdir(os.path.join(test_dir, d)) and d in EMITTER_LANGS
+                ])
+                for lang in lang_dirs:
+                    lang_dir = os.path.join(test_dir, lang)
+                    for base_file in sorted(glob.glob(os.path.join(base_dir, "*.tests"))):
+                        basename = os.path.basename(base_file)
+                        stem = os.path.splitext(basename)[0]
+                        lang_file = os.path.join(lang_dir, basename)
+                        with open(base_file) as fh:
+                            base_tests = parse_simple_tests(fh.read())
+                        if not base_tests:
+                            continue
+                        if not os.path.exists(lang_file):
+                            for entry in base_tests:
+                                collected.append((phase_name, f"{stem}/{entry.name}[{lang}]", "prefail", f"{lang}/{basename} missing"))
+                            continue
+                        with open(lang_file) as fh:
+                            lang_tests = parse_simple_tests(fh.read())
+                        base_names = [e.name for e in base_tests]
+                        lang_names = [e.name for e in lang_tests]
+                        if base_names != lang_names:
+                            for entry in base_tests:
+                                collected.append((phase_name, f"{stem}/{entry.name}[{lang}]", "prefail", "base/lang name mismatch"))
+                            continue
+                        lang_by_name = {e.name: e.content for e in lang_tests}
+                        for entry in base_tests:
+                            test_id = f"{stem}/{entry.name}[{lang}]"
+                            collected.append((phase_name, test_id, "codegen", (lang, entry.content, lang_by_name[entry.name])))
+            elif runner_name == "emit":
+                base_dir = os.path.join(test_dir, "base")
+                if not os.path.isdir(base_dir):
+                    continue
+                lang_dirs = sorted([
+                    d for d in os.listdir(test_dir)
+                    if d != "base" and os.path.isdir(os.path.join(test_dir, d)) and d in EMITTER_LANGS
+                ])
+                for lang in lang_dirs:
+                    lang_dir = os.path.join(test_dir, lang)
+                    for base_file in sorted(glob.glob(os.path.join(base_dir, "*.tests"))):
+                        basename = os.path.basename(base_file)
+                        stem = os.path.splitext(basename)[0]
+                        lang_file = os.path.join(lang_dir, basename)
+                        with open(base_file) as fh:
+                            base_tests = parse_simple_tests(fh.read())
+                        if not base_tests:
+                            continue
+                        if not os.path.exists(lang_file):
+                            continue  # emit silently skips missing lang files
+                        with open(lang_file) as fh:
+                            lang_tests = parse_simple_tests(fh.read())
+                        lang_by_name = {e.name: e.content for e in lang_tests}
+                        for entry in base_tests:
+                            if entry.name not in lang_by_name:
+                                continue  # emit silently skips missing test names
+                            test_id = f"{stem}/{entry.name}[{lang}]"
+                            collected.append((phase_name, test_id, "emit", (lang, entry.content, lang_by_name[entry.name])))
+            elif runner_name == "app":
+                available = [lang for lang, cmd in RUNTIMES.items() if _runtime_available(cmd)]
+                for test_file in sorted(glob.glob(os.path.join(test_dir, "apptest_*.py"))):
+                    stem = os.path.splitext(os.path.basename(test_file))[0]
+                    with open(test_file) as fh:
+                        source = fh.read()
+                    # Find and transitively resolve lib imports
+                    lib_names = find_lib_imports(source)
+                    seen = list(lib_names)
+                    queue = list(lib_names)
+                    while queue:
+                        name = queue.pop(0)
+                        lib_path = os.path.join(LIB_DIR, f"{name}.py")
+                        if not os.path.exists(lib_path):
+                            continue
+                        with open(lib_path) as fh:
+                            lib_source = fh.read()
+                        for dep in find_lib_imports(lib_source):
+                            if dep not in seen:
+                                seen.append(dep)
+                                queue.append(dep)
+                    lib_names = seen
+                    # Pre-read lib contents
+                    lib_parts = []
+                    for name in lib_names:
+                        lib_path = os.path.join(LIB_DIR, f"{name}.py")
+                        with open(lib_path) as fh:
+                            lib_parts.append((f"lib/{name}.py", fh.read()))
+                    for target in available:
+                        test_id = f"{stem}[{target}]"
+                        collected.append((phase_name, test_id, "app", (target, source, lib_parts)))
+            elif runner_name == "ordering":
+                available = [lang for lang, cmd in RUNTIMES.items() if _runtime_available(cmd)]
+                for test_file in sorted(glob.glob(os.path.join(test_dir, "*.ty"))):
+                    stem = os.path.splitext(os.path.basename(test_file))[0]
+                    for target in available:
+                        test_id = f"{stem}[{target}]"
+                        collected.append((phase_name, test_id, "ordering", (target, test_file)))
+            # All test types are now parallelized
     return collected
 
 
 def _run_tests_parallel(
-    collected, num_workers, transpiled_path, harness_path, via_vm_path
+    collected, num_workers, transpiled_path, harness_path, via_vm_path, timeout=10
 ):
-    """Run collected tests in parallel using process pool."""
+    """Run collected tests in parallel using Pebble ProcessPool with per-test timeout."""
     results = []
     total = len(collected)
     completed = 0
-    executor = ProcessPoolExecutor(
+    with ProcessPool(
         max_workers=num_workers,
         initializer=_worker_init,
         initargs=(transpiled_path, harness_path, via_vm_path),
-    )
-    try:
-        for result in executor.map(_run_single_test, collected, chunksize=1):
-            results.append(result)
+    ) as pool:
+        # Schedule all tasks with timeout (Pebble kills workers that exceed timeout)
+        futures = [(pool.schedule(_run_single_test, args=(t,), timeout=timeout), t) for t in collected]
+        # Collect results
+        for future, test in futures:
+            phase, test_id, *_ = test
+            try:
+                result = future.result()
+                results.append(result)
+                status = result[2]
+            except FuturesTimeoutError:
+                results.append((phase, test_id, "fail", f"Test timed out after {timeout}s"))
+                status = "fail"
+            except Exception as e:
+                results.append((phase, test_id, "fail", f"Worker error: {e}"))
+                status = "fail"
             completed += 1
-            status = result[2]
             if status == "pass":
                 char = "."
             elif status == "fail":
@@ -1068,8 +1321,6 @@ def _run_tests_parallel(
             if completed % 100 == 0:
                 sys.stdout.write(f" [{completed}/{total}]\n")
             sys.stdout.flush()
-    finally:
-        executor.shutdown(wait=False, cancel_futures=True)
     # Final newline if not already on a fresh line
     if completed % 100 != 0:
         sys.stdout.write(f" [{completed}/{total}]\n")
@@ -1190,18 +1441,11 @@ if __name__ == "__main__":
     total_skip = 0
     failures = []
 
-    # Runners that must run sequentially (complex setup or external processes)
-    SEQUENTIAL_RUNNERS = {
-        "linker": run_linker_tests,
-        "lowering": run_lowering_tests,
-        "codegen": run_codegen_tests,
-        "emit": run_emit_tests,
-        "app": run_app_tests,
-        "ordering": run_ordering_tests,
-    }
+    # All test types are now parallelized
+    SEQUENTIAL_RUNNERS = {}
 
     # Parallelizable test types
-    PARALLEL_RUNNERS = {"cli", "phase", "ty_app"}
+    PARALLEL_RUNNERS = {"cli", "phase", "ty_app", "lowering", "linker", "codegen", "emit", "app", "ordering"}
 
     if num_workers > 1:
         # Collect parallelizable tests
@@ -1225,7 +1469,6 @@ if __name__ == "__main__":
             for phase in phase_order:
                 if phase in phase_results_map:
                     phase_results = phase_results_map[phase]
-                    print(f"::group::{phase}")
                     pass_count = sum(1 for s, _, _ in phase_results if s == "pass")
                     fail_count = sum(1 for s, _, _ in phase_results if s == "fail")
                     skip_count = sum(1 for s, _, _ in phase_results if s == "skip")
@@ -1243,7 +1486,6 @@ if __name__ == "__main__":
                         if s == "fail":
                             failures.append((phase, tid, err))
                             print(f"  FAIL {tid}")
-                    print("::endgroup::")
         # Run sequential tests
         for section_name, phases in TESTS:
             for phase_name, cfg in phases:
@@ -1253,7 +1495,6 @@ if __name__ == "__main__":
                 test_dir = os.path.join(TESTS_DIR, cfg["dir"])
                 if not os.path.isdir(test_dir):
                     continue
-                print(f"::group::{phase_name}")
                 phase_results = SEQUENTIAL_RUNNERS[runner_name](test_dir)
                 pass_count = sum(1 for s, _, _ in phase_results if s == "pass")
                 fail_count = sum(1 for s, _, _ in phase_results if s == "fail")
@@ -1272,7 +1513,6 @@ if __name__ == "__main__":
                     if s == "fail":
                         failures.append((phase_name, tid, err))
                         print(f"  FAIL {tid}")
-                print("::endgroup::")
     else:
         # Sequential execution (original behavior)
         RUNNERS = {
@@ -1290,7 +1530,6 @@ if __name__ == "__main__":
                 test_dir = os.path.join(TESTS_DIR, cfg["dir"])
                 if not os.path.isdir(test_dir):
                     continue
-                print(f"::group::{phase_name}")
                 runner_name = cfg["run"]
                 if runner_name == "phase":
                     phase_results = run_phase_tests(test_dir, phase_name, cfg)
@@ -1315,8 +1554,7 @@ if __name__ == "__main__":
                     if s == "fail":
                         failures.append((phase_name, tid, err))
                         print(f"  FAIL {tid}")
-                print("::endgroup::")
-
+                
     print()
     if failures:
         print("=" * 60)
