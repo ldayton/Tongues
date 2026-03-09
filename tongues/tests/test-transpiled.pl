@@ -2,6 +2,7 @@
 # Native Perl test harness for transpiled Tongues binaries.
 # Loads the transpiled file once, then runs all .tests cases in-process.
 # Shared parsing/assertion logic is transpiled from tests/shared/test_harness.py.
+# Supports parallel execution with -n <num> or -n auto (like pytest-xdist).
 
 use v5.36;
 use utf8;
@@ -13,6 +14,7 @@ use IPC::Open3;
 use POSIX ();
 use Scalar::Util qw(blessed);
 use Symbol qw(gensym);
+use MCE::Loop;
 
 my $TONGUES_DIR = File::Spec->rel2abs(File::Spec->catdir(dirname(__FILE__), ".."));
 my $TESTS_DIR = File::Spec->catdir($TONGUES_DIR, "tests");
@@ -64,6 +66,24 @@ my %RUNTIMES = (
     perl => ["perl"],
 );
 
+sub runtime_available ($lang) {
+    my $cmd = $RUNTIMES{$lang}[0];
+    return system("which $cmd >/dev/null 2>&1") == 0;
+}
+
+sub get_cpu_count {
+    my $count = 1;
+    if ($^O eq 'linux' && -f '/proc/cpuinfo') {
+        open my $fh, '<', '/proc/cpuinfo' or return 1;
+        $count = scalar grep { /^processor\s*:/ } <$fh>;
+        close $fh;
+    } elsif ($^O eq 'darwin') {
+        $count = `sysctl -n hw.ncpu 2>/dev/null` || 1;
+        chomp $count;
+    }
+    return int($count) || 1;
+}
+
 # ---------------------------------------------------------------------------
 # Exit capture
 # ---------------------------------------------------------------------------
@@ -92,30 +112,37 @@ sub load_vm_module ($ty_path) {
     say "VM module compiled";
 }
 
-sub run_vm_inprocess ($argv, $stdin_data = "") {
-    my $placeholder = bless {}, "VM";
-    my $builtins = _BuiltinDispatch->new($placeholder, {});
-    my $instance = VM->new($_vm_compiled, [], [], [], [], [], [], "", 0, [], {}, $builtins, undef, {});
-    $builtins->{vm} = $instance;
-    my $result = $instance->invoke($stdin_data, ["tongues", @$argv]);
-    return {
-        stdout => $result->{stdout} // "",
-        stderr => $result->{stderr} // "",
-        exit   => $result->{exit_code} // 0,
-    };
-}
 
 # ---------------------------------------------------------------------------
 # In-process execution (fork per test, 3s timeout)
 # ---------------------------------------------------------------------------
 
-my $run_inprocess_fn = \&_run_inprocess_fork;
-
 sub run_inprocess ($argv, $stdin_data = "") {
-    return $run_inprocess_fn->($argv, $stdin_data);
-}
-
-sub _run_inprocess_fork ($argv, $stdin_data = "") {
+    if (defined $_vm_compiled) {
+        # VM mode: run directly with alarm timeout (no fork needed)
+        my ($stdout, $stderr, $exit_code) = ("", "", 0);
+        my $timed_out = 0;
+        eval {
+            local $SIG{ALRM} = sub { die "TIMEOUT\n" };
+            alarm(3);
+            my $placeholder = bless {}, "VM";
+            my $builtins = _BuiltinDispatch->new($placeholder, {});
+            my $instance = VM->new($_vm_compiled, [], [], [], [], [], [], "", 0, [], {}, $builtins, undef, {});
+            $builtins->{vm} = $instance;
+            my $result = $instance->invoke($stdin_data, ["tongues", @$argv]);
+            $stdout = $result->{stdout} // "";
+            $stderr = $result->{stderr} // "";
+            $exit_code = $result->{exit_code} // 0;
+            alarm(0);
+        };
+        if ($@ && $@ eq "TIMEOUT\n") {
+            return { stdout => "", stderr => "TIMEOUT after 3s\n", exit => 1 };
+        } elsif ($@) {
+            return { stdout => "", stderr => "$@", exit => 1 };
+        }
+        return { stdout => $stdout, stderr => $stderr, exit => $exit_code };
+    }
+    # Native mode: fork for stdout/stderr capture
     my ($out_fh, $out_file) = tempfile("out_XXXXXX", TMPDIR => 1);
     my ($err_fh, $err_file) = tempfile("err_XXXXXX", TMPDIR => 1);
     my ($in_fh, $in_file) = tempfile("in_XXXXXX", TMPDIR => 1);
@@ -389,7 +416,7 @@ sub run_codegen_tests ($test_dir) {
             next unless @$base_tests;
             unless (-f $lang_file) {
                 for my $entry (@$base_tests) {
-                    push @results, ["fail", "$stem/$entry->{name}[$lang]", "$lang/$basename_file missing"];
+                    push @results, ["fail", "$stem/" . $entry->{name} . "[$lang]", "$lang/$basename_file missing"];
                 }
                 next;
             }
@@ -398,7 +425,7 @@ sub run_codegen_tests ($test_dir) {
             my @lang_names = map { $_->{name} } @$lang_tests;
             if ("@base_names" ne "@lang_names") {
                 for my $entry (@$base_tests) {
-                    push @results, ["fail", "$stem/$entry->{name}[$lang]", "base/lang name mismatch"];
+                    push @results, ["fail", "$stem/" . $entry->{name} . "[$lang]", "base/lang name mismatch"];
                 }
                 next;
             }
@@ -624,16 +651,371 @@ sub run_ordering_tests ($test_dir) {
 }
 
 # ---------------------------------------------------------------------------
+# Parallel execution support
+# ---------------------------------------------------------------------------
+
+sub collect_tests {
+    my @collected;
+    for my $section (@TESTS) {
+        my ($section_name, $phases) = @$section;
+        for my $phase_entry (@$phases) {
+            my ($phase_name, $cfg) = @$phase_entry;
+            my $test_dir = File::Spec->catdir($TESTS_DIR, $cfg->{dir});
+            next unless -d $test_dir;
+            my $runner = $cfg->{run};
+            if ($runner eq "cli") {
+                for my $f (sort glob("$test_dir/*.tests")) {
+                    my $stem = basename($f, ".tests");
+                    my $tests = parse_cli_test_file(_read_file($f));
+                    for my $t (@$tests) {
+                        my ($name, $spec) = @$t;
+                        my $test_id = "$stem/$name";
+                        if (cli_needs_backend($spec->{args}, $spec->{assertions}, \@EMITTER_LANGS)) {
+                            push @collected, [$phase_name, $test_id, "skip", undef];
+                        } else {
+                            push @collected, [$phase_name, $test_id, "cli", $spec];
+                        }
+                    }
+                }
+            } elsif ($runner eq "linker") {
+                for my $f (sort glob("$test_dir/*.tests")) {
+                    my $stem = basename($f, ".tests");
+                    my $tests = parse_linker_test_file(_read_file($f));
+                    for my $t (@$tests) {
+                        my ($name, $spec) = @$t;
+                        my $test_id = "$stem/$name";
+                        my @args = @{$spec->{args}};
+                        my $skip = 0;
+                        if (grep { $_ eq "--target" } @args) {
+                            for my $i (0 .. $#args) {
+                                if ($args[$i] eq "--target" && defined $args[$i + 1]) {
+                                    $skip = 1 unless grep { $_ eq $args[$i + 1] } @EMITTER_LANGS;
+                                    last;
+                                }
+                            }
+                        }
+                        if ($skip) {
+                            push @collected, [$phase_name, $test_id, "skip", undef];
+                        } else {
+                            push @collected, [$phase_name, $test_id, "linker", $spec];
+                        }
+                    }
+                }
+            } elsif ($runner eq "phase") {
+                my $pattern = $cfg->{glob} // "*.tests";
+                for my $f (sort glob("$test_dir/$pattern")) {
+                    my $stem = basename($f, ".tests");
+                    my $tests = parse_spec_file(_read_file($f));
+                    for my $entry (@$tests) {
+                        my $test_id = "$stem/$entry->{name}";
+                        push @collected, [$phase_name, $test_id, "phase", { entry => $entry, cfg => $cfg }];
+                    }
+                }
+            } elsif ($runner eq "lowering") {
+                for my $f (sort glob("$test_dir/*.tests")) {
+                    my $stem = basename($f, ".tests");
+                    my $tests = parse_spec_file(_read_file($f));
+                    for my $entry (@$tests) {
+                        my $test_id = "$stem/$entry->{name}";
+                        push @collected, [$phase_name, $test_id, "lowering", $entry];
+                    }
+                }
+            } elsif ($runner eq "codegen") {
+                my $base_dir = File::Spec->catdir($test_dir, "base");
+                next unless -d $base_dir;
+                my @lang_dirs = grep { $_ ne "base" && (grep { $_ eq $_ } @EMITTER_LANGS) } map { basename($_) } grep { -d $_ } glob("$test_dir/*");
+                @lang_dirs = grep { my $l = $_; grep { $_ eq $l } @EMITTER_LANGS } @lang_dirs;
+                for my $lang (@lang_dirs) {
+                    my $lang_dir = File::Spec->catdir($test_dir, $lang);
+                    for my $base_file (sort glob("$base_dir/*.tests")) {
+                        my $base_name = basename($base_file);
+                        my $stem = basename($base_file, ".tests");
+                        my $lang_file = File::Spec->catfile($lang_dir, $base_name);
+                        my $base_tests = parse_simple_tests(_read_file($base_file));
+                        next unless @$base_tests;
+                        unless (-f $lang_file) {
+                            for my $entry (@$base_tests) {
+                                push @collected, [$phase_name, "$stem/" . $entry->{name} . "[$lang]", "prefail", "$lang/$base_name missing"];
+                            }
+                            next;
+                        }
+                        my $lang_tests = parse_simple_tests(_read_file($lang_file));
+                        my @base_names = map { $_->{name} } @$base_tests;
+                        my @lang_names = map { $_->{name} } @$lang_tests;
+                        if (join("\0", @base_names) ne join("\0", @lang_names)) {
+                            for my $entry (@$base_tests) {
+                                push @collected, [$phase_name, "$stem/" . $entry->{name} . "[$lang]", "prefail", "base/lang name mismatch"];
+                            }
+                            next;
+                        }
+                        my %lang_by_name = map { $_->{name} => $_->{content} } @$lang_tests;
+                        for my $entry (@$base_tests) {
+                            my $test_id = "$stem/" . $entry->{name} . "[$lang]";
+                            push @collected, [$phase_name, $test_id, "codegen", { content => $entry->{content}, expected => $lang_by_name{$entry->{name}}, lang => $lang }];
+                        }
+                    }
+                }
+            } elsif ($runner eq "emit") {
+                my $base_dir = File::Spec->catdir($test_dir, "base");
+                next unless -d $base_dir;
+                my @lang_dirs = grep { my $l = $_; grep { $_ eq $l } @EMITTER_LANGS } map { basename($_) } grep { -d $_ } glob("$test_dir/*");
+                for my $lang (@lang_dirs) {
+                    my $lang_dir = File::Spec->catdir($test_dir, $lang);
+                    for my $base_file (sort glob("$base_dir/*.tests")) {
+                        my $base_name = basename($base_file);
+                        my $stem = basename($base_file, ".tests");
+                        my $lang_file = File::Spec->catfile($lang_dir, $base_name);
+                        my $base_tests = parse_simple_tests(_read_file($base_file));
+                        next unless @$base_tests;
+                        next unless -f $lang_file;
+                        my $lang_tests = parse_simple_tests(_read_file($lang_file));
+                        my %lang_by_name = map { $_->{name} => $_->{content} } @$lang_tests;
+                        for my $entry (@$base_tests) {
+                            next unless exists $lang_by_name{$entry->{name}};
+                            my $test_id = "$stem/" . $entry->{name} . "[$lang]";
+                            push @collected, [$phase_name, $test_id, "emit", { content => $entry->{content}, expected => $lang_by_name{$entry->{name}}, lang => $lang }];
+                        }
+                    }
+                }
+            } elsif ($runner eq "app") {
+                my @available = grep { runtime_available($_) } sort keys %RUNTIMES;
+                my @app_files = sort glob("$test_dir/apptest_*.py");
+                for my $test_file (@app_files) {
+                    my $stem = basename($test_file, ".py");
+                    my $source = _read_file($test_file);
+                    my @lib_names = @{find_lib_imports($source)};
+                    my %seen = map { $_ => 1 } @lib_names;
+                    my @queue = @lib_names;
+                    while (@queue) {
+                        my $name = shift @queue;
+                        my $lib_path = File::Spec->catfile($LIB_DIR, "$name.py");
+                        next unless -f $lib_path;
+                        my @deps = @{find_lib_imports(_read_file($lib_path))};
+                        for my $dep (@deps) {
+                            unless ($seen{$dep}) {
+                                $seen{$dep} = 1;
+                                push @lib_names, $dep;
+                                push @queue, $dep;
+                            }
+                        }
+                    }
+                    my @lib_parts = map {
+                        my $lib_path = File::Spec->catfile($LIB_DIR, "$_.py");
+                        ["lib/$_.py", _read_file($lib_path)]
+                    } @lib_names;
+                    for my $target (@available) {
+                        my $test_id = "$stem" . "[$target]";
+                        push @collected, [$phase_name, $test_id, "app", { source => $source, lib_parts => \@lib_parts, target => $target }];
+                    }
+                }
+            } elsif ($runner eq "ty_app") {
+                for my $test_file (sort glob("$test_dir/*.ty")) {
+                    my $stem = basename($test_file, ".ty");
+                    push @collected, [$phase_name, $stem, "ty_app", $test_file];
+                }
+            } elsif ($runner eq "ordering") {
+                my @available = grep { runtime_available($_) } sort keys %RUNTIMES;
+                for my $test_file (sort glob("$test_dir/*.ty")) {
+                    my $stem = basename($test_file, ".ty");
+                    for my $target (@available) {
+                        my $test_id = "$stem" . "[$target]";
+                        push @collected, [$phase_name, $test_id, "ordering", { test_file => $test_file, target => $target }];
+                    }
+                }
+            }
+        }
+    }
+    return \@collected;
+}
+
+sub run_single_test ($phase_name, $test_id, $test_type, $test_data) {
+    if ($test_type eq "skip") {
+        return [$phase_name, $test_id, "skip", undef];
+    } elsif ($test_type eq "prefail") {
+        return [$phase_name, $test_id, "fail", $test_data];
+    } elsif ($test_type eq "cli") {
+        my $spec = $test_data;
+        my $stdin_data;
+        if ($spec->{stdin_hex} ne "") {
+            $stdin_data = pack("H*", $spec->{stdin_hex});
+        } else {
+            $stdin_data = $spec->{stdin};
+        }
+        my $result = run_inprocess($spec->{args}, $stdin_data);
+        my $err = check_cli_assertions($result->{exit}, $result->{stdout}, $result->{stderr}, $spec->{assertions});
+        return [$phase_name, $test_id, $err eq "" ? "pass" : "fail", $err eq "" ? undef : $err];
+    } elsif ($test_type eq "linker") {
+        my $spec = $test_data;
+        my @parts;
+        for my $lf (@{$spec->{files}}) {
+            push @parts, $lf->{path}, $lf->{source};
+        }
+        my $stdin_data = join("\0", @parts);
+        my $result = run_inprocess($spec->{args}, $stdin_data);
+        my $err = check_cli_assertions($result->{exit}, $result->{stdout}, $result->{stderr}, $spec->{assertions});
+        return [$phase_name, $test_id, $err eq "" ? "pass" : "fail", $err eq "" ? undef : $err];
+    } elsif ($test_type eq "phase") {
+        my $entry = $test_data->{entry};
+        my $cfg = $test_data->{cfg};
+        my $lenient = ($phase_name =~ /^(parse|pycheck|typarse|tycheck)$/);
+        my $phase_result = run_transpiled_phase($entry->{input}, $cfg->{args}, is_taytsh => $cfg->{taytsh}, expect_json => $cfg->{json});
+        my $reveals = $phase_result->{reveals};
+        if ($phase_name =~ /^(pycheck|tycheck)$/ && !@{$phase_result->{errors}} && defined $phase_result->{data}) {
+            if (blessed($phase_result->{data}) && $phase_result->{data}->isa("JsonObject")) {
+                eval {
+                    my $reveals_arr = json_get_items(json_get_field($phase_result->{data}, "reveals"));
+                    $reveals = [map { [int(json_get_number(json_get_field($_, "line"))), json_get_string(json_get_field($_, "type"))] } @$reveals_arr];
+                };
+            }
+        }
+        my $err = check_expected($entry->{expected}, $phase_result->{errors}, $phase_result->{warnings}, $phase_result->{data}, $reveals, $phase_name, $lenient ? 1 : 0);
+        return [$phase_name, $test_id, $err eq "" ? "pass" : "fail", $err eq "" ? undef : $err];
+    } elsif ($test_type eq "lowering") {
+        my $entry = $test_data;
+        my ($fh, $tmpfile) = tempfile("testXXXXXX", SUFFIX => ".py", TMPDIR => 1);
+        print $fh $entry->{input};
+        close $fh;
+        my $result = run_inprocess(["--stop-at", "lowering-text", $tmpfile]);
+        unlink $tmpfile;
+        if ($entry->{expected} =~ /^error:(.*)/) {
+            my $expected_msg = $1;
+            $expected_msg =~ s/^\s+|\s+$//g;
+            if ($result->{exit} == 0) {
+                return [$phase_name, $test_id, "fail", "Expected error containing '$expected_msg', got success"];
+            }
+            my $stderr = $result->{stderr};
+            $stderr =~ s/^\s+|\s+$//g;
+            my $first_line = (split(/\n/, $stderr))[0] // "";
+            if ($expected_msg ne "" && index(lc($first_line), lc($expected_msg)) < 0) {
+                return [$phase_name, $test_id, "fail", "Expected error containing '$expected_msg', got: $first_line"];
+            }
+            return [$phase_name, $test_id, "pass", undef];
+        }
+        if ($result->{exit} != 0) {
+            my $stderr = $result->{stderr};
+            $stderr =~ s/^\s+|\s+$//g;
+            my $err_msg = (split(/\n/, $stderr))[0] // "lowering failed";
+            return [$phase_name, $test_id, "fail", "Lowering error: $err_msg"];
+        }
+        unless (contains_normalized($result->{stdout}, $entry->{expected})) {
+            return [$phase_name, $test_id, "fail", "Expected not found in output:\n--- expected ---\n$entry->{expected}\n--- got ---\n$result->{stdout}"];
+        }
+        return [$phase_name, $test_id, "pass", undef];
+    } elsif ($test_type eq "codegen") {
+        my ($content, $expected, $lang) = @{$test_data}{qw(content expected lang)};
+        my ($fh, $tmpfile) = tempfile("testXXXXXX", SUFFIX => ".ty", TMPDIR => 1);
+        print $fh $content;
+        close $fh;
+        my $result = run_inprocess(["taytsh", "--emit", $lang, $tmpfile]);
+        unlink $tmpfile;
+        if ($result->{exit} != 0) {
+            my $stderr = $result->{stderr};
+            $stderr =~ s/^\s+|\s+$//g;
+            my $err = (split(/\n/, $stderr))[0] // "transpile failed";
+            return [$phase_name, $test_id, "fail", "Transpile error: $err"];
+        }
+        unless (contains_normalized($result->{stdout}, $expected)) {
+            return [$phase_name, $test_id, "fail", "Expected not found in output:\n--- expected ---\n$expected\n--- got ---\n$result->{stdout}"];
+        }
+        return [$phase_name, $test_id, "pass", undef];
+    } elsif ($test_type eq "emit") {
+        my ($content, $expected, $lang) = @{$test_data}{qw(content expected lang)};
+        my ($fh, $tmpfile) = tempfile("testXXXXXX", SUFFIX => ".py", TMPDIR => 1);
+        print $fh $content;
+        close $fh;
+        my $result = run_inprocess(["--target", $lang, $tmpfile]);
+        unlink $tmpfile;
+        if ($result->{exit} != 0) {
+            my $stderr = $result->{stderr};
+            $stderr =~ s/^\s+|\s+$//g;
+            my $err = (split(/\n/, $stderr))[0] // "emit failed";
+            return [$phase_name, $test_id, "fail", "Emit error: $err"];
+        }
+        unless (contains_normalized($result->{stdout}, $expected)) {
+            return [$phase_name, $test_id, "fail", "Expected not found in output:\n--- expected ---\n$expected\n--- got ---\n$result->{stdout}"];
+        }
+        return [$phase_name, $test_id, "pass", undef];
+    } elsif ($test_type eq "app") {
+        my ($source, $lib_parts, $target) = @{$test_data}{qw(source lib_parts target)};
+        my $result;
+        if (!@$lib_parts) {
+            my ($fh, $tmpfile) = tempfile("testXXXXXX", SUFFIX => ".py", TMPDIR => 1);
+            print $fh $source;
+            close $fh;
+            $result = run_inprocess(["--target", $target, $tmpfile]);
+            unlink $tmpfile;
+        } else {
+            my $stdin_data = build_project_input("apptest.py", $source, $lib_parts);
+            $result = run_inprocess(["--project", "--target", $target], $stdin_data);
+        }
+        if ($result->{exit} != 0) {
+            my $stderr = $result->{stderr};
+            $stderr =~ s/^\s+|\s+$//g;
+            my $err = (split(/\n/, $stderr))[0] // "transpile failed";
+            return [$phase_name, $test_id, "fail", "Transpile error ($target): $err"];
+        }
+        my $transpiled_code = $result->{stdout};
+        my @runtime = @{$RUNTIMES{$target}};
+        my $err_fh = gensym;
+        my $pid = open3(my $child_in, my $child_out, $err_fh, @runtime);
+        print $child_in $transpiled_code;
+        close $child_in;
+        my $output = do { local $/; <$child_out> };
+        my $child_err = do { local $/; <$err_fh> };
+        waitpid($pid, 0);
+        my $exit_code = $? >> 8;
+        if ($exit_code != 0) {
+            return [$phase_name, $test_id, "fail", "App test failed with exit $exit_code\n$output$child_err"];
+        }
+        return [$phase_name, $test_id, "pass", undef];
+    } elsif ($test_type eq "ty_app") {
+        my $test_file = $test_data;
+        my $result = run_inprocess(["taytsh", $test_file]);
+        if ($result->{exit} != 0) {
+            my $output = $result->{stdout} . $result->{stderr};
+            $output =~ s/^\s+|\s+$//g;
+            return [$phase_name, $test_id, "fail", "Exit code $result->{exit}:\n$output"];
+        }
+        return [$phase_name, $test_id, "pass", undef];
+    } elsif ($test_type eq "ordering") {
+        my ($test_file, $target) = @{$test_data}{qw(test_file target)};
+        my $result = run_inprocess(["taytsh", "--emit", $target, $test_file]);
+        if ($result->{exit} != 0) {
+            my $stderr = $result->{stderr};
+            $stderr =~ s/^\s+|\s+$//g;
+            my $err = (split(/\n/, $stderr))[0] // "transpile failed";
+            return [$phase_name, $test_id, "fail", "Transpile error ($target): $err"];
+        }
+        my $transpiled_code = $result->{stdout};
+        my @runtime = @{$RUNTIMES{$target}};
+        my $err_fh = gensym;
+        my $pid = open3(my $child_in, my $child_out, $err_fh, @runtime);
+        print $child_in $transpiled_code;
+        close $child_in;
+        my $output = do { local $/; <$child_out> };
+        my $child_err = do { local $/; <$err_fh> };
+        waitpid($pid, 0);
+        my $exit_code = $? >> 8;
+        if ($exit_code != 0) {
+            return [$phase_name, $test_id, "fail", "Ordering test failed with exit $exit_code\n$output$child_err"];
+        }
+        return [$phase_name, $test_id, "pass", undef];
+    }
+    return [$phase_name, $test_id, "fail", "Unknown test type: $test_type"];
+}
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 if (@ARGV < 1) {
-    print STDERR "Usage: perl test-transpiled.pl <transpiled.pl> [--via-vm <tongues.ty>] [--target <name>]\n";
+    print STDERR "Usage: perl test-transpiled.pl <transpiled.pl> [--via-vm <tongues.ty>] [--target <name>] [-n <num|auto>]\n";
     exit 1;
 }
 
 my $via_vm_path = undef;
 my $target_name = undef;
+my $num_workers = get_cpu_count();
 my @filtered_argv;
 for (my $i = 0; $i < @ARGV; $i++) {
     if ($ARGV[$i] eq "--via-vm") {
@@ -649,6 +1031,18 @@ for (my $i = 0; $i < @ARGV; $i++) {
             exit 1;
         }
         $target_name = $ARGV[$i + 1];
+        $i++;
+    } elsif ($ARGV[$i] eq "-n") {
+        if ($i + 1 >= @ARGV) {
+            print STDERR "-n requires a number or 'auto'\n";
+            exit 1;
+        }
+        my $val = $ARGV[$i + 1];
+        $num_workers = $val eq "auto" ? get_cpu_count() : int($val);
+        if ($num_workers < 1) {
+            print STDERR "-n requires a positive number or 'auto'\n";
+            exit 1;
+        }
         $i++;
     } else {
         push @filtered_argv, $ARGV[$i];
@@ -685,7 +1079,6 @@ if (defined $via_vm_path) {
     my $vm_t0 = time();
     load_vm_module($via_vm_path);
     printf("VM compiled in %.1fs\n", time() - $vm_t0);
-    $run_inprocess_fn = \&run_vm_inprocess;
 }
 
 my $harness_path = File::Spec->catfile($TONGUES_DIR, ".out", "test_harness.pl");
@@ -708,54 +1101,43 @@ my $total_fail = 0;
 my $total_skip = 0;
 my @failures;
 
-for my $section (@TESTS) {
-    my ($section_name, $phases) = @$section;
-    for my $phase_entry (@$phases) {
-        my ($phase_name, $cfg) = @$phase_entry;
-        my $test_dir = File::Spec->catdir($TESTS_DIR, $cfg->{dir});
-        next unless -d $test_dir;
-        say "::group::$phase_name";
-        my $phase_results;
-        my $runner = $cfg->{run};
-        if ($runner eq "cli") {
-            $phase_results = run_cli_tests($test_dir);
-        } elsif ($runner eq "linker") {
-            $phase_results = run_linker_tests($test_dir);
-        } elsif ($runner eq "phase") {
-            $phase_results = run_phase_tests($test_dir, $phase_name, $cfg);
-        } elsif ($runner eq "lowering") {
-            $phase_results = run_lowering_tests($test_dir);
-        } elsif ($runner eq "codegen") {
-            $phase_results = run_codegen_tests($test_dir);
-        } elsif ($runner eq "emit") {
-            $phase_results = run_emit_tests($test_dir);
-        } elsif ($runner eq "app") {
-            $phase_results = run_app_tests($test_dir);
-        } elsif ($runner eq "ty_app") {
-            $phase_results = run_ty_app_tests($test_dir);
-        } elsif ($runner eq "ordering") {
-            $phase_results = run_ordering_tests($test_dir);
-        } else {
-            $phase_results = [];
-        }
-        my $pass = scalar grep { $_->[0] eq "pass" } @$phase_results;
-        my $fail_count = scalar grep { $_->[0] eq "fail" } @$phase_results;
-        my $skip = scalar grep { $_->[0] eq "skip" } @$phase_results;
-        $total_pass += $pass;
-        $total_fail += $fail_count;
-        $total_skip += $skip;
-        my $status = $fail_count > 0 ? "FAIL" : "ok";
-        my $counts = "$pass passed";
-        $counts .= ", $fail_count failed" if $fail_count > 0;
-        $counts .= ", $skip skipped" if $skip > 0;
-        say "$phase_name: $status ($counts)";
-        for my $r (@$phase_results) {
-            if ($r->[0] eq "fail") {
-                push @failures, [$phase_name, $r->[1], $r->[2]];
-                say "  FAIL $r->[1]";
-            }
-        }
-        say "::endgroup::";
+# Collect all tests
+say "Collecting tests...";
+my $all_tests = collect_tests();
+my $total_tests = scalar @$all_tests;
+say "Running $total_tests tests with $num_workers workers";
+say "";
+
+my $vm_tag = defined $via_vm_path ? " [vm]" : "";
+
+MCE::Loop->init(
+    max_workers => $num_workers,
+    chunk_size => 1
+);
+
+my @results = mce_loop {
+    my ($mce, $chunk_ref, $chunk_id) = @_;
+    my $test = $chunk_ref->[0];
+    my ($phase_name, $test_id, $test_type, $test_data) = @$test;
+    my $result = run_single_test($phase_name, $test_id, $test_type, $test_data);
+    MCE->gather($result);
+} $all_tests;
+
+MCE::Loop->finish;
+
+# Process results
+for my $r (@results) {
+    my ($phase_name, $test_id, $status, $err) = @$r;
+    if ($status eq "pass") {
+        say "PASS $phase_name::$test_id$vm_tag";
+        $total_pass++;
+    } elsif ($status eq "skip") {
+        say "SKIP $phase_name::$test_id$vm_tag";
+        $total_skip++;
+    } else {
+        say "FAIL $phase_name::$test_id$vm_tag";
+        push @failures, [$phase_name, $test_id, $err];
+        $total_fail++;
     }
 }
 
