@@ -73,7 +73,8 @@ _transpile-harness target:
     printf '\033[32m[transpile-harness:{{target}}] %ds\033[0m\n' "$((SECONDS - start))"
 
 # Transpile Tongues and run test suite in target language
-lang target:
+# Usage: just lang python [-n auto|<num>]
+lang target *args:
     #!/usr/bin/env bash
     set -uo pipefail
     declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
@@ -93,7 +94,7 @@ lang target:
     just -f {{justfile()}} _vm-test-tongues {{target}} & pids+=($!)
     start=$SECONDS
     cd tongues
-    ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} .out/tongues.${ext[{{target}}]} --target test-tongues-{{target}}; rc=$?
+    ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} .out/tongues.${ext[{{target}}]} {{args}} --target test-tongues-{{target}}; rc=$?
     elapsed=$((SECONDS - start))
     if [ $rc -eq 0 ]; then
         printf '\033[32m[test-tongues-{{target}}] %ds\033[0m\n' "$elapsed"
