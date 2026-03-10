@@ -6,6 +6,7 @@ export VIRTUAL_ENV := ""
 style *ARGS:
     #!/usr/bin/env bash
     set -uo pipefail
+    printf '\033[32m[style]\033[0m\n'
     start=$SECONDS
     pids=()
     just -f {{justfile()}} lint {{ARGS}} & pids+=($!)
@@ -24,6 +25,7 @@ style *ARGS:
 lint *ARGS:
     #!/usr/bin/env bash
     set -uo pipefail
+    printf '\033[32m[lint]\033[0m\n'
     start=$SECONDS
     uv run --directory tongues ruff check {{ if ARGS == "--fix" { "--fix" } else { "" } }} src/; rc=$?
     elapsed=$((SECONDS - start))
@@ -38,6 +40,7 @@ lint *ARGS:
 fmt *ARGS:
     #!/usr/bin/env bash
     set -uo pipefail
+    printf '\033[32m[fmt]\033[0m\n'
     start=$SECONDS
     failed=0
     uv run --directory tongues ruff format {{ if ARGS == "--fix" { "" } else { "--check" } }} . || failed=1
@@ -54,6 +57,7 @@ fmt *ARGS:
 _transpile-tongues target:
     #!/usr/bin/env bash
     set -euo pipefail
+    printf '\033[32m[transpile-tongues-{{target}}]\033[0m\n'
     start=$SECONDS
     declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js [java]=java [taytsh]=ty)
     mkdir -p tongues/.out
@@ -64,6 +68,7 @@ _transpile-tongues target:
 _transpile-harness target:
     #!/usr/bin/env bash
     set -euo pipefail
+    printf '\033[32m[transpile-harness:{{target}}]\033[0m\n'
     start=$SECONDS
     declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
     cd tongues
@@ -92,6 +97,7 @@ lang target *args:
     just -f {{justfile()}} _treewalker {{target}} & pids+=($!)
     just -f {{justfile()}} _vm {{target}} & pids+=($!)
     just -f {{justfile()}} _vm-test-tongues {{target}} & pids+=($!)
+    printf '\033[32m[test-tongues-{{target}}]\033[0m\n'
     start=$SECONDS
     cd tongues
     ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} .out/tongues.${ext[{{target}}]} {{args}} --target test-tongues-{{target}}; rc=$?
@@ -118,6 +124,7 @@ lang-java:
     just -f {{justfile()}} _vm-java & pids+=($!)
     # Note: _vm-test-tongues-java is not included here because it's blocked by a
     # Java transpiler bug (TDecl.annotations is null). Run manually when fixed.
+    printf '\033[32m[test-tongues-java]\033[0m\n'
     start=$SECONDS
     cd tongues
     java -cp .out/java-classes TestTranspiled .out/java-classes --target test-tongues-java; rc=$?
@@ -135,8 +142,8 @@ lang-java:
 _compile-java:
     #!/usr/bin/env bash
     set -euo pipefail
+    printf '\033[32m[compile:java]\033[0m\n'
     start=$SECONDS
-    echo "Compiling self-transpiled Java..."
     mkdir -p tongues/.out/java-classes
     cp tongues/.out/tongues.java tongues/.out/java-classes/Main.java
     if ! javac -encoding UTF-8 tongues/.out/java-classes/Main.java -d tongues/.out/java-classes 2>&1; then
@@ -154,6 +161,7 @@ _compile-java:
 _treewalker-java:
     #!/usr/bin/env bash
     set -uo pipefail
+    printf '\033[32m[tw-taytsh-apptests-java]\033[0m\n'
     start=$SECONDS
     passed=0; failed=0
     cd tongues
@@ -178,6 +186,7 @@ _treewalker-java:
 _vm-java:
     #!/usr/bin/env bash
     set -uo pipefail
+    printf '\033[32m[vm-taytsh-apptests-java]\033[0m\n'
     start=$SECONDS
     passed=0; failed=0
     cd tongues
@@ -209,6 +218,7 @@ test-tongues target *args:
     fi
     declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
     declare -A runner=([python]=python3 [ruby]=ruby [perl]=perl [javascript]=node)
+    printf '\033[32m[test-tongues-{{target}}]\033[0m\n'
     start=$SECONDS
     cd tongues
     ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} .out/tongues.${ext[{{target}}]} {{args}} --target test-tongues-{{target}}; rc=$?
@@ -224,6 +234,7 @@ test-tongues target *args:
 _test-tongues-java *args:
     #!/usr/bin/env bash
     set -uo pipefail
+    printf '\033[32m[test-tongues-java]\033[0m\n'
     start=$SECONDS
     cd tongues
     mkdir -p .out/test-classes
@@ -245,6 +256,7 @@ _vm-test-tongues-java *args:
     #!/usr/bin/env bash
     set -uo pipefail
     just -f {{justfile()}} _transpile-tongues taytsh
+    printf '\033[32m[vm-test-tongues-java]\033[0m\n'
     start=$SECONDS
     cd tongues
     mkdir -p .out/test-classes
@@ -263,6 +275,7 @@ _vm-test-tongues-java *args:
 _pyright:
     #!/usr/bin/env bash
     set -euo pipefail
+    printf '\033[32m[pyright]\033[0m\n'
     start=$SECONDS
     uvx pyright tongues/.out/tongues.py; rc=$?
     elapsed=$((SECONDS - start))
@@ -277,6 +290,7 @@ _pyright:
 idempotence:
     #!/usr/bin/env bash
     set -euo pipefail
+    printf '\033[32m[idempotence]\033[0m\n'
     start=$SECONDS
     cd tongues
     uv run python3 tests/retranspile.py ".out/tongues.py" src python ".out/tongues-2.py"; rc=$?
@@ -300,6 +314,7 @@ cross-equivalence target:
     set -euo pipefail
     declare -A ext=([ruby]=rb [perl]=pl [javascript]=js [java]=java)
     e=${ext[{{target}}]}
+    printf '\033[32m[cross-equivalence-{{target}}]\033[0m\n'
     start=$SECONDS
     cd tongues
     uv run python3 tests/retranspile.py ".out/tongues.$e" src {{target}} ".out/tongues-2.$e"; rc=$?
@@ -328,6 +343,7 @@ _vm-test-tongues target *args:
     declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
     declare -A runner=([python]=python3 [ruby]=ruby [perl]=perl [javascript]=node)
     just -f {{justfile()}} _transpile-tongues taytsh
+    printf '\033[32m[vm-test-tongues-{{target}}]\033[0m\n'
     start=$SECONDS
     cd tongues
     ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} \
@@ -346,6 +362,7 @@ _treewalker target:
     set -uo pipefail
     declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
     declare -A runner=([python]=python3 [ruby]=ruby [perl]=perl [javascript]=node)
+    printf '\033[32m[tw-taytsh-apptests-{{target}}]\033[0m\n'
     start=$SECONDS
     passed=0; failed=0
     cd tongues
@@ -372,6 +389,7 @@ _vm target:
     set -uo pipefail
     declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
     declare -A runner=([python]=python3 [ruby]=ruby [perl]=perl [javascript]=node)
+    printf '\033[32m[vm-taytsh-apptests-{{target}}]\033[0m\n'
     start=$SECONDS
     passed=0; failed=0
     cd tongues
@@ -406,6 +424,7 @@ pytest-gen:
 _pytest-gen-tycheck:
     #!/usr/bin/env bash
     set -uo pipefail
+    printf '\033[32m[pytest-gen-tycheck]\033[0m\n'
     start=$SECONDS
     uv run --directory tongues pytest tests/test_taytsh_gen_check.py -v; rc=$?
     elapsed=$((SECONDS - start))
@@ -419,6 +438,7 @@ _pytest-gen-tycheck:
 _pytest-gen-softfloat:
     #!/usr/bin/env bash
     set -uo pipefail
+    printf '\033[32m[pytest-gen-softfloat]\033[0m\n'
     start=$SECONDS
     uv run --directory tongues pytest tests/test_gen_softfloat.py -v; rc=$?
     elapsed=$((SECONDS - start))
