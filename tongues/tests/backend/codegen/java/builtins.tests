@@ -9,10 +9,16 @@ double f = 42;
 int n = (int) 3.14;
 
 === ParseInt and ParseFloat
-int n = Integer.parseInt("42", 10);
+int n = parseIntAuto("42", 10);
 
 === FormatInt
 String hex = Integer.toString(255, 16);
+
+=== FormatInt octal
+String oct = Integer.toString(255, 8);
+
+=== FormatInt binary
+String bin = Integer.toString(255, 2);
 
 === RuneToInt and RuneFromInt
 int n = (int) 'A';

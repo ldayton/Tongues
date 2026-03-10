@@ -432,6 +432,7 @@ class _JavaEmitter(Emitter):
         self._needs_list_compare: bool = False
         self._needs_zfill: bool = False
         self._needs_bytes_helpers: bool = False
+        self._needs_decode_utf8: bool = False
         self._needs_pop_item: bool = False
         self._needs_hex_helper: bool = False
         self._needs_argv: bool = False
@@ -1169,6 +1170,28 @@ class _JavaEmitter(Emitter):
             self._line("interface ThrowingRunnable {")
             self.indent += 1
             self._line("void run() throws Exception;")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_decode_utf8:
+            self._line()
+            self._line("static String _decodeUtf8(byte[] b) {")
+            self.indent += 1
+            self._line("try {")
+            self.indent += 1
+            self._line("return java.nio.charset.StandardCharsets.UTF_8.newDecoder()")
+            self._line(
+                "    .onMalformedInput(java.nio.charset.CodingErrorAction.REPORT)"
+            )
+            self._line(
+                "    .onUnmappableCharacter(java.nio.charset.CodingErrorAction.REPORT)"
+            )
+            self._line("    .decode(java.nio.ByteBuffer.wrap(b)).toString();")
+            self.indent -= 1
+            self._line("} catch (java.nio.charset.CharacterCodingException e) {")
+            self.indent += 1
+            self._line("throw new ValueError(e.getMessage());")
+            self.indent -= 1
+            self._line("}")
             self.indent -= 1
             self._line("}")
         self.indent -= 1
@@ -4220,7 +4243,7 @@ class _JavaEmitter(Emitter):
                 return "(int)(" + self._a(args, 0) + ")"
             return "(int) " + self._a(args, 0)
         if name == "ByteToInt":
-            return self._a(args, 0)
+            return "(" + self._a(args, 0) + " & 0xFF)"
         if name == "IntToByte":
             return self._a(args, 0)
         if name == "IsNil":
@@ -4693,7 +4716,8 @@ class _JavaEmitter(Emitter):
                 return "(" + self._a(args, 0) + ").getBytes(StandardCharsets.UTF_8)"
             return self._a(args, 0) + ".getBytes(StandardCharsets.UTF_8)"
         if name == "Decode":
-            return "new String(" + self._a(args, 0) + ", StandardCharsets.UTF_8)"
+            self._needs_decode_utf8 = True
+            return "_decodeUtf8(" + self._a(args, 0) + ")"
         if name == "Bytes":
             return "new byte[" + self._a(args, 0) + "]"
         if name == "IsDigit":

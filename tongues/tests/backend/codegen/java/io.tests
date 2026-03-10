@@ -23,7 +23,7 @@ byte[] chunk = System.in.readNBytes(1024);
 String home = System.getenv("HOME");
 
 === Exit call
-System.exit(1);
+doExit(1);
 
 === Encode and Decode
 byte[] b = "hello".getBytes(StandardCharsets.UTF_8);

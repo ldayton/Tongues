@@ -6,7 +6,7 @@ q = 17 / 5;
 r = 17 - q * 5;
 
 === initial value suppressed when overwritten
-x = Integer.parseInt(input, 10);
+x = parseIntAuto(input, 10);
 
 === initial value kept when read before overwrite
 int x = 0;

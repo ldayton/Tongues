@@ -37,8 +37,7 @@ s.add(4);
 s.remove(1);
 
 === Merge maps
-HashMap<String, Integer> c = new HashMap<>(a);
-c.putAll(b);
+HashMap<String, Integer> c = _mergeMaps(a, b);
 
 === set literal
 new HashSet<>(Set.of(1, 2, 3));
@@ -51,7 +50,7 @@ HashMap<String, Integer> m = new HashMap<>();
 HashSet<Integer> s = new HashSet<>();
 
 === tuple construction and access
-Object[] pair = new Object[]{1, "hello"};
+List<Object> pair = Arrays.asList(1, "hello");
 
 === index assignment on list
 xs.set(0, 99);
@@ -60,7 +59,7 @@ xs.set(0, 99);
 m.put("b", 2);
 
 === list slicing
-List<Integer> mid = new ArrayList<>(xs.subList(1, 4));
+List<Integer> mid = new ArrayList<>(xs.subList(1, Math.min(4, xs.size())));
 
 === nested collection access
 m.get("a").get(0)
@@ -81,7 +80,7 @@ xs.get(xs.size() - 1)
 List<Integer> tail = new ArrayList<>(xs.subList(1, xs.size()));
 
 === open-start slice
-List<Integer> head = new ArrayList<>(xs.subList(0, 3));
+List<Integer> head = new ArrayList<>(xs.subList(0, Math.min(3, xs.size())));
 
 === list comprehension
 doubled.add(x * 2);
@@ -93,16 +92,13 @@ evens.add(x);
 m.put(k, i);
 
 === Union on sets
-HashSet<Integer> c = new HashSet<>(a);
-c.addAll(b);
+HashSet<Integer> c = _unionSets(a, b);
 
 === Intersection on sets
-HashSet<Integer> c = new HashSet<>(a);
-c.retainAll(b);
+HashSet<Integer> c = _intersectSets(a, b);
 
 === Difference on sets
-HashSet<Integer> c = new HashSet<>(a);
-c.removeAll(b);
+HashSet<Integer> c = _differenceSets(a, b);
 
 === set comprehension
 unique.add(x);

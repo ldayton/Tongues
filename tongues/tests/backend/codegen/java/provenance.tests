@@ -8,7 +8,7 @@ System.out.println(String.valueOf(xs.getLast()));
 List<Integer> tail = new ArrayList<>(xs.subList(1, xs.size()));
 
 === open-start slice (raised)
-List<Integer> head = new ArrayList<>(xs.subList(0, 3));
+List<Integer> head = new ArrayList<>(xs.subList(0, Math.min(3, xs.size())));
 
 === truthiness check on list (raised)
 if (!xs.isEmpty())

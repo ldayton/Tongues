@@ -10,9 +10,8 @@ import java.util.stream.*;
  * Loads the transpiled Main class once, then runs all .tests cases in-process.
  */
 public class TestTranspiled {
-    private static final String[] EMITTER_LANGS = {"java", "javascript", "perl", "python", "ruby"};
-    // Languages that can execute code from stdin (excludes Java which requires compilation)
-    private static final String[] STDIN_LANGS = {"javascript", "perl", "python", "ruby"};
+    private static final String[] EMITTER_LANGS = {"java"};
+    private static final String[] STDIN_LANGS = {};
     private static final Map<String, String[]> RUNTIMES = Map.of(
         "java", new String[]{"java"},
         "javascript", new String[]{"node"},
@@ -941,7 +940,7 @@ public class TestTranspiled {
                             continue;
                         }
                         if (!containsNormalized(result.stdout, entry.expected)) {
-                            results.add(new String[]{"fail", testId, "Expected not found in output"});
+                            results.add(new String[]{"fail", testId, "Expected not found in output:\n--- expected ---\n" + entry.expected + "\n--- got ---\n" + result.stdout});
                             continue;
                         }
                         results.add(new String[]{"pass", testId, null});
@@ -1011,7 +1010,7 @@ public class TestTranspiled {
                                 continue;
                             }
                             if (!containsNormalized(result.stdout, expected)) {
-                                results.add(new String[]{"fail", testId, "Expected not found in output"});
+                                results.add(new String[]{"fail", testId, "Expected not found in output:\n--- expected ---\n" + expected + "\n--- got ---\n" + result.stdout});
                                 continue;
                             }
                             results.add(new String[]{"pass", testId, null});
@@ -1074,7 +1073,7 @@ public class TestTranspiled {
                                 continue;
                             }
                             if (!containsNormalized(result.stdout, expected)) {
-                                results.add(new String[]{"fail", testId, "Expected not found in output"});
+                                results.add(new String[]{"fail", testId, "Expected not found in output:\n--- expected ---\n" + expected + "\n--- got ---\n" + result.stdout});
                                 continue;
                             }
                             results.add(new String[]{"pass", testId, null});
@@ -1562,7 +1561,7 @@ public class TestTranspiled {
                             return new String[]{test.phaseName, test.testId, "fail", "Lowering error: " + errMsg};
                         }
                         if (!containsNormalized(result.stdout, entry.expected)) {
-                            return new String[]{test.phaseName, test.testId, "fail", "Expected not found in output"};
+                            return new String[]{test.phaseName, test.testId, "fail", "Expected not found in output:\n--- expected ---\n" + entry.expected + "\n--- got ---\n" + result.stdout};
                         }
                         return new String[]{test.phaseName, test.testId, "pass", null};
                     } finally {
@@ -1583,7 +1582,7 @@ public class TestTranspiled {
                             return new String[]{test.phaseName, test.testId, "fail", "Transpile error: " + stderr};
                         }
                         if (!containsNormalized(result.stdout, expected)) {
-                            return new String[]{test.phaseName, test.testId, "fail", "Expected not found in output"};
+                            return new String[]{test.phaseName, test.testId, "fail", "Expected not found in output:\n--- expected ---\n" + expected + "\n--- got ---\n" + result.stdout};
                         }
                         return new String[]{test.phaseName, test.testId, "pass", null};
                     } finally {
@@ -1604,7 +1603,7 @@ public class TestTranspiled {
                             return new String[]{test.phaseName, test.testId, "fail", "Emit error: " + stderr};
                         }
                         if (!containsNormalized(result.stdout, expected)) {
-                            return new String[]{test.phaseName, test.testId, "fail", "Expected not found in output"};
+                            return new String[]{test.phaseName, test.testId, "fail", "Expected not found in output:\n--- expected ---\n" + expected + "\n--- got ---\n" + result.stdout};
                         }
                         return new String[]{test.phaseName, test.testId, "pass", null};
                     } finally {

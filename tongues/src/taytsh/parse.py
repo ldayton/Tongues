@@ -85,6 +85,16 @@ from .tokens import (
     Token,
 )
 
+
+def _safe_int(s: str) -> int:
+    """Parse an integer string, returning 0 for values that exceed 64-bit range."""
+    if len(s) > 19:
+        return 0
+    if len(s) == 19 and s > "9223372036854775807":
+        return 0
+    return int(s)
+
+
 ASSIGN_OPS: set[str] = {
     "=",
     "+=",
@@ -938,7 +948,7 @@ class Parser:
         # Literals
         if tok.type == TK_INT:
             self.advance()
-            return TIntLit(pos, int(tok.value), tok.value, {})
+            return TIntLit(pos, _safe_int(tok.value), tok.value, {})
         if tok.type == TK_FLOAT:
             self.advance()
             return TFloatLit(pos, float(tok.value), tok.value, {})

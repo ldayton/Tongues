@@ -35,7 +35,7 @@ List<String> words = List.of("  hello   world  ".trim().split("\\s+"));
 String s = "hello" + " world";
 
 === string indexing and slicing
-String sub = s.substring(1, 4);
+String sub = s.substring(1, Math.min(4, s.length()));
 
 === format string becomes f-string
 return "hello, " + name;
