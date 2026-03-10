@@ -251,6 +251,8 @@ test-tongues target *args:
 _test-tongues-java *args:
     #!/usr/bin/env bash
     set -uo pipefail
+    just -f {{justfile()}} _transpile-tongues java
+    just -f {{justfile()}} _compile-java
     printf '\033[32m[test-tongues-java]\033[0m\n'
     start=$SECONDS
     cd tongues

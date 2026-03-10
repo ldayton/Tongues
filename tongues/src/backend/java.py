@@ -2362,9 +2362,11 @@ class _JavaEmitter(Emitter):
             idx = binding[0]
             val = binding[1]
             iterable = self._expr(stmt.iterable)
+            idx_is_reused = ann.get(f"scope.binder.{idx}.is_reuse") == "true"
+            idx_decl = idx if idx_is_reused else "int " + idx
             self._line(
-                "for (int "
-                + idx
+                "for ("
+                + idx_decl
                 + " = 0; "
                 + idx
                 + " < "
@@ -2842,14 +2844,14 @@ class _JavaEmitter(Emitter):
         ann: Ann,
     ) -> None:
         itype = "long" if ann.get("intwidth.wide") == "true" else "int"
+        is_reused = ann.get(f"scope.binder.{var_name}.is_reuse") == "true"
+        decl = var_name if is_reused else itype + " " + var_name
         nargs = len(iterable.args)
         if nargs == 1:
             high = self._expr(iterable.args[0])
             self._line(
                 "for ("
-                + itype
-                + " "
-                + var_name
+                + decl
                 + " = 0; "
                 + var_name
                 + " < "
@@ -2863,9 +2865,7 @@ class _JavaEmitter(Emitter):
             high = self._expr(iterable.args[1])
             self._line(
                 "for ("
-                + itype
-                + " "
-                + var_name
+                + decl
                 + " = "
                 + low
                 + "; "
@@ -2885,9 +2885,7 @@ class _JavaEmitter(Emitter):
                 step_str = self._expr(step)
                 self._line(
                     "for ("
-                    + itype
-                    + " "
-                    + var_name
+                    + decl
                     + " = "
                     + low
                     + "; "
@@ -2907,9 +2905,7 @@ class _JavaEmitter(Emitter):
                     if high_val is not None:
                         self._line(
                             "for ("
-                            + itype
-                            + " "
-                            + var_name
+                            + decl
                             + " = "
                             + low
                             + "; "
@@ -2923,9 +2919,7 @@ class _JavaEmitter(Emitter):
                     else:
                         self._line(
                             "for ("
-                            + itype
-                            + " "
-                            + var_name
+                            + decl
                             + " = "
                             + low
                             + "; "
@@ -2939,9 +2933,7 @@ class _JavaEmitter(Emitter):
                 else:
                     self._line(
                         "for ("
-                        + itype
-                        + " "
-                        + var_name
+                        + decl
                         + " = "
                         + low
                         + "; "
@@ -2955,9 +2947,7 @@ class _JavaEmitter(Emitter):
             elif step_val == 1:
                 self._line(
                     "for ("
-                    + itype
-                    + " "
-                    + var_name
+                    + decl
                     + " = "
                     + low
                     + "; "
@@ -2972,9 +2962,7 @@ class _JavaEmitter(Emitter):
                 step_str = self._expr(step)
                 self._line(
                     "for ("
-                    + itype
-                    + " "
-                    + var_name
+                    + decl
                     + " = "
                     + low
                     + "; "
@@ -2991,9 +2979,7 @@ class _JavaEmitter(Emitter):
                 step_str = self._expr(step)
                 self._line(
                     "for ("
-                    + itype
-                    + " "
-                    + var_name
+                    + decl
                     + " = "
                     + low
                     + "; "
