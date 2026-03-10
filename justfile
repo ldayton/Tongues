@@ -558,6 +558,41 @@ vscode:
     fi
     code --install-extension "${vsix[0]}"
 
+# Run the full CI check suite locally
+full-check:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    pids=()
+    labels=()
+    _cleanup_done=0
+    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null; done; }
+    trap 'cleanup; trap - INT; kill -INT $$' INT
+    trap 'cleanup; trap - TERM; kill -TERM $$' TERM
+    trap 'cleanup' EXIT
+    printf '\033[32m[full-check]\033[0m\n'
+    start=$SECONDS
+    just -f {{justfile()}} style & pids+=($!); labels+=("style")
+    just -f {{justfile()}} pytest-gen & pids+=($!); labels+=("pytest-gen")
+    just -f {{justfile()}} lang python & pids+=($!); labels+=("lang-python")
+    just -f {{justfile()}} lang ruby & pids+=($!); labels+=("lang-ruby")
+    just -f {{justfile()}} lang perl & pids+=($!); labels+=("lang-perl")
+    just -f {{justfile()}} lang javascript & pids+=($!); labels+=("lang-javascript")
+    just -f {{justfile()}} lang-java & pids+=($!); labels+=("lang-java")
+    failed=0
+    for i in "${!pids[@]}"; do
+        if ! wait "${pids[$i]}"; then
+            printf '\033[31m  FAIL %s\033[0m\n' "${labels[$i]}"
+            failed=1
+        fi
+    done
+    elapsed=$((SECONDS - start))
+    if [ $failed -eq 0 ]; then
+        printf '\033[32m[full-check] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[full-check] %ds (FAILED)\033[0m\n' "$elapsed"
+        exit 1
+    fi
+
 # Run a just target inside Docker
 docker target lang:
     docker build -t tongues-{{lang}} docker/{{lang}}
