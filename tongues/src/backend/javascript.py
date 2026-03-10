@@ -2929,9 +2929,9 @@ class _JavaScriptEmitter(Emitter):
             return "!Number.isFinite(" + self._a(args, 0) + ")"
         # I/O
         if name == "WriteOut":
-            return "fs.writeSync(1, " + self._a(args, 0) + ")"
+            return "process.stdout.write(" + self._a(args, 0) + ")"
         if name == "WriteErr":
-            return "fs.writeSync(2, " + self._a(args, 0) + ")"
+            return "process.stderr.write(" + self._a(args, 0) + ")"
         if name == "WritelnOut":
             return "console.log(" + self._a(args, 0) + ")"
         if name == "WritelnErr":
