@@ -1,7 +1,8 @@
 FROM node:21
 RUN node --version | grep -q "v21\."
-RUN npm install -g @biomejs/biome \
+RUN npm install -g @biomejs/biome workerpool \
     && biome --version | grep -q "."
+ENV NODE_PATH="/usr/local/lib/node_modules"
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/root/.local/bin:${PATH}"
 RUN uv python install "~=3.12.0"

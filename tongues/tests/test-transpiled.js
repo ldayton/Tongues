@@ -10,7 +10,8 @@ const nodeFs = require("fs");
 const nodePath = require("path");
 const vm = require("vm");
 const os = require("os");
-const { spawnSync, fork } = require("child_process");
+const { spawnSync } = require("child_process");
+const workerpool = require("workerpool");
 
 const TONGUES_DIR = nodePath.resolve(__dirname, "..");
 const TESTS_DIR = nodePath.join(TONGUES_DIR, "tests");
@@ -111,6 +112,9 @@ function runVmInprocess(argv, stdinData) {
 // In-process execution
 // ---------------------------------------------------------------------------
 
+const fs = require("fs");
+const origWriteSync = fs.writeSync;
+
 let runInprocess = function runInprocess(argv, stdinData) {
     if (stdinData === undefined) stdinData = "";
     const origArgv = process.argv;
@@ -124,6 +128,11 @@ let runInprocess = function runInprocess(argv, stdinData) {
     process.argv = ["node", "tongues", ...argv];
     process.stdout.write = (chunk) => { outBuf += String(chunk); return true; };
     process.stderr.write = (chunk) => { errBuf += String(chunk); return true; };
+    fs.writeSync = (fd, data, ...rest) => {
+        if (fd === 1) { outBuf += String(data); return Buffer.byteLength(String(data)); }
+        if (fd === 2) { errBuf += String(data); return Buffer.byteLength(String(data)); }
+        return origWriteSync.call(fs, fd, data, ...rest);
+    };
     const exitSentinel = Symbol("exit");
     process.exit = (code) => { throw { [exitSentinel]: true, code: code || 0 }; };
     nodeFs.readFileSync = (p, enc) => {
@@ -147,17 +156,46 @@ let runInprocess = function runInprocess(argv, stdinData) {
         process.argv = origArgv;
         process.stdout.write = origStdoutWrite;
         process.stderr.write = origStderrWrite;
+        fs.writeSync = origWriteSync;
         process.exit = origExit;
         nodeFs.readFileSync = origReadFileSync;
     }
     return { stdout: outBuf, stderr: errBuf, exit: exitCode };
 };
 
+function writeFileRetry(path, data, maxRetries) {
+    if (maxRetries === undefined) maxRetries = 5;
+    for (let i = 0; i < maxRetries; i++) {
+        try {
+            nodeFs.writeFileSync(path, data);
+            return;
+        } catch (e) {
+            if (e.code === "EAGAIN" && i < maxRetries - 1) {
+                spawnSync("sleep", ["0.05"]);
+                continue;
+            }
+            throw e;
+        }
+    }
+}
+
+function spawnSyncRetry(cmd, args, opts, maxRetries) {
+    if (maxRetries === undefined) maxRetries = 5;
+    for (let i = 0; i < maxRetries; i++) {
+        const result = spawnSync(cmd, args, opts);
+        if (result.error && result.error.code === "EAGAIN" && i < maxRetries - 1) {
+            spawnSync("sleep", ["0.05"]);
+            continue;
+        }
+        return result;
+    }
+}
+
 function runTranspiledPhase(source, cliArgs, isTaytsh, expectJson) {
     if (expectJson === undefined) expectJson = true;
     const suffix = isTaytsh ? ".ty" : ".py";
     const tmpFile = nodePath.join(os.tmpdir(), `test_${Date.now()}_${Math.random().toString(36).slice(2)}${suffix}`);
-    nodeFs.writeFileSync(tmpFile, source);
+    writeFileRetry(tmpFile, source);
     let argv;
     if (isTaytsh) {
         argv = ["taytsh", ...cliArgs, tmpFile];
@@ -292,7 +330,7 @@ function runPhaseTests(testDir, phaseName, cfg) {
             const lenient = ["parse", "pycheck", "typarse", "tycheck"].includes(phaseName);
             const phaseResult = runTranspiledPhase(entry.input, cfg.args, cfg.taytsh, cfg.json);
             let reveals = phaseResult.reveals;
-            let annotations = {};
+            let annotations = new Map();
             if (["pycheck", "tycheck"].includes(phaseName) && phaseResult.errors.length === 0 && phaseResult.data) {
                 if (phaseResult.data instanceof JsonObject) {
                     try {
@@ -306,13 +344,13 @@ function runPhaseTests(testDir, phaseName, cfg) {
                         const annsObj = json_get_field(phaseResult.data, "annotations");
                         if (annsObj instanceof JsonObject) {
                             for (const [lineStr, lineAnns] of annsObj.entries) {
-                                const lineDict = {};
+                                const lineDict = new Map();
                                 if (lineAnns instanceof JsonObject) {
                                     for (const [k, v] of lineAnns.entries) {
-                                        if (v instanceof JsonString) lineDict[k] = v.value;
+                                        if (v instanceof JsonString) lineDict.set(k, v.value);
                                     }
                                 }
-                                annotations[parseInt(lineStr)] = lineDict;
+                                annotations.set(parseInt(lineStr), lineDict);
                             }
                         }
                     } catch {}
@@ -339,7 +377,7 @@ function runLoweringTests(testDir) {
         for (const entry of tests) {
             const testId = `${stem}/${entry.name}`;
             const tmpFile = nodePath.join(os.tmpdir(), `test_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
-            nodeFs.writeFileSync(tmpFile, entry.input);
+            writeFileRetry(tmpFile, entry.input);
             const result = runInprocess(["--stop-at", "lowering-text", tmpFile]);
             try { nodeFs.unlinkSync(tmpFile); } catch {}
             if (entry.expected.startsWith("error:")) {
@@ -406,7 +444,7 @@ function runCodegenTests(testDir) {
                 const testId = `${stem}/${entry.name}[${lang}]`;
                 const expected = langByName.get(entry.name);
                 const tmpFile = nodePath.join(os.tmpdir(), `test_${Date.now()}_${Math.random().toString(36).slice(2)}.ty`);
-                nodeFs.writeFileSync(tmpFile, entry.content);
+                writeFileRetry(tmpFile, entry.content);
                 const result = runInprocess(["taytsh", "--emit", lang, tmpFile]);
                 try { nodeFs.unlinkSync(tmpFile); } catch {}
                 if (result.exit !== 0) {
@@ -447,7 +485,7 @@ function runEmitTests(testDir) {
                 const testId = `${stem}/${entry.name}[${lang}]`;
                 const expected = langByName.get(entry.name);
                 const tmpFile = nodePath.join(os.tmpdir(), `test_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
-                nodeFs.writeFileSync(tmpFile, entry.content);
+                writeFileRetry(tmpFile, entry.content);
                 const result = runInprocess(["--target", lang, tmpFile]);
                 try { nodeFs.unlinkSync(tmpFile); } catch {}
                 if (result.exit !== 0) {
@@ -509,7 +547,7 @@ function runAppTests(testDir) {
             let result;
             if (libNames.length === 0) {
                 const tmpFile = nodePath.join(os.tmpdir(), `test_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
-                nodeFs.writeFileSync(tmpFile, source);
+                writeFileRetry(tmpFile, source);
                 result = runInprocess(["--target", target, tmpFile]);
                 try { nodeFs.unlinkSync(tmpFile); } catch {}
             } else {
@@ -527,7 +565,7 @@ function runAppTests(testDir) {
             }
             const transpiledCode = result.stdout;
             const runtime = RUNTIMES[target];
-            const run = spawnSync(runtime[0], runtime.slice(1), {
+            const run = spawnSyncRetry(runtime[0], runtime.slice(1), {
                 input: transpiledCode,
                 encoding: "utf-8",
                 timeout: 10000,
@@ -574,7 +612,7 @@ function runOrderingTests(testDir) {
             }
             const transpiledCode = result.stdout;
             const runtime = RUNTIMES[target];
-            const run = spawnSync(runtime[0], runtime.slice(1), {
+            const run = spawnSyncRetry(runtime[0], runtime.slice(1), {
                 input: transpiledCode,
                 encoding: "utf-8",
                 timeout: 10000,
@@ -845,7 +883,7 @@ function runSingleTest(phaseName, testId, testType, testData) {
             const lenient = ["parse", "pycheck", "typarse", "tycheck"].includes(phaseName);
             const phaseResult = runTranspiledPhase(entry.input, cfg.args, cfg.taytsh, cfg.json);
             let reveals = phaseResult.reveals;
-            let annotations = {};
+            let annotations = new Map();
             if (["pycheck", "tycheck"].includes(phaseName) && phaseResult.errors.length === 0 && phaseResult.data) {
                 if (phaseResult.data instanceof JsonObject) {
                     try {
@@ -859,13 +897,13 @@ function runSingleTest(phaseName, testId, testType, testData) {
                         const annsObj = json_get_field(phaseResult.data, "annotations");
                         if (annsObj instanceof JsonObject) {
                             for (const [lineStr, lineAnns] of annsObj.entries) {
-                                const lineDict = {};
+                                const lineDict = new Map();
                                 if (lineAnns instanceof JsonObject) {
                                     for (const [k, v] of lineAnns.entries) {
-                                        if (v instanceof JsonString) lineDict[k] = v.value;
+                                        if (v instanceof JsonString) lineDict.set(k, v.value);
                                     }
                                 }
-                                annotations[parseInt(lineStr)] = lineDict;
+                                annotations.set(parseInt(lineStr), lineDict);
                             }
                         }
                     } catch {}
@@ -883,7 +921,7 @@ function runSingleTest(phaseName, testId, testType, testData) {
         case "lowering": {
             const entry = testData;
             const tmpFile = nodePath.join(os.tmpdir(), `test_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
-            nodeFs.writeFileSync(tmpFile, entry.input);
+            writeFileRetry(tmpFile, entry.input);
             const result = runInprocess(["--stop-at", "lowering-text", tmpFile]);
             try { nodeFs.unlinkSync(tmpFile); } catch {}
             if (entry.expected.startsWith("error:")) {
@@ -910,7 +948,7 @@ function runSingleTest(phaseName, testId, testType, testData) {
         case "codegen": {
             const { content, expected, lang } = testData;
             const tmpFile = nodePath.join(os.tmpdir(), `test_${Date.now()}_${Math.random().toString(36).slice(2)}.ty`);
-            nodeFs.writeFileSync(tmpFile, content);
+            writeFileRetry(tmpFile, content);
             const result = runInprocess(["taytsh", "--emit", lang, tmpFile]);
             try { nodeFs.unlinkSync(tmpFile); } catch {}
             if (result.exit !== 0) {
@@ -925,7 +963,7 @@ function runSingleTest(phaseName, testId, testType, testData) {
         case "emit": {
             const { content, expected, lang } = testData;
             const tmpFile = nodePath.join(os.tmpdir(), `test_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
-            nodeFs.writeFileSync(tmpFile, content);
+            writeFileRetry(tmpFile, content);
             const result = runInprocess(["--target", lang, tmpFile]);
             try { nodeFs.unlinkSync(tmpFile); } catch {}
             if (result.exit !== 0) {
@@ -942,7 +980,7 @@ function runSingleTest(phaseName, testId, testType, testData) {
             let result;
             if (libParts.length === 0) {
                 const tmpFile = nodePath.join(os.tmpdir(), `test_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
-                nodeFs.writeFileSync(tmpFile, source);
+                writeFileRetry(tmpFile, source);
                 result = runInprocess(["--target", target, tmpFile]);
                 try { nodeFs.unlinkSync(tmpFile); } catch {}
             } else {
@@ -955,7 +993,7 @@ function runSingleTest(phaseName, testId, testType, testData) {
             }
             const transpiledCode = result.stdout;
             const runtime = RUNTIMES[target];
-            const run = spawnSync(runtime[0], runtime.slice(1), {
+            const run = spawnSyncRetry(runtime[0], runtime.slice(1), {
                 input: transpiledCode,
                 encoding: "utf-8",
                 timeout: 10000,
@@ -984,7 +1022,7 @@ function runSingleTest(phaseName, testId, testType, testData) {
             }
             const transpiledCode = result.stdout;
             const runtime = RUNTIMES[target];
-            const run = spawnSync(runtime[0], runtime.slice(1), {
+            const run = spawnSyncRetry(runtime[0], runtime.slice(1), {
                 input: transpiledCode,
                 encoding: "utf-8",
                 timeout: 10000,
@@ -1001,11 +1039,10 @@ function runSingleTest(phaseName, testId, testType, testData) {
 }
 
 // ---------------------------------------------------------------------------
-// Worker mode (when spawned via fork)
+// Worker mode (when spawned by workerpool)
 // ---------------------------------------------------------------------------
 
-if (process.env._TONGUES_WORKER === "1") {
-    // Worker process - initialize and process tasks via IPC
+if (workerpool.isMainThread === false) {
     const transpiledPath = process.env._TONGUES_TRANSPILED;
     const harnessPath = process.env._TONGUES_HARNESS;
     const viaVmPath = process.env._TONGUES_VM || null;
@@ -1015,18 +1052,9 @@ if (process.env._TONGUES_WORKER === "1") {
         loadVmModule(viaVmPath);
         runInprocess = runVmInprocess;
     }
-    process.send({ type: "ready" });
-    process.on("message", (msg) => {
-        if (msg.type === "task") {
-            const { id, phaseName, testId, testType, testData } = msg;
-            try {
-                const result = runSingleTest(phaseName, testId, testType, testData);
-                process.send({ type: "result", id, result });
-            } catch (err) {
-                process.send({ type: "result", id, result: [phaseName, testId, "fail", `Worker error: ${err.message || err}`] });
-            }
-        } else if (msg.type === "exit") {
-            process.exit(0);
+    workerpool.worker({
+        runTest: function(phaseName, testId, testType, testData) {
+            return runSingleTest(phaseName, testId, testType, testData);
         }
     });
 } else {
@@ -1062,7 +1090,7 @@ if (targetIdx !== -1) {
 
 // Parse -n argument for parallel workers (default: auto = CPU count)
 const nIdx = process.argv.indexOf("-n");
-let numWorkers = os.cpus().length;
+let numWorkers = Math.max(1, Math.floor(os.cpus().length / 2));
 if (nIdx !== -1) {
     if (nIdx + 1 >= process.argv.length) {
         process.stderr.write("-n requires a number or 'auto'\n");
@@ -1132,64 +1160,37 @@ const failures = [];
 
 async function runParallel() {
     const tStart = Date.now();
-    // Fork worker processes
-    const workers = [];
-    const workerEnv = {
-        _TONGUES_WORKER: "1",
-        _TONGUES_TRANSPILED: transpiledPath,
-        _TONGUES_HARNESS: harnessPath,
-        _TONGUES_VM: viaVmPath || "",
-    };
-    for (let i = 0; i < numWorkers; i++) {
-        const worker = fork(__filename, [], { env: { ...process.env, ...workerEnv }, silent: true });
-        workers.push({ proc: worker, busy: false, ready: false, pending: null });
-    }
-    // Wait for all workers to be ready
-    await Promise.all(workers.map(w => new Promise(resolve => {
-        w.proc.once("message", (msg) => {
-            if (msg.type === "ready") { w.ready = true; resolve(); }
-        });
-    })));
-    // Task queue and results
-    const taskQueue = collected.map((t, i) => ({ id: i, task: t }));
-    const results = new Array(collected.length);
-    let completed = 0;
-    let nextTask = 0;
-    // Dispatch tasks to workers
-    function dispatch(worker) {
-        if (nextTask >= taskQueue.length) return;
-        const { id, task } = taskQueue[nextTask++];
-        const [phaseName, testId, testType, testData] = task;
-        worker.busy = true;
-        worker.pending = { id, timeout: setTimeout(() => {
-            // Timeout - kill and respawn worker
-            worker.proc.kill();
-            results[id] = [phaseName, testId, "fail", "Test timed out after 3s"];
-            completed++;
-            printResult(results[id]);
-            // Respawn
-            const newProc = fork(__filename, [], { env: { ...process.env, ...workerEnv }, silent: true });
-            worker.proc = newProc;
-            worker.busy = false;
-            worker.ready = false;
-            newProc.once("message", (msg) => {
-                if (msg.type === "ready") { worker.ready = true; dispatch(worker); }
+    const pool = workerpool.pool(__filename, {
+        workerType: "process",
+        minWorkers: numWorkers,
+        maxWorkers: numWorkers,
+        forkOpts: {
+            silent: true,
+            env: {
+                ...process.env,
+                _TONGUES_TRANSPILED: transpiledPath,
+                _TONGUES_HARNESS: harnessPath,
+                _TONGUES_VM: viaVmPath || "",
+            },
+        },
+    });
+    const promises = collected.map(([phaseName, testId, testType, testData]) => {
+        const timeout = (testType === "app" || testType === "ordering") ? 30000 : 10000;
+        return pool.exec("runTest", [phaseName, testId, testType, testData])
+            .timeout(timeout)
+            .then(result => {
+                printResult(result);
+                return result;
+            })
+            .catch(err => {
+                const msg = err.message && err.message.includes("timed out")
+                    ? `Test timed out after ${timeout / 1000}s`
+                    : `Worker error: ${err.message || err}`;
+                const result = [phaseName, testId, "fail", msg];
+                printResult(result);
+                return result;
             });
-            newProc.on("message", handleMessage.bind(null, worker));
-        }, 3000) };
-        worker.proc.send({ type: "task", id, phaseName, testId, testType, testData });
-    }
-    function handleMessage(worker, msg) {
-        if (msg.type === "result") {
-            clearTimeout(worker.pending.timeout);
-            results[msg.id] = msg.result;
-            completed++;
-            printResult(msg.result);
-            worker.busy = false;
-            worker.pending = null;
-            dispatch(worker);
-        }
-    }
+    });
     function printResult([phaseName, testId, status, err]) {
         if (status === "pass") {
             console.log(`PASS ${vmTag}${phaseName}::${testId}`);
@@ -1208,24 +1209,8 @@ async function runParallel() {
             failures.push([phaseName, testId, err]);
         }
     }
-    // Set up message handlers and start dispatching
-    for (const worker of workers) {
-        worker.proc.on("message", handleMessage.bind(null, worker));
-        dispatch(worker);
-    }
-    // Wait for all tasks to complete
-    await new Promise(resolve => {
-        const check = setInterval(() => {
-            if (completed >= collected.length) {
-                clearInterval(check);
-                resolve();
-            }
-        }, 50);
-    });
-    // Terminate workers
-    for (const worker of workers) {
-        worker.proc.send({ type: "exit" });
-    }
+    await Promise.all(promises);
+    await pool.terminate();
     const tElapsed = (Date.now() - tStart) / 1000;
     console.log(`Completed in ${tElapsed.toFixed(1)}s`);
 }
