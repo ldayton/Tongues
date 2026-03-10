@@ -86,7 +86,7 @@ _transpile-harness target:
 # Usage: just lang python [-n auto|<num>]
 lang target *args:
     #!/usr/bin/env bash
-    set -uo pipefail
+    set -euo pipefail
     pids=()
     _cleanup_done=0
     cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null; done; }
@@ -350,7 +350,7 @@ cross-equivalence target:
 # Run full test suite through the VM in target language
 _vm-test-tongues target *args:
     #!/usr/bin/env bash
-    set -uo pipefail
+    set -euo pipefail
     if [ "{{target}}" = "java" ]; then
         just -f {{justfile()}} _vm-test-tongues-java {{args}}
         exit $?

@@ -1323,3 +1323,186 @@ def serialize_annotations(module: TModule, prefix: str) -> dict[str, JsonValue]:
                         _sa_serialize_fn(method, pfx, plen)
                     )
     return result
+
+
+def _cea_add(ann: Ann, line: int, result: dict[int, dict[str, str]]) -> None:
+    """Add non-internal annotations to result."""
+    if ann:
+        if line not in result:
+            result[line] = {}
+        for k, v in ann.items():
+            if not k.startswith("_"):
+                result[line][k] = v
+
+
+def _cea_expr(expr: TExpr, result: dict[int, dict[str, str]]) -> None:
+    """Collect expression annotations by line number."""
+    if isinstance(expr, TIntLit):
+        e: TIntLit = expr
+        _cea_add(e.annotations, e.pos.line, result)
+    elif isinstance(expr, TFloatLit):
+        e2: TFloatLit = expr
+        _cea_add(e2.annotations, e2.pos.line, result)
+    elif isinstance(expr, TBoolLit):
+        e3: TBoolLit = expr
+        _cea_add(e3.annotations, e3.pos.line, result)
+    elif isinstance(expr, TByteLit):
+        e4: TByteLit = expr
+        _cea_add(e4.annotations, e4.pos.line, result)
+    elif isinstance(expr, TStringLit):
+        e5: TStringLit = expr
+        _cea_add(e5.annotations, e5.pos.line, result)
+    elif isinstance(expr, TRuneLit):
+        e6: TRuneLit = expr
+        _cea_add(e6.annotations, e6.pos.line, result)
+    elif isinstance(expr, TBytesLit):
+        e7: TBytesLit = expr
+        _cea_add(e7.annotations, e7.pos.line, result)
+    elif isinstance(expr, TNilLit):
+        e8: TNilLit = expr
+        _cea_add(e8.annotations, e8.pos.line, result)
+    elif isinstance(expr, TVar):
+        e9: TVar = expr
+        _cea_add(e9.annotations, e9.pos.line, result)
+    elif isinstance(expr, TBinaryOp):
+        e10: TBinaryOp = expr
+        _cea_add(e10.annotations, e10.pos.line, result)
+        _cea_expr(e10.left, result)
+        _cea_expr(e10.right, result)
+    elif isinstance(expr, TUnaryOp):
+        e11: TUnaryOp = expr
+        _cea_add(e11.annotations, e11.pos.line, result)
+        _cea_expr(e11.operand, result)
+    elif isinstance(expr, TCall):
+        e12: TCall = expr
+        _cea_add(e12.annotations, e12.pos.line, result)
+        _cea_expr(e12.func, result)
+        for arg in e12.args:
+            _cea_expr(arg.value, result)
+    elif isinstance(expr, TFieldAccess):
+        e13: TFieldAccess = expr
+        _cea_add(e13.annotations, e13.pos.line, result)
+        _cea_expr(e13.obj, result)
+    elif isinstance(expr, TTupleAccess):
+        e14: TTupleAccess = expr
+        _cea_add(e14.annotations, e14.pos.line, result)
+        _cea_expr(e14.obj, result)
+    elif isinstance(expr, TIndex):
+        e15: TIndex = expr
+        _cea_add(e15.annotations, e15.pos.line, result)
+        _cea_expr(e15.obj, result)
+        _cea_expr(e15.index, result)
+    elif isinstance(expr, TTernary):
+        e16: TTernary = expr
+        _cea_add(e16.annotations, e16.pos.line, result)
+        _cea_expr(e16.cond, result)
+        _cea_expr(e16.then_expr, result)
+        _cea_expr(e16.else_expr, result)
+    elif isinstance(expr, TSlice):
+        e17: TSlice = expr
+        _cea_add(e17.annotations, e17.pos.line, result)
+        _cea_expr(e17.obj, result)
+        _cea_expr(e17.low, result)
+        _cea_expr(e17.high, result)
+    elif isinstance(expr, TListLit):
+        e18: TListLit = expr
+        _cea_add(e18.annotations, e18.pos.line, result)
+        for el in e18.elements:
+            _cea_expr(el, result)
+    elif isinstance(expr, TSetLit):
+        e19: TSetLit = expr
+        _cea_add(e19.annotations, e19.pos.line, result)
+        for el in e19.elements:
+            _cea_expr(el, result)
+    elif isinstance(expr, TTupleLit):
+        e20: TTupleLit = expr
+        _cea_add(e20.annotations, e20.pos.line, result)
+        for el in e20.elements:
+            _cea_expr(el, result)
+    elif isinstance(expr, TMapLit):
+        e21: TMapLit = expr
+        _cea_add(e21.annotations, e21.pos.line, result)
+        for k, v in e21.entries:
+            _cea_expr(k, result)
+            _cea_expr(v, result)
+    elif isinstance(expr, TFnLit):
+        e22: TFnLit = expr
+        _cea_add(e22.annotations, e22.pos.line, result)
+        _cea_stmts(e22.body, result)
+    elif isinstance(expr, TRange):
+        e23: TRange = expr
+        _cea_add(e23.annotations, e23.pos.line, result)
+        for a in e23.args:
+            _cea_expr(a, result)
+
+
+def _cea_stmt(stmt: TStmt, result: dict[int, dict[str, str]]) -> None:
+    """Collect expression annotations from a statement."""
+    match stmt:
+        case TExprStmt():
+            _cea_expr(stmt.expr, result)
+        case TReturnStmt():
+            if stmt.value is not None:
+                _cea_expr(stmt.value, result)
+        case TThrowStmt():
+            _cea_expr(stmt.expr, result)
+        case TLetStmt():
+            if stmt.value is not None:
+                _cea_expr(stmt.value, result)
+        case TAssignStmt():
+            _cea_expr(stmt.target, result)
+            _cea_expr(stmt.value, result)
+        case TOpAssignStmt():
+            _cea_expr(stmt.target, result)
+            _cea_expr(stmt.value, result)
+        case TTupleAssignStmt():
+            for t in stmt.targets:
+                _cea_expr(t, result)
+            _cea_expr(stmt.value, result)
+        case TIfStmt():
+            _cea_expr(stmt.cond, result)
+            _cea_stmts(stmt.then_body, result)
+            if stmt.else_body is not None:
+                _cea_stmts(stmt.else_body, result)
+        case TWhileStmt():
+            _cea_expr(stmt.cond, result)
+            _cea_stmts(stmt.body, result)
+        case TForStmt():
+            if isinstance(stmt.iterable, TRange):
+                for a in stmt.iterable.args:
+                    _cea_expr(a, result)
+            else:
+                _cea_expr(stmt.iterable, result)
+            _cea_stmts(stmt.body, result)
+        case TMatchStmt():
+            _cea_expr(stmt.expr, result)
+            for case in stmt.cases:
+                _cea_stmts(case.body, result)
+            if stmt.default is not None:
+                _cea_stmts(stmt.default.body, result)
+        case TTryStmt():
+            _cea_stmts(stmt.body, result)
+            for catch in stmt.catches:
+                _cea_stmts(catch.body, result)
+            if stmt.finally_body is not None:
+                _cea_stmts(stmt.finally_body, result)
+        case TBreakStmt() | TContinueStmt():
+            pass
+
+
+def _cea_stmts(stmts: list[TStmt], result: dict[int, dict[str, str]]) -> None:
+    for stmt in stmts:
+        _cea_stmt(stmt, result)
+
+
+def collect_expr_annotations(module: TModule) -> dict[int, dict[str, str]]:
+    """Collect all expression annotations from a module, keyed by line number."""
+    result: dict[int, dict[str, str]] = {}
+    for decl in module.decls:
+        match decl:
+            case TFnDecl():
+                _cea_stmts(decl.body, result)
+            case TStructDecl():
+                for method in decl.methods:
+                    _cea_stmts(method.body, result)
+    return result

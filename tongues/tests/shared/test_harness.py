@@ -75,6 +75,13 @@ class RevealAssertion:
     expected_type: str
 
 
+@dataclass
+class AnnotationAssertion:
+    lineno: int
+    key: str
+    expected_value: str
+
+
 # -- Helpers --
 
 
@@ -387,17 +394,56 @@ def check_reveals(
     return ""
 
 
+def check_annotations(
+    assertions: list[AnnotationAssertion],
+    actuals: dict[int, dict[str, str]],
+) -> str:
+    """Check annotation assertions. Returns '' on pass, error message on failure."""
+    for aa in assertions:
+        if aa.lineno not in actuals:
+            return "No annotations found at line " + str(aa.lineno)
+        line_anns: dict[str, str] = actuals[aa.lineno]
+        if aa.key not in line_anns:
+            keys: list[str] = []
+            for k in line_anns:
+                keys.append(k)
+            return (
+                "Annotation '"
+                + aa.key
+                + "' not found at line "
+                + str(aa.lineno)
+                + ", have: "
+                + str(keys)
+            )
+        actual_val: str = line_anns[aa.key]
+        if actual_val != aa.expected_value:
+            return (
+                "Annotation at line "
+                + str(aa.lineno)
+                + ": expected "
+                + aa.key
+                + "='"
+                + aa.expected_value
+                + "', got '"
+                + actual_val
+                + "'"
+            )
+    return ""
+
+
 def check_expected(
     expected: str,
     errors: list[str],
     warnings: list[str],
     data: JsonNull | JsonBool | JsonNumber | JsonString | JsonArray | JsonObject | None,
     reveals: list[tuple[int, str]],
+    annotations: dict[int, dict[str, str]],
     phase: str,
     lenient_errors: bool,
 ) -> str:
     """Check phase result against expected. Returns '' on pass, error message on failure."""
     reveal_assertions: list[RevealAssertion] = []
+    annotation_assertions: list[AnnotationAssertion] = []
     verdict_lines: list[str] = []
     for line in expected.split("\n"):
         stripped: str = line.strip()
@@ -407,6 +453,15 @@ def check_expected(
             lineno: int = int(rest[:eq_pos].strip())
             expected_type: str = rest[eq_pos + 1 :].strip()
             reveal_assertions.append(RevealAssertion(lineno, expected_type))
+        elif stripped.startswith("annotation:"):
+            rest = stripped[11:]
+            first_eq: int = rest.index("=")
+            lineno = int(rest[:first_eq].strip())
+            after_first: str = rest[first_eq + 1 :]
+            second_eq_rel: int = after_first.index("=")
+            key: str = after_first[:second_eq_rel].strip()
+            value: str = after_first[second_eq_rel + 1 :].strip()
+            annotation_assertions.append(AnnotationAssertion(lineno, key, value))
         else:
             verdict_lines.append(line)
     expected = _trim_blank_lines("\n".join(verdict_lines))
@@ -416,6 +471,9 @@ def check_expected(
         if len(errors) > 0:
             return "Expected ok, got error: " + errors[0]
         err: str = check_reveals(reveal_assertions, reveals)
+        if err != "":
+            return err
+        err = check_annotations(annotation_assertions, annotations)
         if err != "":
             return err
         return ""

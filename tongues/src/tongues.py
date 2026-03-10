@@ -35,6 +35,7 @@ from .frontend.types import (
 )
 from .taytsh.ast import (
     TLetStmt,
+    collect_expr_annotations,
     serialize_annotations,
     to_dict as module_to_dict,
 )
@@ -1509,7 +1510,14 @@ def taytsh_pipeline(argv: list[str]) -> int:
             reveals_out.items.append(
                 JDict({"line": JInt(rev[0]), "type": JStr(rev[1])})
             )
-        print(to_json(JDict({"reveals": reveals_out})))
+        expr_anns = collect_expr_annotations(module)
+        anns_out = JDict({})
+        for line, ann_dict in expr_anns.items():
+            line_dict = JDict({})
+            for k, v in ann_dict.items():
+                line_dict.entries[k] = JStr(v)
+            anns_out.entries[str(line)] = line_dict
+        print(to_json(JDict({"reveals": reveals_out, "annotations": anns_out})))
         return 0
     if stop_at == "returns":
         patch_error_types(module)

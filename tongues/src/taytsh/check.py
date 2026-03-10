@@ -2409,10 +2409,9 @@ class Checker:
 
     def _check_expr_inner(self, expr: TExpr, expected: Type | None) -> Type | None:
         if isinstance(expr, TIntLit):
-            if len(expr.raw) > 20 or (
-                len(expr.raw) == 20 and expr.raw > "18446744073709551615"
-            ):
-                self.error("integer literal too large", expr.pos)
+            e: TIntLit = expr
+            if len(e.raw) > 20 or (len(e.raw) == 20 and e.raw > "18446744073709551615"):
+                e.annotations["large"] = "true"
             return INT_T
         if isinstance(expr, TFloatLit):
             return FLOAT_T

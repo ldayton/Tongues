@@ -453,6 +453,7 @@ def run_phase_tests(test_dir, phase_name, cfg):
                 expect_json=cfg["json"],
             )
             reveals = phase_result["reveals"]
+            annotations: dict[int, dict[str, str]] = {}
             if (
                 phase_name in ("pycheck", "tycheck")
                 and not phase_result["errors"]
@@ -472,12 +473,25 @@ def run_phase_tests(test_dir, phase_name, cfg):
                         ]
                     except Exception:
                         pass
+                    try:
+                        anns_obj = json_get_field(phase_result["data"], "annotations")
+                        if isinstance(anns_obj, JsonObject):
+                            for line_str, line_anns in anns_obj.entries:
+                                line_dict: dict[str, str] = {}
+                                if isinstance(line_anns, JsonObject):
+                                    for k, v in line_anns.entries:
+                                        if isinstance(v, JsonString):
+                                            line_dict[k] = v.value
+                                annotations[int(line_str)] = line_dict
+                    except Exception:
+                        pass
             err = check_expected(
                 entry.expected,
                 phase_result["errors"],
                 phase_result["warnings"],
                 phase_result["data"],
                 reveals,
+                annotations,
                 phase_name,
                 lenient,
             )
@@ -950,6 +964,7 @@ def _run_single_test(args):
                 expect_json=cfg["json"],
             )
             reveals = phase_result["reveals"]
+            annotations: dict[int, dict[str, str]] = {}
             if (
                 phase_name in ("pycheck", "tycheck")
                 and not phase_result["errors"]
@@ -969,6 +984,18 @@ def _run_single_test(args):
                         ]
                     except Exception:
                         pass
+                    try:
+                        anns_obj = h.json_get_field(phase_result["data"], "annotations")
+                        if isinstance(anns_obj, h.JsonObject):
+                            for line_str, line_anns in anns_obj.entries:
+                                line_dict: dict[str, str] = {}
+                                if isinstance(line_anns, h.JsonObject):
+                                    for k, v in line_anns.entries:
+                                        if isinstance(v, h.JsonString):
+                                            line_dict[k] = v.value
+                                annotations[int(line_str)] = line_dict
+                    except Exception:
+                        pass
             lenient = phase_name in ("parse", "pycheck", "typarse", "tycheck")
             err = h.check_expected(
                 entry.expected,
@@ -976,6 +1003,7 @@ def _run_single_test(args):
                 phase_result["warnings"],
                 phase_result["data"],
                 reveals,
+                annotations,
                 phase_name,
                 lenient,
             )

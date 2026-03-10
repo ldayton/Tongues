@@ -239,6 +239,7 @@ from src.middleend.strings import analyze_strings
 from src.taytsh import parse as taytsh_parse
 from src.taytsh.treewalker import run as taytsh_run, prepare as _taytsh_prepare
 from src.taytsh.ast import (
+    collect_expr_annotations,
     serialize_annotations,
 )
 from src.taytsh.check import check_with_info
@@ -358,6 +359,7 @@ class PhaseResult:
     warnings: list[str] = field(default_factory=list)
     data: dict | None = None
     reveals: list[tuple[int, str]] = field(default_factory=list)
+    annotations: dict[int, dict[str, str]] = field(default_factory=dict)
 
 
 def _unwrap_jvalue(obj: object) -> object:
@@ -443,10 +445,30 @@ def _check_reveals(
             pytest.fail(f"No reveal_type found at line {lineno}")
 
 
+def _check_annotations(
+    assertions: list[tuple[int, str, str]],
+    actuals: dict[int, dict[str, str]],
+) -> None:
+    for lineno, key, expected_value in assertions:
+        if lineno not in actuals:
+            pytest.fail(f"No annotations found at line {lineno}")
+        line_annotations = actuals[lineno]
+        if key not in line_annotations:
+            pytest.fail(
+                f"Annotation '{key}' not found at line {lineno}, have: {list(line_annotations.keys())}"
+            )
+        actual_value = line_annotations[key]
+        if actual_value != expected_value:
+            pytest.fail(
+                f"Annotation at line {lineno}: expected {key}='{expected_value}', got '{actual_value}'"
+            )
+
+
 def check_expected(
     expected: str, result: PhaseResult, phase: str, *, lenient_errors: bool = False
 ) -> None:
     reveal_assertions: list[tuple[int, str]] = []
+    annotation_assertions: list[tuple[int, str, str]] = []
     verdict_lines: list[str] = []
     for line in expected.split("\n"):
         stripped = line.strip()
@@ -456,6 +478,14 @@ def check_expected(
             lineno = int(rest[:eq_pos].strip())
             expected_type = rest[eq_pos + 1 :].strip()
             reveal_assertions.append((lineno, expected_type))
+        elif stripped.startswith("annotation:"):
+            rest = stripped[11:]
+            first_eq = rest.index("=")
+            lineno = int(rest[:first_eq].strip())
+            second_eq = rest.index("=", first_eq + 1)
+            key = rest[first_eq + 1 : second_eq].strip()
+            value = rest[second_eq + 1 :].strip()
+            annotation_assertions.append((lineno, key, value))
         else:
             verdict_lines.append(line)
     expected = "\n".join(verdict_lines).strip()
@@ -465,6 +495,7 @@ def check_expected(
         if result.errors:
             pytest.fail(f"Expected ok, got error: {result.errors[0]}")
         _check_reveals(reveal_assertions, result.reveals)
+        _check_annotations(annotation_assertions, result.annotations)
         return
     if expected.startswith("error:"):
         expected_msg = expected[6:].strip()
@@ -1046,19 +1077,24 @@ def run_tycheck(source: str) -> PhaseResult:
         result = _run_transpiled(source, ["--stop-at", "check"], is_taytsh=True)
         if result.errors:
             return result
-        if result.data and "reveals" in result.data:
-            reveals = []
-            for rev in result.data["reveals"]:
-                reveals.append((rev["line"], rev["type"]))
-            return PhaseResult(reveals=reveals)
-        return result
+        reveals = []
+        annotations: dict[int, dict[str, str]] = {}
+        if result.data:
+            if "reveals" in result.data:
+                for rev in result.data["reveals"]:
+                    reveals.append((rev["line"], rev["type"]))
+            if "annotations" in result.data:
+                for line_str, ann_dict in result.data["annotations"].items():
+                    annotations[int(line_str)] = dict(ann_dict)
+        return PhaseResult(reveals=reveals, annotations=annotations)
     try:
         signal.alarm(PARSE_TIMEOUT)
         module = taytsh_parse(source)
         errors, checker = check_with_info(module)
         if errors:
             return PhaseResult(errors=[str(e) for e in errors])
-        return PhaseResult(reveals=checker.reveals)
+        annotations = collect_expr_annotations(module)
+        return PhaseResult(reveals=checker.reveals, annotations=annotations)
     except Exception as e:
         return PhaseResult(errors=[str(e)])
     finally:
