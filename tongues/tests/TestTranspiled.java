@@ -2,6 +2,7 @@ import java.io.*;
 import java.lang.reflect.*;
 import java.nio.file.*;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.*;
 
 /**
@@ -10,6 +11,8 @@ import java.util.stream.*;
  */
 public class TestTranspiled {
     private static final String[] EMITTER_LANGS = {"java", "javascript", "perl", "python", "ruby"};
+    // Languages that can execute code from stdin (excludes Java which requires compilation)
+    private static final String[] STDIN_LANGS = {"javascript", "perl", "python", "ruby"};
     private static final Map<String, String[]> RUNTIMES = Map.of(
         "java", new String[]{"java"},
         "javascript", new String[]{"node"},
@@ -368,6 +371,96 @@ public class TestTranspiled {
             }
         }
         return result;
+    }
+
+    // -------------------------------------------------------------------------
+    // Thread-local stream capture for parallel execution
+    // -------------------------------------------------------------------------
+
+    static class ThreadLocalPrintStream extends PrintStream {
+        private final ThreadLocal<PrintStream> threadStream = new ThreadLocal<>();
+        private final PrintStream fallback;
+
+        public ThreadLocalPrintStream(PrintStream fallback) {
+            super(fallback);
+            this.fallback = fallback;
+        }
+
+        public void setThreadStream(PrintStream ps) { threadStream.set(ps); }
+        public void clearThreadStream() { threadStream.remove(); }
+        private PrintStream getStream() {
+            PrintStream ps = threadStream.get();
+            return ps != null ? ps : fallback;
+        }
+
+        @Override public void write(int b) { getStream().write(b); }
+        @Override public void write(byte[] buf, int off, int len) { getStream().write(buf, off, len); }
+        @Override public void flush() { getStream().flush(); }
+        @Override public void print(boolean b) { getStream().print(b); }
+        @Override public void print(char c) { getStream().print(c); }
+        @Override public void print(int i) { getStream().print(i); }
+        @Override public void print(long l) { getStream().print(l); }
+        @Override public void print(float f) { getStream().print(f); }
+        @Override public void print(double d) { getStream().print(d); }
+        @Override public void print(char[] s) { getStream().print(s); }
+        @Override public void print(String s) { getStream().print(s); }
+        @Override public void print(Object obj) { getStream().print(obj); }
+        @Override public void println() { getStream().println(); }
+        @Override public void println(boolean x) { getStream().println(x); }
+        @Override public void println(char x) { getStream().println(x); }
+        @Override public void println(int x) { getStream().println(x); }
+        @Override public void println(long x) { getStream().println(x); }
+        @Override public void println(float x) { getStream().println(x); }
+        @Override public void println(double x) { getStream().println(x); }
+        @Override public void println(char[] x) { getStream().println(x); }
+        @Override public void println(String x) { getStream().println(x); }
+        @Override public void println(Object x) { getStream().println(x); }
+        @Override public PrintStream printf(String format, Object... args) { return getStream().printf(format, args); }
+        @Override public PrintStream printf(java.util.Locale l, String format, Object... args) { return getStream().printf(l, format, args); }
+    }
+
+    static class ThreadLocalInputStream extends InputStream {
+        private final ThreadLocal<InputStream> threadStream = new ThreadLocal<>();
+        private final InputStream fallback;
+
+        public ThreadLocalInputStream(InputStream fallback) { this.fallback = fallback; }
+        public void setThreadStream(InputStream is) { threadStream.set(is); }
+        public void clearThreadStream() { threadStream.remove(); }
+        private InputStream getStream() {
+            InputStream is = threadStream.get();
+            return is != null ? is : fallback;
+        }
+
+        @Override public int read() throws IOException { return getStream().read(); }
+        @Override public int read(byte[] b) throws IOException { return getStream().read(b); }
+        @Override public int read(byte[] b, int off, int len) throws IOException { return getStream().read(b, off, len); }
+        @Override public int available() throws IOException { return getStream().available(); }
+        @Override public void close() throws IOException { getStream().close(); }
+    }
+
+    private static ThreadLocalPrintStream tlOut;
+    private static ThreadLocalPrintStream tlErr;
+    private static ThreadLocalInputStream tlIn;
+    private static PrintStream realOut;
+    private static PrintStream realErr;
+    private static InputStream realIn;
+
+    static void installThreadLocalStreams() {
+        realOut = System.out;
+        realErr = System.err;
+        realIn = System.in;
+        tlOut = new ThreadLocalPrintStream(realOut);
+        tlErr = new ThreadLocalPrintStream(realErr);
+        tlIn = new ThreadLocalInputStream(realIn);
+        System.setOut(tlOut);
+        System.setErr(tlErr);
+        System.setIn(tlIn);
+    }
+
+    static void restoreStreams() {
+        System.setOut(realOut);
+        System.setErr(realErr);
+        System.setIn(realIn);
     }
 
     // -------------------------------------------------------------------------
@@ -1126,18 +1219,481 @@ public class TestTranspiled {
     }
 
     // -------------------------------------------------------------------------
+    // Parallel execution support
+    // -------------------------------------------------------------------------
+
+    static int getCpuCount() {
+        return Runtime.getRuntime().availableProcessors();
+    }
+
+    static class TestDescriptor {
+        String phaseName;
+        String testId;
+        String testType;
+        Object testData;
+        Map<String, Object> cfg;
+        TestDescriptor(String phaseName, String testId, String testType, Object testData, Map<String, Object> cfg) {
+            this.phaseName = phaseName;
+            this.testId = testId;
+            this.testType = testType;
+            this.testData = testData;
+            this.cfg = cfg;
+        }
+    }
+
+    static List<TestDescriptor> collectTests() throws IOException {
+        List<TestDescriptor> collected = new ArrayList<>();
+        for (Section section : TESTS) {
+            for (Phase phase : section.phases) {
+                String phaseName = phase.name;
+                Map<String, Object> cfg = phase.cfg;
+                Path testDir = testsDir.resolve((String) cfg.get("dir"));
+                if (!Files.isDirectory(testDir)) continue;
+                String runnerName = (String) cfg.get("run");
+                switch (runnerName) {
+                    case "cli":
+                        collectCliTests(testDir, phaseName, cfg, collected);
+                        break;
+                    case "linker":
+                        collectLinkerTests(testDir, phaseName, cfg, collected);
+                        break;
+                    case "phase":
+                        collectPhaseTests(testDir, phaseName, cfg, collected);
+                        break;
+                    case "lowering":
+                        collectLoweringTests(testDir, phaseName, cfg, collected);
+                        break;
+                    case "codegen":
+                        collectCodegenTests(testDir, phaseName, cfg, collected);
+                        break;
+                    case "emit":
+                        collectEmitTests(testDir, phaseName, cfg, collected);
+                        break;
+                    case "app":
+                        collectAppTests(testDir, phaseName, cfg, collected);
+                        break;
+                    case "ty_app":
+                        collectTyAppTests(testDir, phaseName, cfg, collected);
+                        break;
+                    case "ordering":
+                        collectOrderingTests(testDir, phaseName, cfg, collected);
+                        break;
+                }
+            }
+        }
+        return collected;
+    }
+
+    static void collectCliTests(Path testDir, String phaseName, Map<String, Object> cfg, List<TestDescriptor> collected) throws IOException {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(testDir, "*.tests")) {
+            List<Path> files = new ArrayList<>();
+            stream.forEach(files::add);
+            Collections.sort(files);
+            for (Path f : files) {
+                String stem = f.getFileName().toString().replace(".tests", "");
+                String content = Files.readString(f);
+                for (Map.Entry<String, CliSpec> entry : parseCliTestFile(content)) {
+                    String testId = stem + "/" + entry.getKey();
+                    CliSpec spec = entry.getValue();
+                    if (cliNeedsBackend(spec.args, spec.assertions, EMITTER_LANGS)) {
+                        collected.add(new TestDescriptor(phaseName, testId, "skip", null, cfg));
+                    } else {
+                        collected.add(new TestDescriptor(phaseName, testId, "cli", spec, cfg));
+                    }
+                }
+            }
+        }
+    }
+
+    static void collectLinkerTests(Path testDir, String phaseName, Map<String, Object> cfg, List<TestDescriptor> collected) throws IOException {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(testDir, "*.tests")) {
+            List<Path> files = new ArrayList<>();
+            stream.forEach(files::add);
+            Collections.sort(files);
+            for (Path f : files) {
+                String stem = f.getFileName().toString().replace(".tests", "");
+                String content = Files.readString(f);
+                for (Map.Entry<String, LinkerSpec> entry : parseLinkerTestFile(content)) {
+                    String testId = stem + "/" + entry.getKey();
+                    LinkerSpec spec = entry.getValue();
+                    int targetIdx = spec.args.indexOf("--target");
+                    if (targetIdx != -1 && targetIdx + 1 < spec.args.size()) {
+                        String target = spec.args.get(targetIdx + 1);
+                        if (!Arrays.asList(EMITTER_LANGS).contains(target)) {
+                            collected.add(new TestDescriptor(phaseName, testId, "skip", null, cfg));
+                            continue;
+                        }
+                    }
+                    collected.add(new TestDescriptor(phaseName, testId, "linker", spec, cfg));
+                }
+            }
+        }
+    }
+
+    static void collectPhaseTests(Path testDir, String phaseName, Map<String, Object> cfg, List<TestDescriptor> collected) throws IOException {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(testDir, "*.tests")) {
+            List<Path> files = new ArrayList<>();
+            stream.forEach(files::add);
+            Collections.sort(files);
+            for (Path f : files) {
+                String stem = f.getFileName().toString().replace(".tests", "");
+                String content = Files.readString(f);
+                for (SpecEntry entry : parseSpecFile(content)) {
+                    String testId = stem + "/" + entry.name;
+                    collected.add(new TestDescriptor(phaseName, testId, "phase", entry, cfg));
+                }
+            }
+        }
+    }
+
+    static void collectLoweringTests(Path testDir, String phaseName, Map<String, Object> cfg, List<TestDescriptor> collected) throws IOException {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(testDir, "*.tests")) {
+            List<Path> files = new ArrayList<>();
+            stream.forEach(files::add);
+            Collections.sort(files);
+            for (Path f : files) {
+                String stem = f.getFileName().toString().replace(".tests", "");
+                String content = Files.readString(f);
+                for (SpecEntry entry : parseSpecFile(content)) {
+                    String testId = stem + "/" + entry.name;
+                    collected.add(new TestDescriptor(phaseName, testId, "lowering", entry, cfg));
+                }
+            }
+        }
+    }
+
+    static void collectCodegenTests(Path testDir, String phaseName, Map<String, Object> cfg, List<TestDescriptor> collected) throws IOException {
+        Path baseDir = testDir.resolve("base");
+        if (!Files.isDirectory(baseDir)) return;
+        List<String> langDirs = new ArrayList<>();
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(testDir)) {
+            for (Path p : stream) {
+                if (Files.isDirectory(p)) {
+                    String name = p.getFileName().toString();
+                    if (!name.equals("base") && Arrays.asList(EMITTER_LANGS).contains(name)) {
+                        langDirs.add(name);
+                    }
+                }
+            }
+        }
+        Collections.sort(langDirs);
+        for (String lang : langDirs) {
+            Path langDir = testDir.resolve(lang);
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(baseDir, "*.tests")) {
+                List<Path> files = new ArrayList<>();
+                stream.forEach(files::add);
+                Collections.sort(files);
+                for (Path baseFile : files) {
+                    String baseName = baseFile.getFileName().toString();
+                    String stem = baseName.replace(".tests", "");
+                    Path langFile = langDir.resolve(baseName);
+                    List<SimpleEntry> baseTests = parseSimpleTests(Files.readString(baseFile));
+                    if (baseTests.isEmpty()) continue;
+                    if (!Files.exists(langFile)) {
+                        for (SimpleEntry e : baseTests) {
+                            collected.add(new TestDescriptor(phaseName, stem + "/" + e.name + "[" + lang + "]", "prefail", lang + "/" + baseName + " missing", cfg));
+                        }
+                        continue;
+                    }
+                    List<SimpleEntry> langTests = parseSimpleTests(Files.readString(langFile));
+                    Map<String, String> langByName = langTests.stream().collect(Collectors.toMap(e -> e.name, e -> e.content));
+                    for (SimpleEntry entry : baseTests) {
+                        String testId = stem + "/" + entry.name + "[" + lang + "]";
+                        String expected = langByName.get(entry.name);
+                        if (expected == null) {
+                            collected.add(new TestDescriptor(phaseName, testId, "prefail", "No matching lang test", cfg));
+                        } else {
+                            collected.add(new TestDescriptor(phaseName, testId, "codegen", new Object[]{entry.content, expected, lang}, cfg));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    static void collectEmitTests(Path testDir, String phaseName, Map<String, Object> cfg, List<TestDescriptor> collected) throws IOException {
+        Path baseDir = testDir.resolve("base");
+        if (!Files.isDirectory(baseDir)) return;
+        List<String> langDirs = new ArrayList<>();
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(testDir)) {
+            for (Path p : stream) {
+                if (Files.isDirectory(p)) {
+                    String name = p.getFileName().toString();
+                    if (!name.equals("base") && Arrays.asList(EMITTER_LANGS).contains(name)) {
+                        langDirs.add(name);
+                    }
+                }
+            }
+        }
+        Collections.sort(langDirs);
+        for (String lang : langDirs) {
+            Path langDir = testDir.resolve(lang);
+            try (DirectoryStream<Path> stream = Files.newDirectoryStream(baseDir, "*.tests")) {
+                List<Path> files = new ArrayList<>();
+                stream.forEach(files::add);
+                Collections.sort(files);
+                for (Path baseFile : files) {
+                    String baseName = baseFile.getFileName().toString();
+                    String stem = baseName.replace(".tests", "");
+                    Path langFile = langDir.resolve(baseName);
+                    List<SimpleEntry> baseTests = parseSimpleTests(Files.readString(baseFile));
+                    if (baseTests.isEmpty()) continue;
+                    if (!Files.exists(langFile)) continue;
+                    List<SimpleEntry> langTests = parseSimpleTests(Files.readString(langFile));
+                    Map<String, String> langByName = langTests.stream().collect(Collectors.toMap(e -> e.name, e -> e.content));
+                    for (SimpleEntry entry : baseTests) {
+                        if (!langByName.containsKey(entry.name)) continue;
+                        String testId = stem + "/" + entry.name + "[" + lang + "]";
+                        collected.add(new TestDescriptor(phaseName, testId, "emit", new Object[]{entry.content, langByName.get(entry.name), lang}, cfg));
+                    }
+                }
+            }
+        }
+    }
+
+    static void collectAppTests(Path testDir, String phaseName, Map<String, Object> cfg, List<TestDescriptor> collected) throws IOException {
+        List<String> available = Arrays.stream(STDIN_LANGS).filter(TestTranspiled::runtimeAvailable).sorted().collect(Collectors.toList());
+        if (!Files.isDirectory(testDir)) return;
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(testDir, "apptest_*.py")) {
+            List<Path> files = new ArrayList<>();
+            stream.forEach(files::add);
+            Collections.sort(files);
+            for (Path testFile : files) {
+                String stem = testFile.getFileName().toString().replace(".py", "");
+                String source = Files.readString(testFile);
+                for (String target : available) {
+                    String testId = stem + "[" + target + "]";
+                    collected.add(new TestDescriptor(phaseName, testId, "app", new Object[]{source, target}, cfg));
+                }
+            }
+        }
+    }
+
+    static void collectTyAppTests(Path testDir, String phaseName, Map<String, Object> cfg, List<TestDescriptor> collected) throws IOException {
+        if (!Files.isDirectory(testDir)) return;
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(testDir, "*.ty")) {
+            List<Path> files = new ArrayList<>();
+            stream.forEach(files::add);
+            Collections.sort(files);
+            for (Path testFile : files) {
+                String stem = testFile.getFileName().toString().replace(".ty", "");
+                collected.add(new TestDescriptor(phaseName, stem, "ty_app", testFile.toString(), cfg));
+            }
+        }
+    }
+
+    static void collectOrderingTests(Path testDir, String phaseName, Map<String, Object> cfg, List<TestDescriptor> collected) throws IOException {
+        List<String> available = Arrays.stream(STDIN_LANGS).filter(TestTranspiled::runtimeAvailable).sorted().collect(Collectors.toList());
+        if (!Files.isDirectory(testDir)) return;
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(testDir, "*.ty")) {
+            List<Path> files = new ArrayList<>();
+            stream.forEach(files::add);
+            Collections.sort(files);
+            for (Path testFile : files) {
+                String stem = testFile.getFileName().toString().replace(".ty", "");
+                for (String target : available) {
+                    String testId = stem + "[" + target + "]";
+                    collected.add(new TestDescriptor(phaseName, testId, "ordering", new Object[]{testFile.toString(), target}, cfg));
+                }
+            }
+        }
+    }
+
+    static String[] runSingleTest(TestDescriptor test) {
+        try {
+            switch (test.testType) {
+                case "skip":
+                    return new String[]{test.phaseName, test.testId, "skip", null};
+                case "prefail":
+                    return new String[]{test.phaseName, test.testId, "fail", (String) test.testData};
+                case "cli": {
+                    CliSpec spec = (CliSpec) test.testData;
+                    RunResult result;
+                    if (!spec.stdinHex.isEmpty()) {
+                        byte[] raw = hexToBytes(spec.stdinHex);
+                        result = runInprocess(spec.args.toArray(new String[0]), "", raw);
+                    } else {
+                        result = runInprocess(spec.args.toArray(new String[0]), spec.stdin);
+                    }
+                    String err = checkCliAssertions(result.exit, result.stdout, result.stderr, spec.assertions);
+                    return new String[]{test.phaseName, test.testId, err.isEmpty() ? "pass" : "fail", err.isEmpty() ? null : err};
+                }
+                case "linker": {
+                    LinkerSpec spec = (LinkerSpec) test.testData;
+                    List<String> parts = new ArrayList<>();
+                    for (LinkerFile lf : spec.files) {
+                        parts.add(lf.path);
+                        parts.add(lf.source);
+                    }
+                    String stdinData = String.join("\0", parts);
+                    RunResult result = runInprocess(spec.args.toArray(new String[0]), stdinData);
+                    String err = checkCliAssertions(result.exit, result.stdout, result.stderr, spec.assertions);
+                    return new String[]{test.phaseName, test.testId, err.isEmpty() ? "pass" : "fail", err.isEmpty() ? null : err};
+                }
+                case "phase": {
+                    SpecEntry entry = (SpecEntry) test.testData;
+                    boolean lenient = Arrays.asList("parse", "pycheck", "typarse", "tycheck").contains(test.phaseName);
+                    String[] args = (String[]) test.cfg.getOrDefault("args", new String[0]);
+                    boolean isTaytsh = (Boolean) test.cfg.getOrDefault("taytsh", false);
+                    boolean expectJson = (Boolean) test.cfg.getOrDefault("json", true);
+                    PhaseResult phaseResult = runTranspiledPhase(entry.input, args, isTaytsh, expectJson);
+                    String err = checkExpected(entry.expected, phaseResult.errors, phaseResult.warnings, phaseResult.data, test.phaseName, lenient);
+                    return new String[]{test.phaseName, test.testId, err.isEmpty() ? "pass" : "fail", err.isEmpty() ? null : err};
+                }
+                case "lowering": {
+                    SpecEntry entry = (SpecEntry) test.testData;
+                    Path tmpFile = Files.createTempFile("test_", ".py");
+                    try {
+                        Files.writeString(tmpFile, entry.input);
+                        RunResult result = runInprocess(new String[]{"--stop-at", "lowering-text", tmpFile.toString()});
+                        if (entry.expected.startsWith("error:")) {
+                            String expectedMsg = entry.expected.substring(6).trim();
+                            if (result.exit == 0) {
+                                return new String[]{test.phaseName, test.testId, "fail", "Expected error containing '" + expectedMsg + "', got success"};
+                            }
+                            String firstLine = result.stderr.trim().split("\n")[0];
+                            if (!expectedMsg.isEmpty() && !firstLine.toLowerCase().contains(expectedMsg.toLowerCase())) {
+                                return new String[]{test.phaseName, test.testId, "fail", "Expected error containing '" + expectedMsg + "', got: " + firstLine};
+                            }
+                            return new String[]{test.phaseName, test.testId, "pass", null};
+                        }
+                        if (result.exit != 0) {
+                            String errMsg = result.stderr.trim().split("\n")[0];
+                            return new String[]{test.phaseName, test.testId, "fail", "Lowering error: " + errMsg};
+                        }
+                        if (!containsNormalized(result.stdout, entry.expected)) {
+                            return new String[]{test.phaseName, test.testId, "fail", "Expected not found in output"};
+                        }
+                        return new String[]{test.phaseName, test.testId, "pass", null};
+                    } finally {
+                        Files.deleteIfExists(tmpFile);
+                    }
+                }
+                case "codegen": {
+                    Object[] data = (Object[]) test.testData;
+                    String content = (String) data[0];
+                    String expected = (String) data[1];
+                    String lang = (String) data[2];
+                    Path tmpFile = Files.createTempFile("test_", ".ty");
+                    try {
+                        Files.writeString(tmpFile, content);
+                        RunResult result = runInprocess(new String[]{"taytsh", "--emit", lang, tmpFile.toString()});
+                        if (result.exit != 0) {
+                            String stderr = result.stderr.trim().split("\n")[0];
+                            return new String[]{test.phaseName, test.testId, "fail", "Transpile error: " + stderr};
+                        }
+                        if (!containsNormalized(result.stdout, expected)) {
+                            return new String[]{test.phaseName, test.testId, "fail", "Expected not found in output"};
+                        }
+                        return new String[]{test.phaseName, test.testId, "pass", null};
+                    } finally {
+                        Files.deleteIfExists(tmpFile);
+                    }
+                }
+                case "emit": {
+                    Object[] data = (Object[]) test.testData;
+                    String content = (String) data[0];
+                    String expected = (String) data[1];
+                    String lang = (String) data[2];
+                    Path tmpFile = Files.createTempFile("test_", ".py");
+                    try {
+                        Files.writeString(tmpFile, content);
+                        RunResult result = runInprocess(new String[]{"--target", lang, tmpFile.toString()});
+                        if (result.exit != 0) {
+                            String stderr = result.stderr.trim().split("\n")[0];
+                            return new String[]{test.phaseName, test.testId, "fail", "Emit error: " + stderr};
+                        }
+                        if (!containsNormalized(result.stdout, expected)) {
+                            return new String[]{test.phaseName, test.testId, "fail", "Expected not found in output"};
+                        }
+                        return new String[]{test.phaseName, test.testId, "pass", null};
+                    } finally {
+                        Files.deleteIfExists(tmpFile);
+                    }
+                }
+                case "app": {
+                    Object[] data = (Object[]) test.testData;
+                    String source = (String) data[0];
+                    String target = (String) data[1];
+                    Path tmpFile = Files.createTempFile("test_", ".py");
+                    try {
+                        Files.writeString(tmpFile, source);
+                        RunResult result = runInprocess(new String[]{"--target", target, tmpFile.toString()});
+                        if (result.exit != 0) {
+                            String stderr = result.stderr.trim().split("\n")[0];
+                            return new String[]{test.phaseName, test.testId, "fail", "Transpile error (" + target + "): " + stderr};
+                        }
+                        String transpiledCode = result.stdout;
+                        String[] runtime = RUNTIMES.get(target);
+                        ProcessBuilder pb = new ProcessBuilder(runtime);
+                        pb.redirectErrorStream(true);
+                        Process p = pb.start();
+                        p.getOutputStream().write(transpiledCode.getBytes("UTF-8"));
+                        p.getOutputStream().close();
+                        String output = new String(p.getInputStream().readAllBytes(), "UTF-8");
+                        int exitCode = p.waitFor();
+                        if (exitCode != 0) {
+                            return new String[]{test.phaseName, test.testId, "fail", "App test failed with exit " + exitCode + "\n" + output};
+                        }
+                        return new String[]{test.phaseName, test.testId, "pass", null};
+                    } finally {
+                        Files.deleteIfExists(tmpFile);
+                    }
+                }
+                case "ty_app": {
+                    String testFile = (String) test.testData;
+                    RunResult result = runInprocess(new String[]{"taytsh", testFile});
+                    if (result.exit != 0) {
+                        String output = (result.stdout + result.stderr).trim();
+                        return new String[]{test.phaseName, test.testId, "fail", "Exit code " + result.exit + ":\n" + output};
+                    }
+                    return new String[]{test.phaseName, test.testId, "pass", null};
+                }
+                case "ordering": {
+                    Object[] data = (Object[]) test.testData;
+                    String testFile = (String) data[0];
+                    String target = (String) data[1];
+                    RunResult result = runInprocess(new String[]{"taytsh", "--emit", target, testFile});
+                    if (result.exit != 0) {
+                        String stderr = result.stderr.trim().split("\n")[0];
+                        return new String[]{test.phaseName, test.testId, "fail", "Transpile error (" + target + "): " + stderr};
+                    }
+                    String transpiledCode = result.stdout;
+                    String[] runtime = RUNTIMES.get(target);
+                    ProcessBuilder pb = new ProcessBuilder(runtime);
+                    pb.redirectErrorStream(true);
+                    Process p = pb.start();
+                    p.getOutputStream().write(transpiledCode.getBytes("UTF-8"));
+                    p.getOutputStream().close();
+                    String output = new String(p.getInputStream().readAllBytes(), "UTF-8");
+                    int exitCode = p.waitFor();
+                    if (exitCode != 0) {
+                        return new String[]{test.phaseName, test.testId, "fail", "Ordering test failed with exit " + exitCode + "\n" + output};
+                    }
+                    return new String[]{test.phaseName, test.testId, "pass", null};
+                }
+                default:
+                    return new String[]{test.phaseName, test.testId, "fail", "Unknown test type: " + test.testType};
+            }
+        } catch (Exception e) {
+            return new String[]{test.phaseName, test.testId, "fail", "Exception: " + e.getMessage()};
+        }
+    }
+
+    // -------------------------------------------------------------------------
     // Main
     // -------------------------------------------------------------------------
 
     @SuppressWarnings("unchecked")
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
-            System.err.println("Usage: java TestTranspiled <path-to-classes-dir> [--via-vm <tongues.ty>] [--target <name>]");
+            System.err.println("Usage: java TestTranspiled <path-to-classes-dir> [--via-vm <tongues.ty>] [--target <name>] [-n <num|auto>]");
             System.exit(1);
         }
 
         String targetName = null;
         String viaVmPath = null;
+        int numWorkers = getCpuCount();
         String classesDirArg = args[0];
         for (int i = 1; i < args.length; i++) {
             if (args[i].equals("--target") && i + 1 < args.length) {
@@ -1145,6 +1701,10 @@ public class TestTranspiled {
                 i++;
             } else if (args[i].equals("--via-vm") && i + 1 < args.length) {
                 viaVmPath = args[i + 1];
+                i++;
+            } else if (args[i].equals("-n") && i + 1 < args.length) {
+                String val = args[i + 1];
+                numWorkers = val.equals("auto") ? getCpuCount() : Integer.parseInt(val);
                 i++;
             }
         }
@@ -1155,9 +1715,8 @@ public class TestTranspiled {
             System.exit(1);
         }
 
-        // Determine tongues directory (parent of tests/)
-        tonguesDir = Paths.get(TestTranspiled.class.getProtectionDomain().getCodeSource().getLocation().toURI())
-            .getParent().getParent();
+        // Determine tongues directory (current working directory when run from tongues/)
+        tonguesDir = Paths.get("").toAbsolutePath();
         testsDir = tonguesDir.resolve("tests");
         libDir = tonguesDir.resolve("src").resolve("lib");
 
@@ -1202,75 +1761,58 @@ public class TestTranspiled {
         int totalSkip = 0;
         List<String[]> failures = new ArrayList<>();
 
-        for (Section section : TESTS) {
-            for (Phase phase : section.phases) {
-                String phaseName = phase.name;
-                Map<String, Object> cfg = phase.cfg;
-                Path testDir = testsDir.resolve((String) cfg.get("dir"));
-                if (!Files.isDirectory(testDir)) continue;
+        // Collect all tests
+        System.out.println("Collecting tests...");
+        List<TestDescriptor> allTests = collectTests();
+        int totalTests = allTests.size();
+        System.out.println("Running " + totalTests + " tests with " + numWorkers + " workers");
+        System.out.println();
 
-                System.out.println("::group::" + phaseName);
-                List<String[]> phaseResults;
-                String runnerName = (String) cfg.get("run");
+        String vmTag = viaVmPath != null ? " [vm]" : "";
+
+        List<String[]> results = new ArrayList<>();
+        if (_useVm) {
+            // VM mode is thread-safe - run in parallel
+            ExecutorService executor = Executors.newFixedThreadPool(numWorkers);
+            List<Future<String[]>> futures = new ArrayList<>();
+            for (TestDescriptor test : allTests) {
+                futures.add(executor.submit(() -> runSingleTest(test)));
+            }
+            for (Future<String[]> future : futures) {
                 try {
-                    switch (runnerName) {
-                        case "cli":
-                            phaseResults = runCliTests(testDir);
-                            break;
-                        case "linker":
-                            phaseResults = runLinkerTests(testDir);
-                            break;
-                        case "phase":
-                            phaseResults = runPhaseTests(testDir, phaseName, cfg);
-                            break;
-                        case "lowering":
-                            phaseResults = runLoweringTests(testDir);
-                            break;
-                        case "codegen":
-                            phaseResults = runCodegenTests(testDir);
-                            break;
-                        case "emit":
-                            phaseResults = runEmitTests(testDir);
-                            break;
-                        case "app":
-                            phaseResults = runAppTests(testDir);
-                            break;
-                        case "ty_app":
-                            phaseResults = runTyAppTests(testDir);
-                            break;
-                        case "ordering":
-                            phaseResults = runOrderingTests(testDir);
-                            break;
-                        default:
-                            phaseResults = new ArrayList<>();
-                    }
+                    String[] result = future.get(30, TimeUnit.SECONDS);
+                    results.add(result);
+                } catch (TimeoutException e) {
+                    results.add(new String[]{"unknown", "unknown", "fail", "TIMEOUT after 30s"});
                 } catch (Exception e) {
-                    System.err.println("Exception in " + phaseName + ": " + e);
-                    e.printStackTrace();
-                    phaseResults = new ArrayList<>();
+                    results.add(new String[]{"unknown", "unknown", "fail", "Exception: " + e.getMessage()});
                 }
+            }
+            executor.shutdown();
+        } else {
+            // Non-VM mode has static state - run serially
+            System.out.println("(non-VM mode: running serially due to static state)");
+            for (TestDescriptor test : allTests) {
+                results.add(runSingleTest(test));
+            }
+        }
 
-                int passCount = (int) phaseResults.stream().filter(r -> r[0].equals("pass")).count();
-                int failCount = (int) phaseResults.stream().filter(r -> r[0].equals("fail")).count();
-                int skipCount = (int) phaseResults.stream().filter(r -> r[0].equals("skip")).count();
-                totalPass += passCount;
-                totalFail += failCount;
-                totalSkip += skipCount;
-
-                String status = failCount > 0 ? "FAIL" : "ok";
-                StringBuilder counts = new StringBuilder();
-                counts.append(passCount).append(" passed");
-                if (failCount > 0) counts.append(", ").append(failCount).append(" failed");
-                if (skipCount > 0) counts.append(", ").append(skipCount).append(" skipped");
-                System.out.println(phaseName + ": " + status + " (" + counts + ")");
-
-                for (String[] r : phaseResults) {
-                    if (r[0].equals("fail")) {
-                        failures.add(new String[]{phaseName, r[1], r[2]});
-                        System.out.println("  FAIL " + r[1]);
-                    }
-                }
-                System.out.println("::endgroup::");
+        // Process results
+        for (String[] r : results) {
+            String phaseName = r[0];
+            String testId = r[1];
+            String status = r[2];
+            String err = r[3];
+            if (status.equals("pass")) {
+                System.out.println("PASS " + phaseName + "::" + testId + vmTag);
+                totalPass++;
+            } else if (status.equals("skip")) {
+                System.out.println("SKIP " + phaseName + "::" + testId + vmTag);
+                totalSkip++;
+            } else {
+                System.out.println("FAIL " + phaseName + "::" + testId + vmTag);
+                failures.add(new String[]{phaseName, testId, err});
+                totalFail++;
             }
         }
 

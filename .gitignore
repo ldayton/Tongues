@@ -7,3 +7,4 @@ __pycache__/
 editors/vscode/*.vsix
 *.egg-info
 node_modules/
+*.class

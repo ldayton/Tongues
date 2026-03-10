@@ -203,6 +203,10 @@ _vm-java:
 test-tongues target *args:
     #!/usr/bin/env bash
     set -uo pipefail
+    if [ "{{target}}" = "java" ]; then
+        just -f {{justfile()}} _test-tongues-java {{args}}
+        exit $?
+    fi
     declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
     declare -A runner=([python]=python3 [ruby]=ruby [perl]=perl [javascript]=node)
     start=$SECONDS
@@ -217,12 +221,14 @@ test-tongues target *args:
     exit $rc
 
 # Run test suite with Java binary
-_test-tongues-java:
+_test-tongues-java *args:
     #!/usr/bin/env bash
     set -uo pipefail
     start=$SECONDS
     cd tongues
-    java -cp .out/java-classes TestTranspiled .out/java-classes --target test-tongues-java; rc=$?
+    mkdir -p .out/test-classes
+    javac -Xlint:-options -d .out/test-classes -cp .out/java-classes tests/TestTranspiled.java
+    java -cp .out/test-classes:.out/java-classes TestTranspiled .out/java-classes {{args}} --target test-tongues-java; rc=$?
     elapsed=$((SECONDS - start))
     if [ $rc -eq 0 ]; then
         printf '\033[32m[test-tongues-java] %ds\033[0m\n' "$elapsed"
@@ -235,14 +241,16 @@ _test-tongues-java:
 # NOTE: Currently blocked by a Java transpiler bug where TDecl.annotations is null
 # when accessed via reflection. The --via-vm implementation is complete and tested
 # with Python/JS/Ruby/Perl targets. This will work once the Java emitter is fixed.
-_vm-test-tongues-java:
+_vm-test-tongues-java *args:
     #!/usr/bin/env bash
     set -uo pipefail
     just -f {{justfile()}} _transpile-tongues taytsh
     start=$SECONDS
     cd tongues
-    java -cp .out/java-classes TestTranspiled .out/java-classes \
-        --via-vm .out/tongues.ty --target vm-test-tongues-java; rc=$?
+    mkdir -p .out/test-classes
+    javac -Xlint:-options -d .out/test-classes -cp .out/java-classes tests/TestTranspiled.java
+    java -cp .out/test-classes:.out/java-classes TestTranspiled .out/java-classes \
+        --via-vm .out/tongues.ty {{args}} --target vm-test-tongues-java; rc=$?
     elapsed=$((SECONDS - start))
     if [ $rc -eq 0 ]; then
         printf '\033[32m[vm-test-tongues-java] %ds\033[0m\n' "$elapsed"
@@ -313,6 +321,10 @@ cross-equivalence target:
 _vm-test-tongues target *args:
     #!/usr/bin/env bash
     set -uo pipefail
+    if [ "{{target}}" = "java" ]; then
+        just -f {{justfile()}} _vm-test-tongues-java {{args}}
+        exit $?
+    fi
     declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
     declare -A runner=([python]=python3 [ruby]=ruby [perl]=perl [javascript]=node)
     just -f {{justfile()}} _transpile-tongues taytsh
