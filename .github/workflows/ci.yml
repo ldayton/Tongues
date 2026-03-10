@@ -116,7 +116,7 @@ jobs:
           path: tongues/.out
       - run: docker build -t tongues-python docker/python
       - run: docker run --rm -v $PWD:/workspace tongues-python
-          python3 tongues/tests/test-transpiled.py .out/tongues.py --target test-tongues-python
+          bash -c "cd tongues && uv run python3 tests/test-transpiled.py .out/tongues.py --target test-tongues-python"
 
   idempotence:
     runs-on: ubuntu-latest
