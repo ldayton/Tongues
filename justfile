@@ -226,13 +226,15 @@ _vm-java:
 # Usage: just test-tongues python [-n auto|<num>]
 test-tongues target *args:
     #!/usr/bin/env bash
-    set -uo pipefail
+    set -euo pipefail
     if [ "{{target}}" = "java" ]; then
         just -f {{justfile()}} _test-tongues-java {{args}}
         exit $?
     fi
     declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
     declare -A runner=([python]="uv run python3" [ruby]=ruby [perl]=perl [javascript]=node)
+    just -f {{justfile()}} _transpile-tongues {{target}}
+    just -f {{justfile()}} _transpile-harness {{target}}
     printf '\033[32m[test-tongues-{{target}}]\033[0m\n'
     start=$SECONDS
     cd tongues
