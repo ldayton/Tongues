@@ -301,9 +301,9 @@ class _StdinWrapper(io.StringIO):
         )
 
 
-def run_inprocess(argv, stdin_data="", stdin_bytes=None):
+def run_inprocess(argv, stdin_data="", stdin_bytes=None, timeout=10):
     if _use_vm:
-        return _run_vm_inprocess(argv, stdin_data=stdin_data, stdin_bytes=stdin_bytes)
+        return _run_vm_inprocess(argv, stdin_data=stdin_data, stdin_bytes=stdin_bytes, timeout=timeout)
     old_argv = sys.argv[:]
     old_stdout = sys.stdout
     old_stderr = sys.stderr
@@ -733,7 +733,7 @@ def run_app_tests(test_dir):
                 try:
                     with os.fdopen(fd, "w") as tf:
                         tf.write(source)
-                    result = run_inprocess(["--target", target, tmp_path])
+                    result = run_inprocess(["--target", target, tmp_path], timeout=30)
                 finally:
                     os.unlink(tmp_path)
             else:
@@ -744,7 +744,7 @@ def run_app_tests(test_dir):
                         parts.append((f"lib/{name}.py", fh.read()))
                 stdin_data = build_project_input("apptest.py", source, parts)
                 result = run_inprocess(
-                    ["--project", "--target", target], stdin_data=stdin_data
+                    ["--project", "--target", target], stdin_data=stdin_data, timeout=30
                 )
             if result["exit"] != 0:
                 stderr = (result["stderr"].strip().split("\n") or ["transpile failed"])[
@@ -1100,13 +1100,13 @@ def _run_single_test(args):
                 try:
                     with os.fdopen(fd, "w") as tf:
                         tf.write(source)
-                    result = run_inprocess(["--target", target, tmp_path])
+                    result = run_inprocess(["--target", target, tmp_path], timeout=30)
                 finally:
                     os.unlink(tmp_path)
             else:
                 stdin_data = h.build_project_input("apptest.py", source, lib_parts)
                 result = run_inprocess(
-                    ["--project", "--target", target], stdin_data=stdin_data
+                    ["--project", "--target", target], stdin_data=stdin_data, timeout=30
                 )
             if result["exit"] != 0:
                 stderr = (result["stderr"].strip().split("\n") or ["transpile failed"])[
@@ -1564,8 +1564,10 @@ if __name__ == "__main__":
     if parallel_tests:
         print(f"Collected {len(parallel_tests)} tests")
         t_start = time.monotonic()
+        pebble_timeout = 60 if via_vm_path else 10
         parallel_results = _run_tests_parallel(
-            parallel_tests, num_workers, transpiled_path, harness_path, via_vm_path
+            parallel_tests, num_workers, transpiled_path, harness_path, via_vm_path,
+            timeout=pebble_timeout,
         )
         t_elapsed = time.monotonic() - t_start
         print(f"Completed in {t_elapsed:.1f}s")
