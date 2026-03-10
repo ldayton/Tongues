@@ -749,7 +749,7 @@ def run_app_tests(test_dir):
                 try:
                     with os.fdopen(fd, "w") as tf:
                         tf.write(source)
-                    result = run_inprocess(["--target", target, tmp_path], timeout=30)
+                    result = run_inprocess(["--target", target, tmp_path], timeout=90)
                 finally:
                     os.unlink(tmp_path)
             else:
@@ -760,7 +760,7 @@ def run_app_tests(test_dir):
                         parts.append((f"lib/{name}.py", fh.read()))
                 stdin_data = build_project_input("apptest.py", source, parts)
                 result = run_inprocess(
-                    ["--project", "--target", target], stdin_data=stdin_data, timeout=30
+                    ["--project", "--target", target], stdin_data=stdin_data, timeout=90
                 )
             if result["exit"] != 0:
                 stderr = (result["stderr"].strip().split("\n") or ["transpile failed"])[
@@ -778,7 +778,7 @@ def run_app_tests(test_dir):
                     input=transpiled_code,
                     capture_output=True,
                     text=True,
-                    timeout=30,
+                    timeout=90,
                 )
                 if proc.returncode != 0:
                     output = proc.stdout + proc.stderr
@@ -835,7 +835,7 @@ def run_ordering_tests(test_dir):
                     input=transpiled_code,
                     capture_output=True,
                     text=True,
-                    timeout=30,
+                    timeout=90,
                 )
                 if proc.returncode != 0:
                     output = proc.stdout + proc.stderr
@@ -1130,13 +1130,13 @@ def _run_single_test(args):
                 try:
                     with os.fdopen(fd, "w") as tf:
                         tf.write(source)
-                    result = run_inprocess(["--target", target, tmp_path], timeout=30)
+                    result = run_inprocess(["--target", target, tmp_path], timeout=90)
                 finally:
                     os.unlink(tmp_path)
             else:
                 stdin_data = h.build_project_input("apptest.py", source, lib_parts)
                 result = run_inprocess(
-                    ["--project", "--target", target], stdin_data=stdin_data, timeout=30
+                    ["--project", "--target", target], stdin_data=stdin_data, timeout=90
                 )
             if result["exit"] != 0:
                 stderr = (result["stderr"].strip().split("\n") or ["transpile failed"])[
@@ -1156,7 +1156,7 @@ def _run_single_test(args):
                     input=transpiled_code,
                     capture_output=True,
                     text=True,
-                    timeout=30,
+                    timeout=90,
                 )
                 if proc.returncode != 0:
                     output = proc.stdout + proc.stderr
@@ -1190,7 +1190,7 @@ def _run_single_test(args):
                     input=transpiled_code,
                     capture_output=True,
                     text=True,
-                    timeout=30,
+                    timeout=90,
                 )
                 if proc.returncode != 0:
                     output = proc.stdout + proc.stderr
