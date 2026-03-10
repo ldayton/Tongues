@@ -303,7 +303,9 @@ class _StdinWrapper(io.StringIO):
 
 def run_inprocess(argv, stdin_data="", stdin_bytes=None, timeout=10):
     if _use_vm:
-        return _run_vm_inprocess(argv, stdin_data=stdin_data, stdin_bytes=stdin_bytes, timeout=timeout)
+        return _run_vm_inprocess(
+            argv, stdin_data=stdin_data, stdin_bytes=stdin_bytes, timeout=timeout
+        )
     old_argv = sys.argv[:]
     old_stdout = sys.stdout
     old_stderr = sys.stderr
@@ -1594,7 +1596,11 @@ if __name__ == "__main__":
         t_start = time.monotonic()
         pebble_timeout = 60 if via_vm_path else 10
         parallel_results = _run_tests_parallel(
-            parallel_tests, num_workers, transpiled_path, harness_path, via_vm_path,
+            parallel_tests,
+            num_workers,
+            transpiled_path,
+            harness_path,
+            via_vm_path,
             timeout=pebble_timeout,
         )
         t_elapsed = time.monotonic() - t_start

@@ -1616,7 +1616,7 @@ class _BuiltinDispatch:
 
     def _set_from_list(self, args: list[Val]) -> Val:
         if isinstance(args[0], VSet):
-            return args[0]
+            return VSet(list(args[0].items))
         if isinstance(args[0], VList):
             result: list[Val] = []
             shadow: set[str] = set()
@@ -2815,6 +2815,78 @@ class VM:
             else:
                 self.stack.append(_NONE_VAL)
             return
+        if isinstance(obj, VSet):
+            if method_name == "add" and len(args) >= 1:
+                val = args[0]
+                hk = _hash_key(val)
+                if hk is not None:
+                    if obj._shadow is None:
+                        _shadow_build_set(obj)
+                    set_sh = obj._shadow
+                    if set_sh is not None and hk not in set_sh:
+                        obj.items.append(val)
+                        set_sh.add(hk)
+                else:
+                    found = False
+                    for existing in obj.items:
+                        if _val_eq(existing, val):
+                            found = True
+                            break
+                    if not found:
+                        obj.items.append(val)
+                self.stack.append(_NONE_VAL)
+                return
+            if method_name == "discard" and len(args) >= 1:
+                val = args[0]
+                hk = _hash_key(val)
+                if hk is not None:
+                    if obj._shadow is None:
+                        _shadow_build_set(obj)
+                    set_sh = obj._shadow
+                    if set_sh is not None and hk in set_sh:
+                        set_sh.discard(hk)
+                        for i, existing in enumerate(obj.items):
+                            if _val_eq(existing, val):
+                                obj.items.pop(i)
+                                break
+                else:
+                    for i, existing in enumerate(obj.items):
+                        if _val_eq(existing, val):
+                            obj.items.pop(i)
+                            break
+                self.stack.append(_NONE_VAL)
+                return
+            if method_name == "remove" and len(args) >= 1:
+                val = args[0]
+                hk = _hash_key(val)
+                found = False
+                if hk is not None:
+                    if obj._shadow is None:
+                        _shadow_build_set(obj)
+                    set_sh = obj._shadow
+                    if set_sh is not None and hk in set_sh:
+                        set_sh.discard(hk)
+                        for i, existing in enumerate(obj.items):
+                            if _val_eq(existing, val):
+                                obj.items.pop(i)
+                                found = True
+                                break
+                else:
+                    for i, existing in enumerate(obj.items):
+                        if _val_eq(existing, val):
+                            obj.items.pop(i)
+                            found = True
+                            break
+                if not found:
+                    self._throw(_make_error_struct("KeyError", "item not in set"))
+                    return
+                self.stack.append(_NONE_VAL)
+                return
+            if method_name == "clear":
+                obj.items.clear()
+                obj._shadow = set()
+                self.stack.append(_NONE_VAL)
+                return
         if isinstance(obj, VStruct):
             code_idx = self._method_cache.get((obj.type_name, method_name))
             if code_idx is not None:
