@@ -292,6 +292,7 @@ function runPhaseTests(testDir, phaseName, cfg) {
             const lenient = ["parse", "pycheck", "typarse", "tycheck"].includes(phaseName);
             const phaseResult = runTranspiledPhase(entry.input, cfg.args, cfg.taytsh, cfg.json);
             let reveals = phaseResult.reveals;
+            let annotations = {};
             if (["pycheck", "tycheck"].includes(phaseName) && phaseResult.errors.length === 0 && phaseResult.data) {
                 if (phaseResult.data instanceof JsonObject) {
                     try {
@@ -301,12 +302,26 @@ function runPhaseTests(testDir, phaseName, cfg) {
                             json_get_string(json_get_field(r, "type")),
                         ]);
                     } catch {}
+                    try {
+                        const annsObj = json_get_field(phaseResult.data, "annotations");
+                        if (annsObj instanceof JsonObject) {
+                            for (const [lineStr, lineAnns] of annsObj.entries) {
+                                const lineDict = {};
+                                if (lineAnns instanceof JsonObject) {
+                                    for (const [k, v] of lineAnns.entries) {
+                                        if (v instanceof JsonString) lineDict[k] = v.value;
+                                    }
+                                }
+                                annotations[parseInt(lineStr)] = lineDict;
+                            }
+                        }
+                    } catch {}
                 }
             }
             let err;
             try {
                 err = check_expected(entry.expected, phaseResult.errors, phaseResult.warnings,
-                    phaseResult.data, reveals, phaseName, lenient);
+                    phaseResult.data, reveals, annotations, phaseName, lenient);
             } catch (exc) {
                 err = "harness crash: " + (exc instanceof Error ? exc.message : String(exc));
             }
@@ -830,6 +845,7 @@ function runSingleTest(phaseName, testId, testType, testData) {
             const lenient = ["parse", "pycheck", "typarse", "tycheck"].includes(phaseName);
             const phaseResult = runTranspiledPhase(entry.input, cfg.args, cfg.taytsh, cfg.json);
             let reveals = phaseResult.reveals;
+            let annotations = {};
             if (["pycheck", "tycheck"].includes(phaseName) && phaseResult.errors.length === 0 && phaseResult.data) {
                 if (phaseResult.data instanceof JsonObject) {
                     try {
@@ -839,12 +855,26 @@ function runSingleTest(phaseName, testId, testType, testData) {
                             json_get_string(json_get_field(r, "type")),
                         ]);
                     } catch {}
+                    try {
+                        const annsObj = json_get_field(phaseResult.data, "annotations");
+                        if (annsObj instanceof JsonObject) {
+                            for (const [lineStr, lineAnns] of annsObj.entries) {
+                                const lineDict = {};
+                                if (lineAnns instanceof JsonObject) {
+                                    for (const [k, v] of lineAnns.entries) {
+                                        if (v instanceof JsonString) lineDict[k] = v.value;
+                                    }
+                                }
+                                annotations[parseInt(lineStr)] = lineDict;
+                            }
+                        }
+                    } catch {}
                 }
             }
             let err;
             try {
                 err = check_expected(entry.expected, phaseResult.errors, phaseResult.warnings,
-                    phaseResult.data, reveals, phaseName, lenient);
+                    phaseResult.data, reveals, annotations, phaseName, lenient);
             } catch (exc) {
                 err = "harness crash: " + (exc instanceof Error ? exc.message : String(exc));
             }

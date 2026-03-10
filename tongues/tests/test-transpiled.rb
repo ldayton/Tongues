@@ -223,6 +223,7 @@ def run_phase_tests(test_dir, phase_name, cfg)
         expect_json: cfg[:json]
       )
       reveals = phase_result[:reveals]
+      annotations = {}
       if %w[pycheck tycheck].include?(phase_name) && phase_result[:errors].empty? && phase_result[:data]
         if phase_result[:data].is_a?(JsonObject)
           begin
@@ -230,10 +231,25 @@ def run_phase_tests(test_dir, phase_name, cfg)
             reveals = reveals_arr.map { |r| [json_get_number(json_get_field(r, "line")).to_i, json_get_string(json_get_field(r, "type"))] }
           rescue
           end
+          begin
+            anns_obj = json_get_field(phase_result[:data], "annotations")
+            if anns_obj.is_a?(JsonObject)
+              anns_obj.entries.each do |line_str, line_anns|
+                line_dict = {}
+                if line_anns.is_a?(JsonObject)
+                  line_anns.entries.each do |k, v|
+                    line_dict[k] = v.value if v.is_a?(JsonString)
+                  end
+                end
+                annotations[line_str.to_i] = line_dict
+              end
+            end
+          rescue
+          end
         end
       end
       err = check_expected(entry.expected, phase_result[:errors], phase_result[:warnings],
-                           phase_result[:data], reveals, phase_name, lenient)
+                           phase_result[:data], reveals, annotations, phase_name, lenient)
       results << (err.empty? ? [:pass, test_id, nil] : [:fail, test_id, err])
     end
   end
@@ -697,6 +713,7 @@ def run_single_test(phase_name, test_id, test_type, test_data)
     lenient = %w[parse pycheck typarse tycheck].include?(phase_name)
     phase_result = run_transpiled_phase(entry.input, cfg[:args], is_taytsh: cfg[:taytsh], expect_json: cfg[:json])
     reveals = phase_result[:reveals]
+    annotations = {}
     if %w[pycheck tycheck].include?(phase_name) && phase_result[:errors].empty? && phase_result[:data]
       if phase_result[:data].is_a?(JsonObject)
         begin
@@ -704,9 +721,24 @@ def run_single_test(phase_name, test_id, test_type, test_data)
           reveals = reveals_arr.map { |r| [json_get_number(json_get_field(r, "line")).to_i, json_get_string(json_get_field(r, "type"))] }
         rescue
         end
+        begin
+          anns_obj = json_get_field(phase_result[:data], "annotations")
+          if anns_obj.is_a?(JsonObject)
+            anns_obj.entries.each do |line_str, line_anns|
+              line_dict = {}
+              if line_anns.is_a?(JsonObject)
+                line_anns.entries.each do |k, v|
+                  line_dict[k] = v.value if v.is_a?(JsonString)
+                end
+              end
+              annotations[line_str.to_i] = line_dict
+            end
+          end
+        rescue
+        end
       end
     end
-    err = check_expected(entry.expected, phase_result[:errors], phase_result[:warnings], phase_result[:data], reveals, phase_name, lenient)
+    err = check_expected(entry.expected, phase_result[:errors], phase_result[:warnings], phase_result[:data], reveals, annotations, phase_name, lenient)
     err.empty? ? [phase_name, test_id, :pass, nil] : [phase_name, test_id, :fail, err]
   when :lowering
     entry = test_data

@@ -330,16 +330,35 @@ sub run_phase_tests ($test_dir, $phase_name, $cfg) {
                 expect_json => $cfg->{json},
             );
             my $reveals = $phase_result->{reveals};
+            my $annotations = {};
             if ($phase_name =~ /^(pycheck|tycheck)$/ && !@{$phase_result->{errors}} && defined $phase_result->{data}) {
                 if (blessed($phase_result->{data}) && $phase_result->{data}->isa("JsonObject")) {
                     eval {
                         my $reveals_arr = json_get_items(json_get_field($phase_result->{data}, "reveals"));
                         $reveals = [map { [int(json_get_number(json_get_field($_, "line"))), json_get_string(json_get_field($_, "type"))] } @$reveals_arr];
                     };
+                    eval {
+                        my $anns_obj = json_get_field($phase_result->{data}, "annotations");
+                        if (blessed($anns_obj) && $anns_obj->isa("JsonObject")) {
+                            for my $pair (@{$anns_obj->entries}) {
+                                my ($line_str, $line_anns) = @$pair;
+                                my $line_dict = {};
+                                if (blessed($line_anns) && $line_anns->isa("JsonObject")) {
+                                    for my $kv (@{$line_anns->entries}) {
+                                        my ($k, $v) = @$kv;
+                                        if (blessed($v) && $v->isa("JsonString")) {
+                                            $line_dict->{$k} = $v->value;
+                                        }
+                                    }
+                                }
+                                $annotations->{int($line_str)} = $line_dict;
+                            }
+                        }
+                    };
                 }
             }
             my $err = check_expected($entry->{expected}, $phase_result->{errors}, $phase_result->{warnings},
-                                     $phase_result->{data}, $reveals, $phase_name, $lenient ? 1 : 0);
+                                     $phase_result->{data}, $reveals, $annotations, $phase_name, $lenient ? 1 : 0);
             push @results, [$err eq "" ? "pass" : "fail", $test_id, $err eq "" ? undef : $err];
         }
     }
@@ -860,15 +879,34 @@ sub run_single_test ($phase_name, $test_id, $test_type, $test_data) {
         my $lenient = ($phase_name =~ /^(parse|pycheck|typarse|tycheck)$/);
         my $phase_result = run_transpiled_phase($entry->{input}, $cfg->{args}, is_taytsh => $cfg->{taytsh}, expect_json => $cfg->{json});
         my $reveals = $phase_result->{reveals};
+        my $annotations = {};
         if ($phase_name =~ /^(pycheck|tycheck)$/ && !@{$phase_result->{errors}} && defined $phase_result->{data}) {
             if (blessed($phase_result->{data}) && $phase_result->{data}->isa("JsonObject")) {
                 eval {
                     my $reveals_arr = json_get_items(json_get_field($phase_result->{data}, "reveals"));
                     $reveals = [map { [int(json_get_number(json_get_field($_, "line"))), json_get_string(json_get_field($_, "type"))] } @$reveals_arr];
                 };
+                eval {
+                    my $anns_obj = json_get_field($phase_result->{data}, "annotations");
+                    if (blessed($anns_obj) && $anns_obj->isa("JsonObject")) {
+                        for my $pair (@{$anns_obj->entries}) {
+                            my ($line_str, $line_anns) = @$pair;
+                            my $line_dict = {};
+                            if (blessed($line_anns) && $line_anns->isa("JsonObject")) {
+                                for my $kv (@{$line_anns->entries}) {
+                                    my ($k, $v) = @$kv;
+                                    if (blessed($v) && $v->isa("JsonString")) {
+                                        $line_dict->{$k} = $v->value;
+                                    }
+                                }
+                            }
+                            $annotations->{int($line_str)} = $line_dict;
+                        }
+                    }
+                };
             }
         }
-        my $err = check_expected($entry->{expected}, $phase_result->{errors}, $phase_result->{warnings}, $phase_result->{data}, $reveals, $phase_name, $lenient ? 1 : 0);
+        my $err = check_expected($entry->{expected}, $phase_result->{errors}, $phase_result->{warnings}, $phase_result->{data}, $reveals, $annotations, $phase_name, $lenient ? 1 : 0);
         return [$phase_name, $test_id, $err eq "" ? "pass" : "fail", $err eq "" ? undef : $err];
     } elsif ($test_type eq "lowering") {
         my $entry = $test_data;
