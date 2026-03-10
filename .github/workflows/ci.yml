@@ -11,6 +11,7 @@ env:
 jobs:
   style:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - run: docker build -t tongues-python docker/python
@@ -22,6 +23,7 @@ jobs:
 
   transpile-tongues-python:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - run: docker build -t tongues-python docker/python
@@ -37,6 +39,7 @@ jobs:
 
   transpile-tongues-ruby:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - run: docker build -t tongues-ruby docker/ruby
@@ -52,6 +55,7 @@ jobs:
 
   transpile-tongues-perl:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - run: docker build -t tongues-perl docker/perl
@@ -67,6 +71,7 @@ jobs:
 
   transpile-tongues-javascript:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - run: docker build -t tongues-javascript docker/javascript
@@ -82,6 +87,7 @@ jobs:
 
   transpile-tongues-java:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - run: docker build -t tongues-java docker/java
@@ -100,6 +106,7 @@ jobs:
 
   test-tongues-python:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-python
     steps:
       - uses: actions/checkout@v6
@@ -113,6 +120,7 @@ jobs:
 
   idempotence:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-python
     steps:
       - uses: actions/checkout@v6
@@ -125,6 +133,7 @@ jobs:
 
   pyright:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-python
     steps:
       - uses: actions/checkout@v6
@@ -137,6 +146,7 @@ jobs:
 
   tw-taytsh-apptests-python:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-python
     steps:
       - uses: actions/checkout@v6
@@ -149,6 +159,7 @@ jobs:
 
   vm-taytsh-apptests-python:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-python
     steps:
       - uses: actions/checkout@v6
@@ -165,6 +176,7 @@ jobs:
 
   test-tongues-ruby:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-ruby
     steps:
       - uses: actions/checkout@v6
@@ -178,6 +190,7 @@ jobs:
 
   cross-equivalence-ruby:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-ruby
     steps:
       - uses: actions/checkout@v6
@@ -190,6 +203,7 @@ jobs:
 
   tw-taytsh-apptests-ruby:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-ruby
     steps:
       - uses: actions/checkout@v6
@@ -202,6 +216,7 @@ jobs:
 
   vm-taytsh-apptests-ruby:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-ruby
     steps:
       - uses: actions/checkout@v6
@@ -218,6 +233,7 @@ jobs:
 
   test-tongues-perl:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-perl
     steps:
       - uses: actions/checkout@v6
@@ -231,6 +247,7 @@ jobs:
 
   cross-equivalence-perl:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-perl
     steps:
       - uses: actions/checkout@v6
@@ -243,6 +260,7 @@ jobs:
 
   tw-taytsh-apptests-perl:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-perl
     steps:
       - uses: actions/checkout@v6
@@ -255,6 +273,7 @@ jobs:
 
   vm-taytsh-apptests-perl:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-perl
     steps:
       - uses: actions/checkout@v6
@@ -271,6 +290,7 @@ jobs:
 
   test-tongues-javascript:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-javascript
     steps:
       - uses: actions/checkout@v6
@@ -284,6 +304,7 @@ jobs:
 
   cross-equivalence-javascript:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-javascript
     steps:
       - uses: actions/checkout@v6
@@ -296,6 +317,7 @@ jobs:
 
   tw-taytsh-apptests-javascript:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-javascript
     steps:
       - uses: actions/checkout@v6
@@ -308,6 +330,7 @@ jobs:
 
   vm-taytsh-apptests-javascript:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-javascript
     steps:
       - uses: actions/checkout@v6
@@ -324,6 +347,7 @@ jobs:
 
   test-tongues-java:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-java
     steps:
       - uses: actions/checkout@v6
@@ -336,6 +360,7 @@ jobs:
 
   cross-equivalence-java:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-java
     steps:
       - uses: actions/checkout@v6
@@ -348,6 +373,7 @@ jobs:
 
   tw-taytsh-apptests-java:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-java
     steps:
       - uses: actions/checkout@v6
@@ -360,6 +386,7 @@ jobs:
 
   vm-taytsh-apptests-java:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-java
     steps:
       - uses: actions/checkout@v6
@@ -376,6 +403,7 @@ jobs:
 
   vm-test-tongues-javascript:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-javascript
     steps:
       - uses: actions/checkout@v6
@@ -388,6 +416,7 @@ jobs:
 
   vm-test-tongues-perl:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-perl
     steps:
       - uses: actions/checkout@v6
@@ -400,6 +429,7 @@ jobs:
 
   vm-test-tongues-ruby:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-ruby
     steps:
       - uses: actions/checkout@v6
@@ -412,6 +442,7 @@ jobs:
 
   vm-test-tongues-python:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-python
     steps:
       - uses: actions/checkout@v6
@@ -424,6 +455,7 @@ jobs:
 
   vm-test-tongues-java:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: transpile-tongues-java
     steps:
       - uses: actions/checkout@v6
@@ -440,6 +472,7 @@ jobs:
 
   pytest-gen:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
       - run: docker build -t tongues-python docker/python
@@ -451,6 +484,7 @@ jobs:
 
   pytest-gen-tycheck:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: pytest-gen
     steps:
       - uses: actions/checkout@v6
@@ -463,6 +497,7 @@ jobs:
 
   pytest-gen-softfloat:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: pytest-gen
     steps:
       - uses: actions/checkout@v6
@@ -478,6 +513,8 @@ jobs:
   # ---------------------------------------------------------------------------
 
   check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     if: always()
     needs:
       - style
@@ -509,7 +546,6 @@ jobs:
       - tw-taytsh-apptests-java
       - vm-taytsh-apptests-java
       - vm-test-tongues-java
-    runs-on: ubuntu-latest
     steps:
       - run: |
           for result in \
