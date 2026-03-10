@@ -6,9 +6,14 @@ export VIRTUAL_ENV := ""
 style *ARGS:
     #!/usr/bin/env bash
     set -uo pipefail
+    pids=()
+    _cleanup_done=0
+    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null; done; }
+    trap 'cleanup; trap - INT; kill -INT $$' INT
+    trap 'cleanup; trap - TERM; kill -TERM $$' TERM
+    trap 'cleanup' EXIT
     printf '\033[32m[style]\033[0m\n'
     start=$SECONDS
-    pids=()
     just -f {{justfile()}} lint {{ARGS}} & pids+=($!)
     just -f {{justfile()}} fmt {{ARGS}} & pids+=($!)
     failed=0
@@ -82,11 +87,16 @@ _transpile-harness target:
 lang target *args:
     #!/usr/bin/env bash
     set -uo pipefail
+    pids=()
+    _cleanup_done=0
+    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null; done; }
+    trap 'cleanup; trap - INT; kill -INT $$' INT
+    trap 'cleanup; trap - TERM; kill -TERM $$' TERM
+    trap 'cleanup' EXIT
     declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
-    declare -A runner=([python]=python3 [ruby]=ruby [perl]=perl [javascript]=node)
+    declare -A runner=([python]="uv run python3" [ruby]=ruby [perl]=perl [javascript]=node)
     just -f {{justfile()}} _transpile-tongues {{target}}
     just -f {{justfile()}} _transpile-harness {{target}}
-    pids=()
     failed=0
     if [ "{{target}}" = "python" ]; then
         just -f {{justfile()}} _pyright & pids+=($!)
@@ -115,9 +125,14 @@ lang target *args:
 lang-java:
     #!/usr/bin/env bash
     set -uo pipefail
+    pids=()
+    _cleanup_done=0
+    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null; done; }
+    trap 'cleanup; trap - INT; kill -INT $$' INT
+    trap 'cleanup; trap - TERM; kill -TERM $$' TERM
+    trap 'cleanup' EXIT
     just -f {{justfile()}} _transpile-tongues java
     just -f {{justfile()}} _compile-java
-    pids=()
     failed=0
     just -f {{justfile()}} cross-equivalence java & pids+=($!)
     just -f {{justfile()}} _treewalker-java & pids+=($!)
@@ -217,7 +232,7 @@ test-tongues target *args:
         exit $?
     fi
     declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
-    declare -A runner=([python]=python3 [ruby]=ruby [perl]=perl [javascript]=node)
+    declare -A runner=([python]="uv run python3" [ruby]=ruby [perl]=perl [javascript]=node)
     printf '\033[32m[test-tongues-{{target}}]\033[0m\n'
     start=$SECONDS
     cd tongues
@@ -341,7 +356,7 @@ _vm-test-tongues target *args:
         exit $?
     fi
     declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
-    declare -A runner=([python]=python3 [ruby]=ruby [perl]=perl [javascript]=node)
+    declare -A runner=([python]="uv run python3" [ruby]=ruby [perl]=perl [javascript]=node)
     just -f {{justfile()}} _transpile-tongues taytsh
     printf '\033[32m[vm-test-tongues-{{target}}]\033[0m\n'
     start=$SECONDS
@@ -361,7 +376,7 @@ _treewalker target:
     #!/usr/bin/env bash
     set -uo pipefail
     declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
-    declare -A runner=([python]=python3 [ruby]=ruby [perl]=perl [javascript]=node)
+    declare -A runner=([python]="uv run python3" [ruby]=ruby [perl]=perl [javascript]=node)
     printf '\033[32m[tw-taytsh-apptests-{{target}}]\033[0m\n'
     start=$SECONDS
     passed=0; failed=0
@@ -388,7 +403,7 @@ _vm target:
     #!/usr/bin/env bash
     set -uo pipefail
     declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
-    declare -A runner=([python]=python3 [ruby]=ruby [perl]=perl [javascript]=node)
+    declare -A runner=([python]="uv run python3" [ruby]=ruby [perl]=perl [javascript]=node)
     printf '\033[32m[vm-taytsh-apptests-{{target}}]\033[0m\n'
     start=$SECONDS
     passed=0; failed=0
@@ -415,6 +430,11 @@ pytest-gen:
     #!/usr/bin/env bash
     set -uo pipefail
     pids=()
+    _cleanup_done=0
+    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null; done; }
+    trap 'cleanup; trap - INT; kill -INT $$' INT
+    trap 'cleanup; trap - TERM; kill -TERM $$' TERM
+    trap 'cleanup' EXIT
     failed=0
     just -f {{justfile()}} _pytest-gen-tycheck & pids+=($!)
     just -f {{justfile()}} _pytest-gen-softfloat & pids+=($!)
