@@ -1447,6 +1447,8 @@ class Compiler:
         self._compile_expr(expr.left, fc)
         self._compile_expr(expr.right, fc)
         left_type = self._resolve_expr_type(expr.left, fc)
+        if type_eq(left_type, VOID_T):
+            left_type = self._resolve_expr_type(expr.right, fc)
         if op == "==":
             fc.emit(OP_EQ, 0, expr.pos.line)
         elif op == "!=":
