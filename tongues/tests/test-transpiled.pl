@@ -340,14 +340,14 @@ sub run_phase_tests ($test_dir, $phase_name, $cfg) {
                     eval {
                         my $anns_obj = json_get_field($phase_result->{data}, "annotations");
                         if (blessed($anns_obj) && $anns_obj->isa("JsonObject")) {
-                            for my $pair (@{$anns_obj->entries}) {
+                            for my $pair (@{$anns_obj->{entries}}) {
                                 my ($line_str, $line_anns) = @$pair;
                                 my $line_dict = {};
                                 if (blessed($line_anns) && $line_anns->isa("JsonObject")) {
-                                    for my $kv (@{$line_anns->entries}) {
+                                    for my $kv (@{$line_anns->{entries}}) {
                                         my ($k, $v) = @$kv;
                                         if (blessed($v) && $v->isa("JsonString")) {
-                                            $line_dict->{$k} = $v->value;
+                                            $line_dict->{$k} = $v->{value};
                                         }
                                     }
                                 }
@@ -889,14 +889,14 @@ sub run_single_test ($phase_name, $test_id, $test_type, $test_data) {
                 eval {
                     my $anns_obj = json_get_field($phase_result->{data}, "annotations");
                     if (blessed($anns_obj) && $anns_obj->isa("JsonObject")) {
-                        for my $pair (@{$anns_obj->entries}) {
+                        for my $pair (@{$anns_obj->{entries}}) {
                             my ($line_str, $line_anns) = @$pair;
                             my $line_dict = {};
                             if (blessed($line_anns) && $line_anns->isa("JsonObject")) {
-                                for my $kv (@{$line_anns->entries}) {
+                                for my $kv (@{$line_anns->{entries}}) {
                                     my ($k, $v) = @$kv;
                                     if (blessed($v) && $v->isa("JsonString")) {
-                                        $line_dict->{$k} = $v->value;
+                                        $line_dict->{$k} = $v->{value};
                                     }
                                 }
                             }
