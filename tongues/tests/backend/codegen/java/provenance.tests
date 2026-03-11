@@ -5,7 +5,7 @@ if (!xs.contains(2))
 System.out.println(String.valueOf(xs.getLast()));
 
 === open-end slice (raised)
-List<Integer> tail = new ArrayList<>(xs.subList(1, xs.size()));
+List<Integer> tail = new ArrayList<>(xs.subList(Math.min(1, xs.size()), xs.size()));
 
 === open-start slice (raised)
 List<Integer> head = new ArrayList<>(xs.subList(0, Math.min(3, xs.size())));

@@ -59,7 +59,7 @@ xs.set(0, 99);
 m.put("b", 2);
 
 === list slicing
-List<Integer> mid = new ArrayList<>(xs.subList(1, Math.min(4, xs.size())));
+List<Integer> mid = new ArrayList<>(xs.subList(Math.min(1, xs.size()), Math.min(4, xs.size())));
 
 === nested collection access
 m.get("a").get(0)
@@ -77,7 +77,7 @@ xs.stream().mapToInt(Integer::intValue).sum()
 xs.get(xs.size() - 1)
 
 === open-end slice
-List<Integer> tail = new ArrayList<>(xs.subList(1, xs.size()));
+List<Integer> tail = new ArrayList<>(xs.subList(Math.min(1, xs.size()), xs.size()));
 
 === open-start slice
 List<Integer> head = new ArrayList<>(xs.subList(0, Math.min(3, xs.size())));

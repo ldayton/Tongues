@@ -3519,16 +3519,38 @@ class _JavaEmitter(Emitter):
                 + ".length()))"
             )
         if hi_is_len:
+            if lo == "0":
+                return "new ArrayList<>(" + obj + ")"
             return (
-                "new ArrayList<>(" + obj + ".subList(" + lo + ", " + obj + ".size()))"
+                "new ArrayList<>("
+                + obj
+                + ".subList(Math.min("
+                + lo
+                + ", "
+                + obj
+                + ".size()), "
+                + obj
+                + ".size()))"
             )
         hi = self._expr(hi_expr)
+        if lo == "0":
+            return (
+                "new ArrayList<>("
+                + obj
+                + ".subList(0, Math.min("
+                + hi
+                + ", "
+                + obj
+                + ".size())))"
+            )
         return (
             "new ArrayList<>("
             + obj
-            + ".subList("
+            + ".subList(Math.min("
             + lo
-            + ", Math.min("
+            + ", "
+            + obj
+            + ".size()), Math.min("
             + hi
             + ", "
             + obj
