@@ -173,11 +173,11 @@ class _VMThrow(Exception):
 # ============================================================
 
 
-def _isnan(x: float) -> bool:
+def _do_isnan(x: float) -> bool:
     return x != x
 
 
-def _isinf(x: float) -> bool:
+def _do_isinf(x: float) -> bool:
     return x == float("inf") or x == float("-inf")
 
 
@@ -197,7 +197,7 @@ def _val_to_string(v: Val) -> str:
         return str(v.value)
     if isinstance(v, VFloat):
         f = v.value
-        if _isnan(f):
+        if _do_isnan(f):
             return "NaN"
         if f == float("inf"):
             return "Inf"
@@ -205,7 +205,7 @@ def _val_to_string(v: Val) -> str:
             return "-Inf"
         if f == 0.0 and str(f) == "-0.0":
             return "-0.0"
-        if f == int(f) and not _isinf(f):
+        if f == int(f) and not _do_isinf(f):
             return str(int(f)) + ".0"
         return str(f)
     if isinstance(v, VBool):
@@ -304,7 +304,7 @@ def _sort_key_pairs(keys: list[Val], vals: list[Val]) -> None:
         i += 1
 
 
-def _read_file_bytes(path: str) -> VBytes:
+def _do_read_file_bytes(path: str) -> VBytes:
     with open(path, "rb") as f:
         data = f.read()
     return VBytes(data)
@@ -464,21 +464,21 @@ def _make_error_struct(type_name: str, message: str) -> VStruct:
     )
 
 
-def _floor(x: float) -> int:
+def _do_floor(x: float) -> int:
     i = int(x)
     if x < 0 and x != i:
         return i - 1
     return i
 
 
-def _ceil(x: float) -> int:
+def _do_ceil(x: float) -> int:
     i = int(x)
     if x > 0 and x != i:
         return i + 1
     return i
 
 
-def _sqrt(x: float) -> float:
+def _do_sqrt(x: float) -> float:
     return x**0.5
 
 
@@ -486,19 +486,19 @@ _INT64_MAX: int = (1 << 62) - 1 + (1 << 62)
 _INT64_MIN: int = -_INT64_MAX - 1
 
 
-def _wrapping_add(a: int, b: int) -> int:
+def _do_wrapping_add(a: int, b: int) -> int:
     r = a + b
     r = ((r - _INT64_MIN) % (2**64)) + _INT64_MIN
     return r
 
 
-def _wrapping_sub(a: int, b: int) -> int:
+def _do_wrapping_sub(a: int, b: int) -> int:
     r = a - b
     r = ((r - _INT64_MIN) % (2**64)) + _INT64_MIN
     return r
 
 
-def _wrapping_mul(a: int, b: int) -> int:
+def _do_wrapping_mul(a: int, b: int) -> int:
     r = a * b
     r = ((r - _INT64_MIN) % (2**64)) + _INT64_MIN
     return r
@@ -1080,7 +1080,7 @@ class _BuiltinDispatch:
         if isinstance(a, VInt) and isinstance(b, VInt):
             return a if a.value <= b.value else b
         if isinstance(a, VFloat) and isinstance(b, VFloat):
-            if _isnan(a.value) or _isnan(b.value):
+            if _do_isnan(a.value) or _do_isnan(b.value):
                 return VFloat(float("nan"))
             return a if a.value <= b.value else b
         return a
@@ -1109,7 +1109,7 @@ class _BuiltinDispatch:
         if isinstance(a, VInt) and isinstance(b, VInt):
             return a if a.value >= b.value else b
         if isinstance(a, VFloat) and isinstance(b, VFloat):
-            if _isnan(a.value) or _isnan(b.value):
+            if _do_isnan(a.value) or _do_isnan(b.value):
                 return VFloat(float("nan"))
             return a if a.value >= b.value else b
         return a
@@ -1153,9 +1153,9 @@ class _BuiltinDispatch:
         v = args[0]
         if isinstance(v, VFloat):
             f = v.value
-            if _isnan(f):
+            if _do_isnan(f):
                 raise _VMThrow(_make_error_struct("ValueError", "cannot round NaN"))
-            if _isinf(f):
+            if _do_isinf(f):
                 raise _VMThrow(
                     _make_error_struct("ValueError", "cannot round Infinity")
                 )
@@ -1170,24 +1170,24 @@ class _BuiltinDispatch:
         v = args[0]
         if isinstance(v, VFloat):
             f = v.value
-            if _isnan(f):
+            if _do_isnan(f):
                 raise _VMThrow(_make_error_struct("ValueError", "cannot floor NaN"))
-            if _isinf(f):
+            if _do_isinf(f):
                 raise _VMThrow(
                     _make_error_struct("ValueError", "cannot floor Infinity")
                 )
-            return VInt(_floor(f))
+            return VInt(_do_floor(f))
         return _ZERO_INT
 
     def _ceil(self, args: list[Val]) -> Val:
         v = args[0]
         if isinstance(v, VFloat):
             f = v.value
-            if _isnan(f):
+            if _do_isnan(f):
                 raise _VMThrow(_make_error_struct("ValueError", "cannot ceil NaN"))
-            if _isinf(f):
+            if _do_isinf(f):
                 raise _VMThrow(_make_error_struct("ValueError", "cannot ceil Infinity"))
-            return VInt(_ceil(f))
+            return VInt(_do_ceil(f))
         return _ZERO_INT
 
     def _divmod(self, args: list[Val]) -> Val:
@@ -1215,19 +1215,19 @@ class _BuiltinDispatch:
     def _sqrt(self, args: list[Val]) -> Val:
         v = args[0]
         if isinstance(v, VFloat):
-            return VFloat(_sqrt(v.value))
+            return VFloat(_do_sqrt(v.value))
         return VFloat(0.0)
 
     def _isnan(self, args: list[Val]) -> Val:
         v = args[0]
         if isinstance(v, VFloat):
-            return VBool(_isnan(v.value))
+            return VBool(_do_isnan(v.value))
         return _FALSE_VAL
 
     def _isinf(self, args: list[Val]) -> Val:
         v = args[0]
         if isinstance(v, VFloat):
-            return VBool(_isinf(v.value))
+            return VBool(_do_isinf(v.value))
         return _FALSE_VAL
 
     # ── Conversions ───────────────────────────────────────────
@@ -1241,11 +1241,11 @@ class _BuiltinDispatch:
     def _float_to_int(self, args: list[Val]) -> Val:
         if isinstance(args[0], VFloat):
             f = args[0].value
-            if _isnan(f):
+            if _do_isnan(f):
                 raise _VMThrow(
                     _make_error_struct("ValueError", "cannot convert NaN to int")
                 )
-            if _isinf(f):
+            if _do_isinf(f):
                 raise _VMThrow(
                     _make_error_struct("ValueError", "cannot convert Infinity to int")
                 )
@@ -1363,7 +1363,7 @@ class _BuiltinDispatch:
         else:
             return VList([])
         for item in items:
-            if isinstance(item, VFloat) and _isnan(item.value):
+            if isinstance(item, VFloat) and _do_isnan(item.value):
                 raise _VMThrow(
                     _make_error_struct("ValueError", "cannot sort list containing NaN")
                 )
@@ -1687,17 +1687,17 @@ class _BuiltinDispatch:
 
     def _wrapping_add(self, args: list[Val]) -> Val:
         if isinstance(args[0], VInt) and isinstance(args[1], VInt):
-            return VInt(_wrapping_add(args[0].value, args[1].value))
+            return VInt(_do_wrapping_add(args[0].value, args[1].value))
         return _ZERO_INT
 
     def _wrapping_sub(self, args: list[Val]) -> Val:
         if isinstance(args[0], VInt) and isinstance(args[1], VInt):
-            return VInt(_wrapping_sub(args[0].value, args[1].value))
+            return VInt(_do_wrapping_sub(args[0].value, args[1].value))
         return _ZERO_INT
 
     def _wrapping_mul(self, args: list[Val]) -> Val:
         if isinstance(args[0], VInt) and isinstance(args[1], VInt):
-            return VInt(_wrapping_mul(args[0].value, args[1].value))
+            return VInt(_do_wrapping_mul(args[0].value, args[1].value))
         return _ZERO_INT
 
     def _bytes_new(self, args: list[Val]) -> Val:
@@ -1876,7 +1876,7 @@ class _BuiltinDispatch:
     def _read_file_bytes(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr):
             try:
-                return _read_file_bytes(args[0].value)
+                return _do_read_file_bytes(args[0].value)
             except OSError as e:
                 raise _VMThrow(_make_error_struct("IOError", str(e)))
         return VBytes(b"")

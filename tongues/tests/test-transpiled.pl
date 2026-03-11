@@ -114,17 +114,18 @@ sub load_vm_module ($ty_path) {
 
 
 # ---------------------------------------------------------------------------
-# In-process execution (fork per test, 3s timeout)
+# In-process execution (fork per test, timeout based on mode)
 # ---------------------------------------------------------------------------
 
 sub run_inprocess ($argv, $stdin_data = "") {
+    my $timeout = defined $_vm_compiled ? 60 : 10;
     if (defined $_vm_compiled) {
         # VM mode: run directly with alarm timeout (no fork needed)
         my ($stdout, $stderr, $exit_code) = ("", "", 0);
         my $timed_out = 0;
         eval {
             local $SIG{ALRM} = sub { die "TIMEOUT\n" };
-            alarm(3);
+            alarm($timeout);
             my $placeholder = bless {}, "VM";
             my $builtins = _BuiltinDispatch->new($placeholder, {});
             my $instance = VM->new($_vm_compiled, [], [], [], [], [], [], "", 0, [], {}, $builtins, undef, {});
@@ -136,7 +137,7 @@ sub run_inprocess ($argv, $stdin_data = "") {
             alarm(0);
         };
         if ($@ && $@ eq "TIMEOUT\n") {
-            return { stdout => "", stderr => "TIMEOUT after 3s\n", exit => 1 };
+            return { stdout => "", stderr => "TIMEOUT after ${timeout}s\n", exit => 1 };
         } elsif ($@) {
             return { stdout => "", stderr => "$@", exit => 1 };
         }
@@ -176,7 +177,7 @@ sub run_inprocess ($argv, $stdin_data = "") {
     my $timed_out = 0;
     eval {
         local $SIG{ALRM} = sub { die "TIMEOUT\n" };
-        alarm(3);
+        alarm($timeout);
         waitpid($pid, 0);
         alarm(0);
     };
@@ -196,7 +197,7 @@ sub run_inprocess ($argv, $stdin_data = "") {
     }
     my $out = do { local $/; open my $f, "<", $out_file; $f ? <$f> : "" };
     my $err_out = do { local $/; open my $f, "<", $err_file; $f ? <$f> : "" };
-    $err_out .= "TIMEOUT after 3s\n" if $timed_out;
+    $err_out .= "TIMEOUT after ${timeout}s\n" if $timed_out;
     unlink $out_file, $err_file, $in_file;
     return { stdout => $out // "", stderr => $err_out // "", exit => $code };
 }

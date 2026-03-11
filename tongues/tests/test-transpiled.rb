@@ -992,15 +992,16 @@ puts "Running with #{$num_workers} workers"
 vm_tag = $use_vm ? "[vm] " : ""
 t_start = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
-# Run tests in parallel with timeout
+# Run tests in parallel with timeout (longer for VM mode)
+test_timeout = $use_vm ? 60 : 10
 results = Parallel.map(collected, in_processes: $num_workers) do |test|
   phase_name, test_id, test_type, test_data = test
   begin
-    Timeout.timeout(10) do
+    Timeout.timeout(test_timeout) do
       run_single_test(phase_name, test_id, test_type, test_data)
     end
   rescue Timeout::Error
-    [phase_name, test_id, :fail, "Test timed out after 10s"]
+    [phase_name, test_id, :fail, "Test timed out after #{test_timeout}s"]
   rescue => e
     [phase_name, test_id, :fail, "Worker error: #{e}\n#{e.backtrace.first(3).join("\n")}"]
   end

@@ -628,6 +628,7 @@ class _RubyEmitter(Emitter):
         self.local_names: dict[str, str] = {}
         self._needs_range_helper: bool = False
         self._needs_float_repr: bool = False
+        self._needs_parse_float: bool = False
 
     def _line(self, text: str = "") -> None:
         if text:
@@ -734,6 +735,16 @@ class _RubyEmitter(Emitter):
                 " b = s; break; end }; end; end; end;"
                 ' b = b + ".0" if !b.include?(".") && !b.include?("e")'
                 ' && !b.include?("E"); b; end'
+            )
+            self.lines.insert(import_insert_pos, helper)
+            self.lines.insert(import_insert_pos + 1, "")
+        if self._needs_parse_float:
+            helper = (
+                "def _do_parse_float(s); "
+                "return Float::INFINITY if s == 'inf' || s == 'Infinity'; "
+                "return -Float::INFINITY if s == '-inf' || s == '-Infinity'; "
+                "return Float::NAN if s == 'nan' || s == 'NaN'; "
+                "s.to_f; end"
             )
             self.lines.insert(import_insert_pos, helper)
             self.lines.insert(import_insert_pos + 1, "")
@@ -2464,8 +2475,14 @@ class _RubyEmitter(Emitter):
         if name == "Decode":
             arg = self._a(args, 0)
             return (
-                "((" + arg + ").is_a?(Array) ? (" + arg + ").pack('C*') : "
-                + "(" + arg + ")).force_encoding('UTF-8')"
+                "(("
+                + arg
+                + ").is_a?(Array) ? ("
+                + arg
+                + ").pack('C*') : "
+                + "("
+                + arg
+                + ")).force_encoding('UTF-8')"
                 + ".tap { |s| raise UnicodeDecodeError unless s.valid_encoding? }"
             )
         # Set operations
@@ -2639,7 +2656,8 @@ class _RubyEmitter(Emitter):
             base = self._a(args, 1)
             return self._a(args, 0) + ".to_i(" + base + ")"
         if name == "ParseFloat":
-            return self._a(args, 0) + ".to_f"
+            self._needs_parse_float = True
+            return "_do_parse_float(" + self._a(args, 0) + ")"
         if name == "FormatInt":
             return self._format_int(args)
         if name == "RuneFromInt":
