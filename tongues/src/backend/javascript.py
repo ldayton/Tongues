@@ -2597,10 +2597,12 @@ class _JavaScriptEmitter(Emitter):
         if ann is None:
             ann = {}
         if name == "FloorDiv":
-            return "Math.floor(" + self._a(args, 0) + " / " + self._a(args, 1) + ")"
+            left = self._maybe_paren(args[0].value, "/", is_left=True)
+            right = self._maybe_paren(args[1].value, "/", is_left=False)
+            return "Math.floor(" + left + " / " + right + ")"
         if name == "PythonMod":
-            a = self._a(args, 0)
-            b = self._a(args, 1)
+            a = self._maybe_paren(args[0].value, "%", is_left=True)
+            b = self._maybe_paren(args[1].value, "%", is_left=False)
             return "((" + a + " % " + b + ") + " + b + ") % " + b
         if name == "Append":
             return self._a(args, 0) + ".push(" + self._a(args, 1) + ")"
@@ -2983,11 +2985,9 @@ class _JavaScriptEmitter(Emitter):
                     + self._a(args, 1)
                     + ")"
                 )
-            left = self._a(args, 0)
-            left_val = args[0].value
-            if isinstance(left_val, TUnaryOp) and left_val.op == "-":
-                left = "(" + left + ")"
-            return left + " ** " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "**", is_left=True)
+            right = self._maybe_paren(args[1].value, "**", is_left=False)
+            return left + " ** " + right
         if name == "Contains":
             inner = args[0].value
             if self._is_map_type(inner):

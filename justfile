@@ -273,7 +273,9 @@ _test-tongues-java *args:
 # with Python/JS/Ruby/Perl targets. This will work once the Java emitter is fixed.
 _vm-test-tongues-java *args:
     #!/usr/bin/env bash
-    set -uo pipefail
+    set -euo pipefail
+    just -f {{justfile()}} _transpile-tongues java
+    just -f {{justfile()}} _compile-java
     just -f {{justfile()}} _transpile-tongues taytsh
     printf '\033[32m[vm-test-tongues-java]\033[0m\n'
     start=$SECONDS

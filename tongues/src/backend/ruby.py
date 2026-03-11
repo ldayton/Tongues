@@ -2317,9 +2317,13 @@ class _RubyEmitter(Emitter):
 
     def _builtin_call(self, name: str, args: list[TArg], call: TCall) -> str:
         if name == "FloorDiv":
-            return self._a(args, 0) + " / " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "/", is_left=True)
+            right = self._maybe_paren(args[1].value, "/", is_left=False)
+            return left + " / " + right
         if name == "PythonMod":
-            return self._a(args, 0) + " % " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "%", is_left=True)
+            right = self._maybe_paren(args[1].value, "%", is_left=False)
+            return left + " % " + right
         # List operations
         if name == "Append":
             return self._a(args, 0) + ".push(" + self._a(args, 1) + ")"
@@ -2688,7 +2692,9 @@ class _RubyEmitter(Emitter):
                     + self._a(args, 1)
                     + ")"
                 )
-            return self._a(args, 0) + " ** " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "**", is_left=True)
+            right = self._maybe_paren(args[1].value, "**", is_left=False)
+            return left + " ** " + right
         if name == "Contains":
             if self._is_map_type(args[0].value):
                 return self._a(args, 0) + ".key?(" + self._a(args, 1) + ")"

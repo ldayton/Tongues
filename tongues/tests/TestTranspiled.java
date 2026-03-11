@@ -566,18 +566,20 @@ public class TestTranspiled {
         // Get VM class and methods
         Class<?> vmClass = Class.forName("Main$VM", true, mainClass.getClassLoader());
         // Find the constructor that takes the CompiledModule type
-        Constructor<?>[] constructors = vmClass.getConstructors();
+        Constructor<?>[] constructors = vmClass.getDeclaredConstructors();
         for (Constructor<?> c : constructors) {
             Class<?>[] params = c.getParameterTypes();
             if (params.length == 1 && params[0].isAssignableFrom(_vmCompiled.getClass())) {
                 _vmConstructor = c;
+                _vmConstructor.setAccessible(true);
                 break;
             }
         }
         if (_vmConstructor == null) {
             throw new RuntimeException("Could not find VM constructor accepting CompiledModule");
         }
-        _vmInvokeMethod = vmClass.getMethod("invoke", byte[].class, List.class);
+        _vmInvokeMethod = vmClass.getDeclaredMethod("invoke", byte[].class, List.class);
+        _vmInvokeMethod.setAccessible(true);
         System.out.println("VM module compiled");
     }
 

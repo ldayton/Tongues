@@ -322,7 +322,7 @@ class _Local:
 class _Scope:
     __slots__ = ("locals", "parent")
 
-    def __init__(self, parent: _Scope | None) -> None:
+    def __init__(self, parent: _Scope | None = None) -> None:
         self.locals: dict[str, _Local] = {}
         self.parent: _Scope | None = parent
 

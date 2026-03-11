@@ -1360,7 +1360,7 @@ class _JavaEmitter(Emitter):
             params = ", ".join(
                 self._type(f.typ) + " " + _safe_name(f.name) for f in decl.fields
             )
-            self._line(name + "(" + params + ") {")
+            self._line("public " + name + "(" + params + ") {")
             self.indent += 1
             for f in decl.fields:
                 safe = _safe_name(f.name)
@@ -1379,9 +1379,9 @@ class _JavaEmitter(Emitter):
                         rparams = ", ".join(
                             self._type(f.typ) + " " + _safe_name(f.name) for f in used
                         )
-                        self._line(name + "(" + rparams + ") {")
+                        self._line("public " + name + "(" + rparams + ") {")
                     else:
-                        self._line(name + "() {")
+                        self._line("public " + name + "() {")
                     self.indent += 1
                     for f in decl.fields:
                         safe = _safe_name(f.name)
@@ -1417,7 +1417,7 @@ class _JavaEmitter(Emitter):
         params = ", ".join(
             self._type(f.typ) + " " + _safe_name(f.name) for f in decl.fields
         )
-        self._line(name + "(" + params + ") {")
+        self._line("public " + name + "(" + params + ") {")
         self.indent += 1
         if has_msg:
             self._line("super(message);")
@@ -4272,18 +4272,14 @@ class _JavaEmitter(Emitter):
             return "(int) Math.round(" + self._a(args, 0) + ")"
         if name == "FloorDiv":
             if self._is_float_expr(args[0].value):
-                return (
-                    "(int) Math.floor("
-                    + self._a(args, 0)
-                    + " / "
-                    + self._a(args, 1)
-                    + ")"
-                )
+                left = self._maybe_paren(args[0].value, "/", is_left=True)
+                right = self._maybe_paren(args[1].value, "/", is_left=False)
+                return "(int) Math.floor(" + left + " / " + right + ")"
             return "Math.floorDiv(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "PythonMod":
             if self._is_float_expr(args[0].value):
-                a = self._a(args, 0)
-                b = self._a(args, 1)
+                a = self._maybe_paren(args[0].value, "/", is_left=True)
+                b = self._maybe_paren(args[1].value, "/", is_left=False)
                 return "(" + a + " - Math.floor(" + a + " / " + b + ") * " + b + ")"
             return "Math.floorMod(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "IsInf":

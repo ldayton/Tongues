@@ -2577,7 +2577,7 @@ class _PerlEmitter(Emitter):
             # a - floor(a / b) * b, need parens around a when used in division
             a_str = self._maybe_paren(args[0].value, "/", is_left=True)
             b_str = self._maybe_paren(args[1].value, "/", is_left=False)
-            return "(" + a_str + " - POSIX::floor(" + a_str + " / " + b_str + ") * " + b_str + ")"
+            return a_str + " - POSIX::floor(" + a_str + " / " + b_str + ") * " + b_str
         if name == "Append":
             return "push(@{" + self._a(args, 0) + "}, " + self._a(args, 1) + ")"
         if name == "Insert":
@@ -3226,7 +3226,7 @@ class _PerlEmitter(Emitter):
                 )
             a_str = self._maybe_paren(args[0].value, "**", is_left=True)
             b_str = self._maybe_paren(args[1].value, "**", is_left=False)
-            return "(" + a_str + " ** " + b_str + ")"
+            return a_str + " ** " + b_str
         if name == "Contains":
             return self._contains_expr(args[0].value, args[1].value)
         if name == "Concat":
