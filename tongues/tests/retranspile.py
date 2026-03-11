@@ -88,19 +88,30 @@ def run_python(binary_path, stdin_data, target):
 
 
 def run_subprocess(cmd, stdin_data):
-    result = subprocess.run(
-        cmd,
-        input=stdin_data.encode("utf-8"),
-        capture_output=True,
-        timeout=600,
-    )
-    if result.returncode != 0:
-        print(
-            f"Retranspile failed (exit {result.returncode}): {result.stderr.decode(errors='replace')}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-    return result.stdout.decode()
+    # Use temp files to avoid pipe buffer limits with large outputs
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(mode="w+b", delete=False) as stdout_file:
+        stdout_path = stdout_file.name
+    try:
+        with open(stdout_path, "wb") as stdout_fh:
+            proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=stdout_fh,
+                stderr=subprocess.PIPE,
+            )
+            _, stderr = proc.communicate(input=stdin_data.encode("utf-8"), timeout=600)
+        if proc.returncode != 0:
+            print(
+                f"Retranspile failed (exit {proc.returncode}): {stderr.decode(errors='replace')}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        with open(stdout_path, "rb") as f:
+            return f.read().decode()
+    finally:
+        os.unlink(stdout_path)
 
 
 def run_ruby(binary_path, stdin_data, target):
