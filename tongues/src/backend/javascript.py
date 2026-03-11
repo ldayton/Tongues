@@ -2140,6 +2140,9 @@ class _JavaScriptEmitter(Emitter):
         raw = expr.raw
         if raw.startswith(("0x", "0X", "0o", "0O", "0b", "0B")):
             return raw
+        # Use raw string for large integers to preserve precision
+        if len(raw) > 15:
+            return raw
         return str(expr.value)
 
     def _bytes_lit(self, expr: TBytesLit) -> str:

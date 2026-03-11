@@ -777,6 +777,8 @@ def _types_comparable(left: TypeNode, right: TypeNode) -> bool:
     rk = _type_dict_kind(right)
     if lk == "void" or rk == "void":
         return True
+    if lk == "error" or rk == "error":
+        return True  # error type = unknown, don't constant-fold
     if lk == "InterfaceRef" or rk == "InterfaceRef":
         return True
     if lk == rk:
@@ -6632,6 +6634,17 @@ def _build_struct(
     return TStructDecl(pos, name, parent, fields, methods, ann)
 
 
+def _is_struct_ttype(typ: TType | None) -> bool:
+    """Check if a TType is a struct/class type that needs __eq__ comparison."""
+    if typ is None:
+        return False
+    if isinstance(typ, TIdentType):
+        return True
+    if isinstance(typ, TOptionalType):
+        return _is_struct_ttype(typ.inner)
+    return False
+
+
 def _synthesize_eq_method(
     pos: Pos, class_name: str, fields: list[TFieldDecl]
 ) -> TFnDecl:
@@ -6654,20 +6667,27 @@ def _synthesize_eq_method(
     # return this.f1 == other.f1 and this.f2 == other.f2 and ...
     self_var = TVar(pos, "this", {})
     if fields:
+        # Check if first field needs struct equality
+        ann0: Ann = {}
+        if _is_struct_ttype(fields[0].typ):
+            ann0["struct_eq"] = "true"
         cmp: TExpr = TBinaryOp(
             pos,
             "==",
             TFieldAccess(pos, self_var, fields[0].name, {}),
             TFieldAccess(pos, other_var, fields[0].name, {}),
-            {},
+            ann0,
         )
         for fld in fields[1:]:
+            ann: Ann = {}
+            if _is_struct_ttype(fld.typ):
+                ann["struct_eq"] = "true"
             right_cmp = TBinaryOp(
                 pos,
                 "==",
                 TFieldAccess(pos, self_var, fld.name, {}),
                 TFieldAccess(pos, other_var, fld.name, {}),
-                {},
+                ann,
             )
             cmp = TBinaryOp(pos, "&&", cmp, right_cmp, {})
     else:
