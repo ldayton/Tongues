@@ -722,7 +722,13 @@ class _JavaScriptEmitter(Emitter):
     def _emit_field_assign(self, fld: TFieldDecl, safe: str) -> None:
         if self._needs_null_guard(fld):
             self._line(
-                "this." + safe + " = " + safe + " ?? " + self._field_default(fld, in_body=True) + ";"
+                "this."
+                + safe
+                + " = "
+                + safe
+                + " ?? "
+                + self._field_default(fld, in_body=True)
+                + ";"
             )
         else:
             self._line("this." + safe + " = " + safe + ";")

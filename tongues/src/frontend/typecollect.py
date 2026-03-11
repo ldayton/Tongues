@@ -1607,7 +1607,11 @@ def _collect_init_fields(
                                 default=None,
                             )
                             if ann_has_default and ann_val is not None:
-                                vn = ann_val.entries if isinstance(ann_val, JDict) else {}
+                                vn = (
+                                    ann_val.entries
+                                    if isinstance(ann_val, JDict)
+                                    else {}
+                                )
                                 if _call_refs_self(vn):
                                     finfo_new.self_ref = True
                             info.fields[field_name] = finfo_new

@@ -1389,7 +1389,11 @@ class _JavaEmitter(Emitter):
                             self._line("this." + safe + " = " + safe + ";")
                         else:
                             self._line(
-                                "this." + safe + " = " + self._field_default(f, in_body=True) + ";"
+                                "this."
+                                + safe
+                                + " = "
+                                + self._field_default(f, in_body=True)
+                                + ";"
                             )
                     self.indent -= 1
                     self._line("}")

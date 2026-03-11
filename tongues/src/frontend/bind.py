@@ -1317,9 +1317,14 @@ class Verifier:
         raw = node.get("value")
         if isinstance(raw, JStr):
             value = raw.value
-            for ch in value:
-                code = ord(ch)
-                # Reject surrogate code points (not valid Unicode scalar values)
+            i = 0
+            while i < len(value):
+                code = ord(value[i])
+                if 0xD800 <= code <= 0xDBFF and i + 1 < len(value):
+                    low = ord(value[i + 1])
+                    if 0xDC00 <= low <= 0xDFFF:
+                        i += 2
+                        continue
                 if 0xD800 <= code <= 0xDFFF:
                     hex_str = hex(code)[2:].upper().zfill(4)
                     self.error(
@@ -1329,6 +1334,7 @@ class Verifier:
                         + hex_str
                         + " not allowed in string literal",
                     )
+                i += 1
 
     def visit_FormattedValue(self, node: ASTNode) -> None:
         """Check f-string replacement field: {expr} with optional !r/!s, no :spec."""

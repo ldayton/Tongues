@@ -2889,6 +2889,19 @@ class VM:
                 obj._shadow = set()
                 self.stack.append(_NONE_VAL)
                 return
+        if isinstance(obj, VStr):
+            if method_name == "zfill" and len(args) >= 1 and isinstance(args[0], VInt):
+                s = obj.value
+                width = args[0].value
+                if len(s) >= width:
+                    self.stack.append(obj)
+                else:
+                    pad = width - len(s)
+                    if s and s[0] in "+-":
+                        self.stack.append(VStr(s[0] + "0" * pad + s[1:]))
+                    else:
+                        self.stack.append(VStr("0" * pad + s))
+                return
         if isinstance(obj, VStruct):
             code_idx = self._method_cache.get((obj.type_name, method_name))
             if code_idx is not None:

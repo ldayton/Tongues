@@ -812,7 +812,15 @@ class _RubyEmitter(Emitter):
         for f in fields:
             name = _safe_name(f.name)
             if f.self_ref and isinstance(f.typ, TIdentType):
-                self._line("@" + name + " = " + name + " || " + _safe_type_name(f.typ.name) + ".new(self)")
+                self._line(
+                    "@"
+                    + name
+                    + " = "
+                    + name
+                    + " || "
+                    + _safe_type_name(f.typ.name)
+                    + ".new(self)"
+                )
             else:
                 self._line("@" + name + " = " + name)
         self.indent -= 1
