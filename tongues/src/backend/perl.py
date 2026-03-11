@@ -1884,6 +1884,9 @@ class _PerlEmitter(Emitter):
                 return expr.name
             if expr.name in self._PYTHON_BUILTINS and expr.name not in self.var_types:
                 return "(" + self._PYTHON_BUILTINS[expr.name] + ")"
+            # Module-level globals need main:: prefix when inside a package
+            if self.in_package and expr.name in self.module_var_names:
+                return "$main::" + _restore_name(expr.name, expr.annotations)
             return "$" + _restore_name(expr.name, expr.annotations)
         if isinstance(expr, TFieldAccess):
             if isinstance(expr.obj, TVar) and expr.obj.name in self.enum_names:
@@ -2567,11 +2570,14 @@ class _PerlEmitter(Emitter):
 
     def _builtin_call(self, name: str, args: list[TArg], ann: Ann | None = None) -> str:
         if name == "FloorDiv":
-            return "POSIX::floor(" + self._a(args, 0) + " / " + self._a(args, 1) + ")"
+            a_str = self._maybe_paren(args[0].value, "/", is_left=True)
+            b_str = self._maybe_paren(args[1].value, "/", is_left=False)
+            return "POSIX::floor(" + a_str + " / " + b_str + ")"
         if name == "PythonMod":
-            a = self._a(args, 0)
-            b = self._a(args, 1)
-            return a + " - POSIX::floor(" + a + " / " + b + ") * " + b
+            # a - floor(a / b) * b, need parens around a when used in division
+            a_str = self._maybe_paren(args[0].value, "/", is_left=True)
+            b_str = self._maybe_paren(args[1].value, "/", is_left=False)
+            return "(" + a_str + " - POSIX::floor(" + a_str + " / " + b_str + ") * " + b_str + ")"
         if name == "Append":
             return "push(@{" + self._a(args, 0) + "}, " + self._a(args, 1) + ")"
         if name == "Insert":
@@ -3218,7 +3224,9 @@ class _PerlEmitter(Emitter):
                     + self._a(args, 1)
                     + ")"
                 )
-            return "(" + self._a(args, 0) + " ** " + self._a(args, 1) + ")"
+            a_str = self._maybe_paren(args[0].value, "**", is_left=True)
+            b_str = self._maybe_paren(args[1].value, "**", is_left=False)
+            return "(" + a_str + " ** " + b_str + ")"
         if name == "Contains":
             return self._contains_expr(args[0].value, args[1].value)
         if name == "Concat":
