@@ -77,13 +77,19 @@ def load_vm_module(ty_path)
 end
 
 def run_vm_inprocess(argv, stdin_data: "")
-  builtins = XBuiltinDispatch.allocate
-  builtins.instance_variable_set(:@vm, nil)
-  builtins.instance_variable_set(:@_table, {})
-  instance = VM.new(module_: $vm_compiled, builtins: builtins)
-  builtins.vm = instance
-  result = instance.invoke(stdin_data, ["tongues"] + argv)
-  { stdout: result.stdout.to_s, stderr: result.stderr.to_s, exit: result.exit_code }
+  old_stdin = $stdin
+  begin
+    $stdin = StringIO.new(stdin_data)
+    builtins = XBuiltinDispatch.allocate
+    builtins.instance_variable_set(:@vm, nil)
+    builtins.instance_variable_set(:@_table, {})
+    instance = VM.new(module_: $vm_compiled, builtins: builtins)
+    builtins.vm = instance
+    result = instance.invoke(stdin_data, ["tongues"] + argv)
+    { stdout: result.stdout.to_s, stderr: result.stderr.to_s, exit: result.exit_code }
+  ensure
+    $stdin = old_stdin
+  end
 end
 
 # ---------------------------------------------------------------------------

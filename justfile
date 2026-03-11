@@ -8,7 +8,7 @@ style *ARGS:
     set -uo pipefail
     pids=()
     _cleanup_done=0
-    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null; done; }
+    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null || true; done; }
     trap 'cleanup; trap - INT; kill -INT $$' INT
     trap 'cleanup; trap - TERM; kill -TERM $$' TERM
     trap 'cleanup' EXIT
@@ -88,8 +88,9 @@ lang target *args:
     #!/usr/bin/env bash
     set -euo pipefail
     pids=()
+    declare -A pid_names=()
     _cleanup_done=0
-    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null; done; }
+    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null || true; done; }
     trap 'cleanup; trap - INT; kill -INT $$' INT
     trap 'cleanup; trap - TERM; kill -TERM $$' TERM
     trap 'cleanup' EXIT
@@ -99,14 +100,14 @@ lang target *args:
     just -f {{justfile()}} _transpile-harness {{target}}
     failed=0
     if [ "{{target}}" = "python" ]; then
-        just -f {{justfile()}} _pyright & pids+=($!)
-        just -f {{justfile()}} idempotence & pids+=($!)
+        just -f {{justfile()}} _pyright & pids+=($!); pid_names[$!]=pyright
+        just -f {{justfile()}} idempotence & pids+=($!); pid_names[$!]=idempotence
     else
-        just -f {{justfile()}} cross-equivalence {{target}} & pids+=($!)
+        just -f {{justfile()}} cross-equivalence {{target}} & pids+=($!); pid_names[$!]=cross-equivalence
     fi
-    just -f {{justfile()}} _treewalker {{target}} & pids+=($!)
-    just -f {{justfile()}} _vm {{target}} & pids+=($!)
-    just -f {{justfile()}} _vm-test-tongues {{target}} & pids+=($!)
+    just -f {{justfile()}} _treewalker {{target}} & pids+=($!); pid_names[$!]=treewalker
+    just -f {{justfile()}} _vm {{target}} & pids+=($!); pid_names[$!]=vm
+    just -f {{justfile()}} _vm-test-tongues {{target}} & pids+=($!); pid_names[$!]=vm-test-tongues
     printf '\033[32m[test-tongues-{{target}}]\033[0m\n'
     start=$SECONDS
     cd tongues
@@ -118,7 +119,13 @@ lang target *args:
         printf '\033[31m[test-tongues-{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
         failed=1
     fi
-    for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+    for pid in "${pids[@]}"; do
+        if ! wait "$pid"; then
+            rc=$?
+            printf '\033[31m[%s] exited with code %d\033[0m\n' "${pid_names[$pid]}" "$rc"
+            failed=1
+        fi
+    done
     exit $failed
 
 # Self-transpile to Java, compile, and run tests
@@ -126,17 +133,18 @@ lang-java:
     #!/usr/bin/env bash
     set -uo pipefail
     pids=()
+    declare -A pid_names=()
     _cleanup_done=0
-    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null; done; }
+    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null || true; done; }
     trap 'cleanup; trap - INT; kill -INT $$' INT
     trap 'cleanup; trap - TERM; kill -TERM $$' TERM
     trap 'cleanup' EXIT
     just -f {{justfile()}} _transpile-tongues java
     just -f {{justfile()}} _compile-java
     failed=0
-    just -f {{justfile()}} cross-equivalence java & pids+=($!)
-    just -f {{justfile()}} _treewalker-java & pids+=($!)
-    just -f {{justfile()}} _vm-java & pids+=($!)
+    just -f {{justfile()}} cross-equivalence java & pids+=($!); pid_names[$!]=cross-equivalence
+    just -f {{justfile()}} _treewalker-java & pids+=($!); pid_names[$!]=treewalker
+    just -f {{justfile()}} _vm-java & pids+=($!); pid_names[$!]=vm
     # Note: _vm-test-tongues-java is not included here because it's blocked by a
     # Java transpiler bug (TDecl.annotations is null). Run manually when fixed.
     printf '\033[32m[test-tongues-java]\033[0m\n'
@@ -150,7 +158,13 @@ lang-java:
         printf '\033[31m[test-tongues-java] %ds (FAILED)\033[0m\n' "$elapsed"
         failed=1
     fi
-    for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+    for pid in "${pids[@]}"; do
+        if ! wait "$pid"; then
+            rc=$?
+            printf '\033[31m[%s] exited with code %d\033[0m\n' "${pid_names[$pid]}" "$rc"
+            failed=1
+        fi
+    done
     exit $failed
 
 # Compile transpiled Java to .class files
@@ -439,7 +453,7 @@ pytest-gen:
     set -uo pipefail
     pids=()
     _cleanup_done=0
-    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null; done; }
+    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null || true; done; }
     trap 'cleanup; trap - INT; kill -INT $$' INT
     trap 'cleanup; trap - TERM; kill -TERM $$' TERM
     trap 'cleanup' EXIT
@@ -567,7 +581,7 @@ full-check:
     pids=()
     labels=()
     _cleanup_done=0
-    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null; done; }
+    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null || true; done; }
     trap 'cleanup; trap - INT; kill -INT $$' INT
     trap 'cleanup; trap - TERM; kill -TERM $$' TERM
     trap 'cleanup' EXIT
