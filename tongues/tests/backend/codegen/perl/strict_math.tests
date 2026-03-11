@@ -64,6 +64,8 @@ my $x = strict_fmod(1.0, 0.0);
 if (!$__ok0) {
 my $__err1 = $@;
 $caught = 1;
+} elsif (ref($__ok0)) {
+return $__ok0;
 }
 say(("" . $caught));
 }
@@ -89,6 +91,8 @@ my $xs = strict_sorted_f64([1.0, $nan, 2.0]);
 if (!$__ok0) {
 my $__err1 = $@;
 $caught = 1;
+} elsif (ref($__ok0)) {
+return $__ok0;
 }
 say(("" . $caught));
 }

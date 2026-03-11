@@ -2614,9 +2614,20 @@ class _PerlEmitter(Emitter):
             return "POSIX::floor(" + a_str + " / " + b_str + ")"
         if name == "PythonMod":
             # a - floor(a / b) * b, need parens around a when used in division
+            # Outer parens needed for correct precedence when used in comparisons
             a_str = self._maybe_paren(args[0].value, "/", is_left=True)
             b_str = self._maybe_paren(args[1].value, "/", is_left=False)
-            return a_str + " - POSIX::floor(" + a_str + " / " + b_str + ") * " + b_str
+            return (
+                "("
+                + a_str
+                + " - POSIX::floor("
+                + a_str
+                + " / "
+                + b_str
+                + ") * "
+                + b_str
+                + ")"
+            )
         if name == "Append":
             return "push(@{" + self._a(args, 0) + "}, " + self._a(args, 1) + ")"
         if name == "Insert":

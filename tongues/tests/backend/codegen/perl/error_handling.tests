@@ -21,6 +21,8 @@ if (!$__ok0) {
     } else {
         die $__err1;
     }
+} elsif (ref($__ok0)) {
+    return $__ok0;
 }
 say("finally");
 
