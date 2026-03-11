@@ -671,9 +671,9 @@ class _RubyEmitter(Emitter):
                     all_builtins |= collect_builtin_calls(m.body)
             elif isinstance(decl, TStmt):
                 all_builtins |= collect_builtin_calls([decl])
-        if "Decode" in all_builtins:
+        if "Decode" in all_builtins or "ReadAll" in all_builtins:
             self._line(
-                "class UnicodeDecodeError < StandardError; "
+                "class UnicodeDecodeError < ArgumentError;"
                 "attr_reader :message; "
                 'def initialize(message = ""); @message = message; super(message); end; '
                 "end"
@@ -2684,7 +2684,10 @@ class _RubyEmitter(Emitter):
         if name == "ReadLine":
             return "$stdin.gets&.chomp"
         if name == "ReadAll":
-            return "$stdin.read"
+            return (
+                "$stdin.binmode.read.force_encoding('UTF-8')"
+                ".tap { |s| raise UnicodeDecodeError unless s.valid_encoding? }"
+            )
         if name == "ReadBytes":
             return "$stdin.binmode.read.bytes"
         if name == "ReadBytesN":

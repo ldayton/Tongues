@@ -1647,6 +1647,10 @@ class _PerlEmitter(Emitter):
     def _emit_try(self, stmt: TTryStmt) -> None:
         ok = self._tmp("__ok")
         err = self._tmp("__err")
+        # Use a unique sentinel to distinguish normal completion from early return
+        # Early return: $ok is return value, $@ is empty
+        # Exception: $ok is undef, $@ has exception
+        # Normal: $ok is 1, $@ is empty
         self._line("my " + ok + " = eval {")
         self.indent += 1
         self._emit_stmts(stmt.body)
@@ -1661,11 +1665,14 @@ class _PerlEmitter(Emitter):
         else:
             self._line("die " + err + ";")
         self.indent -= 1
+        # Handle early return: if $ok is a reference (not the sentinel 1), return it
+        self._line("} elsif (ref(" + ok + ")) {")
+        self.indent += 1
+        self._line("return " + ok + ";")
+        self.indent -= 1
         self._line("}")
         if stmt.finally_body is not None:
             self._emit_stmts(stmt.finally_body)
-        # If eval returned a reference (early return from try body), pass it through
-        self._line("return " + ok + " if ref(" + ok + ");")
 
     def _emit_catches(self, catches: list[TCatch], err: str) -> None:
         has_chain = False
