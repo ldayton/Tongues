@@ -834,12 +834,12 @@ class _JavaEmitter(Emitter):
                     other_fields.add(f.name)
                 common_fields &= other_fields
             result_m: list[TFnDecl] = []
-            for mname in common_methods:
+            for mname in sorted(common_methods):
                 result_m.append(first_methods[mname])
             if result_m:
                 self._interface_methods[iface_name] = result_m
             result_f: list[TFieldDecl] = []
-            for fname in common_fields:
+            for fname in sorted(common_fields):
                 result_f.append(first_fields[fname])
             if result_f:
                 self._interface_fields[iface_name] = result_f
@@ -2001,13 +2001,6 @@ class _JavaEmitter(Emitter):
             case TMatchStmt():
                 self._emit_match(stmt)
 
-    _COLLECTION_OPS: dict[str, str] = {
-        "Merge": "putAll",
-        "Union": "addAll",
-        "Intersection": "retainAll",
-        "Difference": "removeAll",
-    }
-
     def _emit_module_let(self, stmt: TLetStmt) -> None:
         safe = _restore_name(stmt.name, stmt.annotations)
         self.var_types[stmt.name] = stmt.typ
@@ -2107,19 +2100,6 @@ class _JavaEmitter(Emitter):
                     + ".length);"
                 )
                 return
-            if isinstance(stmt.value, TCall):
-                call_func = stmt.value.func
-                if (
-                    isinstance(call_func, TVar)
-                    and call_func.name in self._COLLECTION_OPS
-                ):
-                    method = self._COLLECTION_OPS[call_func.name]
-                    a = self._expr(stmt.value.args[0].value)
-                    b = self._expr(stmt.value.args[1].value)
-                    raw = jtype.split("<")[0]
-                    self._line(jtype + " " + safe + " = new " + raw + "<>(" + a + ");")
-                    self._line(safe + "." + method + "(" + b + ");")
-                    return
             val = self._expr(stmt.value)
             if jtype == "int" and self._yields_long(stmt.value):
                 val = "(int)(" + val + ")"
@@ -3439,31 +3419,72 @@ class _JavaEmitter(Emitter):
 
     def _int_lit(self, expr: TIntLit) -> str:
         v: int = expr.value
+        raw: str = expr.raw
+        # Note: raw is always decimal (converted by _int_to_decimal in parser)
         # Check for unsigned 64-bit values (> Long.MAX_VALUE in Java terms)
-        # First guard with a smaller check to avoid overflow in transpiled Java
-        # (2147483647 fits in Java int; if v > 2B then maybe > MAX_LONG)
-        if v > 2147483647 and v > 9223372036854775807:
-            signed: int = v - (1 << 64)
+        # Detect by decimal string: > MAX_LONG if 20+ digits or 19 digits and > "9223372036854775807"
+        is_unsigned_64: bool = False
+        if not raw.startswith("-"):
+            if len(raw) >= 20:
+                is_unsigned_64 = True
+            elif len(raw) == 19 and raw > "9223372036854775807":
+                is_unsigned_64 = True
+        if is_unsigned_64:
+            # For unsigned 64-bit: compute signed representation
+            # In Python v is large positive; in Java v is already negative (overflow)
+            # The v >= 0 check distinguishes: Python path computes signed, Java path uses v directly
+            # (In Java, 1<<64 would overflow, but the v>=0 branch won't execute since v<0)
+            signed: int = v
+            if v >= 0:
+                signed = v - (1 << 64)
             if self.strict_math:
                 return str(signed) + "L"
             return "(int) " + str(signed) + "L"
-        raw: str = expr.raw
         if raw.startswith(("0x", "0X", "0o", "0O", "0b", "0B")):
             if v > 2147483647 or v < -2147483648:
                 if self.strict_math:
                     return raw + "L"
                 return "(int) " + raw + "L"
             return raw
-        if v > 2147483647 or v < -2147483648:
+        # Check if decimal literal exceeds int range using raw string
+        # (to handle cases where v overflowed in Java)
+        needs_long: bool = False
+        if raw.startswith("-"):
+            # Negative: > 10 chars or 11 chars and > "2147483648"
+            if len(raw) > 11:
+                needs_long = True
+            elif len(raw) == 11 and raw[1:] > "2147483648":
+                needs_long = True
+        else:
+            # Positive: > 10 chars or 10 chars and > "2147483647"
+            if len(raw) > 10:
+                needs_long = True
+            elif len(raw) == 10 and raw > "2147483647":
+                needs_long = True
+        if needs_long:
             if self.strict_math:
-                return str(v) + "L"
-            return "(int) " + str(v) + "L"
+                return raw + "L"
+            return "(int) " + raw + "L"
         return str(v)
 
     def _yields_long(self, expr: TExpr) -> bool:
         """Check if an expression would produce a long value in emitted Java."""
         if isinstance(expr, TIntLit):
-            return expr.value > 2147483647 or expr.value < -2147483648
+            # Use raw string to detect: avoids issues with Java overflow
+            raw: str = expr.raw
+            if raw.startswith("-"):
+                # Negative: needs long if > 11 chars or 11 chars and > "2147483648"
+                if len(raw) > 11:
+                    return True
+                if len(raw) == 11 and raw[1:] > "2147483648":
+                    return True
+            else:
+                # Positive: needs long if > 10 chars or 10 chars and > "2147483647"
+                if len(raw) > 10:
+                    return True
+                if len(raw) == 10 and raw > "2147483647":
+                    return True
+            return False
         if isinstance(expr, TVar):
             return expr.name in self._wide_vars
         if isinstance(expr, TBinaryOp):
@@ -4139,13 +4160,6 @@ class _JavaEmitter(Emitter):
                 result.append(named[fname])
         return result
 
-    _PY_TO_JAVA_METHOD: dict[str, str] = {
-        "startswith": "startsWith",
-        "endswith": "endsWith",
-        "replaceall": "replaceAll",
-        "append": "add",
-    }
-
     def _method_call(self, func: TFieldAccess, args: list[TArg]) -> str:
         obj = self._expr(func.obj)
         method = _safe_name(func.field).lower()
@@ -4174,7 +4188,14 @@ class _JavaEmitter(Emitter):
             return "_bytesHex(" + obj + ")"
         if method == "get" and len(args) == 2:
             return obj + ".getOrDefault(" + self._join_args(args, ", ") + ")"
-        method = self._PY_TO_JAVA_METHOD.get(method, method)
+        if method == "startswith":
+            method = "startsWith"
+        elif method == "endswith":
+            method = "endsWith"
+        elif method == "replaceall":
+            method = "replaceAll"
+        elif method == "append":
+            method = "add"
         if method in ("size", "length") and self._is_bytes_expr(func.obj):
             return obj + ".length"
         arg_strs = self._join_args(args, ", ")
