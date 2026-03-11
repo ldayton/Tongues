@@ -422,3 +422,10 @@ def f(x: Foo | None) -> Foo | None:
 ---
 let result: Foo?
 ---
+
+=== negative index assignment resolved
+def f(xs: list[int]) -> None:
+    xs[-1] = 99
+---
+xs[Len(xs) - 1] = 99
+---

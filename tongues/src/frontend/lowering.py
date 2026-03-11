@@ -4668,6 +4668,40 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             value = _lower_expr(value_node, env, ctx)
             call = _make_call(pos, "ReplaceSlice", [obj, low, high, value])
             return [TExprStmt(pos, call, {})]
+        # Handle negative index: xs[-1] = v → xs[Len(xs) - 1] = v
+        obj_type = _infer_expr_type(obj_node, env, ctx)
+        if _is_ast(slice_node, "Constant"):
+            val_jv = slice_node.get("value")
+            if isinstance(val_jv, JInt) and val_jv.value < 0:
+                n = -val_jv.value
+                idx = TBinaryOp(
+                    pos,
+                    "-",
+                    _len_expr(pos, obj, obj_type),
+                    TIntLit(pos, n, str(n), {}),
+                    {},
+                )
+                target = TIndex(pos, obj, idx, {})
+                value = _lower_expr(value_node, env, ctx)
+                return [TAssignStmt(pos, target, value, {})]
+        if _is_ast(slice_node, "UnaryOp"):
+            op_node = get_node(slice_node, "op")
+            if get_str(op_node, "_type") == "USub":
+                operand = get_node(slice_node, "operand")
+                if _is_ast(operand, "Constant"):
+                    op_val_jv = operand.get("value")
+                    if isinstance(op_val_jv, JInt):
+                        idx = TBinaryOp(
+                            pos,
+                            "-",
+                            _len_expr(pos, obj, obj_type),
+                            TIntLit(pos, op_val_jv.value, str(op_val_jv.value), {}),
+                            {},
+                        )
+                        target = TIndex(pos, obj, idx, {})
+                        value = _lower_expr(value_node, env, ctx)
+                        return [TAssignStmt(pos, target, value, {})]
+        # Normal index
         idx = _lower_expr(slice_node, env, ctx)
         target = TIndex(pos, obj, idx, {})
         value = _lower_expr(value_node, env, ctx)
