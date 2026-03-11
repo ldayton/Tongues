@@ -2,4 +2,4 @@
 eval { $a->isa('Dog') }
 
 === isinstance with tuple of types
-(defined($a) && $a->isa('Dog')) || (defined($a) && $a->isa('Cat'))
+(eval { $a->isa('Dog') }) || (eval { $a->isa('Cat') })

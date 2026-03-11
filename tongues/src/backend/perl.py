@@ -3318,7 +3318,7 @@ class _PerlEmitter(Emitter):
                 return "looks_like_number(" + a0 + ")"
             if type_name in ("bool", "Bool"):
                 return "!ref(" + a0 + ")"
-            return "(defined(" + a0 + ") && " + a0 + "->isa('" + type_name + "'))"
+            return "(eval { " + a0 + "->isa('" + type_name + "') })"
         if name == "Assert":
             cond = self._a(args, 0)
             if len(args) > 1:
