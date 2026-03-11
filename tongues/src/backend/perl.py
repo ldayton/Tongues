@@ -768,7 +768,10 @@ class _PerlEmitter(Emitter):
         self._line("my $self = bless {}, $class;")
         for fld in fields:
             safe = _safe_name(fld.name)
-            default = self._zero_value(fld.typ)
+            if fld.self_ref and isinstance(fld.typ, TIdentType):
+                default = fld.typ.name + "->new($self)"
+            else:
+                default = self._zero_value(fld.typ)
             self._line(
                 "$self->{"
                 + safe

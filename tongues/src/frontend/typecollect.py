@@ -1026,6 +1026,7 @@ class FieldInfo:
         self.py_name: str = py_name
         self.has_default: bool = has_default
         self.default: TypeNode | None = default
+        self.self_ref: bool = False
 
     def to_dict(self) -> JsonValue:
         """Serialize to a JsonValue dict for test assertions."""
@@ -1280,6 +1281,16 @@ def _is_dataclass_class(node: ASTNode) -> tuple[bool, bool]:
 # ---------------------------------------------------------------------------
 # field(default_factory=...) detection
 # ---------------------------------------------------------------------------
+
+
+def _call_refs_self(node: ASTNode) -> bool:
+    """True if node is a Call whose arguments include 'self'."""
+    if not _is_type(node, ["Call"]):
+        return False
+    for arg in get_nodes(node, "args"):
+        if _is_type(arg, ["Name"]) and get_str(arg, "id") == "self":
+            return True
+    return False
 
 
 def _is_field_call_default_factory(node: ASTNode) -> bool:
@@ -1588,13 +1599,18 @@ def _collect_init_fields(
                                     ann_has_default = True
                             if field_name not in info.fields:
                                 info.field_order.append(field_name)
-                            info.fields[field_name] = FieldInfo(
+                            finfo_new = FieldInfo(
                                 name=field_name,
                                 typ=typ,
                                 py_name=field_name,
                                 has_default=ann_has_default,
                                 default=None,
                             )
+                            if ann_has_default and ann_val is not None:
+                                vn = ann_val.entries if isinstance(ann_val, JDict) else {}
+                                if _call_refs_self(vn):
+                                    finfo_new.self_ref = True
+                            info.fields[field_name] = finfo_new
                         ann_val2 = stmt.get("value")
                         if ann_val2 is not None and not isinstance(ann_val2, JNull):
                             if isinstance(ann_val2, JDict):

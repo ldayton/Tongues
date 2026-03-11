@@ -5556,6 +5556,8 @@ def _lower_isinstance_chain(
         body_stmts = c.body
         extra_conds = c.extra_conds
         binding_name = type_name[0].lower() + type_name[1:] if type_name else type_name
+        if binding_name == type_name:
+            binding_name = "_" + binding_name
         if binding_name in env.declared:
             suffix = 2
             while binding_name + str(suffix) in env.declared:
@@ -5600,6 +5602,8 @@ def _lower_isinstance_chain(
 def _match_binding_name(type_name: str, env: _Env) -> str:
     """Generate a unique binding name for a match case pattern."""
     base = type_name[0].lower() + type_name[1:] if type_name else type_name
+    if base == type_name:
+        base = "_" + base
     if base not in env.declared and base not in TAYTSH_KEYWORDS:
         return base
     suffix = 0
@@ -6420,7 +6424,7 @@ def _build_method(
 
 def _collect_ancestor_fields(
     pos: Pos, name: str, ctx: _LowerCtx
-) -> list[tuple[str, TType, bool]]:
+) -> list[tuple[str, TType, bool, bool]]:
     """Walk ancestors root-to-child, collecting fields from non-root ancestors."""
     chain: list[str] = []
     cur = name
@@ -6432,7 +6436,7 @@ def _collect_ancestor_fields(
         cur = ancs[0]
     # Reverse so we go root→child
     chain.reverse()
-    result: list[tuple[str, TType, bool]] = []
+    result: list[tuple[str, TType, bool, bool]] = []
     seen: set[str] = set()
     for anc in chain:
         anc_info = ctx.tc_result.classes.get(anc)
@@ -6450,7 +6454,7 @@ def _collect_ancestor_fields(
                 finfo = anc_info.fields.get(fname)
                 if finfo is not None:
                     result.append(
-                        (fname, _typenode_to_ttype(pos, finfo.typ), finfo.has_default)
+                        (fname, _typenode_to_ttype(pos, finfo.typ), finfo.has_default, finfo.self_ref)
                     )
                     seen.add(fname)
     return result
@@ -6573,8 +6577,8 @@ def _build_struct(
             # Collect inherited fields from ancestors
             ancestor_fields = _collect_ancestor_fields(pos, name, ctx)
             inherited_field_names: set[str] = set()
-            for af_name, af_type, af_has_default in ancestor_fields:
-                fields.append(TFieldDecl(pos, af_name, af_type, af_has_default))
+            for af_name, af_type, af_has_default, af_self_ref in ancestor_fields:
+                fields.append(TFieldDecl(pos, af_name, af_type, af_has_default, af_self_ref))
                 inherited_field_names.add(af_name)
             fkeys = _collect_field_keys(cls_info, inherited_field_names)
             for fname in fkeys:
@@ -6591,7 +6595,9 @@ def _build_struct(
                             )
                         )
                     ftype = _typenode_to_ttype(pos, finfo.typ)
-                    fields.append(TFieldDecl(pos, fname, ftype, finfo.has_default))
+                    fields.append(
+                        TFieldDecl(pos, fname, ftype, finfo.has_default, finfo.self_ref)
+                    )
     # Build methods — own + inherited from ancestors
     methods: list[TFnDecl] = []
     own_method_names: set[str] = set()

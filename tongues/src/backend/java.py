@@ -731,7 +731,7 @@ class _JavaEmitter(Emitter):
                 return "new byte[0]"
         return "null"
 
-    def _field_default(self, fld: TFieldDecl) -> str:
+    def _field_default(self, fld: TFieldDecl, in_body: bool = False) -> str:
         """Return the Java default value for a field with has_default=True."""
         typ = fld.typ
         if isinstance(typ, TListType):
@@ -745,6 +745,8 @@ class _JavaEmitter(Emitter):
             and isinstance(typ, TIdentType)
             and typ.name in self.struct_names
         ):
+            if fld.self_ref:
+                return "new " + _safe_name(typ.name) + "(this)" if in_body else "null"
             target_fields = self._struct_field_decls.get(typ.name, [])
             has_noarg = len(target_fields) == 0 or all(
                 f.has_default for f in target_fields
@@ -1387,7 +1389,7 @@ class _JavaEmitter(Emitter):
                             self._line("this." + safe + " = " + safe + ";")
                         else:
                             self._line(
-                                "this." + safe + " = " + self._field_default(f) + ";"
+                                "this." + safe + " = " + self._field_default(f, in_body=True) + ";"
                             )
                     self.indent -= 1
                     self._line("}")

@@ -2066,6 +2066,7 @@ class VM:
         self.program_args = list(args) if args is not None else []
         self.env_vars = env if env is not None else {}
         self.pending_exception = None
+        self.builtins = _BuiltinDispatch(self)
         # Lazy init: build method cache if not done (transpiled code skips __init__ body)
         if len(self._method_cache) == 0 and len(self.module.struct_defs) > 0:
             self._build_method_cache()

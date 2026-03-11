@@ -691,7 +691,7 @@ class _JavaScriptEmitter(Emitter):
                 return "Buffer.alloc(0)"
         return "null"
 
-    def _field_default(self, fld: TFieldDecl) -> str:
+    def _field_default(self, fld: TFieldDecl, in_body: bool = False) -> str:
         typ = fld.typ
         if isinstance(typ, TListType):
             return "[]"
@@ -704,6 +704,8 @@ class _JavaScriptEmitter(Emitter):
             and isinstance(typ, TIdentType)
             and typ.name in self.struct_names
         ):
+            if fld.self_ref:
+                return "new " + typ.name + "(this)" if in_body else "null"
             return "new " + typ.name + "()"
         return self._zero_value(typ)
 
@@ -719,7 +721,7 @@ class _JavaScriptEmitter(Emitter):
     def _emit_field_assign(self, fld: TFieldDecl, safe: str) -> None:
         if self._needs_null_guard(fld):
             self._line(
-                "this." + safe + " = " + safe + " ?? " + self._field_default(fld) + ";"
+                "this." + safe + " = " + safe + " ?? " + self._field_default(fld, in_body=True) + ";"
             )
         else:
             self._line("this." + safe + " = " + safe + ";")
@@ -1870,7 +1872,13 @@ class _JavaScriptEmitter(Emitter):
                     self._emit_stmts(catch.body)
                     self.indent -= 1
                 first = False
-        if has_typed:
+        if has_typed and not has_untyped:
+            self._line("} else {")
+            self.indent += 1
+            self._line("throw " + catch_name + ";")
+            self.indent -= 1
+            self._line("}")
+        elif has_typed:
             self._line("}")
 
     def _emit_catch(self, catch: TCatch) -> None:

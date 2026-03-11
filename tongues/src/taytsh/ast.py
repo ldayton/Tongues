@@ -157,6 +157,7 @@ class TFieldDecl:
     name: str
     typ: TType
     has_default: bool = False
+    self_ref: bool = False
 
 
 @dataclass
@@ -879,6 +880,7 @@ def _field_decl_json(f: TFieldDecl) -> JsonValue:
             "name": JStr(f.name),
             "typ": _type_json(f.typ),
             "has_default": JBool(f.has_default),
+            "self_ref": JBool(f.self_ref),
         }
     )
 

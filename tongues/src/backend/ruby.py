@@ -792,8 +792,11 @@ class _RubyEmitter(Emitter):
         params: list[str] = []
         for f in fields:
             name = _safe_name(f.name)
-            default = self._zero_value(f.typ)
-            params.append(name + ": " + default)
+            if f.self_ref:
+                params.append(name + ": nil")
+            else:
+                default = self._zero_value(f.typ)
+                params.append(name + ": " + default)
         self._line("def initialize(" + ", ".join(params) + ")")
         self.indent += 1
         if is_error:
@@ -808,7 +811,10 @@ class _RubyEmitter(Emitter):
                 self._line("super()")
         for f in fields:
             name = _safe_name(f.name)
-            self._line("@" + name + " = " + name)
+            if f.self_ref and isinstance(f.typ, TIdentType):
+                self._line("@" + name + " = " + name + " || " + _safe_type_name(f.typ.name) + ".new(self)")
+            else:
+                self._line("@" + name + " = " + name)
         self.indent -= 1
         self._line("end")
 
