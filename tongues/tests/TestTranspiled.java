@@ -1780,14 +1780,19 @@ public class TestTranspiled {
                 futures.add(executor.submit(() -> runSingleTest(test)));
             }
             for (Future<String[]> future : futures) {
+                String[] result;
                 try {
-                    String[] result = future.get(5, TimeUnit.SECONDS);
-                    results.add(result);
+                    result = future.get(5, TimeUnit.SECONDS);
                 } catch (TimeoutException e) {
-                    results.add(new String[]{"unknown", "unknown", "fail", "TIMEOUT"});
+                    result = new String[]{"unknown", "unknown", "fail", "TIMEOUT"};
                 } catch (Exception e) {
-                    results.add(new String[]{"unknown", "unknown", "fail", "Exception: " + e.getMessage()});
+                    result = new String[]{"unknown", "unknown", "fail", "Exception: " + e.getMessage()};
                 }
+                results.add(result);
+                // Print immediately
+                String status = result[2];
+                String tag = status.equals("pass") ? "PASS" : status.equals("skip") ? "SKIP" : "FAIL";
+                System.out.println(tag + " " + result[0] + "::" + result[1] + vmTag);
             }
             executor.shutdown();
         } else {
@@ -1798,20 +1803,20 @@ public class TestTranspiled {
             }
         }
 
-        // Process results
+        // Process results (printing already done in VM mode loop above)
         for (String[] r : results) {
             String phaseName = r[0];
             String testId = r[1];
             String status = r[2];
             String err = r[3];
             if (status.equals("pass")) {
-                System.out.println("PASS " + phaseName + "::" + testId + vmTag);
+                if (!_useVm) System.out.println("PASS " + phaseName + "::" + testId + vmTag);
                 totalPass++;
             } else if (status.equals("skip")) {
-                System.out.println("SKIP " + phaseName + "::" + testId + vmTag);
+                if (!_useVm) System.out.println("SKIP " + phaseName + "::" + testId + vmTag);
                 totalSkip++;
             } else {
-                System.out.println("FAIL " + phaseName + "::" + testId + vmTag);
+                if (!_useVm) System.out.println("FAIL " + phaseName + "::" + testId + vmTag);
                 failures.add(new String[]{phaseName, testId, err});
                 totalFail++;
             }
