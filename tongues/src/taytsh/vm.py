@@ -2169,10 +2169,11 @@ class VM:
             elif op == OP_DUP:
                 self.stack.append(self.stack[-1])
             elif op == OP_ROT_TWO:
-                a = self.stack[-1]
-                b = self.stack[-2]
-                self.stack[-1] = b
-                self.stack[-2] = a
+                n = len(self.stack)
+                a = self.stack[n - 1]
+                b = self.stack[n - 2]
+                self.stack[n - 1] = b
+                self.stack[n - 2] = a
             # ── Arithmetic ────────────────────────────────
             elif op == OP_ADD_INT:
                 b = self.stack.pop()
