@@ -1175,7 +1175,8 @@ async function runParallel() {
         },
     });
     const promises = collected.map(([phaseName, testId, testType, testData]) => {
-        const timeout = (testType === "app" || testType === "ordering") ? 30000 : 10000;
+        const vmExtra = viaVmPath ? 7000 : 0;
+        const timeout = (testType === "app" || testType === "ordering") ? 30000 + vmExtra : 3000 + vmExtra;
         return pool.exec("runTest", [phaseName, testId, testType, testData])
             .timeout(timeout)
             .then(result => {

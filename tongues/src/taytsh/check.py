@@ -968,6 +968,7 @@ BUILTIN_STRUCTS: dict[str, dict[str, Type]] = {
     "NotImplementedError": {"message": STRING_T},
     "RuntimeError": {"message": STRING_T},
     "IOError": {"message": STRING_T},
+    "UnicodeDecodeError": {"message": STRING_T},
     "Exception": {"message": STRING_T},
     "BaseException": {"message": STRING_T},
 }

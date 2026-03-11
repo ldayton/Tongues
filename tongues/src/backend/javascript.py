@@ -481,6 +481,7 @@ class _JavaScriptEmitter(Emitter):
         error_refs = _collect_error_refs(module)
         if "Decode" in all_builtins:
             error_refs.add("ValueError")
+            error_refs.add("UnicodeDecodeError")
         referenced_errors: list[str] = sorted(list(error_refs - declared_structs))
         for ename in referenced_errors:
             self._line(
@@ -2688,7 +2689,7 @@ class _JavaScriptEmitter(Emitter):
             return (
                 '(() => { try { return new TextDecoder("utf-8", {fatal: true}).decode('
                 + a
-                + "); } catch (_) { throw new ValueError(_.message); } })()"
+                + "); } catch (_) { throw new UnicodeDecodeError(_.message); } })()"
             )
         if name == "Add":
             return self._a(args, 0) + ".add(" + self._a(args, 1) + ")"
