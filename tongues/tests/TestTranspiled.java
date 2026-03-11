@@ -1781,10 +1781,10 @@ public class TestTranspiled {
             }
             for (Future<String[]> future : futures) {
                 try {
-                    String[] result = future.get(30, TimeUnit.SECONDS);
+                    String[] result = future.get(5, TimeUnit.SECONDS);
                     results.add(result);
                 } catch (TimeoutException e) {
-                    results.add(new String[]{"unknown", "unknown", "fail", "TIMEOUT after 30s"});
+                    results.add(new String[]{"unknown", "unknown", "fail", "TIMEOUT"});
                 } catch (Exception e) {
                     results.add(new String[]{"unknown", "unknown", "fail", "Exception: " + e.getMessage()});
                 }

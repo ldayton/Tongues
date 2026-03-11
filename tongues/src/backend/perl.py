@@ -1664,6 +1664,8 @@ class _PerlEmitter(Emitter):
         self._line("}")
         if stmt.finally_body is not None:
             self._emit_stmts(stmt.finally_body)
+        # If eval returned a reference (early return from try body), pass it through
+        self._line("return " + ok + " if ref(" + ok + ");")
 
     def _emit_catches(self, catches: list[TCatch], err: str) -> None:
         has_chain = False

@@ -661,6 +661,24 @@ class _RubyEmitter(Emitter):
         for decl in module.decls:
             if isinstance(decl, TLetStmt) and decl.typ is not None:
                 self.var_types[decl.name] = decl.typ
+        # Collect builtins and emit error classes as needed
+        all_builtins: set[str] = set()
+        for decl in module.decls:
+            if isinstance(decl, TFnDecl):
+                all_builtins |= collect_builtin_calls(decl.body)
+            elif isinstance(decl, TStructDecl):
+                for m in decl.methods:
+                    all_builtins |= collect_builtin_calls(m.body)
+            elif isinstance(decl, TStmt):
+                all_builtins |= collect_builtin_calls([decl])
+        if "Decode" in all_builtins:
+            self._line(
+                "class UnicodeDecodeError < StandardError; "
+                "attr_reader :message; "
+                'def initialize(message = ""); @message = message; super(message); end; '
+                "end"
+            )
+            self._line()
         need_blank = False
         for decl in order_decls(module.decls):
             if isinstance(decl, TInterfaceDecl):
@@ -2444,10 +2462,11 @@ class _RubyEmitter(Emitter):
         if name == "Encode":
             return self._a(args, 0) + '.encode("utf-8").bytes'
         if name == "Decode":
+            arg = self._a(args, 0)
             return (
-                self._a(args, 0)
-                + ".pack('C*').force_encoding('UTF-8')"
-                + ".tap { |s| raise ArgumentError unless s.valid_encoding? }"
+                "((" + arg + ").is_a?(Array) ? (" + arg + ").pack('C*') : "
+                + "(" + arg + ")).force_encoding('UTF-8')"
+                + ".tap { |s| raise UnicodeDecodeError unless s.valid_encoding? }"
             )
         # Set operations
         if name == "Add":
