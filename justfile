@@ -66,7 +66,7 @@ fmt *ARGS:
 _transpile-tongues target:
     #!/usr/bin/env bash
     set -euo pipefail
-    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js [java]=java)
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js [java]=java [taytsh]=ty)
     out="tongues/.out/tongues.${ext[{{target}}]}"
     sum_file="tongues/.out/.sum-tongues-{{target}}"
     current=$(just -f {{justfile()}} _src-checksum)
@@ -304,6 +304,7 @@ _vm-test-tongues-java *args:
     set -euo pipefail
     just -f {{justfile()}} _transpile-tongues java
     just -f {{justfile()}} _compile-java
+    just -f {{justfile()}} _transpile-tongues taytsh
     printf '\033[32m[vm-test-tongues-java]\033[0m\n'
     start=$SECONDS
     cd tongues
@@ -392,6 +393,7 @@ _vm-test-tongues target *args:
     declare -A runner=([python]="uv run python3" [ruby]=ruby [perl]=perl [javascript]=node)
     just -f {{justfile()}} _transpile-tongues {{target}}
     just -f {{justfile()}} _transpile-harness {{target}}
+    just -f {{justfile()}} _transpile-tongues taytsh
     printf '\033[32m[vm-test-tongues-{{target}}]\033[0m\n'
     start=$SECONDS
     cd tongues
