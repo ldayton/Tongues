@@ -2,6 +2,10 @@ set shell := ["bash", "-o", "pipefail", "-cu"]
 
 export VIRTUAL_ENV := ""
 
+# Print SHA256 checksum of tongues/src/*.py content
+_src-checksum:
+    @find tongues/src -name "*.py" | LC_ALL=C sort | xargs cat | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-16
+
 # Run lint and format checks (--fix to auto-fix)
 style *ARGS:
     #!/usr/bin/env bash
@@ -62,12 +66,22 @@ fmt *ARGS:
 _transpile-tongues target:
     #!/usr/bin/env bash
     set -euo pipefail
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js [java]=java [taytsh]=ty)
+    out="tongues/.out/tongues.${ext[{{target}}]}"
+    sum_file="tongues/.out/.sum-tongues-{{target}}"
+    current=$(just -f {{justfile()}} _src-checksum)
+    cached=$(cat "$sum_file" 2>/dev/null || echo "")
+    if [ -f "$out" ] && [ "$current" = "$cached" ]; then
+        printf '\033[33m[transpile-tongues-{{target}}] up to date\033[0m\n'
+        exit 0
+    fi
+    rm -f "$sum_file"
     printf '\033[32m[transpile-tongues-{{target}}]\033[0m\n'
     start=$SECONDS
-    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js [java]=java [taytsh]=ty)
     mkdir -p tongues/.out
-    cd tongues && uv run bin/tongues --target {{target}} -o ".out/tongues.${ext[{{target}}]}" src
+    uv run --directory tongues bin/tongues --target {{target}} -o ".out/tongues.${ext[{{target}}]}" src
     printf '\033[32m[transpile-tongues-{{target}}] %ds\033[0m\n' "$((SECONDS - start))"
+    echo "$current" > "$sum_file"
 
 # Transpile the shared test harness to target language
 _transpile-harness target:
