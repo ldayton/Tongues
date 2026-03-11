@@ -4172,6 +4172,8 @@ class _JavaEmitter(Emitter):
         if method == "hex" and self._is_bytes_expr(func.obj):
             self._needs_hex_helper = True
             return "_bytesHex(" + obj + ")"
+        if method == "get" and len(args) == 2:
+            return obj + ".getOrDefault(" + self._join_args(args, ", ") + ")"
         method = self._PY_TO_JAVA_METHOD.get(method, method)
         if method in ("size", "length") and self._is_bytes_expr(func.obj):
             return obj + ".length"
@@ -4860,6 +4862,9 @@ class _JavaEmitter(Emitter):
                 and not cond.right.value
             ):
                 return "!" + self._expr(cond.left) + ".isEmpty()"
+        # Handle bare string variable as condition (if lowering didn't transform it)
+        if self._is_string_expr(cond):
+            return "!" + self._expr(cond) + ".isEmpty()"
         return None
 
     def _len_expr(self, expr: TExpr) -> str:
