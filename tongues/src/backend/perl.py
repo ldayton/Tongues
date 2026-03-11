@@ -355,6 +355,29 @@ def _safe_fn_name(name: str) -> str:
     return safe
 
 
+def _safe_module_name(name: str) -> str:
+    """Like _safe_name but for module-level vars (no underscore prefix added)."""
+    if name == "_":
+        return "_unused"
+    safe = to_snake(name)
+    if not safe:
+        return "_unused"
+    if safe in _PERL_KEYWORDS:
+        return safe + "_"
+    for pp in _PERL_POISONED_PREFIXES:
+        if safe.startswith(pp) or safe == pp[:-1]:
+            return "t_" + safe
+    return safe
+
+
+def _restore_module_name(name: str, annotations: Ann) -> str:
+    """Restore original name for module-level vars."""
+    key = "name.original." + name
+    if key in annotations:
+        return _safe_module_name(annotations[key])
+    return _safe_module_name(name)
+
+
 def _restore_name(name: str, annotations: Ann) -> str:
     """Restore original Python name from annotation, then apply target safety."""
     key = "name.original." + name
@@ -665,7 +688,7 @@ class _PerlEmitter(Emitter):
                 self.var_types[decl.name] = decl.typ
                 self.module_var_names.add(decl.name)
                 if has_types:
-                    safe = _restore_name(decl.name, decl.annotations)
+                    safe = _restore_module_name(decl.name, decl.annotations)
                     self.fwd_declared.add(decl.name)
                     self._line("our $" + safe + ";")
         for decl in ordered:
@@ -1182,7 +1205,11 @@ class _PerlEmitter(Emitter):
         if isinstance(stmt, TLetStmt):
             self.var_types[stmt.name] = stmt.typ
             self.local_names.add(stmt.name)
-            safe = "$" + _restore_name(stmt.name, stmt.annotations)
+            # Use module name for module-level vars, regular name for locals
+            if stmt.name in self.module_var_names:
+                safe = "$" + _restore_module_name(stmt.name, stmt.annotations)
+            else:
+                safe = "$" + _restore_name(stmt.name, stmt.annotations)
             prefix = "" if stmt.name in self.fwd_declared else "my "
             unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
             if stmt.value is not None and not unused:
@@ -1895,7 +1922,10 @@ class _PerlEmitter(Emitter):
                 return "(" + self._PYTHON_BUILTINS[expr.name] + ")"
             # Module-level globals need main:: prefix when inside a package
             if self.in_package and expr.name in self.module_var_names:
-                return "$main::" + _restore_name(expr.name, expr.annotations)
+                return "$main::" + _restore_module_name(expr.name, expr.annotations)
+            # Use module name for module-level vars, regular name for locals
+            if expr.name in self.module_var_names:
+                return "$" + _restore_module_name(expr.name, expr.annotations)
             return "$" + _restore_name(expr.name, expr.annotations)
         if isinstance(expr, TFieldAccess):
             if isinstance(expr.obj, TVar) and expr.obj.name in self.enum_names:
