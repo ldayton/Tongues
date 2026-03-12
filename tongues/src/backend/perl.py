@@ -653,6 +653,7 @@ class _PerlEmitter(Emitter):
         self._line("use Encode qw(encode decode);")
         self._line("binmode(STDOUT, ':utf8');")
         self._line("binmode(STDERR, ':utf8');")
+        self._line("@UnicodeDecodeError::ISA = ('ValueError');")
         self._line()
         if self.strict_tostring:
             self._line(
@@ -1763,17 +1764,11 @@ class _PerlEmitter(Emitter):
                 self.indent -= 1
             self._line("}")
 
-    _EXCEPTION_SUBCLASSES: dict[str, list[str]] = {
-        "ValueError": ["UnicodeDecodeError"],
-    }
-
     def _catch_condition(self, catch: TCatch, err: str) -> str | None:
         parts: list[str] = []
         for t in catch.types:
             if isinstance(t, TIdentType):
-                names = [t.name] + self._EXCEPTION_SUBCLASSES.get(t.name, [])
-                for n in names:
-                    parts.append("ref(" + err + ") eq '" + n + "'")
+                parts.append("eval { " + err + "->isa('" + t.name + "') }")
             else:
                 return None
         if not parts:
