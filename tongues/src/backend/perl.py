@@ -767,6 +767,12 @@ class _PerlEmitter(Emitter):
             if has_eq:
                 parts.append("'==' => \\&__eq__")
                 parts.append("'eq' => \\&__eq__")
+                parts.append(
+                    "'!=' => sub { !__eq__(@_) }"
+                )
+                parts.append(
+                    "'ne' => sub { !__eq__(@_) }"
+                )
             parts.append("fallback => 1")
             self._line("use overload " + ", ".join(parts) + ";")
             self._line()
@@ -2906,11 +2912,11 @@ class _PerlEmitter(Emitter):
                 + " !~ /[A-Z]/ ? 1 : 0)"
             )
         if name == "Encode":
-            return "encode('UTF-8', " + self._a(args, 0) + ")"
+            return "Encode::encode('UTF-8', " + self._a(args, 0) + ")"
         if name == "Decode":
             a = self._a(args, 0)
             return (
-                "do { my $__d = eval { decode('UTF-8', "
+                "do { my $__d = eval { Encode::decode('UTF-8', "
                 + a
                 + ", Encode::FB_CROAK) }; if ($@) { die bless({message => \"$@\"}, 'ValueError') } $__d }"
             )
@@ -3232,9 +3238,9 @@ class _PerlEmitter(Emitter):
         if name == "WritelnErr":
             return "say STDERR " + self._a(args, 0)
         if name == "ReadLine":
-            return "do { my $__l = scalar(<STDIN>); defined($__l) ? decode('UTF-8', $__l, Encode::FB_CROAK) : $__l }"
+            return "do { my $__l = scalar(<STDIN>); defined($__l) ? Encode::decode('UTF-8', $__l, Encode::FB_CROAK) : $__l }"
         if name == "ReadAll":
-            return "do { local $/; decode('UTF-8', scalar(<STDIN>), Encode::FB_CROAK) }"
+            return "do { local $/; Encode::decode('UTF-8', scalar(<STDIN>), Encode::FB_CROAK) }"
         if name == "ReadBytes":
             return "do { local $/; scalar(<STDIN>) }"
         if name == "ReadBytesN":

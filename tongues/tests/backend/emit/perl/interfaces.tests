@@ -3,6 +3,6 @@ package Dog;
 
 use parent -norequire, 'Animal';
 
-use overload '==' => \&__eq__, 'eq' => \&__eq__, fallback => 1;
+use overload '==' => \&__eq__, 'eq' => \&__eq__, '!=' => sub { !__eq__(@_) }, 'ne' => sub { !__eq__(@_) }, fallback => 1;
 
 sub new {

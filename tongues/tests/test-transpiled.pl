@@ -15,6 +15,7 @@ use POSIX ();
 use Scalar::Util qw(blessed);
 use Symbol qw(gensym);
 use MCE::Loop;
+STDOUT->autoflush(1);
 
 my $TONGUES_DIR = File::Spec->rel2abs(File::Spec->catdir(dirname(__FILE__), ".."));
 my $TESTS_DIR = File::Spec->catdir($TONGUES_DIR, "tests");
@@ -139,7 +140,11 @@ sub run_inprocess ($argv, $stdin_data = "") {
         if ($@ && $@ eq "TIMEOUT\n") {
             return { stdout => "", stderr => "TIMEOUT after ${timeout}s\n", exit => 1 };
         } elsif ($@) {
-            return { stdout => "", stderr => "$@", exit => 1 };
+            my $err = $@;
+            if (ref($err)) {
+                $err = $err->{msg} // $err->{message} // "$err";
+            }
+            return { stdout => "", stderr => "$err", exit => 1 };
         }
         return { stdout => $stdout, stderr => $stderr, exit => $exit_code };
     }
@@ -1151,10 +1156,25 @@ my $vm_tag = defined $via_vm_path ? " [vm]" : "";
 
 MCE::Loop->init(
     max_workers => $num_workers,
-    chunk_size => 1
+    chunk_size => 1,
+    gather => sub {
+        my ($r) = @_;
+        my ($phase_name, $test_id, $status, $err) = @$r;
+        if ($status eq "pass") {
+            say "PASS ${phase_name}::${test_id}${vm_tag}";
+            $total_pass++;
+        } elsif ($status eq "skip") {
+            say "SKIP ${phase_name}::${test_id}${vm_tag}";
+            $total_skip++;
+        } else {
+            say "FAIL ${phase_name}::${test_id}${vm_tag}";
+            push @failures, [$phase_name, $test_id, $err];
+            $total_fail++;
+        }
+    }
 );
 
-my @results = mce_loop {
+mce_loop {
     my ($mce, $chunk_ref, $chunk_id) = @_;
     my $test = $chunk_ref->[0];
     my ($phase_name, $test_id, $test_type, $test_data) = @$test;
@@ -1163,22 +1183,6 @@ my @results = mce_loop {
 } $all_tests;
 
 MCE::Loop->finish;
-
-# Process results
-for my $r (@results) {
-    my ($phase_name, $test_id, $status, $err) = @$r;
-    if ($status eq "pass") {
-        say "PASS $phase_name::$test_id$vm_tag";
-        $total_pass++;
-    } elsif ($status eq "skip") {
-        say "SKIP $phase_name::$test_id$vm_tag";
-        $total_skip++;
-    } else {
-        say "FAIL $phase_name::$test_id$vm_tag";
-        push @failures, [$phase_name, $test_id, $err];
-        $total_fail++;
-    }
-}
 
 say "";
 if (@failures) {
