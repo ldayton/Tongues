@@ -113,15 +113,16 @@ lang target *args:
     just -f {{justfile()}} _transpile-tongues {{target}}
     just -f {{justfile()}} _transpile-harness {{target}}
     failed=0
+    declare -A results=()
     if [ "{{target}}" = "python" ]; then
         just -f {{justfile()}} _pyright & pids+=($!); pid_names[$!]=pyright
         just -f {{justfile()}} idempotence & pids+=($!); pid_names[$!]=idempotence
     else
-        just -f {{justfile()}} cross-equivalence {{target}} & pids+=($!); pid_names[$!]=cross-equivalence
+        just -f {{justfile()}} cross-equivalence {{target}} & pids+=($!); pid_names[$!]=cross-equivalence-{{target}}
     fi
-    just -f {{justfile()}} _treewalker {{target}} & pids+=($!); pid_names[$!]=treewalker
-    just -f {{justfile()}} _vm {{target}} & pids+=($!); pid_names[$!]=vm
-    just -f {{justfile()}} _vm-test-tongues {{target}} & pids+=($!); pid_names[$!]=vm-test-tongues
+    just -f {{justfile()}} _treewalker {{target}} & pids+=($!); pid_names[$!]=tw-taytsh-apptests-{{target}}
+    just -f {{justfile()}} _vm {{target}} & pids+=($!); pid_names[$!]=vm-taytsh-apptests-{{target}}
+    just -f {{justfile()}} _vm-test-tongues {{target}} & pids+=($!); pid_names[$!]=vm-test-tongues-{{target}}
     printf '\033[32m[test-tongues-{{target}}]\033[0m\n'
     start=$SECONDS
     cd tongues
@@ -129,17 +130,34 @@ lang target *args:
     elapsed=$((SECONDS - start))
     if [ $rc -eq 0 ]; then
         printf '\033[32m[test-tongues-{{target}}] %ds\033[0m\n' "$elapsed"
+        results[test-tongues-{{target}}]=PASS
     else
         printf '\033[31m[test-tongues-{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
+        results[test-tongues-{{target}}]=FAIL
         failed=1
     fi
     for pid in "${pids[@]}"; do
-        if ! wait "$pid"; then
+        name="${pid_names[$pid]}"
+        if wait "$pid"; then
+            results[$name]=PASS
+        else
             rc=$?
-            printf '\033[31m[%s] exited with code %d\033[0m\n' "${pid_names[$pid]}" "$rc"
+            printf '\033[31m[%s] exited with code %d\033[0m\n' "$name" "$rc"
+            results[$name]=FAIL
             failed=1
         fi
     done
+    printf '\n%-30s %s\n' "SUITE" "RESULT"
+    printf '%-30s %s\n' "-----" "------"
+    for name in $(echo "${!results[@]}" | tr ' ' '\n' | sort); do
+        r="${results[$name]}"
+        if [ "$r" = "PASS" ]; then
+            printf '%-30s \033[32m%s\033[0m\n' "$name" "$r"
+        else
+            printf '%-30s \033[31m%s\033[0m\n' "$name" "$r"
+        fi
+    done
+    printf '\n'
     exit $failed
 
 # Self-transpile to Java, compile, and run tests
@@ -156,11 +174,11 @@ lang-java:
     just -f {{justfile()}} _transpile-tongues java
     just -f {{justfile()}} _compile-java
     failed=0
-    just -f {{justfile()}} cross-equivalence java & pids+=($!); pid_names[$!]=cross-equivalence
-    just -f {{justfile()}} _treewalker-java & pids+=($!); pid_names[$!]=treewalker
-    just -f {{justfile()}} _vm-java & pids+=($!); pid_names[$!]=vm
-    # Note: _vm-test-tongues-java is not included here because it's blocked by a
-    # Java transpiler bug (TDecl.annotations is null). Run manually when fixed.
+    declare -A results=()
+    just -f {{justfile()}} cross-equivalence java & pids+=($!); pid_names[$!]=cross-equivalence-java
+    just -f {{justfile()}} _treewalker-java & pids+=($!); pid_names[$!]=tw-taytsh-apptests-java
+    just -f {{justfile()}} _vm-java & pids+=($!); pid_names[$!]=vm-taytsh-apptests-java
+    just -f {{justfile()}} _vm-test-tongues-java & pids+=($!); pid_names[$!]=vm-test-tongues-java
     printf '\033[32m[test-tongues-java]\033[0m\n'
     start=$SECONDS
     cd tongues
@@ -168,17 +186,34 @@ lang-java:
     elapsed=$((SECONDS - start))
     if [ $rc -eq 0 ]; then
         printf '\033[32m[test-tongues-java] %ds\033[0m\n' "$elapsed"
+        results[test-tongues-java]=PASS
     else
         printf '\033[31m[test-tongues-java] %ds (FAILED)\033[0m\n' "$elapsed"
+        results[test-tongues-java]=FAIL
         failed=1
     fi
     for pid in "${pids[@]}"; do
-        if ! wait "$pid"; then
+        name="${pid_names[$pid]}"
+        if wait "$pid"; then
+            results[$name]=PASS
+        else
             rc=$?
-            printf '\033[31m[%s] exited with code %d\033[0m\n' "${pid_names[$pid]}" "$rc"
+            printf '\033[31m[%s] exited with code %d\033[0m\n' "$name" "$rc"
+            results[$name]=FAIL
             failed=1
         fi
     done
+    printf '\n%-30s %s\n' "SUITE" "RESULT"
+    printf '%-30s %s\n' "-----" "------"
+    for name in $(echo "${!results[@]}" | tr ' ' '\n' | sort); do
+        r="${results[$name]}"
+        if [ "$r" = "PASS" ]; then
+            printf '%-30s \033[32m%s\033[0m\n' "$name" "$r"
+        else
+            printf '%-30s \033[31m%s\033[0m\n' "$name" "$r"
+        fi
+    done
+    printf '\n'
     exit $failed
 
 # Compile transpiled Java to .class files
