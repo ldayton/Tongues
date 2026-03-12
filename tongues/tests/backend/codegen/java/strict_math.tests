@@ -83,6 +83,29 @@ try {
 }
 System.out.println(String.valueOf(caught));
 
+=== bigint int literal
+long x = 42;
+System.out.println(String.valueOf(x));
+
+=== preamble no number conversion
+long c = Math.addExact(a, b);
+System.out.println(String.valueOf(c));
+
+=== bigint for range
+for (int i = 0; i < 10; i++) {
+
+=== bigint array index
+long v = xs.get(i);
+
+=== bigint int to float
+double f = x;
+
+=== bigint float to int
+long x = (int) f;
+
+=== bigint len
+long n = xs.size();
+
 === non-strict ops unchanged
 double x = 1.5 + 2.5;
 long y = checkedDiv(10, 3);

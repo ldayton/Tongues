@@ -81,6 +81,29 @@ except Exception:
     caught = True
 print(str(caught))
 
+=== bigint int literal
+x: int = 42
+print(str(x))
+
+=== preamble no number conversion
+c: int = checked_add_i64(a, b)
+print(str(c))
+
+=== bigint for range
+for i in range(10):
+
+=== bigint array index
+v: int = xs[i]
+
+=== bigint int to float
+f: float = float(x)
+
+=== bigint float to int
+x: int = int(f)
+
+=== bigint len
+n: int = len(xs)
+
 === non-strict ops unchanged
 x: float = 1.5 + 2.5
 y: int = checked_div_i64(10, 3)

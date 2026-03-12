@@ -384,20 +384,20 @@ def _scan_decl_builtins(decl: TDecl) -> tuple[bool, bool, bool]:
 _STRICT_MATH_PREAMBLE = """\
 const _I64_MIN = -9223372036854775808n;
 const _I64_MAX = 9223372036854775807n;
-function _check_i64(v) { if (v < _I64_MIN || v > _I64_MAX) throw new RangeError("integer overflow"); return Number(v); }
-function checked_add_i64(a, b) { return _check_i64(BigInt(a) + BigInt(b)); }
-function checked_sub_i64(a, b) { return _check_i64(BigInt(a) - BigInt(b)); }
-function checked_mul_i64(a, b) { return _check_i64(BigInt(a) * BigInt(b)); }
-function checked_div_i64(a, b) { if (b === 0) throw new RangeError("division by zero"); let q = BigInt(a) / BigInt(b); return _check_i64(q); }
-function checked_rem_i64(a, b) { if (b === 0) throw new RangeError("division by zero"); return Number(BigInt(a) % BigInt(b)); }
-function checked_neg_i64(a) { return _check_i64(-BigInt(a)); }
-function checked_shl_i64(a, b) { if (b < 0 || b > 63) throw new RangeError("shift out of range"); return _check_i64(BigInt(a) << BigInt(b)); }
-function checked_shr_i64(a, b) { if (b < 0 || b > 63) throw new RangeError("shift out of range"); return Number(BigInt(a) >> BigInt(b)); }
-function logical_shr_i64(a, b) { if (b < 0 || b > 63) throw new RangeError("shift out of range"); let v = BigInt(a) & 0xFFFFFFFFFFFFFFFFn; return Number((v >> BigInt(b)) & 0xFFFFFFFFFFFFFFFFn); }
-function checked_pow_i64(a, b) { if (b < 0) throw new RangeError("negative exponent"); let r = 1n; let base = BigInt(a); for (let i = 0; i < b; i++) { r *= base; if (r < _I64_MIN || r > _I64_MAX) throw new RangeError("integer overflow"); } return Number(r); }
-function wrappingAdd(a, b) { let v = BigInt(a) + BigInt(b); v = ((v + 9223372036854775808n) % 18446744073709551616n + 18446744073709551616n) % 18446744073709551616n - 9223372036854775808n; return Number(v); }
-function wrappingSub(a, b) { let v = BigInt(a) - BigInt(b); v = ((v + 9223372036854775808n) % 18446744073709551616n + 18446744073709551616n) % 18446744073709551616n - 9223372036854775808n; return Number(v); }
-function wrappingMul(a, b) { let v = BigInt(a) * BigInt(b); v = ((v + 9223372036854775808n) % 18446744073709551616n + 18446744073709551616n) % 18446744073709551616n - 9223372036854775808n; return Number(v); }
+function _check_i64(v) { if (v < _I64_MIN || v > _I64_MAX) throw new RangeError("integer overflow"); return v; }
+function checked_add_i64(a, b) { return _check_i64(a + b); }
+function checked_sub_i64(a, b) { return _check_i64(a - b); }
+function checked_mul_i64(a, b) { return _check_i64(a * b); }
+function checked_div_i64(a, b) { if (b === 0n) throw new RangeError("division by zero"); return _check_i64(a / b); }
+function checked_rem_i64(a, b) { if (b === 0n) throw new RangeError("division by zero"); return a % b; }
+function checked_neg_i64(a) { return _check_i64(-a); }
+function checked_shl_i64(a, b) { if (b < 0n || b > 63n) throw new RangeError("shift out of range"); return _check_i64(a << b); }
+function checked_shr_i64(a, b) { if (b < 0n || b > 63n) throw new RangeError("shift out of range"); return a >> b; }
+function logical_shr_i64(a, b) { if (b < 0n || b > 63n) throw new RangeError("shift out of range"); let v = a & 0xFFFFFFFFFFFFFFFFn; return (v >> b) & 0xFFFFFFFFFFFFFFFFn; }
+function checked_pow_i64(a, b) { if (b < 0n) throw new RangeError("negative exponent"); let r = 1n; for (let i = 0n; i < b; i += 1n) { r *= a; if (r < _I64_MIN || r > _I64_MAX) throw new RangeError("integer overflow"); } return r; }
+function wrappingAdd(a, b) { let v = a + b; v = ((v + 9223372036854775808n) % 18446744073709551616n + 18446744073709551616n) % 18446744073709551616n - 9223372036854775808n; return v; }
+function wrappingSub(a, b) { let v = a - b; v = ((v + 9223372036854775808n) % 18446744073709551616n + 18446744073709551616n) % 18446744073709551616n - 9223372036854775808n; return v; }
+function wrappingMul(a, b) { let v = a * b; v = ((v + 9223372036854775808n) % 18446744073709551616n + 18446744073709551616n) % 18446744073709551616n - 9223372036854775808n; return v; }
 function strict_fmod(a, b) { if (b === 0.0) throw new RangeError("float modulo by zero"); return a % b; }
 function strict_min_f64(a, b) { if (Number.isNaN(a) || Number.isNaN(b)) return NaN; return Math.min(a, b); }
 function strict_max_f64(a, b) { if (Number.isNaN(a) || Number.isNaN(b)) return NaN; return Math.max(a, b); }
@@ -1516,6 +1516,9 @@ class _JavaScriptEmitter(Emitter):
         binder = binder_parts[0] if binder_parts else "_"
         assert isinstance(stmt.iterable, TRange)
         args = stmt.iterable.args
+        n = "n" if self.strict_math else ""
+        inc = " += 1n" if self.strict_math else "++"
+        dec = " -= 1n" if self.strict_math else "--"
         if prov == "reversed_range" and len(args) == 3:
             rargs = args
             end_val = self._static_int(rargs[1])
@@ -1527,13 +1530,16 @@ class _JavaScriptEmitter(Emitter):
                     + binder
                     + " = "
                     + str(start_val)
+                    + n
                     + "; "
                     + binder
                     + " >= "
                     + str(low)
+                    + n
                     + "; "
                     + binder
-                    + "--) {"
+                    + dec
+                    + ") {"
                 )
                 return
         if len(args) == 1:
@@ -1541,13 +1547,16 @@ class _JavaScriptEmitter(Emitter):
             self._line(
                 "for (let "
                 + binder
-                + " = 0; "
+                + " = 0"
+                + n
+                + "; "
                 + binder
                 + " < "
                 + end
                 + "; "
                 + binder
-                + "++) {"
+                + inc
+                + ") {"
             )
         elif len(args) == 2:
             start = self._expr(args[0])
@@ -1563,7 +1572,8 @@ class _JavaScriptEmitter(Emitter):
                 + end
                 + "; "
                 + binder
-                + "++) {"
+                + inc
+                + ") {"
             )
         elif len(args) == 3:
             start = self._expr(args[0])
@@ -1582,7 +1592,8 @@ class _JavaScriptEmitter(Emitter):
                         + end
                         + "; "
                         + binder
-                        + "--) {"
+                        + dec
+                        + ") {"
                     )
                 elif step_val < 0:
                     self._line(
@@ -2102,7 +2113,10 @@ class _JavaScriptEmitter(Emitter):
                     + self._map_key_for(expr.obj, expr.index)
                     + ")"
                 )
-            return self._expr(expr.obj) + "[" + self._expr(expr.index) + "]"
+            idx = self._expr(expr.index)
+            if self.strict_math and self._is_int_expr(expr.index):
+                idx = "Number(" + idx + ")"
+            return self._expr(expr.obj) + "[" + idx + "]"
         if isinstance(expr, TSlice):
             return self._slice(expr)
         if isinstance(expr, TBinaryOp):
@@ -2138,12 +2152,13 @@ class _JavaScriptEmitter(Emitter):
 
     def _int_lit(self, expr: TIntLit) -> str:
         raw = expr.raw
+        suffix = "n" if self.strict_math else ""
         if raw.startswith(("0x", "0X", "0o", "0O", "0b", "0B")):
-            return raw
+            return raw + suffix
         # Use raw string for large integers to preserve precision
         if len(raw) > 15:
-            return raw
-        return str(expr.value)
+            return raw + suffix
+        return str(expr.value) + suffix
 
     def _bytes_lit(self, expr: TBytesLit) -> str:
         parts: list[str] = []
@@ -2756,9 +2771,16 @@ class _JavaScriptEmitter(Emitter):
         if name == "Len":
             inner = args[0].value
             if self._is_map_type(inner) or self._is_set_type(inner):
-                return self._a(args, 0) + ".size"
-            return self._a(args, 0) + ".length"
+                base = self._a(args, 0) + ".size"
+            else:
+                base = self._a(args, 0) + ".length"
+            if self.strict_math:
+                return "BigInt(" + base + ")"
+            return base
         if name == "Abs":
+            if self.strict_math and self._is_int_expr(args[0].value):
+                a = self._a(args, 0)
+                return "(" + a + " < 0n ? -" + a + " : " + a + ")"
             return "Math.abs(" + self._a(args, 0) + ")"
         if name == "Min":
             if (
@@ -2769,6 +2791,9 @@ class _JavaScriptEmitter(Emitter):
                 return (
                     "strict_min_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
                 )
+            if self.strict_math and self._is_int_expr(args[0].value) and len(args) == 2:
+                a, b = self._a(args, 0), self._a(args, 1)
+                return "(" + a + " < " + b + " ? " + a + " : " + b + ")"
             if len(args) == 2:
                 key_val = args[1].value
                 if isinstance(key_val, TFnLit):
@@ -2778,6 +2803,8 @@ class _JavaScriptEmitter(Emitter):
                         + self._min_max_key_cmp(key_val, "<=")
                         + ")"
                     )
+            if self.strict_math and self._is_int_list(args[0].value) and len(args) == 1:
+                return self._a(args, 0) + ".reduce((a, b) => a < b ? a : b)"
             if len(args) == 1:
                 return "Math.min(..." + self._a(args, 0) + ")"
             return "Math.min(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
@@ -2790,6 +2817,9 @@ class _JavaScriptEmitter(Emitter):
                 return (
                     "strict_max_f64(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
                 )
+            if self.strict_math and self._is_int_expr(args[0].value) and len(args) == 2:
+                a, b = self._a(args, 0), self._a(args, 1)
+                return "(" + a + " > " + b + " ? " + a + " : " + b + ")"
             if len(args) == 2:
                 key_val = args[1].value
                 if isinstance(key_val, TFnLit):
@@ -2799,16 +2829,22 @@ class _JavaScriptEmitter(Emitter):
                         + self._min_max_key_cmp(key_val, ">=")
                         + ")"
                     )
+            if self.strict_math and self._is_int_list(args[0].value) and len(args) == 1:
+                return self._a(args, 0) + ".reduce((a, b) => a > b ? a : b)"
             if len(args) == 1:
                 return "Math.max(..." + self._a(args, 0) + ")"
             return "Math.max(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Sum":
+            if self.strict_math and self._is_int_list(args[0].value):
+                return self._a(args, 0) + ".reduce((a, b) => a + b, 0n)"
             return self._a(args, 0) + ".reduce((a, b) => a + b, 0)"
         if name == "Round":
             return "Math.round(" + self._a(args, 0) + ")"
         if name == "DivMod":
             a = self._a(args, 0)
             b = self._a(args, 1)
+            if self.strict_math and self._is_int_expr(args[0].value):
+                return a + " / " + b + ", " + a + " % " + b
             return (
                 "Math.trunc("
                 + a
@@ -2831,6 +2867,12 @@ class _JavaScriptEmitter(Emitter):
                 if isinstance(key_val, TFnLit):
                     return self._sorted_with_key(args[0].value, key_val)
             if self._is_int_list(args[0].value):
+                if self.strict_math:
+                    return (
+                        "[..."
+                        + self._a(args, 0)
+                        + "].sort((a, b) => a < b ? -1 : a > b ? 1 : 0)"
+                    )
                 return "[..." + self._a(args, 0) + "].sort((a, b) => a - b)"
             return "[..." + self._a(args, 0) + "].sort()"
         if name == "RangeList":
@@ -2839,6 +2881,33 @@ class _JavaScriptEmitter(Emitter):
             step = args[2].value
             is_zero_start = isinstance(start, TIntLit) and start.value == 0
             is_one_step = isinstance(step, TIntLit) and step.value == 1
+            if self.strict_math:
+                start_s = self._a(args, 0)
+                step_s = self._a(args, 2)
+                length = "Number(" + end + " - " + start_s + ")"
+                if is_zero_start:
+                    length = "Number(" + end + ")"
+                if is_zero_start and is_one_step:
+                    return "Array.from({length: " + length + "}, (_, i) => BigInt(i))"
+                if is_one_step:
+                    return (
+                        "Array.from({length: "
+                        + length
+                        + "}, (_, i) => BigInt(i) + "
+                        + start_s
+                        + ")"
+                    )
+                if is_zero_start:
+                    length = "Number(" + end + " / " + step_s + ")"
+                else:
+                    length = "Number((" + end + " - " + start_s + ") / " + step_s + ")"
+                return (
+                    "Array.from({length: "
+                    + length
+                    + "}, (_, i) => BigInt(i) * "
+                    + step_s
+                    + ")"
+                )
             if is_zero_start and is_one_step:
                 return "Array.from({length: " + end + "}, (_, i) => i)"
             if is_one_step:
@@ -2911,27 +2980,57 @@ class _JavaScriptEmitter(Emitter):
         if name == "ToString":
             return "String(" + self._a(args, 0) + ")"
         if name == "ToRepr":
+            if self.strict_math:
+                return (
+                    "JSON.stringify("
+                    + self._a(args, 0)
+                    + ', (_, v) => typeof v === "bigint" ? Number(v) : v)'
+                )
             return "JSON.stringify(" + self._a(args, 0) + ")"
         if name == "ParseInt":
             base_expr = args[1].value
             if isinstance(base_expr, TIntLit) and base_expr.value == 0:
+                if self.strict_math:
+                    return "BigInt(" + self._a(args, 0) + ")"
                 return "Number(BigInt(" + self._a(args, 0) + "))"
+            if self.strict_math:
+                return (
+                    "BigInt(parseInt("
+                    + self._a(args, 0)
+                    + ", "
+                    + self._a(args, 1)
+                    + "))"
+                )
             return "parseInt(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "ParseFloat":
             return "parseFloat(" + self._a(args, 0) + ")"
         if name == "FormatInt":
             return self._format_int(args)
         if name == "RuneFromInt":
-            return "String.fromCodePoint(" + self._a(args, 0) + ")"
+            arg = self._a(args, 0)
+            if self.strict_math:
+                return "String.fromCodePoint(Number(" + arg + "))"
+            return "String.fromCodePoint(" + arg + ")"
         if name == "RuneToInt":
-            return self._a(args, 0) + ".codePointAt(0)"
+            base = self._a(args, 0) + ".codePointAt(0)"
+            if self.strict_math:
+                return "BigInt(" + base + ")"
+            return base
         if name == "IntToFloat":
+            if self.strict_math:
+                return "Number(" + self._a(args, 0) + ")"
             return self._a(args, 0)
         if name == "FloatToInt":
+            if self.strict_math:
+                return "BigInt(Math.trunc(" + self._a(args, 0) + "))"
             return "Math.trunc(" + self._a(args, 0) + ")"
         if name == "ByteToInt":
+            if self.strict_math:
+                return "BigInt(" + self._a(args, 0) + ")"
             return self._a(args, 0)
         if name == "IntToByte":
+            if self.strict_math:
+                return "Number(" + self._a(args, 0) + ")"
             return self._a(args, 0)
         if name == "Unwrap":
             return self._a(args, 0)

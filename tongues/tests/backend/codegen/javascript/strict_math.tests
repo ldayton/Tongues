@@ -15,43 +15,43 @@ let y = checked_neg_i64(x);
 console.log(String(y));
 
 === checked left shift
-let y = checked_shl_i64(x, 4);
+let y = checked_shl_i64(x, 4n);
 console.log(String(y));
 
 === checked right shift
-let y = checked_shr_i64(x, 4);
+let y = checked_shr_i64(x, 4n);
 console.log(String(y));
 
 === logical right shift
-let y = logical_shr_i64(x, 1);
+let y = logical_shr_i64(x, 1n);
 console.log(String(y));
 
 === wrapping add
-let b = wrappingAdd(a, 1);
+let b = wrappingAdd(a, 1n);
 console.log(String(b));
 
 === wrapping sub
-let b = wrappingSub(min, 1);
+let b = wrappingSub(min, 1n);
 console.log(String(b));
 
 === wrapping mul
-let b = wrappingMul(max, 2);
+let b = wrappingMul(max, 2n);
 console.log(String(b));
 
 === checked pow
-let x = checked_pow_i64(2, 10);
+let x = checked_pow_i64(2n, 10n);
 console.log(String(x));
 
 === checked int compound add
-x = checked_add_i64(x, 5);
+x = checked_add_i64(x, 5n);
 console.log(String(x));
 
 === checked int compound sub
-x = checked_sub_i64(x, 3);
+x = checked_sub_i64(x, 3n);
 console.log(String(x));
 
 === checked int compound mul
-x = checked_mul_i64(x, 3);
+x = checked_mul_i64(x, 3n);
 console.log(String(x));
 
 === float mod by zero traps
@@ -83,8 +83,30 @@ try {
 }
 console.log(String(caught));
 
+=== bigint int literal
+let x = 42n;
+console.log(String(x));
+
+=== preamble no number conversion
+function _check_i64(v) { if (v < _I64_MIN || v > _I64_MAX) throw new RangeError("integer overflow"); return v; }
+
+=== bigint for range
+for (let i = 0n; i < 10n; i += 1n) {
+
+=== bigint array index
+let v = xs[Number(i)];
+
+=== bigint int to float
+let f = Number(x);
+
+=== bigint float to int
+let x = BigInt(Math.trunc(f));
+
+=== bigint len
+let n = BigInt(xs.length);
+
 === non-strict ops unchanged
 let x = 1.5 + 2.5;
-let y = checked_div_i64(10, 3);
-let z = checked_rem_i64(10, 3);
+let y = checked_div_i64(10n, 3n);
+let z = checked_rem_i64(10n, 3n);
 console.log(String(y));

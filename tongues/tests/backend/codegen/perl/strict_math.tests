@@ -97,6 +97,29 @@ return $__ok0;
 say(("" . $caught));
 }
 
+=== bigint int literal
+my $x = 42;
+say(("" . $x));
+
+=== preamble no number conversion
+my $c = checked_add_i64($a, $b);
+say(("" . $c));
+
+=== bigint for range
+for my $i (0 .. 9) {
+
+=== bigint array index
+my $v = $xs->[$i];
+
+=== bigint int to float
+my $f = ($x + 0.0);
+
+=== bigint float to int
+my $x = int($f);
+
+=== bigint len
+my $n = scalar(@{$xs});
+
 === non-strict ops unchanged
 my $x = 1.5 + 2.5;
 my $y = checked_div_i64(10, 3);

@@ -87,6 +87,29 @@ end
 puts(caught.to_s)
 end
 
+=== bigint int literal
+x = 42
+puts(x.to_s)
+
+=== preamble no number conversion
+c = checked_add_i64(a, b)
+puts(c.to_s)
+
+=== bigint for range
+(0...10).each do |i|
+
+=== bigint array index
+v = xs[i]
+
+=== bigint int to float
+f = x.to_f
+
+=== bigint float to int
+x = f.to_i
+
+=== bigint len
+n = xs.length
+
 === non-strict ops unchanged
 x = 1.5 + 2.5
 y = checked_div_i64(10, 3)
