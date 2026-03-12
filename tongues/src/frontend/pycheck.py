@@ -3112,13 +3112,17 @@ def _validate_match(
         if not isinstance(subj_type, UnionType):
             base_name = _struct_name(subj_type)
             if base_name:
-                children: list[TypeNode] = []
+                child_names: list[str] = []
                 for cls_k, bases in ctx.class_bases.items():
                     if base_name in bases:
-                        sig_e: list[TypeCollectError] = []
-                        children.append(
-                            py_type_to_type_dict(cls_k, ctx.known_classes, sig_e, 0, 0)
-                        )
+                        child_names.append(cls_k)
+                child_names.sort()
+                children: list[TypeNode] = []
+                for cls_k in child_names:
+                    sig_e: list[TypeCollectError] = []
+                    children.append(
+                        py_type_to_type_dict(cls_k, ctx.known_classes, sig_e, 0, 0)
+                    )
                 if children:
                     remainder_env.narrow(subj_name, UnionType(children))
     # Track enum variant coverage for exhaustiveness
@@ -3524,15 +3528,17 @@ def _narrow_isinstance(
         if not isinstance(else_type, UnionType):
             base_name = _struct_name(else_type)
             if base_name:
-                children: list[TypeNode] = []
+                child_names: list[str] = []
                 for cls_k, bases in ctx.class_bases.items():
                     if base_name in bases:
-                        sig_e_exp: list[TypeCollectError] = []
-                        children.append(
-                            py_type_to_type_dict(
-                                cls_k, ctx.known_classes, sig_e_exp, 0, 0
-                            )
-                        )
+                        child_names.append(cls_k)
+                child_names.sort()
+                children: list[TypeNode] = []
+                for cls_k in child_names:
+                    sig_e_exp: list[TypeCollectError] = []
+                    children.append(
+                        py_type_to_type_dict(cls_k, ctx.known_classes, sig_e_exp, 0, 0)
+                    )
                 if children:
                     else_type = UnionType(children)
                     else_env.narrow(name, else_type)

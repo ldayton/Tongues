@@ -13,21 +13,58 @@ from .util import (
 def _escape_java_string(value: str) -> str:
     """Escape a string for Java, converting non-Java escape sequences."""
     s = escape_string(value)
-    s = s.replace("\\x00", "\\u0000")
-    s = s.replace("\\v", "\\u000b")
     out: list[str] = []
     i = 0
     while i < len(s):
-        if s[i : i + 2] == "\\U" and i + 10 <= len(s):
-            cp = int(s[i + 2 : i + 10], 16)
-            hi = 0xD800 + ((cp - 0x10000) >> 10)
-            lo = 0xDC00 + ((cp - 0x10000) & 0x3FF)
-            out.append("\\u" + hex(hi)[2:].zfill(4) + "\\u" + hex(lo)[2:].zfill(4))
-            i += 10
+        if s[i] == "\\" and i + 1 < len(s):
+            nc = s[i + 1]
+            if nc == "U" and i + 10 <= len(s):
+                cp = int(s[i + 2 : i + 10], 16)
+                hi = 0xD800 + ((cp - 0x10000) >> 10)
+                lo = 0xDC00 + ((cp - 0x10000) & 0x3FF)
+                out.append("\\u" + hex(hi)[2:].zfill(4) + "\\u" + hex(lo)[2:].zfill(4))
+                i += 10
+            elif nc == "v":
+                out.append("\\u000b")
+                i += 2
+            elif nc == "x" and i + 4 <= len(s) and s[i + 2 : i + 4] == "00":
+                out.append("\\u0000")
+                i += 4
+            elif nc == "\\":
+                out.append("\\\\")
+                i += 2
+            else:
+                out.append(s[i])
+                i += 1
         else:
             out.append(s[i])
             i += 1
     return "".join(out)
+
+
+def _decimal_sub(a: str, b: str) -> str:
+    """Subtract b from a (a >= b, positive decimal strings)."""
+    result: list[str] = []
+    borrow = 0
+    ai = len(a) - 1
+    bi = len(b) - 1
+    while ai >= 0:
+        da = ord(a[ai]) - 48
+        db = (ord(b[bi]) - 48) if bi >= 0 else 0
+        diff = da - db - borrow
+        if diff < 0:
+            diff += 10
+            borrow = 1
+        else:
+            borrow = 0
+        result.append(chr(48 + diff))
+        ai -= 1
+        bi -= 1
+    result.reverse()
+    i = 0
+    while i < len(result) - 1 and result[i] == "0":
+        i += 1
+    return "".join(result[i:])
 
 
 def _escape_java_char(value: str) -> str:
@@ -1397,12 +1434,53 @@ class _JavaEmitter(Emitter):
                             )
                     self.indent -= 1
                     self._line("}")
+        if decl.fields:
+            self._line()
+            self._emit_struct_equals(name, decl.fields)
+            self._line()
+            self._emit_struct_hashCode(name, decl.fields)
         old_struct = self._current_struct
         self._current_struct = decl.name
         for m in decl.methods:
             self._line()
             self._emit_method(m)
         self._current_struct = old_struct
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_struct_equals(self, name: str, fields: list[TFieldDecl]) -> None:
+        self._line("@Override")
+        self._line("public boolean equals(Object _o) {")
+        self.indent += 1
+        self._line("if (this == _o) return true;")
+        self._line("if (!(_o instanceof " + name + ")) return false;")
+        self._line(name + " _that = (" + name + ") _o;")
+        for f in fields:
+            safe = _safe_name(f.name)
+            jtype = self._type(f.typ)
+            if jtype in ("int", "long", "double", "boolean", "byte", "char"):
+                self._line("if (this." + safe + " != _that." + safe + ") return false;")
+            else:
+                self._line(
+                    "if (!Objects.equals(this."
+                    + safe
+                    + ", _that."
+                    + safe
+                    + ")) return false;"
+                )
+        self._line("return true;")
+        self.indent -= 1
+        self._line("}")
+
+    def _emit_struct_hashCode(self, name: str, fields: list[TFieldDecl]) -> None:
+        self._line("@Override")
+        self._line("public int hashCode() {")
+        self.indent += 1
+        self._line(
+            "return Objects.hash("
+            + ", ".join(_safe_name(f.name) for f in fields)
+            + ");"
+        )
         self.indent -= 1
         self._line("}")
 
@@ -3430,16 +3508,13 @@ class _JavaEmitter(Emitter):
             elif len(raw) == 19 and raw > "9223372036854775807":
                 is_unsigned_64 = True
         if is_unsigned_64:
-            # For unsigned 64-bit: compute signed representation
-            # In Python v is large positive; in Java v is already negative (overflow)
-            # The v >= 0 check distinguishes: Python path computes signed, Java path uses v directly
-            # (In Java, 1<<64 would overflow, but the v>=0 branch won't execute since v<0)
-            signed: int = v
-            if v >= 0:
-                signed = v - (1 << 64)
+            # Compute signed = unsigned - 2^64 using string arithmetic so it
+            # works correctly in Java where int may truncate large values and
+            # 1<<64 is subject to modular shift.
+            signed_str = "-" + _decimal_sub("18446744073709551616", raw)
             if self.strict_math:
-                return str(signed) + "L"
-            return "(int) " + str(signed) + "L"
+                return signed_str + "L"
+            return "(int) " + signed_str + "L"
         if raw.startswith(("0x", "0X", "0o", "0O", "0b", "0B")):
             if v > 2147483647 or v < -2147483648:
                 if self.strict_math:
@@ -3948,9 +4023,36 @@ class _JavaEmitter(Emitter):
                 + self._expr(expr.right)
                 + " ? 1 : 0)"
             )
+        if op in ("==", "!=") and not self._is_primitive_eq(expr.left, expr.right):
+            left = self._expr(expr.left)
+            right = self._expr(expr.right)
+            if op == "==":
+                return "Objects.equals(" + left + ", " + right + ")"
+            return "!Objects.equals(" + left + ", " + right + ")"
         left = self._maybe_paren(expr.left, op, True)
         right = self._maybe_paren(expr.right, op, False)
         return left + " " + op + " " + right
+
+    def _is_primitive_eq(self, left: TExpr, right: TExpr) -> bool:
+        """True if == / != can use Java's == (both sides are primitives or null)."""
+        if isinstance(left, TNilLit) or isinstance(right, TNilLit):
+            return True
+        if self._is_int_expr(left) or self._is_int_expr(right):
+            return True
+        if self._is_float_expr(left) or self._is_float_expr(right):
+            return True
+        if self._is_bool_expr(left) or self._is_bool_expr(right):
+            return True
+        if self._is_rune_expr(left) or self._is_rune_expr(right):
+            return True
+        left_ann = left.annotations.get("type", "")
+        right_ann = right.annotations.get("type", "")
+        for ann in (left_ann, right_ann):
+            if ann in ("int", "float", "bool", "byte", "rune"):
+                return True
+            if ann in self._enum_names:
+                return True
+        return False
 
     def _detect_negated_isinstance(self, expr: TExpr) -> tuple[str, str] | None:
         """Detect `not isinstance(x, T)` and return (var_name, type_name)."""
