@@ -767,12 +767,8 @@ class _PerlEmitter(Emitter):
             if has_eq:
                 parts.append("'==' => \\&__eq__")
                 parts.append("'eq' => \\&__eq__")
-                parts.append(
-                    "'!=' => sub { !__eq__(@_) }"
-                )
-                parts.append(
-                    "'ne' => sub { !__eq__(@_) }"
-                )
+                parts.append("'!=' => sub { !__eq__(@_) }")
+                parts.append("'ne' => sub { !__eq__(@_) }")
             parts.append("fallback => 1")
             self._line("use overload " + ", ".join(parts) + ";")
             self._line()
