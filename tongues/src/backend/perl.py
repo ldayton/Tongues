@@ -653,7 +653,9 @@ class _PerlEmitter(Emitter):
         self._line("use Encode qw(encode decode);")
         self._line("binmode(STDOUT, ':utf8');")
         self._line("binmode(STDERR, ':utf8');")
-        self._line("@UnicodeDecodeError::ISA = ('ValueError');")
+        self._line(
+            "package ValueError; package UnicodeDecodeError; our @ISA = ('ValueError'); package main;"
+        )
         self._line()
         if self.strict_tostring:
             self._line(
