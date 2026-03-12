@@ -1767,11 +1767,17 @@ class _PerlEmitter(Emitter):
                 self.indent -= 1
             self._line("}")
 
+    _EXCEPTION_SUBCLASSES: dict[str, list[str]] = {
+        "ValueError": ["UnicodeDecodeError"],
+    }
+
     def _catch_condition(self, catch: TCatch, err: str) -> str | None:
         parts: list[str] = []
         for t in catch.types:
             if isinstance(t, TIdentType):
-                parts.append("ref(" + err + ") eq '" + t.name + "'")
+                names = [t.name] + self._EXCEPTION_SUBCLASSES.get(t.name, [])
+                for n in names:
+                    parts.append("ref(" + err + ") eq '" + n + "'")
             else:
                 return None
         if not parts:
@@ -2918,7 +2924,7 @@ class _PerlEmitter(Emitter):
             return (
                 "do { my $__d = eval { Encode::decode('UTF-8', "
                 + a
-                + ", Encode::FB_CROAK) }; if ($@) { die bless({message => \"$@\"}, 'ValueError') } $__d }"
+                + ", Encode::FB_CROAK) }; if ($@) { die bless({message => \"$@\"}, 'UnicodeDecodeError') } $__d }"
             )
         if name == "Bytes":
             return '("\\0" x ' + self._a(args, 0) + ")"
