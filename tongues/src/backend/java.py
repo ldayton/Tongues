@@ -846,7 +846,9 @@ class _JavaEmitter(Emitter):
             if name in self.fn_names:
                 continue
             self._line()
-            exc_parent = "ValueError" if name == "UnicodeDecodeError" else "RuntimeException"
+            exc_parent = (
+                "ValueError" if name == "UnicodeDecodeError" else "RuntimeException"
+            )
             self._line("static class " + java_name + " extends " + exc_parent + " {")
             self.indent += 1
             self._line(java_name + "(String message) { super(message); }")
