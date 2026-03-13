@@ -1228,7 +1228,7 @@ class _JavaEmitter(Emitter):
             self.indent -= 1
             self._line("} catch (java.nio.charset.CharacterCodingException e) {")
             self.indent += 1
-            self._line("throw new ValueError(e.getMessage());")
+            self._line("throw new UnicodeDecodeError(e.getMessage());")
             self.indent -= 1
             self._line("}")
             self.indent -= 1
@@ -1392,7 +1392,9 @@ class _JavaEmitter(Emitter):
         # Only declare fields that are NOT inherited from parent
         for f in decl.fields:
             if f.name not in parent_field_names:
-                self._line("public " + self._type(f.typ) + " " + _safe_name(f.name) + ";")
+                self._line(
+                    "public " + self._type(f.typ) + " " + _safe_name(f.name) + ";"
+                )
         if decl.fields:
             params = ", ".join(
                 self._type(f.typ) + " " + _safe_name(f.name) for f in decl.fields
@@ -1529,11 +1531,15 @@ class _JavaEmitter(Emitter):
         # Only declare fields NOT inherited from parent
         for f in decl.fields:
             if f.name not in parent_field_names:
-                self._line("public " + self._type(f.typ) + " " + _safe_name(f.name) + ";")
+                self._line(
+                    "public " + self._type(f.typ) + " " + _safe_name(f.name) + ";"
+                )
             declared_fields.add(f.name)
         for f in self._interface_fields.get(decl.name, []):
             if f.name not in declared_fields and f.name not in parent_field_names:
-                self._line("public " + self._type(f.typ) + " " + _safe_name(f.name) + ";")
+                self._line(
+                    "public " + self._type(f.typ) + " " + _safe_name(f.name) + ";"
+                )
         parent_methods: set[str] = set()
         if parent and parent in self._interface_methods:
             for pm in self._interface_methods[parent]:
