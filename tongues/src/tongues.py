@@ -35,6 +35,7 @@ from .frontend.types import (
 )
 from .taytsh.ast import (
     TLetStmt,
+    collect_expr_annotations,
     serialize_annotations,
     to_dict as module_to_dict,
 )
@@ -43,13 +44,16 @@ from .taytsh.emit import to_source
 from .taytsh.parse import Parser as TaytshParser
 from .taytsh.tokens import tokenize as taytsh_tokenize
 from .middleend.callgraph import analyze_callgraph
+from .middleend.error_types import patch_error_types
 from .middleend.callgraph_serial import serialize_callgraph
 from .middleend.hoisting import analyze_hoisting
+from .middleend.int_width import analyze_int_width
 from .middleend.liveness import analyze_liveness
 from .middleend.ownership import analyze_ownership
 from .middleend.returns import analyze_returns
 from .middleend.scope import analyze_scope
 from .middleend.strings import analyze_strings
+from .backend.java import emit_java
 from .backend.javascript import emit_javascript
 from .backend.python import emit_python
 from .backend.perl import emit_perl
@@ -1265,13 +1269,17 @@ def _pipeline_post_parse(
         err_strs: list[str] = [str(e) for e in checker.errors]
         _print_errors(err_strs)
         return (1, "")
+    patch_error_types(module)
     analyze_returns(module, checker)
     analyze_scope(module, checker)
     analyze_liveness(module, checker)
+    analyze_int_width(module, checker)
     if stop_at == "analyze":
         return (0, to_json(module_to_dict(module)))
     if target == "python":
         return (0, emit_python(module))
+    if target == "java":
+        return (0, emit_java(module))
     if target == "javascript":
         return (0, emit_javascript(module))
     if target == "perl":
@@ -1418,7 +1426,14 @@ TAYTSH_PHASES: list[str] = [
     "callgraph",
 ]
 
-TAYTSH_EMIT_TARGETS: list[str] = ["javascript", "python", "perl", "ruby", "taytsh"]
+TAYTSH_EMIT_TARGETS: list[str] = [
+    "java",
+    "javascript",
+    "python",
+    "perl",
+    "ruby",
+    "taytsh",
+]
 
 
 def taytsh_pipeline(argv: list[str]) -> int:
@@ -1495,9 +1510,17 @@ def taytsh_pipeline(argv: list[str]) -> int:
             reveals_out.items.append(
                 JDict({"line": JInt(rev[0]), "type": JStr(rev[1])})
             )
-        print(to_json(JDict({"reveals": reveals_out})))
+        expr_anns = collect_expr_annotations(module)
+        anns_out = JDict({})
+        for line, ann_dict in expr_anns.items():
+            line_dict = JDict({})
+            for k, v in ann_dict.items():
+                line_dict.entries[k] = JStr(v)
+            anns_out.entries[str(line)] = line_dict
+        print(to_json(JDict({"reveals": reveals_out, "annotations": anns_out})))
         return 0
     if stop_at == "returns":
+        patch_error_types(module)
         analyze_returns(module, checker)
         print(to_json(JDict(serialize_annotations(module, "returns"))))
         return 0
@@ -1531,17 +1554,22 @@ def taytsh_pipeline(argv: list[str]) -> int:
         print(to_json(JDict(serialize_callgraph(module, checker))))
         return 0
     if emit_target is not None:
+        patch_error_types(module)
         analyze_returns(module, checker)
         analyze_scope(module, checker)
         analyze_liveness(module, checker)
+        analyze_int_width(module, checker)
         result = ""
-        if emit_target == "javascript":
+        if emit_target == "java":
+            result = emit_java(module)
+        elif emit_target == "javascript":
             result = emit_javascript(module)
         elif emit_target == "python":
             result = emit_python(module)
         elif emit_target == "perl":
             result = emit_perl(module)
         elif emit_target == "ruby":
+            analyze_strings(module, checker)
             result = emit_ruby(module)
         elif emit_target == "taytsh":
             result = emit_taytsh(module)

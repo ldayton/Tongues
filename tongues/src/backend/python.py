@@ -707,7 +707,7 @@ class _PythonEmitter(Emitter):
         body = for_stmt.body
         if len(body) != 1:
             return None
-        src_obj = self._step_slice_source(body[0], let_stmt.name)
+        _, src_obj = self._step_slice_source(body[0], let_stmt.name)
         if src_obj is None:
             return None
         src = self._expr(src_obj)
@@ -724,15 +724,17 @@ class _PythonEmitter(Emitter):
         step_s = self._expr(step_expr)
         return acc + " = " + src + "[" + start_s + ":" + end_s + ":" + step_s + "]"
 
-    def _step_slice_source(self, stmt: TStmt, acc_name: str) -> TExpr | None:
-        """Extract the source object from a step_slice loop body (list or string)."""
+    def _step_slice_source(
+        self, stmt: TStmt, acc_name: str
+    ) -> tuple[bool, TExpr | None]:
+        """Extract (is_string, source_obj) from a step_slice loop body."""
         # List: ExprStmt(Append(acc, obj[__i]))
         if isinstance(stmt, TExprStmt):
             call = stmt.expr
             if isinstance(call, TCall) and self._is_append_to(call, acc_name):
                 elem = call.args[1].value
                 if isinstance(elem, TIndex):
-                    return elem.obj
+                    return False, elem.obj
         # String: acc = Concat(acc, ToString(obj[__i]))
         if isinstance(stmt, TAssignStmt) and isinstance(stmt.target, TVar):
             if stmt.target.name == acc_name and isinstance(stmt.value, TCall):
@@ -748,8 +750,8 @@ class _PythonEmitter(Emitter):
                     ):
                         inner = second.args[0].value
                         if isinstance(inner, TIndex):
-                            return inner.obj
-        return None
+                            return True, inner.obj
+        return False, None
 
     def _is_len_of(self, expr: TExpr, obj: TExpr) -> bool:
         """Check if expr is Len(obj) where obj matches."""
@@ -1296,7 +1298,11 @@ class _PythonEmitter(Emitter):
             self.indent += 1
             unused = pat.annotations.get("liveness.match_var_unused") == "true"
             if not unused:
-                self._line(_safe_name(pat.name) + " = " + expr_str)
+                # Avoid shadowing the type name with the binding variable
+                var_name = _safe_name(pat.name)
+                if var_name == type_name:
+                    var_name = "_m_" + var_name
+                self._line(var_name + " = " + expr_str)
             if not case.body:
                 if unused:
                     self._line("pass")
@@ -1758,9 +1764,13 @@ class _PythonEmitter(Emitter):
 
     def _builtin_call(self, name: str, args: list[TArg]) -> str:
         if name == "FloorDiv":
-            return self._a(args, 0) + " // " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "//", is_left=True)
+            right = self._maybe_paren(args[1].value, "//", is_left=False)
+            return left + " // " + right
         if name == "PythonMod":
-            return self._a(args, 0) + " % " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "%", is_left=True)
+            right = self._maybe_paren(args[1].value, "%", is_left=False)
+            return left + " % " + right
         # Method-on-first-arg
         if name == "Append":
             return self._a(args, 0) + ".append(" + self._a(args, 1) + ")"
@@ -2102,7 +2112,9 @@ class _PythonEmitter(Emitter):
                     + self._a(args, 1)
                     + ")"
                 )
-            return self._a(args, 0) + " ** " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "**", is_left=True)
+            right = self._maybe_paren(args[1].value, "**", is_left=False)
+            return left + " ** " + right
         if name == "Contains":
             return self._a(args, 1) + " in " + self._a(args, 0)
         if name == "Concat":

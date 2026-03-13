@@ -968,6 +968,7 @@ BUILTIN_STRUCTS: dict[str, dict[str, Type]] = {
     "NotImplementedError": {"message": STRING_T},
     "RuntimeError": {"message": STRING_T},
     "IOError": {"message": STRING_T},
+    "UnicodeDecodeError": {"message": STRING_T},
     "Exception": {"message": STRING_T},
     "BaseException": {"message": STRING_T},
 }
@@ -1618,7 +1619,6 @@ class Checker:
                             resolved = self._narrow_to_type(current, tc_type_name)
                             if resolved is not None:
                                 self.narrow(tc_var, resolved)
-            i += 1
 
     def check_stmt(self, stmt: TStmt) -> None:
         match stmt:
@@ -2410,10 +2410,9 @@ class Checker:
 
     def _check_expr_inner(self, expr: TExpr, expected: Type | None) -> Type | None:
         if isinstance(expr, TIntLit):
-            if len(expr.raw) > 20 or (
-                len(expr.raw) == 20 and expr.raw > "18446744073709551615"
-            ):
-                self.error("integer literal too large", expr.pos)
+            e: TIntLit = expr
+            if len(e.raw) > 20 or (len(e.raw) == 20 and e.raw > "18446744073709551615"):
+                e.annotations["large"] = "true"
             return INT_T
         if isinstance(expr, TFloatLit):
             return FLOAT_T
@@ -3775,18 +3774,15 @@ class Checker:
                     return BYTES_T
                 if isinstance(t1u, ListT) and isinstance(t2u, ListT):
                     return t1u
-                if isinstance(t1u, (ListT, TupleT)) and isinstance(
-                    t2u, (ListT, TupleT)
-                ):
-                    if isinstance(t1u, ListT):
-                        return t1u
-                    if isinstance(t2u, ListT):
-                        return t2u
-                    if isinstance(t1u, TupleT):
-                        return ListT(
-                            kind="list",
-                            element=t1u.elements[0] if t1u.elements else ERROR_T,
-                        )
+                if isinstance(t1u, ListT) and isinstance(t2u, TupleT):
+                    return t1u
+                if isinstance(t1u, TupleT) and isinstance(t2u, ListT):
+                    return t2u
+                if isinstance(t1u, TupleT) and isinstance(t2u, TupleT):
+                    return ListT(
+                        kind="list",
+                        element=t1u.elements[0] if t1u.elements else ERROR_T,
+                    )
                 self.error("Concat requires two strings, two bytes, or two lists", pos)
             return STRING_T
 

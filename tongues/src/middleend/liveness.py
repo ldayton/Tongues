@@ -444,12 +444,15 @@ def _analyze_tuple_targets_in_stmts(
             remaining = stmts[i + 1 :]
             unused: list[str] = []
             for j, t in enumerate(stmt.targets):
-                if isinstance(t, TVar) and t.name != "_":
-                    first = _first_access_in_stmts(t.name, remaining)
-                    if first is None:
-                        first = _first_access_in_stmts(t.name, continuation)
-                    if first != "read":
+                if isinstance(t, TVar):
+                    if t.name == "_":
                         unused.append(str(j))
+                    else:
+                        first = _first_access_in_stmts(t.name, remaining)
+                        if first is None:
+                            first = _first_access_in_stmts(t.name, continuation)
+                        if first != "read":
+                            unused.append(str(j))
             stmt.annotations["liveness.tuple_unused_indices"] = ",".join(unused)
         outer: list[TStmt] = stmts[i + 1 :]
         for cs in continuation:

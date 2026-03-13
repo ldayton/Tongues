@@ -173,11 +173,11 @@ class _VMThrow(Exception):
 # ============================================================
 
 
-def _isnan(x: float) -> bool:
+def _do_isnan(x: float) -> bool:
     return x != x
 
 
-def _isinf(x: float) -> bool:
+def _do_isinf(x: float) -> bool:
     return x == float("inf") or x == float("-inf")
 
 
@@ -197,7 +197,7 @@ def _val_to_string(v: Val) -> str:
         return str(v.value)
     if isinstance(v, VFloat):
         f = v.value
-        if _isnan(f):
+        if _do_isnan(f):
             return "NaN"
         if f == float("inf"):
             return "Inf"
@@ -205,7 +205,7 @@ def _val_to_string(v: Val) -> str:
             return "-Inf"
         if f == 0.0 and str(f) == "-0.0":
             return "-0.0"
-        if f == int(f) and not _isinf(f):
+        if f == int(f) and not _do_isinf(f):
             return str(int(f)) + ".0"
         return str(f)
     if isinstance(v, VBool):
@@ -304,7 +304,7 @@ def _sort_key_pairs(keys: list[Val], vals: list[Val]) -> None:
         i += 1
 
 
-def _read_file_bytes(path: str) -> VBytes:
+def _do_read_file_bytes(path: str) -> VBytes:
     with open(path, "rb") as f:
         data = f.read()
     return VBytes(data)
@@ -464,21 +464,21 @@ def _make_error_struct(type_name: str, message: str) -> VStruct:
     )
 
 
-def _floor(x: float) -> int:
+def _do_floor(x: float) -> int:
     i = int(x)
     if x < 0 and x != i:
         return i - 1
     return i
 
 
-def _ceil(x: float) -> int:
+def _do_ceil(x: float) -> int:
     i = int(x)
     if x > 0 and x != i:
         return i + 1
     return i
 
 
-def _sqrt(x: float) -> float:
+def _do_sqrt(x: float) -> float:
     return x**0.5
 
 
@@ -486,19 +486,19 @@ _INT64_MAX: int = (1 << 62) - 1 + (1 << 62)
 _INT64_MIN: int = -_INT64_MAX - 1
 
 
-def _wrapping_add(a: int, b: int) -> int:
+def _do_wrapping_add(a: int, b: int) -> int:
     r = a + b
     r = ((r - _INT64_MIN) % (2**64)) + _INT64_MIN
     return r
 
 
-def _wrapping_sub(a: int, b: int) -> int:
+def _do_wrapping_sub(a: int, b: int) -> int:
     r = a - b
     r = ((r - _INT64_MIN) % (2**64)) + _INT64_MIN
     return r
 
 
-def _wrapping_mul(a: int, b: int) -> int:
+def _do_wrapping_mul(a: int, b: int) -> int:
     r = a * b
     r = ((r - _INT64_MIN) % (2**64)) + _INT64_MIN
     return r
@@ -1080,7 +1080,7 @@ class _BuiltinDispatch:
         if isinstance(a, VInt) and isinstance(b, VInt):
             return a if a.value <= b.value else b
         if isinstance(a, VFloat) and isinstance(b, VFloat):
-            if _isnan(a.value) or _isnan(b.value):
+            if _do_isnan(a.value) or _do_isnan(b.value):
                 return VFloat(float("nan"))
             return a if a.value <= b.value else b
         return a
@@ -1109,7 +1109,7 @@ class _BuiltinDispatch:
         if isinstance(a, VInt) and isinstance(b, VInt):
             return a if a.value >= b.value else b
         if isinstance(a, VFloat) and isinstance(b, VFloat):
-            if _isnan(a.value) or _isnan(b.value):
+            if _do_isnan(a.value) or _do_isnan(b.value):
                 return VFloat(float("nan"))
             return a if a.value >= b.value else b
         return a
@@ -1153,9 +1153,9 @@ class _BuiltinDispatch:
         v = args[0]
         if isinstance(v, VFloat):
             f = v.value
-            if _isnan(f):
+            if _do_isnan(f):
                 raise _VMThrow(_make_error_struct("ValueError", "cannot round NaN"))
-            if _isinf(f):
+            if _do_isinf(f):
                 raise _VMThrow(
                     _make_error_struct("ValueError", "cannot round Infinity")
                 )
@@ -1170,24 +1170,24 @@ class _BuiltinDispatch:
         v = args[0]
         if isinstance(v, VFloat):
             f = v.value
-            if _isnan(f):
+            if _do_isnan(f):
                 raise _VMThrow(_make_error_struct("ValueError", "cannot floor NaN"))
-            if _isinf(f):
+            if _do_isinf(f):
                 raise _VMThrow(
                     _make_error_struct("ValueError", "cannot floor Infinity")
                 )
-            return VInt(_floor(f))
+            return VInt(_do_floor(f))
         return _ZERO_INT
 
     def _ceil(self, args: list[Val]) -> Val:
         v = args[0]
         if isinstance(v, VFloat):
             f = v.value
-            if _isnan(f):
+            if _do_isnan(f):
                 raise _VMThrow(_make_error_struct("ValueError", "cannot ceil NaN"))
-            if _isinf(f):
+            if _do_isinf(f):
                 raise _VMThrow(_make_error_struct("ValueError", "cannot ceil Infinity"))
-            return VInt(_ceil(f))
+            return VInt(_do_ceil(f))
         return _ZERO_INT
 
     def _divmod(self, args: list[Val]) -> Val:
@@ -1215,19 +1215,19 @@ class _BuiltinDispatch:
     def _sqrt(self, args: list[Val]) -> Val:
         v = args[0]
         if isinstance(v, VFloat):
-            return VFloat(_sqrt(v.value))
+            return VFloat(_do_sqrt(v.value))
         return VFloat(0.0)
 
     def _isnan(self, args: list[Val]) -> Val:
         v = args[0]
         if isinstance(v, VFloat):
-            return VBool(_isnan(v.value))
+            return VBool(_do_isnan(v.value))
         return _FALSE_VAL
 
     def _isinf(self, args: list[Val]) -> Val:
         v = args[0]
         if isinstance(v, VFloat):
-            return VBool(_isinf(v.value))
+            return VBool(_do_isinf(v.value))
         return _FALSE_VAL
 
     # ── Conversions ───────────────────────────────────────────
@@ -1241,11 +1241,11 @@ class _BuiltinDispatch:
     def _float_to_int(self, args: list[Val]) -> Val:
         if isinstance(args[0], VFloat):
             f = args[0].value
-            if _isnan(f):
+            if _do_isnan(f):
                 raise _VMThrow(
                     _make_error_struct("ValueError", "cannot convert NaN to int")
                 )
-            if _isinf(f):
+            if _do_isinf(f):
                 raise _VMThrow(
                     _make_error_struct("ValueError", "cannot convert Infinity to int")
                 )
@@ -1363,7 +1363,7 @@ class _BuiltinDispatch:
         else:
             return VList([])
         for item in items:
-            if isinstance(item, VFloat) and _isnan(item.value):
+            if isinstance(item, VFloat) and _do_isnan(item.value):
                 raise _VMThrow(
                     _make_error_struct("ValueError", "cannot sort list containing NaN")
                 )
@@ -1616,7 +1616,7 @@ class _BuiltinDispatch:
 
     def _set_from_list(self, args: list[Val]) -> Val:
         if isinstance(args[0], VSet):
-            return args[0]
+            return VSet(list(args[0].items))
         if isinstance(args[0], VList):
             result: list[Val] = []
             shadow: set[str] = set()
@@ -1687,17 +1687,17 @@ class _BuiltinDispatch:
 
     def _wrapping_add(self, args: list[Val]) -> Val:
         if isinstance(args[0], VInt) and isinstance(args[1], VInt):
-            return VInt(_wrapping_add(args[0].value, args[1].value))
+            return VInt(_do_wrapping_add(args[0].value, args[1].value))
         return _ZERO_INT
 
     def _wrapping_sub(self, args: list[Val]) -> Val:
         if isinstance(args[0], VInt) and isinstance(args[1], VInt):
-            return VInt(_wrapping_sub(args[0].value, args[1].value))
+            return VInt(_do_wrapping_sub(args[0].value, args[1].value))
         return _ZERO_INT
 
     def _wrapping_mul(self, args: list[Val]) -> Val:
         if isinstance(args[0], VInt) and isinstance(args[1], VInt):
-            return VInt(_wrapping_mul(args[0].value, args[1].value))
+            return VInt(_do_wrapping_mul(args[0].value, args[1].value))
         return _ZERO_INT
 
     def _bytes_new(self, args: list[Val]) -> Val:
@@ -1816,8 +1816,8 @@ class _BuiltinDispatch:
         return VStr("")
 
     def _read_line(self, args: list[Val]) -> Val:
-        data = self.vm.stdin_data
-        pos = self.vm.stdin_pos
+        data: bytes = self.vm.stdin_data
+        pos: int = self.vm.stdin_pos
         if pos >= len(data):
             return VStr("")
         end = data[pos:].find(b"\n")
@@ -1834,9 +1834,9 @@ class _BuiltinDispatch:
         return VStr(line)
 
     def _read_all(self, args: list[Val]) -> Val:
-        data = self.vm.stdin_data
-        pos = self.vm.stdin_pos
-        rest = data[pos:].decode("utf-8", errors="replace")
+        data: bytes = self.vm.stdin_data
+        pos: int = self.vm.stdin_pos
+        rest: str = data[pos:].decode("utf-8", errors="replace")
         self.vm.stdin_pos = len(data)
         return VStr(rest)
 
@@ -1876,7 +1876,7 @@ class _BuiltinDispatch:
     def _read_file_bytes(self, args: list[Val]) -> Val:
         if isinstance(args[0], VStr):
             try:
-                return _read_file_bytes(args[0].value)
+                return _do_read_file_bytes(args[0].value)
             except OSError as e:
                 raise _VMThrow(_make_error_struct("IOError", str(e)))
         return VBytes(b"")
@@ -2066,6 +2066,10 @@ class VM:
         self.program_args = list(args) if args is not None else []
         self.env_vars = env if env is not None else {}
         self.pending_exception = None
+        self.builtins = _BuiltinDispatch(self)
+        # Lazy init: build method cache if not done (transpiled code skips __init__ body)
+        if len(self._method_cache) == 0 and len(self.module.struct_defs) > 0:
+            self._build_method_cache()
         self._init_globals()
         return self.run()
 
@@ -2165,10 +2169,11 @@ class VM:
             elif op == OP_DUP:
                 self.stack.append(self.stack[-1])
             elif op == OP_ROT_TWO:
-                a = self.stack[-1]
-                b = self.stack[-2]
-                self.stack[-1] = b
-                self.stack[-2] = a
+                n = len(self.stack)
+                a = self.stack[n - 1]
+                b = self.stack[n - 2]
+                self.stack[n - 1] = b
+                self.stack[n - 2] = a
             # ── Arithmetic ────────────────────────────────
             elif op == OP_ADD_INT:
                 b = self.stack.pop()
@@ -2812,6 +2817,91 @@ class VM:
             else:
                 self.stack.append(_NONE_VAL)
             return
+        if isinstance(obj, VSet):
+            if method_name == "add" and len(args) >= 1:
+                val = args[0]
+                hk = _hash_key(val)
+                if hk is not None:
+                    if obj._shadow is None:
+                        _shadow_build_set(obj)
+                    set_sh = obj._shadow
+                    if set_sh is not None and hk not in set_sh:
+                        obj.items.append(val)
+                        set_sh.add(hk)
+                else:
+                    found = False
+                    for existing in obj.items:
+                        if _val_eq(existing, val):
+                            found = True
+                            break
+                    if not found:
+                        obj.items.append(val)
+                self.stack.append(_NONE_VAL)
+                return
+            if method_name == "discard" and len(args) >= 1:
+                val = args[0]
+                hk = _hash_key(val)
+                if hk is not None:
+                    if obj._shadow is None:
+                        _shadow_build_set(obj)
+                    set_sh = obj._shadow
+                    if set_sh is not None and hk in set_sh:
+                        set_sh.discard(hk)
+                        for i, existing in enumerate(obj.items):
+                            if _val_eq(existing, val):
+                                obj.items.pop(i)
+                                break
+                else:
+                    for i, existing in enumerate(obj.items):
+                        if _val_eq(existing, val):
+                            obj.items.pop(i)
+                            break
+                self.stack.append(_NONE_VAL)
+                return
+            if method_name == "remove" and len(args) >= 1:
+                val = args[0]
+                hk = _hash_key(val)
+                found = False
+                if hk is not None:
+                    if obj._shadow is None:
+                        _shadow_build_set(obj)
+                    set_sh = obj._shadow
+                    if set_sh is not None and hk in set_sh:
+                        set_sh.discard(hk)
+                        for i, existing in enumerate(obj.items):
+                            if _val_eq(existing, val):
+                                obj.items.pop(i)
+                                found = True
+                                break
+                else:
+                    for i, existing in enumerate(obj.items):
+                        if _val_eq(existing, val):
+                            obj.items.pop(i)
+                            found = True
+                            break
+                if not found:
+                    self._throw(_make_error_struct("KeyError", "item not in set"))
+                    return
+                self.stack.append(_NONE_VAL)
+                return
+            if method_name == "clear":
+                obj.items.clear()
+                obj._shadow = set()
+                self.stack.append(_NONE_VAL)
+                return
+        if isinstance(obj, VStr):
+            if method_name == "zfill" and len(args) >= 1 and isinstance(args[0], VInt):
+                s = obj.value
+                width = args[0].value
+                if len(s) >= width:
+                    self.stack.append(obj)
+                else:
+                    pad = width - len(s)
+                    if s and s[0] in "+-":
+                        self.stack.append(VStr(s[0] + "0" * pad + s[1:]))
+                    else:
+                        self.stack.append(VStr("0" * pad + s))
+                return
         if isinstance(obj, VStruct):
             code_idx = self._method_cache.get((obj.type_name, method_name))
             if code_idx is not None:

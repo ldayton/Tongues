@@ -112,6 +112,7 @@ from .types import (
     STR_TYPE,  # noqa: F401 — used by _collection_element_type (added on main)
     VOID_TYPE,
     ANY_TYPE,
+    combine_types,
     contains_any,
     JsonValue,
     JStr,
@@ -470,6 +471,13 @@ def _backpatch_hoisted(pos: Pos, name: str, typ: TypeNode, env: _Env) -> None:
     placeholder = env.hoisted_stmts.get(name)
     if placeholder is None:
         return
+    # Merge with existing type if variable was assigned in another branch
+    existing = env.var_types.get(name)
+    if existing is not None:
+        typ = combine_types([existing, typ])
+    # Convert pure void to error (void is only valid as part of Optional)
+    if _is_type_dict(typ, ["void"]):
+        typ = PrimitiveType("error")
     ttype = _typenode_to_ttype(pos, typ)
     placeholder.typ = ttype
     if _type_has_zero_value(typ):
@@ -769,6 +777,8 @@ def _types_comparable(left: TypeNode, right: TypeNode) -> bool:
     rk = _type_dict_kind(right)
     if lk == "void" or rk == "void":
         return True
+    if lk == "error" or rk == "error":
+        return True  # error type = unknown, don't constant-fold
     if lk == "InterfaceRef" or rk == "InterfaceRef":
         return True
     if lk == rk:
@@ -2278,7 +2288,7 @@ def _lower_conversion_call(
                 if isinstance(arg, TIndex):
                     return _make_call(pos, "RuneToInt", [arg])
                 if isinstance(arg, TCall) and arg.func == "ToString":
-                    inner = arg.args[0]
+                    inner = arg.args[0].value
                     if isinstance(inner, TIndex):
                         return _make_call(pos, "RuneToInt", [inner])
                 indexed = TIndex(pos, arg, TIntLit(pos, 0, "0", {}), {})
@@ -3443,7 +3453,7 @@ def _lower_bytes_method(
 ) -> TExpr:
     """Lower bytes method calls."""
     if method == "decode":
-        return _make_call(pos, "Decode", [obj])
+        return _make_call_ann(pos, "Decode", [obj], {"type": "string"})
     if method == "upper":
         return _make_call(pos, "Upper", [obj])
     if method == "lower":
@@ -3727,14 +3737,27 @@ def _lower_subscript(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         and _is_ast(get_node(obj_node, "func"), "Name")
         and get_str(get_node(obj_node, "func"), "id") in ("hex", "oct", "bin")
     ):
-        lower_jv = slice_node.get("lower")
-        upper_jv = slice_node.get("upper")
-        if (
-            isinstance(lower_jv, JDict)
-            and _get_const_int(lower_jv.entries) == 2
-            and (upper_jv is None or isinstance(upper_jv, JNull))
-        ):
-            return _lower_expr(obj_node, env, ctx)
+        fn_id = get_str(get_node(obj_node, "func"), "id")
+        base_map = {"hex": 16, "oct": 8, "bin": 2}
+        if fn_id in base_map:
+            lower_jv = slice_node.get("lower")
+            upper_jv = slice_node.get("upper")
+            if (
+                isinstance(lower_jv, JDict)
+                and _get_const_int(lower_jv.entries) == 2
+                and (upper_jv is None or isinstance(upper_jv, JNull))
+            ):
+                if fn_id == "hex":
+                    return _lower_expr(obj_node, env, ctx)
+                call_args = get_nodes(obj_node, "args")
+                if call_args and isinstance(call_args[0], dict):
+                    arg = _lower_expr(call_args[0], env, ctx)
+                    base_val = base_map[fn_id]
+                    return _make_call(
+                        pos,
+                        "FormatInt",
+                        [arg, TIntLit(pos, base_val, str(base_val), {})],
+                    )
     obj = _lower_expr(obj_node, env, ctx)
     obj_type = _infer_expr_type(obj_node, env, ctx)
     if _is_ast(slice_node, "Slice"):
@@ -4598,19 +4621,21 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             return [TExprStmt(pos, expr, {})]
         value = _lower_expr(value_node, env, ctx)
         val_type: TypeNode = _infer_expr_type(value_node, env, ctx)
-        if _is_type_dict(val_type, ["void"]):
-            val_type = PrimitiveType("error")
         safe = _safe_name(name)
         ann = _name_ann(safe, name)
         if name not in env.declared and name not in env.loop_bindings:
             env.declared.add(name)
-            env.var_types[name] = val_type
-            ttype = _typenode_to_ttype(pos, val_type)
+            decl_type: TypeNode = val_type
+            if _is_type_dict(decl_type, ["void"]):
+                decl_type = PrimitiveType("error")
+            env.var_types[name] = decl_type
+            ttype = _typenode_to_ttype(pos, decl_type)
             stmts: list[TStmt] = [TLetStmt(pos, safe, ttype, value, ann)]
             stmts.extend(_method_side_effects(value_node, env, ctx))
             return stmts
         # Re-assignment
         if name in env.hoisted_stmts:
+            # Pass original type (including void for None) so combine_types works
             _backpatch_hoisted(pos, name, val_type, env)
         target: TExpr = TVar(pos, safe, ann)
         stmts: list[TStmt] = [TAssignStmt(pos, target, value, {})]
@@ -4643,6 +4668,40 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             value = _lower_expr(value_node, env, ctx)
             call = _make_call(pos, "ReplaceSlice", [obj, low, high, value])
             return [TExprStmt(pos, call, {})]
+        # Handle negative index: xs[-1] = v → xs[Len(xs) - 1] = v
+        obj_type = _infer_expr_type(obj_node, env, ctx)
+        if _is_ast(slice_node, "Constant"):
+            val_jv = slice_node.get("value")
+            if isinstance(val_jv, JInt) and val_jv.value < 0:
+                n = -val_jv.value
+                idx = TBinaryOp(
+                    pos,
+                    "-",
+                    _len_expr(pos, obj, obj_type),
+                    TIntLit(pos, n, str(n), {}),
+                    {},
+                )
+                target = TIndex(pos, obj, idx, {})
+                value = _lower_expr(value_node, env, ctx)
+                return [TAssignStmt(pos, target, value, {})]
+        if _is_ast(slice_node, "UnaryOp"):
+            op_node = get_node(slice_node, "op")
+            if get_str(op_node, "_type") == "USub":
+                operand = get_node(slice_node, "operand")
+                if _is_ast(operand, "Constant"):
+                    op_val_jv = operand.get("value")
+                    if isinstance(op_val_jv, JInt):
+                        idx = TBinaryOp(
+                            pos,
+                            "-",
+                            _len_expr(pos, obj, obj_type),
+                            TIntLit(pos, op_val_jv.value, str(op_val_jv.value), {}),
+                            {},
+                        )
+                        target = TIndex(pos, obj, idx, {})
+                        value = _lower_expr(value_node, env, ctx)
+                        return [TAssignStmt(pos, target, value, {})]
+        # Normal index
         idx = _lower_expr(slice_node, env, ctx)
         target = TIndex(pos, obj, idx, {})
         value = _lower_expr(value_node, env, ctx)
@@ -5127,7 +5186,7 @@ def _replace_subscript_in_ast(node: ASTNode, key: str, name: str) -> None:
         v = node[k]
         if isinstance(v, dict):
             if _subscript_key(v) == key:
-                node[k] = _make_name_node(name, v)
+                node[k] = JDict(_make_name_node(name, v))
             else:
                 _replace_subscript_in_ast(v, key, name)
         elif isinstance(v, JDict):
@@ -5533,6 +5592,11 @@ def _lower_isinstance_chain(
         body_stmts = c.body
         extra_conds = c.extra_conds
         binding_name = type_name[0].lower() + type_name[1:] if type_name else type_name
+        if binding_name == type_name or binding_name in TAYTSH_KEYWORDS:
+            suffix = 0
+            while binding_name + str(suffix) in env.declared:
+                suffix += 1
+            binding_name = binding_name + str(suffix)
         if binding_name in env.declared:
             suffix = 2
             while binding_name + str(suffix) in env.declared:
@@ -5577,7 +5641,7 @@ def _lower_isinstance_chain(
 def _match_binding_name(type_name: str, env: _Env) -> str:
     """Generate a unique binding name for a match case pattern."""
     base = type_name[0].lower() + type_name[1:] if type_name else type_name
-    if base not in env.declared and base not in TAYTSH_KEYWORDS:
+    if base not in env.declared and base not in TAYTSH_KEYWORDS and base != type_name:
         return base
     suffix = 0
     while base + str(suffix) in env.declared:
@@ -6397,7 +6461,7 @@ def _build_method(
 
 def _collect_ancestor_fields(
     pos: Pos, name: str, ctx: _LowerCtx
-) -> list[tuple[str, TType, bool]]:
+) -> list[tuple[str, TType, bool, bool]]:
     """Walk ancestors root-to-child, collecting fields from non-root ancestors."""
     chain: list[str] = []
     cur = name
@@ -6409,7 +6473,7 @@ def _collect_ancestor_fields(
         cur = ancs[0]
     # Reverse so we go root→child
     chain.reverse()
-    result: list[tuple[str, TType, bool]] = []
+    result: list[tuple[str, TType, bool, bool]] = []
     seen: set[str] = set()
     for anc in chain:
         anc_info = ctx.tc_result.classes.get(anc)
@@ -6427,7 +6491,12 @@ def _collect_ancestor_fields(
                 finfo = anc_info.fields.get(fname)
                 if finfo is not None:
                     result.append(
-                        (fname, _typenode_to_ttype(pos, finfo.typ), finfo.has_default)
+                        (
+                            fname,
+                            _typenode_to_ttype(pos, finfo.typ),
+                            finfo.has_default,
+                            finfo.self_ref,
+                        )
                     )
                     seen.add(fname)
     return result
@@ -6550,8 +6619,10 @@ def _build_struct(
             # Collect inherited fields from ancestors
             ancestor_fields = _collect_ancestor_fields(pos, name, ctx)
             inherited_field_names: set[str] = set()
-            for af_name, af_type, af_has_default in ancestor_fields:
-                fields.append(TFieldDecl(pos, af_name, af_type, af_has_default))
+            for af_name, af_type, af_has_default, af_self_ref in ancestor_fields:
+                fields.append(
+                    TFieldDecl(pos, af_name, af_type, af_has_default, af_self_ref)
+                )
                 inherited_field_names.add(af_name)
             fkeys = _collect_field_keys(cls_info, inherited_field_names)
             for fname in fkeys:
@@ -6568,7 +6639,9 @@ def _build_struct(
                             )
                         )
                     ftype = _typenode_to_ttype(pos, finfo.typ)
-                    fields.append(TFieldDecl(pos, fname, ftype, finfo.has_default))
+                    fields.append(
+                        TFieldDecl(pos, fname, ftype, finfo.has_default, finfo.self_ref)
+                    )
     # Build methods — own + inherited from ancestors
     methods: list[TFnDecl] = []
     own_method_names: set[str] = set()
@@ -6595,6 +6668,17 @@ def _build_struct(
     return TStructDecl(pos, name, parent, fields, methods, ann)
 
 
+def _is_struct_ttype(typ: TType | None) -> bool:
+    """Check if a TType is a struct/class type that needs __eq__ comparison."""
+    if typ is None:
+        return False
+    if isinstance(typ, TIdentType):
+        return True
+    if isinstance(typ, TOptionalType):
+        return _is_struct_ttype(typ.inner)
+    return False
+
+
 def _synthesize_eq_method(
     pos: Pos, class_name: str, fields: list[TFieldDecl]
 ) -> TFnDecl:
@@ -6617,20 +6701,27 @@ def _synthesize_eq_method(
     # return this.f1 == other.f1 and this.f2 == other.f2 and ...
     self_var = TVar(pos, "this", {})
     if fields:
+        # Check if first field needs struct equality
+        ann0: Ann = {}
+        if _is_struct_ttype(fields[0].typ):
+            ann0["struct_eq"] = "true"
         cmp: TExpr = TBinaryOp(
             pos,
             "==",
             TFieldAccess(pos, self_var, fields[0].name, {}),
             TFieldAccess(pos, other_var, fields[0].name, {}),
-            {},
+            ann0,
         )
         for fld in fields[1:]:
+            ann: Ann = {}
+            if _is_struct_ttype(fld.typ):
+                ann["struct_eq"] = "true"
             right_cmp = TBinaryOp(
                 pos,
                 "==",
                 TFieldAccess(pos, self_var, fld.name, {}),
                 TFieldAccess(pos, other_var, fld.name, {}),
-                {},
+                ann,
             )
             cmp = TBinaryOp(pos, "&&", cmp, right_cmp, {})
     else:

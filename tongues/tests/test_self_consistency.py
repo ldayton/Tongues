@@ -272,8 +272,6 @@ def test_fixed_point():
     stdin_data = _project_stdin()
     stage2_on_disk = Path(path).read_text()
     stage3 = _dispatch(["--project", "--target", target], stdin_data)
-    if target == "javascript" and stage2_on_disk != stage3:
-        pytest.xfail("JS Number loses precision on 64-bit integers (see #224)")
     assert stage2_on_disk == stage3, (
         f"Fixed-point failed for {target}: on-disk stage2 != self-transpiled stage3"
     )

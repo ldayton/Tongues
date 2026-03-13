@@ -6,3 +6,7 @@ WORDS = Set["hello", "world"]
 
 === module-level struct instance (hierarchy root)
 DEFAULT_KIND = SubKind.new(tag: "base", value: 0)
+
+=== underscore-prefixed constant distinct from non-prefixed
+ITEMS = Set["a", "b"]
+P_ITEMS = Set["c", "d"]

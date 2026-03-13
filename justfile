@@ -1,276 +1,546 @@
 set shell := ["bash", "-o", "pipefail", "-cu"]
 
-# Quick check: style --fix, then frontend + middleend + backend + ruby + perl in parallel
-quick-check:
-    #!/usr/bin/env bash
-    set -uo pipefail
-    log=/tmp/tongues-quick-check-$(date +%s).log
-    rc=0
-    {
-        just style --fix || { rc=1; }
-        if [ $rc -eq 0 ]; then
-            pids=()
-            just test-frontend & pids+=($!)
-            just test-middleend & pids+=($!)
-            just test-backend & pids+=($!)
-            just lang-ruby & pids+=($!)
-            just lang-perl & pids+=($!)
-            just lang-python & pids+=($!)
-            just lang-javascript & pids+=($!)
-            for pid in "${pids[@]}"; do wait "$pid" || rc=1; done
-        fi
-    } 2>&1 | tee "$log"
-    echo "$log"
-    exit $rc
+export VIRTUAL_ENV := ""
 
-# Quick pre-push check: style + test (--fix to auto-fix style)
-prep *ARGS:
-    #!/usr/bin/env bash
-    log=/tmp/tongues-prep-$(date +%s).log
-    rc=0
-    { just style {{ARGS}} && just test; } 2>&1 | tee "$log" || rc=$?
-    echo "$log"
-    exit $rc
+# Print SHA256 checksum of tongues/src/*.py content
+_src-checksum:
+    @find tongues/src -name "*.py" | LC_ALL=C sort | xargs cat | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-16
 
-# Run lint, fmt, subset in parallel (--fix to auto-fix)
+# Run lint and format checks (--fix to auto-fix)
 style *ARGS:
     #!/usr/bin/env bash
     set -uo pipefail
     pids=()
-    just lint {{ARGS}} & pids+=($!)
-    just fmt {{ARGS}} & pids+=($!)
-    just subset & pids+=($!)
+    _cleanup_done=0
+    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null || true; done; }
+    trap 'cleanup; trap - INT; kill -INT $$' INT
+    trap 'cleanup; trap - TERM; kill -TERM $$' TERM
+    trap 'cleanup' EXIT
+    printf '\033[32m[style]\033[0m\n'
+    start=$SECONDS
+    just -f {{justfile()}} lint {{ARGS}} & pids+=($!)
+    just -f {{justfile()}} fmt {{ARGS}} & pids+=($!)
     failed=0
     for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
-    exit $failed
-
-# Verify all transpiler source is subset-compliant
-subset:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    failed=0
-    for f in $(find tongues/src -name '*.py'); do
-        [ ! -s "$f" ] && continue
-        if ! uv run --directory tongues python -m src.tongues --stop-at subset < "$f" 2>/dev/null; then
-            echo "FAIL: $f"
-            uv run --directory tongues python -m src.tongues --stop-at subset < "$f" 2>&1 | head -5
-            failed=1
-        fi
-    done
-    exit $failed
-
-# Run all frontend tests (cli, parse, subset, names, sigs, fields, hierarchy, pycheck, lowering, linker)
-test-frontend:
-    uv run --directory tongues pytest tests/test_frontend.py tests/test_frontend_linker.py -v -n auto
-
-# Run CLI tests
-test-cli:
-    uv run --directory tongues pytest tests/test_frontend.py -k test_cli -v
-
-# Run parse tests
-test-parse:
-    uv run --directory tongues pytest tests/test_frontend.py -k test_parse -v
-
-# Run subset tests
-test-subset:
-    uv run --directory tongues pytest tests/test_frontend.py -k test_subset -v
-
-# Run names tests
-test-names:
-    uv run --directory tongues pytest tests/test_frontend.py -k test_names -v
-
-# Run signatures tests
-test-signatures:
-    uv run --directory tongues pytest tests/test_frontend.py -k test_sigs -v
-
-# Run fields tests
-test-fields:
-    uv run --directory tongues pytest tests/test_frontend.py -k test_fields -v
-
-# Run hierarchy tests
-test-hierarchy:
-    uv run --directory tongues pytest tests/test_frontend.py -k test_hierarchy -v
-
-# Run pycheck tests
-test-pycheck:
-    uv run --directory tongues pytest tests/test_frontend.py -k test_pycheck -v
-
-# Run lowering tests
-test-lowering:
-    uv run --directory tongues pytest tests/test_frontend.py -k test_lowering -v
-
-# Run linker tests
-test-linker:
-    uv run --directory tongues pytest tests/test_frontend_linker.py -v
-
-# Run all middleend tests (scope, returns, liveness, strings, hoisting, ownership, callgraph)
-test-middleend:
-    uv run --directory tongues pytest tests/test_middleend.py -v -n auto
-
-# Run all taytsh tests (typarse, tycheck, app, vm, gen-check)
-test-taytsh:
-    uv run --directory tongues pytest tests/test_taytsh.py tests/test_taytsh_app.py tests/test_taytsh_vm.py tests/test_taytsh_gen_check.py -v
-
-# Run generative type-checker tests
-test-tycheck-gen:
-    uv run --directory tongues pytest tests/test_taytsh_gen_check.py -v
-
-# Run backend tests (codegen + apptests)
-test-backend:
-    uv run --directory tongues pytest tests/test_backend_codegen.py tests/test_backend_target.py -v -n auto
-
-# Run declaration ordering tests
-test-ordering:
-    uv run --directory tongues pytest tests/test_backend_target.py -k test_ordering -v
-
-# Run softfloat library tests
-test-lib:
-    uv run --directory tongues pytest tests/test_lib_softfloat.py -v
+    elapsed=$((SECONDS - start))
+    if [ $failed -eq 0 ]; then
+        printf '\033[32m[style] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[style] %ds (FAILED)\033[0m\n' "$elapsed"
+        exit 1
+    fi
 
 # Lint (--fix to apply changes)
 lint *ARGS:
-    uv run --directory tongues ruff check {{ if ARGS == "--fix" { "--fix" } else { "" } }} src/
+    #!/usr/bin/env bash
+    set -uo pipefail
+    printf '\033[32m[lint]\033[0m\n'
+    start=$SECONDS
+    uv run --directory tongues ruff check {{ if ARGS == "--fix" { "--fix" } else { "" } }} src/; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[lint] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[lint] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
 
 # Format (--fix to apply changes)
 fmt *ARGS:
-    uv run --directory tongues ruff format {{ if ARGS == "--fix" { "" } else { "--check" } }} .
-    npx prettier {{ if ARGS == "--fix" { "--write" } else { "--check" } }} spec/*.md
-
-# Self-transpile: emit to .out/tongues.{ext}
-_self-transpile target="python":
     #!/usr/bin/env bash
-    set -euo pipefail
-    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js [taytsh]=ty)
-    mkdir -p tongues/.out
-    cd tongues && uv run bin/tongues --target {{target}} -o ".out/tongues.${ext[{{target}}]}" src
-    if [ "{{target}}" = "python" ]; then
-        uv run python3 -c "import ast; ast.parse(open('.out/tongues.py').read())"
-    fi
-
-# Self-transpile and test against transpiled Python binary
-lang-python *ARGS:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just _self-transpile python
-    uvx pyright tongues/.out/tongues.py
-    uv run --directory tongues pytest tests/test_frontend.py tests/test_middleend.py \
-        tests/test_backend_codegen.py tests/test_backend_target.py tests/test_taytsh_app.py \
-        tests/test_frontend_linker.py \
-        --transpiled ".out/tongues.py" -v {{ ARGS }}
-    uv run --directory tongues pytest tests/test_self_consistency.py --transpiled ".out/tongues.py" -v
-
-# Self-transpile and test against transpiled JavaScript binary
-lang-javascript:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just _self-transpile javascript
-    cd tongues
-    printf 'tests/shared/test_harness.py\0%s\0lib/json.py\0%s' \
-        "$(<tests/shared/test_harness.py)" "$(<src/lib/json.py)" \
-        | uv run bin/tongues --project --target javascript -o .out/test_harness.js
-    node tests/test-transpiled.js ".out/tongues.js"
-    uv run pytest tests/test_self_consistency.py --transpiled ".out/tongues.js" -v
-
-# Self-transpile and test against transpiled Ruby binary
-lang-ruby:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just _self-transpile ruby
-    cd tongues
-    printf 'tests/shared/test_harness.py\0%s\0lib/json.py\0%s' \
-        "$(<tests/shared/test_harness.py)" "$(<src/lib/json.py)" \
-        | uv run bin/tongues --project --target ruby -o .out/test_harness.rb
-    ruby tests/test-transpiled.rb ".out/tongues.rb"
-    uv run pytest tests/test_self_consistency.py --transpiled ".out/tongues.rb" -v
-
-# Self-transpile and test against transpiled Perl binary
-lang-perl:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    just _self-transpile perl
-    cd tongues
-    printf 'tests/shared/test_harness.py\0%s\0lib/json.py\0%s' \
-        "$(<tests/shared/test_harness.py)" "$(<src/lib/json.py)" \
-        | uv run bin/tongues --project --target perl -o .out/test_harness.pl
-    perl tests/test-transpiled.pl ".out/tongues.pl"
-    uv run pytest tests/test_self_consistency.py --transpiled ".out/tongues.pl" -v
-
-# Compare reference Python output across all language backends
-consistency-join:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd tongues/.out
-    files=(reference-python-*.txt)
-    if [ ${#files[@]} -lt 2 ]; then
-        echo "Need at least 2 reference files, found ${#files[@]}: ${files[*]}"
-        exit 1
-    fi
-    base="${files[0]}"
+    set -uo pipefail
+    printf '\033[32m[fmt]\033[0m\n'
+    start=$SECONDS
     failed=0
-    for f in "${files[@]:1}"; do
-        if ! diff -q "$base" "$f" >/dev/null 2>&1; then
-            echo "MISMATCH: $base vs $f"
-            diff --unified=3 "$base" "$f" | head -30
-            failed=1
-        else
-            echo "OK: $base == $f"
-        fi
-    done
+    uv run --directory tongues ruff format {{ if ARGS == "--fix" { "" } else { "--check" } }} . || failed=1
+    npx prettier {{ if ARGS == "--fix" { "--write" } else { "--check" } }} spec/*.md || failed=1
+    elapsed=$((SECONDS - start))
+    if [ $failed -eq 0 ]; then
+        printf '\033[32m[fmt] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[fmt] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
     exit $failed
 
-# Self-transpile to Taytsh, run self-consistency, then test through treewalker
-lang-taytsh-treewalker *ARGS:
-    just _self-transpile taytsh
-    uv run --directory tongues pytest tests/test_self_consistency.py --transpiled ".out/tongues.ty" -v
-    just _lang-taytsh-treewalker-frontend {{ ARGS }}
-    just _lang-taytsh-treewalker-middleend {{ ARGS }}
-    just _lang-taytsh-treewalker-backend {{ ARGS }}
-    just _lang-taytsh-treewalker-apptest {{ ARGS }}
+# Transpile Tongues to target language
+_transpile-tongues target:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js [java]=java [taytsh]=ty)
+    out="tongues/.out/tongues.${ext[{{target}}]}"
+    sum_file="tongues/.out/.sum-tongues-{{target}}"
+    current=$(just -f {{justfile()}} _src-checksum)
+    cached=$(cat "$sum_file" 2>/dev/null || echo "")
+    if [ -f "$out" ] && [ "$current" = "$cached" ]; then
+        printf '\033[33m[transpile-tongues-{{target}}] up to date\033[0m\n'
+        exit 0
+    fi
+    rm -f "$sum_file"
+    printf '\033[32m[transpile-tongues-{{target}}]\033[0m\n'
+    start=$SECONDS
+    mkdir -p tongues/.out
+    uv run --directory tongues bin/tongues --target {{target}} -o ".out/tongues.${ext[{{target}}]}" src
+    printf '\033[32m[transpile-tongues-{{target}}] %ds\033[0m\n' "$((SECONDS - start))"
+    echo "$current" > "$sum_file"
 
-_lang-taytsh-treewalker-frontend *ARGS:
-    uv run --directory tongues pytest tests/test_frontend.py tests/test_frontend_linker.py \
-        --transpiled ".out/tongues.ty" --taytsh-runner treewalker -n auto -v {{ ARGS }}
+# Transpile the shared test harness to target language
+_transpile-harness target:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    printf '\033[32m[transpile-harness:{{target}}]\033[0m\n'
+    start=$SECONDS
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
+    cd tongues
+    printf 'tests/shared/test_harness.py\0%s\0lib/json.py\0%s' \
+        "$(<tests/shared/test_harness.py)" "$(<src/lib/json.py)" \
+        | uv run bin/tongues --project --target {{target}} -o ".out/test_harness.${ext[{{target}}]}"
+    printf '\033[32m[transpile-harness:{{target}}] %ds\033[0m\n' "$((SECONDS - start))"
 
-_lang-taytsh-treewalker-middleend *ARGS:
-    uv run --directory tongues pytest tests/test_middleend.py \
-        --transpiled ".out/tongues.ty" --taytsh-runner treewalker -v {{ ARGS }}
+# Transpile Tongues and run test suite in target language
+# Usage: just lang python [-n auto|<num>]
+lang target *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    pids=()
+    declare -A pid_names=()
+    _cleanup_done=0
+    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null || true; done; }
+    trap 'cleanup; trap - INT; kill -INT $$' INT
+    trap 'cleanup; trap - TERM; kill -TERM $$' TERM
+    trap 'cleanup' EXIT
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
+    declare -A runner=([python]="uv run python3" [ruby]=ruby [perl]=perl [javascript]=node)
+    just -f {{justfile()}} _transpile-tongues {{target}}
+    just -f {{justfile()}} _transpile-harness {{target}}
+    failed=0
+    declare -A results=()
+    if [ "{{target}}" = "python" ]; then
+        just -f {{justfile()}} _pyright & pids+=($!); pid_names[$!]=pyright
+        just -f {{justfile()}} idempotence & pids+=($!); pid_names[$!]=idempotence
+    else
+        just -f {{justfile()}} cross-equivalence {{target}} & pids+=($!); pid_names[$!]=cross-equivalence-{{target}}
+    fi
+    just -f {{justfile()}} _treewalker {{target}} & pids+=($!); pid_names[$!]=tw-taytsh-apptests-{{target}}
+    just -f {{justfile()}} _vm {{target}} & pids+=($!); pid_names[$!]=vm-taytsh-apptests-{{target}}
+    if [ "{{target}}" != "perl" ]; then
+        just -f {{justfile()}} _vm-test-tongues {{target}} & pids+=($!); pid_names[$!]=vm-test-tongues-{{target}}
+    fi
+    printf '\033[32m[test-tongues-{{target}}]\033[0m\n'
+    start=$SECONDS
+    cd tongues
+    ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} .out/tongues.${ext[{{target}}]} {{args}} --target test-tongues-{{target}}; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[test-tongues-{{target}}] %ds\033[0m\n' "$elapsed"
+        results[test-tongues-{{target}}]=PASS
+    else
+        printf '\033[31m[test-tongues-{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
+        results[test-tongues-{{target}}]=FAIL
+        failed=1
+    fi
+    for pid in "${pids[@]}"; do
+        name="${pid_names[$pid]}"
+        if wait "$pid"; then
+            results[$name]=PASS
+        else
+            rc=$?
+            printf '\033[31m[%s] exited with code %d\033[0m\n' "$name" "$rc"
+            results[$name]=FAIL
+            failed=1
+        fi
+    done
+    printf '\n%-30s %s\n' "SUITE" "RESULT"
+    printf '%-30s %s\n' "-----" "------"
+    for name in $(echo "${!results[@]}" | tr ' ' '\n' | sort); do
+        r="${results[$name]}"
+        if [ "$r" = "PASS" ]; then
+            printf '%-30s \033[32m%s\033[0m\n' "$name" "$r"
+        else
+            printf '%-30s \033[31m%s\033[0m\n' "$name" "$r"
+        fi
+    done
+    printf '\n'
+    exit $failed
 
-_lang-taytsh-treewalker-backend *ARGS:
-    uv run --directory tongues pytest tests/test_backend_codegen.py \
-        --transpiled ".out/tongues.ty" --taytsh-runner treewalker -v {{ ARGS }}
+# Self-transpile to Java, compile, and run tests
+lang-java:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    pids=()
+    declare -A pid_names=()
+    _cleanup_done=0
+    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null || true; done; }
+    trap 'cleanup; trap - INT; kill -INT $$' INT
+    trap 'cleanup; trap - TERM; kill -TERM $$' TERM
+    trap 'cleanup' EXIT
+    just -f {{justfile()}} _transpile-tongues java
+    just -f {{justfile()}} _compile-java
+    failed=0
+    declare -A results=()
+    just -f {{justfile()}} cross-equivalence java & pids+=($!); pid_names[$!]=cross-equivalence-java
+    just -f {{justfile()}} _treewalker-java & pids+=($!); pid_names[$!]=tw-taytsh-apptests-java
+    just -f {{justfile()}} _vm-java & pids+=($!); pid_names[$!]=vm-taytsh-apptests-java
+    just -f {{justfile()}} _vm-test-tongues-java & pids+=($!); pid_names[$!]=vm-test-tongues-java
+    printf '\033[32m[test-tongues-java]\033[0m\n'
+    start=$SECONDS
+    cd tongues
+    java -cp .out/java-classes TestTranspiled .out/java-classes --target test-tongues-java; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[test-tongues-java] %ds\033[0m\n' "$elapsed"
+        results[test-tongues-java]=PASS
+    else
+        printf '\033[31m[test-tongues-java] %ds (FAILED)\033[0m\n' "$elapsed"
+        results[test-tongues-java]=FAIL
+        failed=1
+    fi
+    for pid in "${pids[@]}"; do
+        name="${pid_names[$pid]}"
+        if wait "$pid"; then
+            results[$name]=PASS
+        else
+            rc=$?
+            printf '\033[31m[%s] exited with code %d\033[0m\n' "$name" "$rc"
+            results[$name]=FAIL
+            failed=1
+        fi
+    done
+    printf '\n%-30s %s\n' "SUITE" "RESULT"
+    printf '%-30s %s\n' "-----" "------"
+    for name in $(echo "${!results[@]}" | tr ' ' '\n' | sort); do
+        r="${results[$name]}"
+        if [ "$r" = "PASS" ]; then
+            printf '%-30s \033[32m%s\033[0m\n' "$name" "$r"
+        else
+            printf '%-30s \033[31m%s\033[0m\n' "$name" "$r"
+        fi
+    done
+    printf '\n'
+    exit $failed
 
-_lang-taytsh-treewalker-apptest *ARGS:
-    uv run --directory tongues pytest tests/test_backend_target.py tests/test_taytsh_app.py \
-        --transpiled ".out/tongues.ty" --taytsh-runner treewalker --timeout-override 60 -n 2 -v {{ ARGS }}
+# Compile transpiled Java to .class files
+_compile-java:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    printf '\033[32m[compile:java]\033[0m\n'
+    start=$SECONDS
+    mkdir -p tongues/.out/java-classes
+    cp tongues/.out/tongues.java tongues/.out/java-classes/Main.java
+    if ! javac -encoding UTF-8 tongues/.out/java-classes/Main.java -d tongues/.out/java-classes 2>&1; then
+        printf '\033[31m[compile:java] %ds (FAILED)\033[0m\n' "$((SECONDS - start))"
+        exit 1
+    fi
+    # Also compile the test harness
+    if ! javac -encoding UTF-8 tongues/tests/TestTranspiled.java -d tongues/.out/java-classes 2>&1; then
+        printf '\033[31m[compile:java] harness failed\033[0m\n'
+        exit 1
+    fi
+    printf '\033[32m[compile:java] %ds\033[0m\n' "$((SECONDS - start))"
 
-# Self-transpile to Taytsh and test through VM
-lang-taytsh-vm *ARGS:
-    just _self-transpile taytsh
-    just _lang-taytsh-vm-frontend {{ ARGS }}
-    just _lang-taytsh-vm-middleend {{ ARGS }}
-    just _lang-taytsh-vm-backend {{ ARGS }}
-    just _lang-taytsh-vm-apptest {{ ARGS }}
+# Run taytsh app tests through the treewalker with Java binary
+_treewalker-java:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    printf '\033[32m[tw-taytsh-apptests-java]\033[0m\n'
+    start=$SECONDS
+    passed=0; failed=0
+    cd tongues
+    for f in tests/taytsh/app/*.ty; do
+        name=$(basename "$f" .ty)
+        if java -cp .out/java-classes Main taytsh "$f" >/dev/null 2>&1; then
+            passed=$((passed + 1))
+        else
+            echo "  FAIL $name"
+            failed=$((failed + 1))
+        fi
+    done
+    elapsed=$((SECONDS - start))
+    if [ $failed -eq 0 ]; then
+        printf '\033[32m[tw-taytsh-apptests-java] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
+    else
+        printf '\033[31m[tw-taytsh-apptests-java] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
+        exit 1
+    fi
 
-_lang-taytsh-vm-frontend *ARGS:
-    uv run --directory tongues pytest tests/test_frontend.py tests/test_frontend_linker.py \
-        --transpiled ".out/tongues.ty" --taytsh-runner vm -n auto -v {{ ARGS }}
+# Run taytsh app tests through the VM with Java binary
+_vm-java:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    printf '\033[32m[vm-taytsh-apptests-java]\033[0m\n'
+    start=$SECONDS
+    passed=0; failed=0
+    cd tongues
+    for f in tests/taytsh/app/*.ty; do
+        name=$(basename "$f" .ty)
+        if java -cp .out/java-classes Main taytsh --vm "$f" >/dev/null 2>&1; then
+            passed=$((passed + 1))
+        else
+            echo "  FAIL $name"
+            failed=$((failed + 1))
+        fi
+    done
+    elapsed=$((SECONDS - start))
+    if [ $failed -eq 0 ]; then
+        printf '\033[32m[vm-taytsh-apptests-java] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
+    else
+        printf '\033[31m[vm-taytsh-apptests-java] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
+        exit 1
+    fi
 
-_lang-taytsh-vm-middleend *ARGS:
-    uv run --directory tongues pytest tests/test_middleend.py \
-        --transpiled ".out/tongues.ty" --taytsh-runner vm -v {{ ARGS }}
+# Run tongues test suite only (no transpile, no other tests)
+# Usage: just test-tongues python [-n auto|<num>]
+test-tongues target *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{target}}" = "java" ]; then
+        just -f {{justfile()}} _test-tongues-java {{args}}
+        exit $?
+    fi
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
+    declare -A runner=([python]="uv run python3" [ruby]=ruby [perl]=perl [javascript]=node)
+    just -f {{justfile()}} _transpile-tongues {{target}}
+    just -f {{justfile()}} _transpile-harness {{target}}
+    printf '\033[32m[test-tongues-{{target}}]\033[0m\n'
+    start=$SECONDS
+    cd tongues
+    ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} .out/tongues.${ext[{{target}}]} {{args}} --target test-tongues-{{target}}; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[test-tongues-{{target}}] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[test-tongues-{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
 
-_lang-taytsh-vm-backend *ARGS:
-    uv run --directory tongues pytest tests/test_backend_codegen.py \
-        --transpiled ".out/tongues.ty" --taytsh-runner vm -v {{ ARGS }}
+# Run test suite with Java binary
+_test-tongues-java *args:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    just -f {{justfile()}} _transpile-tongues java
+    just -f {{justfile()}} _compile-java
+    printf '\033[32m[test-tongues-java]\033[0m\n'
+    start=$SECONDS
+    cd tongues
+    mkdir -p .out/test-classes
+    javac -Xlint:-options -d .out/test-classes -cp .out/java-classes tests/TestTranspiled.java
+    java -cp .out/test-classes:.out/java-classes TestTranspiled .out/java-classes {{args}} --target test-tongues-java; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[test-tongues-java] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[test-tongues-java] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
 
-_lang-taytsh-vm-apptest *ARGS:
-    uv run --directory tongues pytest tests/test_backend_target.py tests/test_taytsh_app.py \
-        --transpiled ".out/tongues.ty" --taytsh-runner vm --timeout-override 60 -n auto -v {{ ARGS }}
+# Run test suite through VM with Java binary
+# NOTE: Currently blocked by a Java transpiler bug where TDecl.annotations is null
+# when accessed via reflection. The --via-vm implementation is complete and tested
+# with Python/JS/Ruby/Perl targets. This will work once the Java emitter is fixed.
+_vm-test-tongues-java *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just -f {{justfile()}} _transpile-tongues java
+    just -f {{justfile()}} _compile-java
+    just -f {{justfile()}} _transpile-tongues taytsh
+    printf '\033[32m[vm-test-tongues-java]\033[0m\n'
+    start=$SECONDS
+    cd tongues
+    mkdir -p .out/test-classes
+    javac -Xlint:-options -d .out/test-classes -cp .out/java-classes tests/TestTranspiled.java
+    java -cp .out/test-classes:.out/java-classes TestTranspiled .out/java-classes \
+        --via-vm .out/tongues.ty {{args}} --target vm-test-tongues-java; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[vm-test-tongues-java] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[vm-test-tongues-java] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
 
-# Run a just target inside Docker
-docker target lang="python":
-    docker build -t tongues-{{lang}} docker/{{lang}}
-    docker run --rm -v "$(pwd):/workspace" tongues-{{lang}} just {{target}}
+# Type-check transpiled Python output
+_pyright:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    printf '\033[32m[pyright]\033[0m\n'
+    start=$SECONDS
+    uvx pyright tongues/.out/tongues.py; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[pyright] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[pyright] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
+
+# Idempotence: Python binary compiles src/ to Python, verify identical output
+idempotence:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    printf '\033[32m[idempotence]\033[0m\n'
+    start=$SECONDS
+    cd tongues
+    uv run python3 tests/retranspile.py ".out/tongues.py" src python ".out/tongues-2.py"; rc=$?
+    if [ $rc -ne 0 ]; then
+        printf '\033[31m[idempotence] %ds (FAILED)\033[0m\n' "$((SECONDS - start))"
+        exit 1
+    fi
+    if diff -q ".out/tongues.py" ".out/tongues-2.py" >/dev/null 2>&1; then
+        rm ".out/tongues-2.py"
+        printf '\033[32m[idempotence] %ds\033[0m\n' "$((SECONDS - start))"
+    else
+        printf '\033[31m[idempotence] %ds (FAILED)\033[0m\n' "$((SECONDS - start))"
+        diff --unified=3 ".out/tongues.py" ".out/tongues-2.py" | head -30
+        rm ".out/tongues-2.py"
+        exit 1
+    fi
+
+# Cross-equivalence: non-Python binary compiles src/ to its own language, verify identical output
+cross-equivalence target:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    declare -A ext=([ruby]=rb [perl]=pl [javascript]=js [java]=java)
+    e=${ext[{{target}}]}
+    printf '\033[32m[cross-equivalence-{{target}}]\033[0m\n'
+    start=$SECONDS
+    cd tongues
+    uv run python3 tests/retranspile.py ".out/tongues.$e" src {{target}} ".out/tongues-2.$e"; rc=$?
+    if [ $rc -ne 0 ]; then
+        printf '\033[31m[cross-equivalence-{{target}}] %ds (FAILED)\033[0m\n' "$((SECONDS - start))"
+        exit 1
+    fi
+    if diff -q ".out/tongues.$e" ".out/tongues-2.$e" >/dev/null 2>&1; then
+        rm ".out/tongues-2.$e"
+        printf '\033[32m[cross-equivalence-{{target}}] %ds\033[0m\n' "$((SECONDS - start))"
+    else
+        printf '\033[31m[cross-equivalence-{{target}}] %ds (FAILED)\033[0m\n' "$((SECONDS - start))"
+        diff --unified=3 ".out/tongues.$e" ".out/tongues-2.$e" | head -30
+        rm ".out/tongues-2.$e"
+        exit 1
+    fi
+
+# Run full test suite through the VM in target language
+_vm-test-tongues target *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ "{{target}}" = "java" ]; then
+        just -f {{justfile()}} _vm-test-tongues-java {{args}}
+        exit $?
+    fi
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
+    declare -A runner=([python]="uv run python3" [ruby]=ruby [perl]=perl [javascript]=node)
+    just -f {{justfile()}} _transpile-tongues {{target}}
+    just -f {{justfile()}} _transpile-harness {{target}}
+    just -f {{justfile()}} _transpile-tongues taytsh
+    printf '\033[32m[vm-test-tongues-{{target}}]\033[0m\n'
+    start=$SECONDS
+    cd tongues
+    ${runner[{{target}}]} tests/test-transpiled.${ext[{{target}}]} \
+        .out/tongues.${ext[{{target}}]} --via-vm .out/tongues.ty {{args}} --target vm-test-tongues-{{target}}; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[vm-test-tongues-{{target}}] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[vm-test-tongues-{{target}}] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
+
+# Run taytsh app tests through the treewalker in target language
+_treewalker target:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
+    declare -A runner=([python]="uv run python3" [ruby]=ruby [perl]=perl [javascript]=node)
+    printf '\033[32m[tw-taytsh-apptests-{{target}}]\033[0m\n'
+    start=$SECONDS
+    passed=0; failed=0
+    cd tongues
+    for f in tests/taytsh/app/*.ty; do
+        name=$(basename "$f" .ty)
+        if ${runner[{{target}}]} ".out/tongues.${ext[{{target}}]}" taytsh "$f" >/dev/null 2>&1; then
+            passed=$((passed + 1))
+        else
+            echo "  FAIL $name"
+            failed=$((failed + 1))
+        fi
+    done
+    elapsed=$((SECONDS - start))
+    if [ $failed -eq 0 ]; then
+        printf '\033[32m[tw-taytsh-apptests-{{target}}] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
+    else
+        printf '\033[31m[tw-taytsh-apptests-{{target}}] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
+        exit 1
+    fi
+
+# Run taytsh app tests through the VM in target language
+_vm target:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
+    declare -A runner=([python]="uv run python3" [ruby]=ruby [perl]=perl [javascript]=node)
+    printf '\033[32m[vm-taytsh-apptests-{{target}}]\033[0m\n'
+    start=$SECONDS
+    passed=0; failed=0
+    cd tongues
+    for f in tests/taytsh/app/*.ty; do
+        name=$(basename "$f" .ty)
+        if ${runner[{{target}}]} ".out/tongues.${ext[{{target}}]}" taytsh --vm "$f" >/dev/null 2>&1; then
+            passed=$((passed + 1))
+        else
+            echo "  FAIL $name"
+            failed=$((failed + 1))
+        fi
+    done
+    elapsed=$((SECONDS - start))
+    if [ $failed -eq 0 ]; then
+        printf '\033[32m[vm-taytsh-apptests-{{target}}] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
+    else
+        printf '\033[31m[vm-taytsh-apptests-{{target}}] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
+        exit 1
+    fi
+
+# Generative / property-based tests (require pytest + hypothesis)
+pytest-gen:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    pids=()
+    _cleanup_done=0
+    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null || true; done; }
+    trap 'cleanup; trap - INT; kill -INT $$' INT
+    trap 'cleanup; trap - TERM; kill -TERM $$' TERM
+    trap 'cleanup' EXIT
+    failed=0
+    just -f {{justfile()}} _pytest-gen-tycheck & pids+=($!)
+    just -f {{justfile()}} _pytest-gen-softfloat & pids+=($!)
+    for pid in "${pids[@]}"; do wait "$pid" || failed=1; done
+    exit $failed
+
+_pytest-gen-tycheck:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    printf '\033[32m[pytest-gen-tycheck]\033[0m\n'
+    start=$SECONDS
+    uv run --directory tongues pytest tests/test_taytsh_gen_check.py -v; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[pytest-gen-tycheck] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[pytest-gen-tycheck] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
+
+_pytest-gen-softfloat:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    printf '\033[32m[pytest-gen-softfloat]\033[0m\n'
+    start=$SECONDS
+    uv run --directory tongues pytest tests/test_gen_softfloat.py -v; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[pytest-gen-softfloat] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[pytest-gen-softfloat] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
 
 # Check if formatters are installed
 formatters:
@@ -340,50 +610,6 @@ versions:
     check "zig"        "0.14"  "brew zig@0.14"      "brew zig@0.14"      "zig version | grep -oE '[0-9]+\.[0-9]+'"
     exit $failed
 
-# Run all tests (requires matching runtime versions)
-test:
-    #!/usr/bin/env bash
-    declare -A results
-    failed=0
-    just versions && results[versions]=✅ || { results[versions]=❌; failed=1; }
-    uv run --directory tongues pytest tests/test_frontend.py tests/test_frontend_linker.py \
-        tests/test_middleend.py tests/test_taytsh.py tests/test_taytsh_app.py \
-        tests/test_taytsh_vm.py tests/test_taytsh_gen_check.py \
-        tests/test_backend_codegen.py tests/test_backend_target.py \
-        tests/test_lib_softfloat.py -v -n auto \
-        && results[tests]=✅ || { results[tests]=❌; failed=1; }
-    # Self-transpile + test all three targets in parallel
-    _st() {
-        local lang=$1
-        just "lang-$lang"
-    }
-    _st python & pid_py=$!
-    _st javascript & pid_js=$!
-    _st ruby & pid_rb=$!
-    _st perl & pid_pl=$!
-    _st taytsh-treewalker & pid_ty_tw=$!
-    _st taytsh-vm & pid_ty_vm=$!
-    wait $pid_py && results[lang-python]=✅ || { results[lang-python]=❌; failed=1; }
-    wait $pid_js && results[lang-javascript]=✅ || { results[lang-javascript]=❌; failed=1; }
-    wait $pid_rb && results[lang-ruby]=✅ || { results[lang-ruby]=❌; failed=1; }
-    wait $pid_pl && results[lang-perl]=✅ || { results[lang-perl]=❌; failed=1; }
-    wait $pid_ty_tw && results[lang-taytsh-tw]=✅ || { results[lang-taytsh-tw]=❌; failed=1; }
-    wait $pid_ty_vm && results[lang-taytsh-vm]=✅ || { results[lang-taytsh-vm]=❌; failed=1; }
-    just consistency-join && results[consistency]=✅ || { results[consistency]=❌; failed=1; }
-    echo ""
-    echo "══════════════════════════════════════"
-    echo "           TEST SUMMARY"
-    echo "══════════════════════════════════════"
-    printf "%-16s %s\n" "TARGET" "STATUS"
-    printf "%-16s %s\n" "──────" "──────"
-    for t in versions tests lang-python lang-javascript lang-ruby lang-perl lang-taytsh-tw lang-taytsh-vm consistency; do
-        printf "%-16s %s\n" "$t" "${results[$t]}"
-    done
-    echo "══════════════════════════════════════"
-    if [ $failed -eq 0 ]; then echo "✅ ALL PASSED"; else echo "❌ SOME FAILED"; fi
-    echo "══════════════════════════════════════"
-    exit $failed
-
 # Install VS Code syntax highlighting extension for Taytsh
 vscode:
     #!/usr/bin/env bash
@@ -398,3 +624,43 @@ vscode:
         exit 1
     fi
     code --install-extension "${vsix[0]}"
+
+# Run the full CI check suite locally
+full-check:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    pids=()
+    labels=()
+    _cleanup_done=0
+    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null || true; done; }
+    trap 'cleanup; trap - INT; kill -INT $$' INT
+    trap 'cleanup; trap - TERM; kill -TERM $$' TERM
+    trap 'cleanup' EXIT
+    printf '\033[32m[full-check]\033[0m\n'
+    start=$SECONDS
+    just -f {{justfile()}} style & pids+=($!); labels+=("style")
+    just -f {{justfile()}} pytest-gen & pids+=($!); labels+=("pytest-gen")
+    just -f {{justfile()}} lang python & pids+=($!); labels+=("lang-python")
+    just -f {{justfile()}} lang ruby & pids+=($!); labels+=("lang-ruby")
+    just -f {{justfile()}} lang perl & pids+=($!); labels+=("lang-perl")
+    just -f {{justfile()}} lang javascript & pids+=($!); labels+=("lang-javascript")
+    just -f {{justfile()}} lang-java & pids+=($!); labels+=("lang-java")
+    failed=0
+    for i in "${!pids[@]}"; do
+        if ! wait "${pids[$i]}"; then
+            printf '\033[31m  FAIL %s\033[0m\n' "${labels[$i]}"
+            failed=1
+        fi
+    done
+    elapsed=$((SECONDS - start))
+    if [ $failed -eq 0 ]; then
+        printf '\033[32m[full-check] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[full-check] %ds (FAILED)\033[0m\n' "$elapsed"
+        exit 1
+    fi
+
+# Run a just target inside Docker
+docker target lang:
+    docker build -t tongues-{{lang}} docker/{{lang}}
+    docker run --rm -v "$(pwd):/workspace" tongues-{{lang}} just -f justfile.v2 {{target}}

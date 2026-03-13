@@ -1067,12 +1067,13 @@ fn Main() -> void {
 error: equality not defined for fn
 ---
 
-=== integer literal too large
+=== large integer literal (annotated, not rejected)
 fn Main() -> void {
     let x: int = 99999999999999999999
 }
 ---
-error: integer literal too large
+ok
+annotation:2=large=true
 ---
 
 === map literal duplicate key

@@ -1,0 +1,40 @@
+=== IO functions
+System.out.print("no newline");
+
+=== ReadAll and ReadLine
+new String(System.in.readAllBytes(), StandardCharsets.UTF_8)
+
+=== ReadLine returns optional
+if (line != null) {
+
+=== ReadFile emits open idiom
+Files.readString(Path.of("input.txt"))
+
+=== ReadFileBytes emits open idiom
+Files.readAllBytes(Path.of("input.txt"))
+
+=== WriteFile emits open idiom
+Files.writeString(Path.of("output.txt"), "hello")
+
+=== ReadBytesN
+byte[] chunk = System.in.readNBytes(1024);
+
+=== Args and GetEnv
+String home = System.getenv("HOME");
+
+=== Exit call
+doExit(1);
+
+=== Encode and Decode
+byte[] b = "hello".getBytes(StandardCharsets.UTF_8);
+
+=== bytes indexing
+b[0]
+
+=== bytes slicing
+byte[] part = Arrays.copyOfRange(b, 1, 3);
+
+=== Concat on bytes
+byte[] c = new byte[a.length + b.length];
+System.arraycopy(a, 0, c, 0, a.length);
+System.arraycopy(b, 0, c, a.length, b.length);

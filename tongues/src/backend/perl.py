@@ -355,6 +355,29 @@ def _safe_fn_name(name: str) -> str:
     return safe
 
 
+def _safe_module_name(name: str) -> str:
+    """Like _safe_name but for module-level vars (no underscore prefix added)."""
+    if name == "_":
+        return "_unused"
+    safe = to_snake(name)
+    if not safe:
+        return "_unused"
+    if safe in _PERL_KEYWORDS:
+        return safe + "_"
+    for pp in _PERL_POISONED_PREFIXES:
+        if safe.startswith(pp) or safe == pp[:-1]:
+            return "t_" + safe
+    return safe
+
+
+def _restore_module_name(name: str, annotations: Ann) -> str:
+    """Restore original name for module-level vars."""
+    key = "name.original." + name
+    if key in annotations:
+        return _safe_module_name(annotations[key])
+    return _safe_module_name(name)
+
+
 def _restore_name(name: str, annotations: Ann) -> str:
     """Restore original Python name from annotation, then apply target safety."""
     key = "name.original." + name
@@ -630,6 +653,9 @@ class _PerlEmitter(Emitter):
         self._line("use Encode qw(encode decode);")
         self._line("binmode(STDOUT, ':utf8');")
         self._line("binmode(STDERR, ':utf8');")
+        self._line(
+            "package ValueError; package UnicodeDecodeError; our @ISA = ('ValueError'); package main;"
+        )
         self._line()
         if self.strict_tostring:
             self._line(
@@ -665,7 +691,7 @@ class _PerlEmitter(Emitter):
                 self.var_types[decl.name] = decl.typ
                 self.module_var_names.add(decl.name)
                 if has_types:
-                    safe = _restore_name(decl.name, decl.annotations)
+                    safe = _restore_module_name(decl.name, decl.annotations)
                     self.fwd_declared.add(decl.name)
                     self._line("our $" + safe + ";")
         for decl in ordered:
@@ -744,6 +770,8 @@ class _PerlEmitter(Emitter):
             if has_eq:
                 parts.append("'==' => \\&__eq__")
                 parts.append("'eq' => \\&__eq__")
+                parts.append("'!=' => sub { !__eq__(@_) }")
+                parts.append("'ne' => sub { !__eq__(@_) }")
             parts.append("fallback => 1")
             self._line("use overload " + ", ".join(parts) + ";")
             self._line()
@@ -768,7 +796,10 @@ class _PerlEmitter(Emitter):
         self._line("my $self = bless {}, $class;")
         for fld in fields:
             safe = _safe_name(fld.name)
-            default = self._zero_value(fld.typ)
+            if fld.self_ref and isinstance(fld.typ, TIdentType):
+                default = fld.typ.name + "->new($self)"
+            else:
+                default = self._zero_value(fld.typ)
             self._line(
                 "$self->{"
                 + safe
@@ -1091,9 +1122,9 @@ class _PerlEmitter(Emitter):
                 + "; [map { [$_, $__m->{$_}] } sort keys %{$__m}] })}"
             )
         elif self._is_set_expr(for_stmt.iterable):
-            iter_spread = "keys %{" + iterable + "}"
+            iter_spread = "keys %{" + self._deref_safe(iterable) + "}"
         else:
-            iter_spread = "@{" + iterable + "}"
+            iter_spread = "@{" + self._deref_safe(iterable) + "}"
         func = "any" if prov == "any_call" else "all"
         body = for_stmt.body
         if len(body) != 1:
@@ -1179,7 +1210,11 @@ class _PerlEmitter(Emitter):
         if isinstance(stmt, TLetStmt):
             self.var_types[stmt.name] = stmt.typ
             self.local_names.add(stmt.name)
-            safe = "$" + _restore_name(stmt.name, stmt.annotations)
+            # Use module name for module-level vars, regular name for locals
+            if stmt.name in self.module_var_names:
+                safe = "$" + _restore_module_name(stmt.name, stmt.annotations)
+            else:
+                safe = "$" + _restore_name(stmt.name, stmt.annotations)
             prefix = "" if stmt.name in self.fwd_declared else "my "
             unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
             if stmt.value is not None and not unused:
@@ -1644,6 +1679,10 @@ class _PerlEmitter(Emitter):
     def _emit_try(self, stmt: TTryStmt) -> None:
         ok = self._tmp("__ok")
         err = self._tmp("__err")
+        # Use a unique sentinel to distinguish normal completion from early return
+        # Early return: $ok is return value, $@ is empty
+        # Exception: $ok is undef, $@ has exception
+        # Normal: $ok is 1, $@ is empty
         self._line("my " + ok + " = eval {")
         self.indent += 1
         self._emit_stmts(stmt.body)
@@ -1657,6 +1696,11 @@ class _PerlEmitter(Emitter):
             self._emit_catches(stmt.catches, err)
         else:
             self._line("die " + err + ";")
+        self.indent -= 1
+        # Handle early return: if $ok is a reference (not the sentinel 1), return it
+        self._line("} elsif (ref(" + ok + ")) {")
+        self.indent += 1
+        self._line("return " + ok + ";")
         self.indent -= 1
         self._line("}")
         if stmt.finally_body is not None:
@@ -1726,7 +1770,7 @@ class _PerlEmitter(Emitter):
         parts: list[str] = []
         for t in catch.types:
             if isinstance(t, TIdentType):
-                parts.append("ref(" + err + ") eq '" + t.name + "'")
+                parts.append("eval { " + err + "->isa('" + t.name + "') }")
             else:
                 return None
         if not parts:
@@ -1807,15 +1851,15 @@ class _PerlEmitter(Emitter):
             if typ.name in ("list", "List"):
                 return "(ref(" + expr + ") eq 'ARRAY')"
             if typ.name in self.struct_names:
-                return "eval { " + expr + "->isa('" + typ.name + "') }"
+                return "UNIVERSAL::isa(" + expr + ", '" + typ.name + "')"
             return (
                 "defined("
                 + expr
-                + ") && eval { "
+                + ") && UNIVERSAL::isa("
                 + expr
-                + "->isa('"
+                + ", '"
                 + typ.name
-                + "') }"
+                + "')"
             )
         if isinstance(typ, TPrimitive):
             if is_optional:
@@ -1826,7 +1870,7 @@ class _PerlEmitter(Emitter):
                 return "!ref(" + expr + ") && !looks_like_number(" + expr + ")"
             if typ.kind == "bool":
                 return "!ref(" + expr + ")"
-        return "defined(" + expr + ") && eval { " + expr + "->isa('UNSUPPORTED') }"
+        return "defined(" + expr + ") && UNIVERSAL::isa(" + expr + ", 'UNSUPPORTED')"
 
     def _emit_match_default(self, default: TDefault, expr: str, first: bool) -> None:
         if first:
@@ -1881,6 +1925,12 @@ class _PerlEmitter(Emitter):
                 return expr.name
             if expr.name in self._PYTHON_BUILTINS and expr.name not in self.var_types:
                 return "(" + self._PYTHON_BUILTINS[expr.name] + ")"
+            # Module-level globals need main:: prefix when inside a package
+            if self.in_package and expr.name in self.module_var_names:
+                return "$main::" + _restore_module_name(expr.name, expr.annotations)
+            # Use module name for module-level vars, regular name for locals
+            if expr.name in self.module_var_names:
+                return "$" + _restore_module_name(expr.name, expr.annotations)
             return "$" + _restore_name(expr.name, expr.annotations)
         if isinstance(expr, TFieldAccess):
             if isinstance(expr.obj, TVar) and expr.obj.name in self.enum_names:
@@ -2358,7 +2408,7 @@ class _PerlEmitter(Emitter):
         ):
             inner = args[0].value
             if isinstance(inner, TCall):
-                dict_expr = self._a(inner.args, 0)
+                dict_expr = self._deref_safe(self._a(inner.args, 0))
                 if func.name == "ListFrom":
                     return "[sort keys %{" + dict_expr + "}]"
                 return (
@@ -2476,13 +2526,13 @@ class _PerlEmitter(Emitter):
             val = self._expr(args[0].value)
             return "push(@{" + obj + "}, " + val + ")"
         if method == "keys" and not self._is_known_struct_method(func.obj, method):
-            obj = self._expr(func.obj)
+            obj = self._deref_safe(self._expr(func.obj))
             return "[sort keys %{" + obj + "}]"
         if method == "values" and not self._is_known_struct_method(func.obj, method):
-            obj = self._expr(func.obj)
+            obj = self._deref_safe(self._expr(func.obj))
             return "[values %{" + obj + "}]"
         if method == "items" and not self._is_known_struct_method(func.obj, method):
-            obj = self._expr(func.obj)
+            obj = self._deref_safe(self._expr(func.obj))
             return "[map { [$_, " + obj + "->{$_}] } sort keys %{" + obj + "}]"
         if method == "update" and not self._is_known_struct_method(func.obj, method):
             obj = self._expr(func.obj)
@@ -2564,11 +2614,25 @@ class _PerlEmitter(Emitter):
 
     def _builtin_call(self, name: str, args: list[TArg], ann: Ann | None = None) -> str:
         if name == "FloorDiv":
-            return "POSIX::floor(" + self._a(args, 0) + " / " + self._a(args, 1) + ")"
+            a_str = self._maybe_paren(args[0].value, "/", is_left=True)
+            b_str = self._maybe_paren(args[1].value, "/", is_left=False)
+            return "POSIX::floor(" + a_str + " / " + b_str + ")"
         if name == "PythonMod":
-            a = self._a(args, 0)
-            b = self._a(args, 1)
-            return a + " - POSIX::floor(" + a + " / " + b + ") * " + b
+            # a - floor(a / b) * b, need parens around a when used in division
+            # Outer parens needed for correct precedence when used in comparisons
+            a_str = self._maybe_paren(args[0].value, "/", is_left=True)
+            b_str = self._maybe_paren(args[1].value, "/", is_left=False)
+            return (
+                "("
+                + a_str
+                + " - POSIX::floor("
+                + a_str
+                + " / "
+                + b_str
+                + ") * "
+                + b_str
+                + ")"
+            )
         if name == "Append":
             return "push(@{" + self._a(args, 0) + "}, " + self._a(args, 1) + ")"
         if name == "Insert":
@@ -2847,13 +2911,13 @@ class _PerlEmitter(Emitter):
                 + " !~ /[A-Z]/ ? 1 : 0)"
             )
         if name == "Encode":
-            return "encode('UTF-8', " + self._a(args, 0) + ")"
+            return "Encode::encode('UTF-8', " + self._a(args, 0) + ")"
         if name == "Decode":
             a = self._a(args, 0)
             return (
-                "do { my $__d = eval { decode('UTF-8', "
+                "do { my $__d = eval { Encode::decode('UTF-8', "
                 + a
-                + ", Encode::FB_CROAK) }; if ($@) { die bless({message => \"$@\"}, 'ValueError') } $__d }"
+                + ", Encode::FB_CROAK) }; if ($@) { die bless({message => \"$@\"}, 'UnicodeDecodeError') } $__d }"
             )
         if name == "Bytes":
             return '("\\0" x ' + self._a(args, 0) + ")"
@@ -2935,9 +2999,9 @@ class _PerlEmitter(Emitter):
             a1 = self._deref_safe(self._a(args, 1))
             return "{ %{" + a0 + "}, %{" + a1 + "} }"
         if name == "Keys":
-            return "[sort keys %{" + self._a(args, 0) + "}]"
+            return "[sort keys %{" + self._deref_safe(self._a(args, 0)) + "}]"
         if name == "Values":
-            return "[values %{" + self._a(args, 0) + "}]"
+            return "[values %{" + self._deref_safe(self._a(args, 0)) + "}]"
         if name == "Items":
             return (
                 "do { my $__m = "
@@ -3035,7 +3099,7 @@ class _PerlEmitter(Emitter):
                     key_body = self._perl_key_sort_body(key_val)
                     return "[sort { " + key_body + " } @{" + a + "}]"
             if self._is_set_expr(sorted_arg):
-                return "[sort keys %{" + a + "}]"
+                return "[sort keys %{" + self._deref_safe(a) + "}]"
             sorted_ann: str = sorted_arg.annotations.get("type", "")
             is_str_list = sorted_ann in ("list[string]", "list[rune]")
             if is_str_list:
@@ -3100,7 +3164,7 @@ class _PerlEmitter(Emitter):
             sfl_inner = args[0].value
             if isinstance(sfl_inner, TCall) and isinstance(sfl_inner.func, TVar):
                 if sfl_inner.func.name == "Keys":
-                    d = self._a(sfl_inner.args, 0)
+                    d = self._deref_safe(self._a(sfl_inner.args, 0))
                     return (
                         "do { my $__s = {}; $__s->{$_} = 1 for sort keys %{"
                         + d
@@ -3173,9 +3237,9 @@ class _PerlEmitter(Emitter):
         if name == "WritelnErr":
             return "say STDERR " + self._a(args, 0)
         if name == "ReadLine":
-            return "do { my $__l = scalar(<STDIN>); defined($__l) ? decode('UTF-8', $__l, Encode::FB_CROAK) : $__l }"
+            return "do { my $__l = scalar(<STDIN>); defined($__l) ? Encode::decode('UTF-8', $__l, Encode::FB_CROAK) : $__l }"
         if name == "ReadAll":
-            return "do { local $/; decode('UTF-8', scalar(<STDIN>), Encode::FB_CROAK) }"
+            return "do { local $/; Encode::decode('UTF-8', scalar(<STDIN>), Encode::FB_CROAK) }"
         if name == "ReadBytes":
             return "do { local $/; scalar(<STDIN>) }"
         if name == "ReadBytesN":
@@ -3215,7 +3279,9 @@ class _PerlEmitter(Emitter):
                     + self._a(args, 1)
                     + ")"
                 )
-            return "(" + self._a(args, 0) + " ** " + self._a(args, 1) + ")"
+            a_str = self._maybe_paren(args[0].value, "**", is_left=True)
+            b_str = self._maybe_paren(args[1].value, "**", is_left=False)
+            return a_str + " ** " + b_str
         if name == "Contains":
             return self._contains_expr(args[0].value, args[1].value)
         if name == "Concat":
@@ -3257,7 +3323,7 @@ class _PerlEmitter(Emitter):
                 return "looks_like_number(" + a0 + ")"
             if type_name in ("bool", "Bool"):
                 return "!ref(" + a0 + ")"
-            return "(defined(" + a0 + ") && " + a0 + "->isa('" + type_name + "'))"
+            return "(UNIVERSAL::isa(" + a0 + ", '" + type_name + "'))"
         if name == "Assert":
             cond = self._a(args, 0)
             if len(args) > 1:

@@ -6,3 +6,7 @@ WORDS: set[str] = {"hello", "world"}
 
 === module-level struct instance (hierarchy root)
 DEFAULT_KIND: Kind = SubKind("base", 0)
+
+=== underscore-prefixed constant distinct from non-prefixed
+ITEMS: set[str] = {"a", "b"}
+_ITEMS: set[str] = {"c", "d"}

@@ -1,0 +1,50 @@
+=== string multiply via Repeat
+String s = "ab".repeat(3);
+
+=== list multiply via Repeat
+List<Integer> xs = new ArrayList<>(Collections.nCopies(5, 0));
+
+=== Contains on string
+if (s.contains("world"))
+
+=== Split and Join
+List<String> parts = List.of("a,b,c".split(","));
+
+=== string Find
+int idx = "hello world".indexOf("world");
+
+=== Replace on string
+String s = "aabbcc".replace("bb", "XX");
+
+=== Upper and Lower
+System.out.println("hello".toUpperCase());
+
+=== StartsWith and EndsWith
+System.out.println(String.valueOf(s.startsWith("hello")));
+
+=== Trim functions
+String s = "  hello  ".replaceAll("^[ ]+|[ ]+$", "");
+
+=== Count and RFind on string
+int c = "abcabc".split("abc", -1).length - 1;
+
+=== SplitN and SplitWhitespace
+List<String> words = List.of("  hello   world  ".trim().split("\\s+"));
+
+=== Concat strings
+String s = "hello" + " world";
+
+=== string indexing and slicing
+String sub = s.substring(1, Math.min(4, s.length()));
+
+=== format string becomes f-string
+return "hello, " + name;
+
+=== Reverse on string
+new StringBuilder("hello").reverse().toString()
+
+=== format string with quotes in expression
+return "result: " + String.join(", ", items);
+
+=== string classification functions
+System.out.println(String.valueOf("123".chars().allMatch(Character::isDigit)));

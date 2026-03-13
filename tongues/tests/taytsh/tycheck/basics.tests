@@ -335,10 +335,11 @@ fn Main() -> void {
 ok
 ---
 
-=== error: integer literal exceeds 64-bit unsigned range
+=== large integer literal exceeds 64-bit range (annotated, not rejected)
 fn Main() -> void {
     let x: int = 18446744073709551616
 }
 ---
-error: integer literal too large
+ok
+annotation:2=large=true
 ---

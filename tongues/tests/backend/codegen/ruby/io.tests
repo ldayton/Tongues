@@ -2,7 +2,7 @@
 $stdout.write("no newline")
 
 === ReadAll and ReadLine
-all = $stdin.read
+all = $stdin.binmode.read.force_encoding('UTF-8').tap { |s| raise UnicodeDecodeError unless s.valid_encoding? }
 
 === ReadLine returns optional
 line = $stdin.gets&.chomp

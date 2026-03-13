@@ -223,6 +223,7 @@ def check_cli_assertions(
             )
 
 
+from src.backend.java import emit_java as emit_java
 from src.backend.javascript import emit_javascript as emit_javascript
 from src.backend.perl import emit_perl as emit_perl
 from src.backend.python import emit_python as emit_python
@@ -238,6 +239,7 @@ from src.middleend.strings import analyze_strings
 from src.taytsh import parse as taytsh_parse
 from src.taytsh.treewalker import run as taytsh_run, prepare as _taytsh_prepare
 from src.taytsh.ast import (
+    collect_expr_annotations,
     serialize_annotations,
 )
 from src.taytsh.check import check_with_info
@@ -265,12 +267,14 @@ EMITTERS = {
     "perl": emit_perl,
     "ruby": emit_ruby,
     "javascript": emit_javascript,
+    "java": emit_java,
 }
 
 RUNTIMES = {
     "python": [sys.executable],
     "perl": ["perl"],
     "ruby": ["ruby"],
+    "java": [str(Path(__file__).parent / "run-java.sh")],
 }
 
 
@@ -355,6 +359,7 @@ class PhaseResult:
     warnings: list[str] = field(default_factory=list)
     data: dict | None = None
     reveals: list[tuple[int, str]] = field(default_factory=list)
+    annotations: dict[int, dict[str, str]] = field(default_factory=dict)
 
 
 def _unwrap_jvalue(obj: object) -> object:
@@ -440,10 +445,30 @@ def _check_reveals(
             pytest.fail(f"No reveal_type found at line {lineno}")
 
 
+def _check_annotations(
+    assertions: list[tuple[int, str, str]],
+    actuals: dict[int, dict[str, str]],
+) -> None:
+    for lineno, key, expected_value in assertions:
+        if lineno not in actuals:
+            pytest.fail(f"No annotations found at line {lineno}")
+        line_annotations = actuals[lineno]
+        if key not in line_annotations:
+            pytest.fail(
+                f"Annotation '{key}' not found at line {lineno}, have: {list(line_annotations.keys())}"
+            )
+        actual_value = line_annotations[key]
+        if actual_value != expected_value:
+            pytest.fail(
+                f"Annotation at line {lineno}: expected {key}='{expected_value}', got '{actual_value}'"
+            )
+
+
 def check_expected(
     expected: str, result: PhaseResult, phase: str, *, lenient_errors: bool = False
 ) -> None:
     reveal_assertions: list[tuple[int, str]] = []
+    annotation_assertions: list[tuple[int, str, str]] = []
     verdict_lines: list[str] = []
     for line in expected.split("\n"):
         stripped = line.strip()
@@ -453,6 +478,14 @@ def check_expected(
             lineno = int(rest[:eq_pos].strip())
             expected_type = rest[eq_pos + 1 :].strip()
             reveal_assertions.append((lineno, expected_type))
+        elif stripped.startswith("annotation:"):
+            rest = stripped[11:]
+            first_eq = rest.index("=")
+            lineno = int(rest[:first_eq].strip())
+            second_eq = rest.index("=", first_eq + 1)
+            key = rest[first_eq + 1 : second_eq].strip()
+            value = rest[second_eq + 1 :].strip()
+            annotation_assertions.append((lineno, key, value))
         else:
             verdict_lines.append(line)
     expected = "\n".join(verdict_lines).strip()
@@ -462,6 +495,7 @@ def check_expected(
         if result.errors:
             pytest.fail(f"Expected ok, got error: {result.errors[0]}")
         _check_reveals(reveal_assertions, result.reveals)
+        _check_annotations(annotation_assertions, result.annotations)
         return
     if expected.startswith("error:"):
         expected_msg = expected[6:].strip()
@@ -1043,19 +1077,24 @@ def run_tycheck(source: str) -> PhaseResult:
         result = _run_transpiled(source, ["--stop-at", "check"], is_taytsh=True)
         if result.errors:
             return result
-        if result.data and "reveals" in result.data:
-            reveals = []
-            for rev in result.data["reveals"]:
-                reveals.append((rev["line"], rev["type"]))
-            return PhaseResult(reveals=reveals)
-        return result
+        reveals = []
+        annotations: dict[int, dict[str, str]] = {}
+        if result.data:
+            if "reveals" in result.data:
+                for rev in result.data["reveals"]:
+                    reveals.append((rev["line"], rev["type"]))
+            if "annotations" in result.data:
+                for line_str, ann_dict in result.data["annotations"].items():
+                    annotations[int(line_str)] = dict(ann_dict)
+        return PhaseResult(reveals=reveals, annotations=annotations)
     try:
         signal.alarm(PARSE_TIMEOUT)
         module = taytsh_parse(source)
         errors, checker = check_with_info(module)
         if errors:
             return PhaseResult(errors=[str(e) for e in errors])
-        return PhaseResult(reveals=checker.reveals)
+        annotations = collect_expr_annotations(module)
+        return PhaseResult(reveals=checker.reveals, annotations=annotations)
     except Exception as e:
         return PhaseResult(errors=[str(e)])
     finally:
@@ -1066,7 +1105,9 @@ def discover_ty_apps(test_dir: Path) -> list[Path]:
     return sorted(test_dir.glob("*.ty"))
 
 
-def _transpile_with_emitter(source: str, emitter) -> tuple[str | None, str | None]:
+def _transpile_with_emitter(
+    source: str, emitter, lang: str
+) -> tuple[str | None, str | None]:
     """Transpile Taytsh source. Returns (output, error)."""
     try:
         signal.alarm(PARSE_TIMEOUT)
@@ -1082,6 +1123,8 @@ def _transpile_with_emitter(source: str, emitter) -> tuple[str | None, str | Non
         analyze_returns(module, checker)
         analyze_scope(module, checker)
         analyze_liveness(module, checker)
+        if lang == "ruby":
+            analyze_strings(module, checker)
         return (emitter(module), None)
     except Exception as e:
         return (None, str(e))
@@ -1103,7 +1146,7 @@ def transpile_code(source: str, lang: str) -> tuple[str | None, str | None]:
     emitter = EMITTERS.get(lang)
     if emitter is None:
         return (None, f"no emitter for '{lang}'")
-    return _transpile_with_emitter(source, emitter)
+    return _transpile_with_emitter(source, emitter, lang)
 
 
 def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
@@ -1302,13 +1345,15 @@ def transpile_app(source: str, target: str) -> tuple[str | None, str | None]:
             analyze_returns(merged, checker)
             analyze_scope(merged, checker)
             analyze_liveness(merged, checker)
+            if target == "ruby":
+                analyze_strings(merged, checker)
             return (emitter(merged), None)
         except Exception as e:
             return (None, str(e))
     taytsh_text, err = lower_to_taytsh(source)
     if err is not None:
         return (None, err)
-    return _transpile_with_emitter(taytsh_text, emitter)
+    return _transpile_with_emitter(taytsh_text, emitter, target)
 
 
 def discover_app_tests(
@@ -1323,12 +1368,22 @@ def discover_app_tests(
     return results
 
 
+_RUNTIME_DEPS: dict[str, list[str]] = {
+    "java": ["javac", "java"],
+}
+
+
 def _available_targets() -> list[str]:
     """Return targets whose runtimes are available."""
     available = []
     for target in sorted(RUNTIMES):
         cmd = RUNTIMES[target]
-        if target == "python" or shutil.which(cmd[0]):
+        if target == "python":
+            available.append(target)
+        elif target in _RUNTIME_DEPS:
+            if all(shutil.which(dep) for dep in _RUNTIME_DEPS[target]):
+                available.append(target)
+        elif shutil.which(cmd[0]):
             available.append(target)
     return available
 
