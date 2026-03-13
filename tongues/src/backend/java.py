@@ -4825,7 +4825,13 @@ class _JavaEmitter(Emitter):
                 "Integer.toString(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             )
         if name == "ParseFloat":
-            return "Double.parseDouble(" + self._a(args, 0) + ")"
+            a = self._a(args, 0)
+            return (
+                "Double.parseDouble("
+                + a
+                + '.replace("inf", "Infinity")'
+                + '.replace("nan", "NaN"))'
+            )
         if name == "Assert":
             raise NotImplementedError("builtin: Assert")
         if name == "Args":
