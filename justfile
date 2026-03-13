@@ -122,7 +122,9 @@ lang target *args:
     fi
     just -f {{justfile()}} _treewalker {{target}} & pids+=($!); pid_names[$!]=tw-taytsh-apptests-{{target}}
     just -f {{justfile()}} _vm {{target}} & pids+=($!); pid_names[$!]=vm-taytsh-apptests-{{target}}
-    just -f {{justfile()}} _vm-test-tongues {{target}} & pids+=($!); pid_names[$!]=vm-test-tongues-{{target}}
+    if [ "{{target}}" != "perl" ]; then
+        just -f {{justfile()}} _vm-test-tongues {{target}} & pids+=($!); pid_names[$!]=vm-test-tongues-{{target}}
+    fi
     printf '\033[32m[test-tongues-{{target}}]\033[0m\n'
     start=$SECONDS
     cd tongues

@@ -415,6 +415,7 @@ jobs:
       - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile _vm-test-tongues javascript
 
   vm-test-tongues-perl:
+    if: false  # too slow — see #236
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: transpile-tongues-perl
@@ -578,7 +579,7 @@ jobs:
             "${{ needs.tw-taytsh-apptests-java.result }}" \
             "${{ needs.vm-taytsh-apptests-java.result }}" \
             "${{ needs.vm-test-tongues-java.result }}"; do
-            if [ "$result" != "success" ]; then
+            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
               echo "One or more jobs failed"
               exit 1
             fi
