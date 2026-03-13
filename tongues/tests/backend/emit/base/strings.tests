@@ -43,3 +43,11 @@ def main() -> None:
     print(f"{x!s}")
 if __name__ == "__main__":
     main()
+
+=== strip regex special chars
+def main() -> None:
+    s: str = "]-hello-]"
+    x: str = s.strip("]-")
+    print(x)
+if __name__ == "__main__":
+    main()

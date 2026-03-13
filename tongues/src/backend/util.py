@@ -44,7 +44,11 @@ from ..taytsh.ast import (
 def to_snake(name: str) -> str:
     """Convert camelCase/PascalCase to snake_case."""
     if name.startswith("_"):
-        name = name[1:]
+        rest = name[1:]
+        # For underscore-prefixed constants, use P_ prefix to preserve uniqueness
+        if rest.isupper() or (rest and rest[0].isupper() and "_" in rest):
+            return "P_" + rest
+        name = rest
     if name.isupper():
         return name
     if "_" in name or name.islower():

@@ -26,7 +26,7 @@ _APP_XFAIL_VM: set[str] = set()
 
 def _round_trip(ty_text: str) -> str:
     """Emit taytsh source through the backend, returning the emitted text."""
-    output, err = _transpile_with_emitter(ty_text, emit_taytsh)
+    output, err = _transpile_with_emitter(ty_text, emit_taytsh, "taytsh")
     if err is not None:
         pytest.fail(f"Taytsh emit error: {err}")
     return output

@@ -112,6 +112,7 @@ class _ScopeCtx:
     top_level_fns: set[str]
     bindings: dict[str, _BindingInfo]
     narrowings: dict[str, Type]
+    let_vars: set[str]
 
 
 def _fork_ctx(
@@ -126,6 +127,7 @@ def _fork_ctx(
         top_level_fns=ctx.top_level_fns,
         bindings=ctx.bindings,
         narrowings=new_narrowings,
+        let_vars=ctx.let_vars,
     )
 
 
@@ -314,6 +316,7 @@ def _analyze_fn_lit(expr: TFnLit, parent_ctx: _ScopeCtx) -> None:
         top_level_fns=parent_ctx.top_level_fns,
         bindings={},
         narrowings={},
+        let_vars=set(),
     )
     for p in expr.params:
         if p.typ is not None:
@@ -341,6 +344,7 @@ def _walk_stmt(stmt: TStmt, ctx: _ScopeCtx) -> None:
             if stmt.value is not None:
                 _walk_expr(stmt.value, ctx)
             declared_type = ctx.checker.resolve_type(stmt.typ)
+            ctx.let_vars.add(stmt.name)
             ctx.bindings[stmt.name] = _BindingInfo(
                 annotations=stmt.annotations,
                 declared_type=declared_type,
@@ -527,6 +531,8 @@ def _walk_for_stmt(stmt: TForStmt, ctx: _ScopeCtx) -> None:
             bt = binder_types.get(bname)
             if bt is not None:
                 btype = bt
+        if bname in ctx.let_vars:
+            stmt.annotations[f"scope.binder.{bname}.is_reuse"] = "true"
         ctx.bindings[bname] = _BindingInfo(
             annotations=stmt.annotations,
             declared_type=btype,
@@ -875,6 +881,7 @@ def _analyze_fn(decl: TFnDecl, ctx: _ScopeCtx, self_type: Type | None = None) ->
         top_level_fns=ctx.top_level_fns,
         bindings={},
         narrowings={},
+        let_vars=set(),
     )
     for p in decl.params:
         if p.typ is not None:
@@ -905,6 +912,7 @@ def analyze_scope(module: TModule, checker: Checker) -> None:
         top_level_fns=top_level_fns,
         bindings={},
         narrowings={},
+        let_vars=set(),
     )
 
     for decl in module.decls:

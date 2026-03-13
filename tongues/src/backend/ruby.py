@@ -404,6 +404,31 @@ def _safe_type_name(name: str) -> str:
     return name
 
 
+def _escape_regex_charclass(value: str) -> str:
+    """Escape characters for use inside a Ruby regex character class."""
+    out: list[str] = []
+    i: int = 0
+    while i < len(value):
+        c: str = value[i : i + 1]
+        if c in "\\]^-":
+            out.append("\\" + c)
+        elif c == "\n":
+            out.append("\\n")
+        elif c == "\t":
+            out.append("\\t")
+        elif c == "\r":
+            out.append("\\r")
+        elif ord(c) < 32 or ord(c) > 126:
+            h: str = hex(ord(c))[2:]
+            if len(h) == 1:
+                h = "0" + h
+            out.append("\\x" + h)
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
+
+
 def _escape_ruby_string(value: str) -> str:
     result = escape_string(value)
     out: list[str] = []
@@ -597,11 +622,13 @@ class _RubyEmitter(Emitter):
         self.lines: list[str] = []
         self.self_name: str | None = None
         self.var_types: dict[str, TType] = {}
+        self.var_annotations: dict[str, dict[str, str]] = {}
         self._needs_set: bool = False
         self.in_fn: bool = False
         self.local_names: dict[str, str] = {}
         self._needs_range_helper: bool = False
         self._needs_float_repr: bool = False
+        self._needs_parse_float: bool = False
 
     def _line(self, text: str = "") -> None:
         if text:
@@ -635,6 +662,24 @@ class _RubyEmitter(Emitter):
         for decl in module.decls:
             if isinstance(decl, TLetStmt) and decl.typ is not None:
                 self.var_types[decl.name] = decl.typ
+        # Collect builtins and emit error classes as needed
+        all_builtins: set[str] = set()
+        for decl in module.decls:
+            if isinstance(decl, TFnDecl):
+                all_builtins |= collect_builtin_calls(decl.body)
+            elif isinstance(decl, TStructDecl):
+                for m in decl.methods:
+                    all_builtins |= collect_builtin_calls(m.body)
+            elif isinstance(decl, TStmt):
+                all_builtins |= collect_builtin_calls([decl])
+        if "Decode" in all_builtins or "ReadAll" in all_builtins:
+            self._line(
+                "class UnicodeDecodeError < ArgumentError;"
+                "attr_reader :message; "
+                'def initialize(message = ""); @message = message; super(message); end; '
+                "end"
+            )
+            self._line()
         need_blank = False
         for decl in order_decls(module.decls):
             if isinstance(decl, TInterfaceDecl):
@@ -690,6 +735,16 @@ class _RubyEmitter(Emitter):
                 " b = s; break; end }; end; end; end;"
                 ' b = b + ".0" if !b.include?(".") && !b.include?("e")'
                 ' && !b.include?("E"); b; end'
+            )
+            self.lines.insert(import_insert_pos, helper)
+            self.lines.insert(import_insert_pos + 1, "")
+        if self._needs_parse_float:
+            helper = (
+                "def _do_parse_float(s); "
+                "return Float::INFINITY if s == 'inf' || s == 'Infinity'; "
+                "return -Float::INFINITY if s == '-inf' || s == '-Infinity'; "
+                "return Float::NAN if s == 'nan' || s == 'NaN'; "
+                "s.to_f; end"
             )
             self.lines.insert(import_insert_pos, helper)
             self.lines.insert(import_insert_pos + 1, "")
@@ -766,8 +821,11 @@ class _RubyEmitter(Emitter):
         params: list[str] = []
         for f in fields:
             name = _safe_name(f.name)
-            default = self._zero_value(f.typ)
-            params.append(name + ": " + default)
+            if f.self_ref:
+                params.append(name + ": nil")
+            else:
+                default = self._zero_value(f.typ)
+                params.append(name + ": " + default)
         self._line("def initialize(" + ", ".join(params) + ")")
         self.indent += 1
         if is_error:
@@ -782,7 +840,18 @@ class _RubyEmitter(Emitter):
                 self._line("super()")
         for f in fields:
             name = _safe_name(f.name)
-            self._line("@" + name + " = " + name)
+            if f.self_ref and isinstance(f.typ, TIdentType):
+                self._line(
+                    "@"
+                    + name
+                    + " = "
+                    + name
+                    + " || "
+                    + _safe_type_name(f.typ.name)
+                    + ".new(self)"
+                )
+            else:
+                self._line("@" + name + " = " + name)
         self.indent -= 1
         self._line("end")
 
@@ -815,6 +884,7 @@ class _RubyEmitter(Emitter):
 
     def _emit_fn(self, decl: TFnDecl) -> None:
         old_var_types = self.var_types.copy()
+        old_var_annotations = self.var_annotations.copy()
         old_local_names = self.local_names
         old_in_fn = self.in_fn
         self.local_names = {}
@@ -822,6 +892,7 @@ class _RubyEmitter(Emitter):
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
+            self._capture_var_annotations(p.name, p.annotations)
         params = self._params(decl.params, with_self=False)
         self._line("def " + _safe_fn_name(decl.name) + "(" + params + ")")
         self.indent += 1
@@ -832,10 +903,12 @@ class _RubyEmitter(Emitter):
         self.indent -= 1
         self._line("end")
         self.var_types = old_var_types
+        self.var_annotations = old_var_annotations
         self.local_names = old_local_names
 
     def _emit_method(self, decl: TFnDecl) -> None:
         old_var_types = self.var_types.copy()
+        old_var_annotations = self.var_annotations.copy()
         old_local_names = self.local_names
         old_in_fn = self.in_fn
         self.local_names = {}
@@ -843,6 +916,7 @@ class _RubyEmitter(Emitter):
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
+            self._capture_var_annotations(p.name, p.annotations)
         params = self._params(decl.params, with_self=True)
         self._line("def " + _safe_name(decl.name) + "(" + params + ")")
         self.indent += 1
@@ -857,6 +931,7 @@ class _RubyEmitter(Emitter):
         self.indent -= 1
         self._line("end")
         self.var_types = old_var_types
+        self.var_annotations = old_var_annotations
         self.local_names = old_local_names
 
     def _params(self, params: list[TParam], with_self: bool) -> str:
@@ -1253,6 +1328,7 @@ class _RubyEmitter(Emitter):
     def _emit_let(self, stmt: TLetStmt) -> None:
         safe = self._decl_name(stmt.name, stmt.annotations)
         self.var_types[stmt.name] = stmt.typ
+        self._capture_var_annotations(stmt.name, stmt.annotations)
         unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
         if stmt.value is not None and not unused:
             self._line(safe + " = " + self._expr(stmt.value))
@@ -1654,6 +1730,22 @@ class _RubyEmitter(Emitter):
             return isinstance(typ, TPrimitive) and typ.kind == "string"
         return False
 
+    def _capture_var_annotations(self, name: str, annotations: Ann) -> None:
+        """Capture strings.* annotations for a variable."""
+        strings_ann: dict[str, str] = {}
+        for key, val in annotations.items():
+            if key.startswith("strings."):
+                strings_ann[key] = val
+        if strings_ann:
+            self.var_annotations[name] = strings_ann
+
+    def _is_ascii_content(self, expr: TExpr) -> bool:
+        """Check if expression has strings.content=ascii annotation."""
+        if isinstance(expr, TVar):
+            ann = self.var_annotations.get(expr.name, {})
+            return ann.get("strings.content") == "ascii"
+        return False
+
     def _is_bytes_type(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
         if ann:
@@ -1828,6 +1920,14 @@ class _RubyEmitter(Emitter):
         if isinstance(expr, TTupleAccess):
             return self._expr(expr.obj) + "[" + str(expr.index) + "]"
         if isinstance(expr, TIndex):
+            # Use O(1) getbyte for ASCII strings instead of O(n) character indexing
+            if self._is_string_type(expr.obj) and self._is_ascii_content(expr.obj):
+                idx = self._expr(expr.index)
+                if expr.annotations.get("provenance") == "negative_index":
+                    neg = self._negative_index(expr)
+                    if neg is not None:
+                        idx = neg
+                return self._expr(expr.obj) + ".getbyte(" + idx + ")&.chr"
             if expr.annotations.get("provenance") == "negative_index":
                 neg = self._negative_index(expr)
                 if neg is not None:
@@ -1918,6 +2018,13 @@ class _RubyEmitter(Emitter):
         high = self._expr(expr.high)
         if prov == "open_start" and self._is_zero(expr.low):
             low = "0"
+        # Use O(1) byteslice for ASCII strings instead of O(n) character slicing
+        if self._is_string_type(expr.obj) and self._is_ascii_content(expr.obj):
+            if prov == "open_end" and self._is_len_call(expr.high):
+                return (
+                    obj + ".byteslice(" + low + ", " + obj + ".bytesize - " + low + ")"
+                )
+            return obj + ".byteslice(" + low + ", (" + high + ") - (" + low + "))"
         if prov == "open_end" and self._is_len_call(expr.high):
             return obj + "[" + low + "..]"
         return obj + "[" + low + "..." + high + "]"
@@ -2239,9 +2346,13 @@ class _RubyEmitter(Emitter):
 
     def _builtin_call(self, name: str, args: list[TArg], call: TCall) -> str:
         if name == "FloorDiv":
-            return self._a(args, 0) + " / " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "/", is_left=True)
+            right = self._maybe_paren(args[1].value, "/", is_left=False)
+            return left + " / " + right
         if name == "PythonMod":
-            return self._a(args, 0) + " % " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "%", is_left=True)
+            right = self._maybe_paren(args[1].value, "%", is_left=False)
+            return left + " % " + right
         # List operations
         if name == "Append":
             return self._a(args, 0) + ".push(" + self._a(args, 1) + ")"
@@ -2362,10 +2473,17 @@ class _RubyEmitter(Emitter):
         if name == "Encode":
             return self._a(args, 0) + '.encode("utf-8").bytes'
         if name == "Decode":
+            arg = self._a(args, 0)
             return (
-                self._a(args, 0)
-                + ".pack('C*').force_encoding('UTF-8')"
-                + ".tap { |s| raise ArgumentError unless s.valid_encoding? }"
+                "(("
+                + arg
+                + ").is_a?(Array) ? ("
+                + arg
+                + ").pack('C*') : "
+                + "("
+                + arg
+                + ")).force_encoding('UTF-8')"
+                + ".tap { |s| raise UnicodeDecodeError unless s.valid_encoding? }"
             )
         # Set operations
         if name == "Add":
@@ -2538,7 +2656,8 @@ class _RubyEmitter(Emitter):
             base = self._a(args, 1)
             return self._a(args, 0) + ".to_i(" + base + ")"
         if name == "ParseFloat":
-            return self._a(args, 0) + ".to_f"
+            self._needs_parse_float = True
+            return "_do_parse_float(" + self._a(args, 0) + ")"
         if name == "FormatInt":
             return self._format_int(args)
         if name == "RuneFromInt":
@@ -2583,7 +2702,10 @@ class _RubyEmitter(Emitter):
         if name == "ReadLine":
             return "$stdin.gets&.chomp"
         if name == "ReadAll":
-            return "$stdin.read"
+            return (
+                "$stdin.binmode.read.force_encoding('UTF-8')"
+                ".tap { |s| raise UnicodeDecodeError unless s.valid_encoding? }"
+            )
         if name == "ReadBytes":
             return "$stdin.binmode.read.bytes"
         if name == "ReadBytesN":
@@ -2610,7 +2732,9 @@ class _RubyEmitter(Emitter):
                     + self._a(args, 1)
                     + ")"
                 )
-            return self._a(args, 0) + " ** " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "**", is_left=True)
+            right = self._maybe_paren(args[1].value, "**", is_left=False)
+            return left + " ** " + right
         if name == "Contains":
             if self._is_map_type(args[0].value):
                 return self._a(args, 0) + ".key?(" + self._a(args, 1) + ")"
@@ -2644,7 +2768,7 @@ class _RubyEmitter(Emitter):
     def _trim_gsub(self, expr: TExpr, mode: str) -> str:
         """Emit .gsub for Trim/TrimStart/TrimEnd with \\A/\\z anchors."""
         if isinstance(expr, TStringLit):
-            c = expr.value
+            c = _escape_regex_charclass(expr.value)
             if mode == "both":
                 return ".gsub(/\\A[" + c + "]+|[" + c + ']+\\z/, "")'
             if mode == "start":

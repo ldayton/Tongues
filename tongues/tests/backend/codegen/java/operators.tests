@@ -1,0 +1,23 @@
+=== in operator emits pythonic form
+if (xs.contains(2))
+
+=== not in operator
+if (!xs.contains(2))
+
+=== boolean operators
+System.out.println(String.valueOf(a && b))
+
+=== bitwise operators
+int y = x & 15
+
+=== compound assignment operators
+x += 5
+
+=== chained comparison
+return 0 <= x && x <= 255
+
+=== truthiness check on list
+if (xs.size() > 0)
+
+=== truthiness check on string
+if (!s.isEmpty())

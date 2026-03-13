@@ -48,3 +48,6 @@ for my $ch (split(//, $s)) {
 
 === list repetition with annotation
 [(0) x 5]
+
+=== dict get with default
+exists $d->{"a"} ? $d->{"a"} : 99

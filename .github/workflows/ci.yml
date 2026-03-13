@@ -1,0 +1,680 @@
+name: check
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  DOCKER_BUILDKIT: 1
+
+jobs:
+  style:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - run: docker build -t tongues-python docker/python
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile style
+
+  # ---------------------------------------------------------------------------
+  # Transpile jobs — one per language, upload artifacts for downstream jobs
+  # ---------------------------------------------------------------------------
+
+  transpile-tongues-python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - run: docker build -t tongues-python docker/python
+      - run: |
+          docker run --rm -v $PWD:/workspace tongues-python just -f justfile _transpile-tongues python
+          docker run --rm -v $PWD:/workspace tongues-python just -f justfile _transpile-harness python
+      - uses: actions/upload-artifact@v4
+        with:
+          name: transpiled-python
+          path: |
+            tongues/.out/tongues.py
+            tongues/.out/test_harness.py
+
+  transpile-tongues-ruby:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - run: docker build -t tongues-ruby docker/ruby
+      - run: |
+          docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile _transpile-tongues ruby
+          docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile _transpile-harness ruby
+      - uses: actions/upload-artifact@v4
+        with:
+          name: transpiled-ruby
+          path: |
+            tongues/.out/tongues.rb
+            tongues/.out/test_harness.rb
+
+  transpile-tongues-perl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - run: docker build -t tongues-perl docker/perl
+      - run: |
+          docker run --rm -v $PWD:/workspace tongues-perl just -f justfile _transpile-tongues perl
+          docker run --rm -v $PWD:/workspace tongues-perl just -f justfile _transpile-harness perl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: transpiled-perl
+          path: |
+            tongues/.out/tongues.pl
+            tongues/.out/test_harness.pl
+
+  transpile-tongues-javascript:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - run: docker build -t tongues-javascript docker/javascript
+      - run: |
+          docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile _transpile-tongues javascript
+          docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile _transpile-harness javascript
+      - uses: actions/upload-artifact@v4
+        with:
+          name: transpiled-javascript
+          path: |
+            tongues/.out/tongues.js
+            tongues/.out/test_harness.js
+
+  transpile-tongues-java:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - run: docker build -t tongues-java docker/java
+      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile _transpile-tongues java
+      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile _compile-java
+      - uses: actions/upload-artifact@v4
+        with:
+          name: transpiled-java
+          path: |
+            tongues/.out/tongues.java
+            tongues/.out/java-classes/
+
+  transpile-tongues-go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - run: docker build -t tongues-go docker/go
+      - run: docker run --rm -v $PWD:/workspace tongues-go just -f justfile _transpile-tongues go
+      - run: docker run --rm -v $PWD:/workspace tongues-go just -f justfile _compile-go
+      - uses: actions/upload-artifact@v4
+        with:
+          name: transpiled-go
+          path: |
+            tongues/.out/tongues.go
+            tongues/.out/tongues-go
+
+  # ---------------------------------------------------------------------------
+  # Python: test, idempotence, treewalker, vm, pyright
+  # ---------------------------------------------------------------------------
+
+  test-tongues-python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-python
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-python
+          path: tongues/.out
+      - run: docker build -t tongues-python docker/python
+      - run: docker run --rm -v $PWD:/workspace tongues-python
+          bash -c "cd tongues && uv run python3 tests/test-transpiled.py .out/tongues.py --target test-tongues-python"
+
+  idempotence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-python
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-python
+          path: tongues/.out
+      - run: docker build -t tongues-python docker/python
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile idempotence
+
+  pyright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-python
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-python
+          path: tongues/.out
+      - run: docker build -t tongues-python docker/python
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _pyright
+
+  tw-taytsh-apptests-python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-python
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-python
+          path: tongues/.out
+      - run: docker build -t tongues-python docker/python
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _treewalker python
+
+  vm-taytsh-apptests-python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-python
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-python
+          path: tongues/.out
+      - run: docker build -t tongues-python docker/python
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _vm python
+
+  # ---------------------------------------------------------------------------
+  # Ruby: test, cross-equivalence, treewalker, vm
+  # ---------------------------------------------------------------------------
+
+  test-tongues-ruby:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-ruby
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-ruby
+          path: tongues/.out
+      - run: docker build -t tongues-ruby docker/ruby
+      - run: docker run --rm -v $PWD:/workspace tongues-ruby
+          ruby tongues/tests/test-transpiled.rb .out/tongues.rb --target test-tongues-ruby
+
+  cross-equivalence-ruby:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-ruby
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-ruby
+          path: tongues/.out
+      - run: docker build -t tongues-ruby docker/ruby
+      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile cross-equivalence ruby
+
+  tw-taytsh-apptests-ruby:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-ruby
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-ruby
+          path: tongues/.out
+      - run: docker build -t tongues-ruby docker/ruby
+      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile _treewalker ruby
+
+  vm-taytsh-apptests-ruby:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-ruby
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-ruby
+          path: tongues/.out
+      - run: docker build -t tongues-ruby docker/ruby
+      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile _vm ruby
+
+  # ---------------------------------------------------------------------------
+  # Perl: test, cross-equivalence, treewalker, vm
+  # ---------------------------------------------------------------------------
+
+  test-tongues-perl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-perl
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-perl
+          path: tongues/.out
+      - run: docker build -t tongues-perl docker/perl
+      - run: docker run --rm -v $PWD:/workspace tongues-perl
+          perl tongues/tests/test-transpiled.pl .out/tongues.pl --target test-tongues-perl
+
+  cross-equivalence-perl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-perl
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-perl
+          path: tongues/.out
+      - run: docker build -t tongues-perl docker/perl
+      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile cross-equivalence perl
+
+  tw-taytsh-apptests-perl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-perl
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-perl
+          path: tongues/.out
+      - run: docker build -t tongues-perl docker/perl
+      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile _treewalker perl
+
+  vm-taytsh-apptests-perl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-perl
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-perl
+          path: tongues/.out
+      - run: docker build -t tongues-perl docker/perl
+      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile _vm perl
+
+  # ---------------------------------------------------------------------------
+  # JavaScript: test, cross-equivalence, treewalker, vm
+  # ---------------------------------------------------------------------------
+
+  test-tongues-javascript:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-javascript
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-javascript
+          path: tongues/.out
+      - run: docker build -t tongues-javascript docker/javascript
+      - run: docker run --rm -v $PWD:/workspace tongues-javascript
+          node tongues/tests/test-transpiled.js .out/tongues.js --target test-tongues-javascript
+
+  cross-equivalence-javascript:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-javascript
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-javascript
+          path: tongues/.out
+      - run: docker build -t tongues-javascript docker/javascript
+      - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile cross-equivalence javascript
+
+  tw-taytsh-apptests-javascript:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-javascript
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-javascript
+          path: tongues/.out
+      - run: docker build -t tongues-javascript docker/javascript
+      - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile _treewalker javascript
+
+  vm-taytsh-apptests-javascript:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-javascript
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-javascript
+          path: tongues/.out
+      - run: docker build -t tongues-javascript docker/javascript
+      - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile _vm javascript
+
+  # ---------------------------------------------------------------------------
+  # Java: test, cross-equivalence, treewalker, vm
+  # ---------------------------------------------------------------------------
+
+  test-tongues-java:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-java
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-java
+          path: tongues/.out
+      - run: docker build -t tongues-java docker/java
+      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile _test-tongues-java
+
+  cross-equivalence-java:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-java
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-java
+          path: tongues/.out
+      - run: docker build -t tongues-java docker/java
+      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile cross-equivalence java
+
+  tw-taytsh-apptests-java:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-java
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-java
+          path: tongues/.out
+      - run: docker build -t tongues-java docker/java
+      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile _treewalker-java
+
+  vm-taytsh-apptests-java:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-java
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-java
+          path: tongues/.out
+      - run: docker build -t tongues-java docker/java
+      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile _vm-java
+
+  # ---------------------------------------------------------------------------
+  # Go: test, cross-equivalence, treewalker, vm
+  # ---------------------------------------------------------------------------
+
+  test-tongues-go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-go
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-go
+          path: tongues/.out
+      - run: docker build -t tongues-go docker/go
+      - run: docker run --rm -v $PWD:/workspace tongues-go just -f justfile _test-tongues-go
+
+  cross-equivalence-go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-go
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-go
+          path: tongues/.out
+      - run: docker build -t tongues-go docker/go
+      - run: docker run --rm -v $PWD:/workspace tongues-go just -f justfile cross-equivalence go
+
+  tw-taytsh-apptests-go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-go
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-go
+          path: tongues/.out
+      - run: docker build -t tongues-go docker/go
+      - run: docker run --rm -v $PWD:/workspace tongues-go just -f justfile _treewalker-go
+
+  vm-taytsh-apptests-go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-go
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-go
+          path: tongues/.out
+      - run: docker build -t tongues-go docker/go
+      - run: docker run --rm -v $PWD:/workspace tongues-go just -f justfile _vm-go
+
+  # ---------------------------------------------------------------------------
+  # Taytsh VM: full tongues test suite through VM per language
+  # ---------------------------------------------------------------------------
+
+  vm-test-tongues-javascript:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-javascript
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-javascript
+          path: tongues/.out
+      - run: docker build -t tongues-javascript docker/javascript
+      - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile _vm-test-tongues javascript
+
+  vm-test-tongues-perl:
+    if: false  # too slow — see #236
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-perl
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-perl
+          path: tongues/.out
+      - run: docker build -t tongues-perl docker/perl
+      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile _vm-test-tongues perl
+
+  vm-test-tongues-ruby:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-ruby
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-ruby
+          path: tongues/.out
+      - run: docker build -t tongues-ruby docker/ruby
+      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile _vm-test-tongues ruby
+
+  vm-test-tongues-python:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-python
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-python
+          path: tongues/.out
+      - run: docker build -t tongues-python docker/python
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _vm-test-tongues python
+
+  vm-test-tongues-java:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-java
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-java
+          path: tongues/.out
+      - run: docker build -t tongues-java docker/java
+      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile _vm-test-tongues-java
+
+  vm-test-tongues-go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: transpile-tongues-go
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: transpiled-go
+          path: tongues/.out
+      - run: docker build -t tongues-go docker/go
+      - run: docker run --rm -v $PWD:/workspace tongues-go just -f justfile _vm-test-tongues-go
+
+  # ---------------------------------------------------------------------------
+  # Generative / property-based tests
+  # ---------------------------------------------------------------------------
+
+  pytest-gen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - run: docker build -t tongues-python docker/python
+      - run: docker save tongues-python -o /tmp/tongues-python.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-python
+          path: /tmp/tongues-python.tar
+
+  pytest-gen-tycheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: pytest-gen
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: docker-python
+          path: /tmp
+      - run: docker load -i /tmp/tongues-python.tar
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _pytest-gen-tycheck
+
+  pytest-gen-softfloat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: pytest-gen
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v4
+        with:
+          name: docker-python
+          path: /tmp
+      - run: docker load -i /tmp/tongues-python.tar
+      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _pytest-gen-softfloat
+
+  # ---------------------------------------------------------------------------
+  # Gate — single status check for branch protection
+  # ---------------------------------------------------------------------------
+
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: always()
+    needs:
+      - style
+      - pytest-gen-tycheck
+      - pytest-gen-softfloat
+      - test-tongues-python
+      - idempotence
+      - tw-taytsh-apptests-python
+      - vm-taytsh-apptests-python
+      - vm-test-tongues-python
+      - pyright
+      - test-tongues-ruby
+      - cross-equivalence-ruby
+      - tw-taytsh-apptests-ruby
+      - vm-taytsh-apptests-ruby
+      - vm-test-tongues-ruby
+      - test-tongues-perl
+      - cross-equivalence-perl
+      - tw-taytsh-apptests-perl
+      - vm-taytsh-apptests-perl
+      - vm-test-tongues-perl
+      - test-tongues-javascript
+      - cross-equivalence-javascript
+      - tw-taytsh-apptests-javascript
+      - vm-taytsh-apptests-javascript
+      - vm-test-tongues-javascript
+      - test-tongues-java
+      - cross-equivalence-java
+      - tw-taytsh-apptests-java
+      - vm-taytsh-apptests-java
+      - vm-test-tongues-java
+      - test-tongues-go
+      - cross-equivalence-go
+      - tw-taytsh-apptests-go
+      - vm-taytsh-apptests-go
+      - vm-test-tongues-go
+    steps:
+      - run: |
+          for result in \
+            "${{ needs.style.result }}" \
+            "${{ needs.pytest-gen-tycheck.result }}" \
+            "${{ needs.pytest-gen-softfloat.result }}" \
+            "${{ needs.test-tongues-python.result }}" \
+            "${{ needs.idempotence.result }}" \
+            "${{ needs.tw-taytsh-apptests-python.result }}" \
+            "${{ needs.vm-taytsh-apptests-python.result }}" \
+            "${{ needs.vm-test-tongues-python.result }}" \
+            "${{ needs.pyright.result }}" \
+            "${{ needs.test-tongues-ruby.result }}" \
+            "${{ needs.cross-equivalence-ruby.result }}" \
+            "${{ needs.tw-taytsh-apptests-ruby.result }}" \
+            "${{ needs.vm-taytsh-apptests-ruby.result }}" \
+            "${{ needs.vm-test-tongues-ruby.result }}" \
+            "${{ needs.test-tongues-perl.result }}" \
+            "${{ needs.cross-equivalence-perl.result }}" \
+            "${{ needs.tw-taytsh-apptests-perl.result }}" \
+            "${{ needs.vm-taytsh-apptests-perl.result }}" \
+            "${{ needs.vm-test-tongues-perl.result }}" \
+            "${{ needs.test-tongues-javascript.result }}" \
+            "${{ needs.cross-equivalence-javascript.result }}" \
+            "${{ needs.tw-taytsh-apptests-javascript.result }}" \
+            "${{ needs.vm-taytsh-apptests-javascript.result }}" \
+            "${{ needs.vm-test-tongues-javascript.result }}" \
+            "${{ needs.test-tongues-java.result }}" \
+            "${{ needs.cross-equivalence-java.result }}" \
+            "${{ needs.tw-taytsh-apptests-java.result }}" \
+            "${{ needs.vm-taytsh-apptests-java.result }}" \
+            "${{ needs.vm-test-tongues-java.result }}" \
+            "${{ needs.test-tongues-go.result }}" \
+            "${{ needs.cross-equivalence-go.result }}" \
+            "${{ needs.tw-taytsh-apptests-go.result }}" \
+            "${{ needs.vm-taytsh-apptests-go.result }}" \
+            "${{ needs.vm-test-tongues-go.result }}"; do
+            if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
+              echo "One or more jobs failed"
+              exit 1
+            fi
+          done

@@ -25,3 +25,13 @@ def main() -> None:
     print(x)
 if __name__ == "__main__":
     main()
+
+=== underscore-prefixed constant distinct from non-prefixed
+ITEMS: set[str] = frozenset({"a", "b"})
+_ITEMS: set[str] = frozenset({"c", "d"})
+def main() -> None:
+    x: bool = "a" in ITEMS
+    y: bool = "c" in _ITEMS
+    print(str(x) + str(y))
+if __name__ == "__main__":
+    main()

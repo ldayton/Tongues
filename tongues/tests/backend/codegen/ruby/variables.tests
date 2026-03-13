@@ -6,7 +6,7 @@ q = (17.to_f / 5).truncate
 r = 17.remainder(5)
 
 === initial value suppressed when overwritten
-x = $stdin.read.to_i(10)
+x = $stdin.binmode.read.force_encoding('UTF-8').tap { |s| raise UnicodeDecodeError unless s.valid_encoding? }.to_i(10)
 
 === initial value kept when read before overwrite
 x = 0

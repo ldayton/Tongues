@@ -393,11 +393,7 @@ def _analyze_fn(decl: TFnDecl, checker: Checker, self_type: Type | None = None) 
             locals_[p.name] = checker.resolve_type(p.typ)
         elif p.name == "this" and self_type is not None:
             locals_[p.name] = self_type
-    ctx = _ReturnsCtx(
-        checker=checker,
-        locals=locals_,
-        fn_results=fn_results,
-    )
+    ctx = _ReturnsCtx(checker, locals_, {}, fn_results)
     always = _walk_block(decl.body, ctx)
     decl.annotations["returns.always_returns"] = "true" if always else "false"
     decl.annotations["returns.needs_named_returns"] = (

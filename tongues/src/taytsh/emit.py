@@ -599,10 +599,10 @@ class _Emitter:
         if isinstance(expr, TVar):
             return expr.name
         if isinstance(expr, TTernary):
-            c = self._render_expr(expr.cond, _PREC_TERNARY, "left")
-            t = self._render_expr(expr.then_expr, _PREC_TERNARY, "right")
-            e = self._render_expr(expr.else_expr, _PREC_TERNARY, "right")
-            return f"{c} ? {t} : {e}"
+            cond_s = self._render_expr(expr.cond, _PREC_TERNARY, "left")
+            then_s = self._render_expr(expr.then_expr, _PREC_TERNARY, "right")
+            else_s = self._render_expr(expr.else_expr, _PREC_TERNARY, "right")
+            return f"{cond_s} ? {then_s} : {else_s}"
         if isinstance(expr, TUnaryOp):
             operand = self._render_expr(expr.operand, _PREC_UNARY, "right")
             if expr.op == "-" and operand.startswith("-"):

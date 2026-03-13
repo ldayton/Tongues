@@ -1,0 +1,13 @@
+=== function as value
+return f.apply(x);
+
+=== function literal expression body
+int result = apply((x) -> x * 2, 10);
+
+=== Main emits as lowercase main
+public static void main(
+
+=== function literal block body
+apply((x) -> {
+    System.out.println(String.valueOf(x));
+}, 42);

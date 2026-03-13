@@ -3115,13 +3115,17 @@ def _validate_match(
         if not isinstance(subj_type, UnionType):
             base_name = _struct_name(subj_type)
             if base_name:
-                children: list[TypeNode] = []
+                child_names: list[str] = []
                 for cls_k, bases in ctx.class_bases.items():
                     if base_name in bases:
-                        sig_e: list[TypeCollectError] = []
-                        children.append(
-                            py_type_to_type_dict(cls_k, ctx.known_classes, sig_e, 0, 0)
-                        )
+                        child_names.append(cls_k)
+                child_names.sort()
+                children: list[TypeNode] = []
+                for cls_k in child_names:
+                    sig_e: list[TypeCollectError] = []
+                    children.append(
+                        py_type_to_type_dict(cls_k, ctx.known_classes, sig_e, 0, 0)
+                    )
                 if children:
                     remainder_env.narrow(subj_name, UnionType(children))
     # Track enum variant coverage for exhaustiveness
@@ -3433,6 +3437,32 @@ def _subscript_key(node: ASTNode) -> str:
     return base + ":" + str(slc_v.value)
 
 
+def _preserve_subscript_type(
+    target: ASTNode, narrowed: TypeNode, env: TypeEnv
+) -> TypeNode:
+    """Keep parameterized type when isinstance narrows a subscript to bare container."""
+    val_node = get_node(target, "value")
+    if not val_node or not _is_type(val_node, ["Name"]):
+        return narrowed
+    base_name = get_str(val_node, "id")
+    base_type = env.get_type(base_name)
+    if not isinstance(base_type, SliceType):
+        return narrowed
+    elem = base_type.element
+    if contains_any(elem):
+        return narrowed
+    same_container = False
+    if isinstance(narrowed, MapType) and isinstance(elem, MapType):
+        same_container = True
+    elif isinstance(narrowed, SliceType) and isinstance(elem, SliceType):
+        same_container = True
+    elif isinstance(narrowed, SetType) and isinstance(elem, SetType):
+        same_container = True
+    if same_container:
+        return elem
+    return narrowed
+
+
 def _narrow_isinstance(
     test: ASTNode,
     then_env: TypeEnv,
@@ -3485,6 +3515,8 @@ def _narrow_isinstance(
         narrowed = py_type_to_type_dict(
             narrow_name, ctx.known_classes, sig_errors, 0, 0
         )
+        if contains_any(narrowed) and _is_type(target, ["Subscript"]):
+            narrowed = _preserve_subscript_type(target, narrowed, then_env)
         then_env.narrow(name, narrowed)
     elif len(narrow_names) > 1:
         sig_errors: list[TypeCollectError] = []
@@ -3499,15 +3531,17 @@ def _narrow_isinstance(
         if not isinstance(else_type, UnionType):
             base_name = _struct_name(else_type)
             if base_name:
-                children: list[TypeNode] = []
+                child_names: list[str] = []
                 for cls_k, bases in ctx.class_bases.items():
                     if base_name in bases:
-                        sig_e_exp: list[TypeCollectError] = []
-                        children.append(
-                            py_type_to_type_dict(
-                                cls_k, ctx.known_classes, sig_e_exp, 0, 0
-                            )
-                        )
+                        child_names.append(cls_k)
+                child_names.sort()
+                children: list[TypeNode] = []
+                for cls_k in child_names:
+                    sig_e_exp: list[TypeCollectError] = []
+                    children.append(
+                        py_type_to_type_dict(cls_k, ctx.known_classes, sig_e_exp, 0, 0)
+                    )
                 if children:
                     else_type = UnionType(children)
                     else_env.narrow(name, else_type)
@@ -3529,7 +3563,7 @@ def _narrow_typeguard(
     if not func:
         return
     args = get_nodes(test, "args")
-    func_info = None
+    func_info: FuncInfo | None = None
     if _is_type(func, ["Name"]):
         fname = get_str(func, "id")
         if fname:

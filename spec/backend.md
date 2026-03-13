@@ -115,15 +115,15 @@ Used by all backends for cleaner output.
 
 ### strings.\*
 
-Used by all backends except Python, Ruby, and Perl (native-rune targets where string operations are already correct).
+Used by all backends except Python and Perl (native-rune targets where string operations are already correct and performant). Ruby uses this pass for `strings.content="ascii"` optimization only — Ruby's native rune indexing is O(n) for UTF-8 strings, so ASCII strings use O(1) byte operations.
 
 `strings.content` — select string operation implementation based on character content:
 
-| Content     | UTF-8 targets (Go, Rust, C, Zig, Lua, PHP) | UTF-16 targets (Java, C#, JS, TS, Dart, Swift)          |
-| ----------- | ------------------------------------------ | ------------------------------------------------------- |
-| `"ascii"`   | native byte operations (`s[i]`, `len(s)`)  | native code-unit operations (`.charAt()`, `.length`)    |
-| `"bmp"`     | still need multi-byte decode               | native code-unit operations safely (no surrogate pairs) |
-| `"unknown"` | full rune-safe operations                  | full codepoint-safe operations                          |
+| Content     | UTF-8 targets (Go, Rust, C, Zig, Lua, PHP) | UTF-16 targets (Java, C#, JS, TS, Dart, Swift) | Ruby                    |
+| ----------- | ------------------------------------------ | ---------------------------------------------- | ----------------------- |
+| `"ascii"`   | native byte operations (`s[i]`, `len(s)`)  | native code-unit operations (`.charAt()`)      | byte ops (`.getbyte()`) |
+| `"bmp"`     | still need multi-byte decode               | native code-unit operations (no surrogates)    | native rune ops         |
+| `"unknown"` | full rune-safe operations                  | full codepoint-safe operations                 | native rune ops         |
 
 Target-specific ASCII-mode examples:
 
@@ -135,6 +135,7 @@ Target-specific ASCII-mode examples:
 | Java       | `s.charAt(i)`               | `s.length()`   |
 | JavaScript | `s[i]` or `s.charCodeAt(i)` | `s.length`     |
 | PHP        | `$s[$i]`                    | `strlen($s)`   |
+| Ruby       | `s.getbyte(i)&.chr`         | `s.bytesize`   |
 
 `strings.indexed` — when `false`, skip rune-indexing machinery entirely:
 
@@ -358,9 +359,12 @@ Not all backends are equal in complexity. Rough ranking by implementation diffic
 
 | Tier        | Backends              | Why                                                          |
 | ----------- | --------------------- | ------------------------------------------------------------ |
-| Low         | Python, Ruby, Perl    | Dynamic typing, close to source semantics.                   |
+| Low         | Python, Perl          | Dynamic typing, close to source semantics.                   |
 |             |                       | Native rune strings — skip strings/hoisting/ownership/       |
 |             |                       | callgraph passes.                                            |
+| ----------- | --------------------- | ------------------------------------------------------------ |
+| Low         | Ruby                  | Dynamic typing, close to source semantics. Uses strings      |
+|             |                       | pass for ASCII optimization (native rune indexing is O(n)).  |
 | ----------- | --------------------- | ------------------------------------------------------------ |
 | Medium      | JavaScript,           | GC, native exceptions, some type ceremony.                   |
 |             | TypeScript, PHP,      | Consume strings pass for encoding-aware operations.          |

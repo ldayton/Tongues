@@ -1,0 +1,113 @@
+=== checked int add
+long c = Math.addExact(a, b);
+System.out.println(String.valueOf(c));
+
+=== checked int sub
+long c = Math.subtractExact(a, b);
+System.out.println(String.valueOf(c));
+
+=== checked int mul
+long c = Math.multiplyExact(a, b);
+System.out.println(String.valueOf(c));
+
+=== checked int negate
+long y = Math.negateExact(x);
+System.out.println(String.valueOf(y));
+
+=== checked left shift
+long y = checkedShl(x, 4);
+System.out.println(String.valueOf(y));
+
+=== checked right shift
+long y = checkedShr(x, 4);
+System.out.println(String.valueOf(y));
+
+=== logical right shift
+long y = x >>> 1;
+System.out.println(String.valueOf(y));
+
+=== wrapping add
+long b = a + 1;
+System.out.println(String.valueOf(b));
+
+=== wrapping sub
+long b = min - 1;
+System.out.println(String.valueOf(b));
+
+=== wrapping mul
+long b = max * 2;
+System.out.println(String.valueOf(b));
+
+=== checked pow
+long x = checkedPow(2, 10);
+System.out.println(String.valueOf(x));
+
+=== checked int compound add
+x = Math.addExact(x, 5);
+System.out.println(String.valueOf(x));
+
+=== checked int compound sub
+x = Math.subtractExact(x, 3);
+System.out.println(String.valueOf(x));
+
+=== checked int compound mul
+x = Math.multiplyExact(x, 3);
+System.out.println(String.valueOf(x));
+
+=== float mod by zero traps
+boolean caught = false;
+try {
+    double x = strictFmod(1.0, 0.0);
+} catch (Exception _e) {
+    caught = true;
+}
+System.out.println(String.valueOf(caught));
+
+=== min with nan propagates
+double nan = Double.NaN;
+double x = strictMinF64(nan, 1.0);
+System.out.println(String.valueOf(Double.isNaN(x)));
+
+=== max with nan propagates
+double nan = Double.NaN;
+double x = strictMaxF64(nan, 1.0);
+System.out.println(String.valueOf(Double.isNaN(x)));
+
+=== sorted with nan traps
+double nan = Double.NaN;
+boolean caught = false;
+try {
+    List<Double> xs = strictSortedF64(new ArrayList<>(List.of(1.0, nan, 2.0)));
+} catch (Exception _e) {
+    caught = true;
+}
+System.out.println(String.valueOf(caught));
+
+=== bigint int literal
+long x = 42;
+System.out.println(String.valueOf(x));
+
+=== preamble no number conversion
+long c = Math.addExact(a, b);
+System.out.println(String.valueOf(c));
+
+=== bigint for range
+for (int i = 0; i < 10; i++) {
+
+=== bigint array index
+long v = xs.get(i);
+
+=== bigint int to float
+double f = x;
+
+=== bigint float to int
+long x = (int) f;
+
+=== bigint len
+long n = xs.size();
+
+=== non-strict ops unchanged
+double x = 1.5 + 2.5;
+long y = checkedDiv(10, 3);
+long z = checkedRem(10, 3);
+System.out.println(String.valueOf(y));

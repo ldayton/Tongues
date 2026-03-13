@@ -128,7 +128,7 @@ def _literal_content(value: str) -> str:
     content = _C_ASCII
     for ch in value:
         cp = ord(ch)
-        if cp > 0xFFFF:
+        if cp > 0xFFFF or 0xD800 <= cp <= 0xDFFF:
             return _C_UNKNOWN
         if cp > 0x7F:
             content = _C_BMP

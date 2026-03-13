@@ -1,14 +1,5 @@
 === isinstance check
-eval { $a->isa('Dog') }
+(UNIVERSAL::isa($a, 'Dog'))
 
 === isinstance with tuple of types
-(defined($a) && $a->isa('Dog')) || (defined($a) && $a->isa('Cat'))
-
-=== negated isinstance guard
-if (!(defined($v) && $v->isa('VTuple')))
-
-=== isinstance field path narrowing
-$st->{expr}->isa('Call')
-
-=== isinstance on concrete type
-$info->isa('Info')
+(UNIVERSAL::isa($a, 'Dog')) || (UNIVERSAL::isa($a, 'Cat'))

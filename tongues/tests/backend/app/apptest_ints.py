@@ -354,6 +354,14 @@ def test_int_pow_edge_cases() -> None:
     assert pow(1, 1000) == 1
 
 
+def test_hex_oct_bin() -> None:
+    """hex/oct/bin with [2:] slice returns correct string."""
+    assert hex(255)[2:] == "ff"
+    assert oct(255)[2:] == "377"
+    assert bin(255)[2:] == "11111111"
+    assert hex(0)[2:] == "0"
+
+
 def test_int_pow_negative_base() -> None:
     # Negative base, even exponent -> positive
     assert pow(-2, 2) == 4
@@ -404,6 +412,7 @@ def main() -> int:
         ("test_int_divmod_identity", test_int_divmod_identity),
         ("test_int_pow_basic", test_int_pow_basic),
         ("test_int_pow_edge_cases", test_int_pow_edge_cases),
+        ("test_hex_oct_bin", test_hex_oct_bin),
         ("test_int_pow_negative_base", test_int_pow_negative_base),
     ]
     for name, fn in tests:

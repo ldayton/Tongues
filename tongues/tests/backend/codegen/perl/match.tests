@@ -33,7 +33,7 @@ if ($c == Color::Red) {
 }
 
 === match on interface
-if (eval { $s->isa('Circle') }) {
+if (UNIVERSAL::isa($s, 'Circle')) {
     my $c = $s;
     return 3.14159 * $c->{radius} * $c->{radius};
 } else {

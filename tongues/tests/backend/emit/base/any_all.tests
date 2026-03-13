@@ -39,3 +39,11 @@ def main() -> None:
     check([1, -2, -3])
 if __name__ == "__main__":
     main()
+
+=== any with dict items tuple unpack
+def has_large_value(d: dict[str, int]) -> bool:
+    return any(v > 10 for k, v in d.items())
+def main() -> None:
+    print(str(has_large_value({"a": 1, "b": 20})))
+if __name__ == "__main__":
+    main()

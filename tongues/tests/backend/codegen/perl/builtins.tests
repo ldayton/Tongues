@@ -16,6 +16,12 @@ my $n = do { my $__s = "42"; my $__b = 10; $__b == 0 ? ($__s =~ /^0[xX]/ ? hex($
 === FormatInt
 my $hex = sprintf('%x', 255);
 
+=== FormatInt octal
+my $oct = sprintf('%o', 255);
+
+=== FormatInt binary
+my $bin = sprintf('%b', 255);
+
 === RuneToInt and RuneFromInt
 my $n = ord("A");
 
@@ -45,7 +51,7 @@ my $n = ceil(3.2);
 my $q = POSIX::floor(-7 / 2);
 
 === PythonMod negative dividend
-my $r = -7 - POSIX::floor(-7 / 2) * 2;
+my $r = (-7 - POSIX::floor(-7 / 2) * 2);
 
 === RangeList
 my $xs = [0..4];

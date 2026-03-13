@@ -154,6 +154,63 @@ fn Main() -> void {
     WritelnOut(ToString(caught))
 }
 
+=== bigint int literal
+@@["strict_math"]
+fn Main() -> void {
+    let x: int = 42
+    WritelnOut(ToString(x))
+}
+
+=== preamble no number conversion
+@@["strict_math"]
+fn Main() -> void {
+    let a: int = 1
+    let b: int = 2
+    let c: int = a + b
+    WritelnOut(ToString(c))
+}
+
+=== bigint for range
+@@["strict_math"]
+fn Main() -> void {
+    for i in range(10) {
+        WritelnOut(ToString(i))
+    }
+}
+
+=== bigint array index
+@@["strict_math"]
+fn Main() -> void {
+    let xs: list[int] = [10, 20, 30]
+    let i: int = 1
+    let v: int = xs[i]
+    WritelnOut(ToString(v))
+}
+
+=== bigint int to float
+@@["strict_math"]
+fn Main() -> void {
+    let x: int = 42
+    let f: float = IntToFloat(x)
+    WritelnOut(ToString(f))
+}
+
+=== bigint float to int
+@@["strict_math"]
+fn Main() -> void {
+    let f: float = 3.7
+    let x: int = FloatToInt(f)
+    WritelnOut(ToString(x))
+}
+
+=== bigint len
+@@["strict_math"]
+fn Main() -> void {
+    let xs: list[int] = [1, 2, 3]
+    let n: int = Len(xs)
+    WritelnOut(ToString(n))
+}
+
 === non-strict ops unchanged
 @@["strict_math"]
 fn Main() -> void {
