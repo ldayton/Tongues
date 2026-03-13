@@ -11,7 +11,7 @@ if (index($s, "world") >= 0) {
 }
 
 === Split and Join
-my $parts = do { my $__s = "a,b,c"; my $__sep = ","; [split(/\Q$__sep\E/, $__s)] };
+my $parts = (do { my $__s = "a,b,c"; my $__sep = ","; [split(/\Q$__sep\E/, $__s)] });
 my $joined = join("-", @{$parts});
 
 === string Find

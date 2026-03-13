@@ -5,16 +5,16 @@ my $result = undef
 return $e->{pos}
 
 === IsType narrows for field access
-if ((defined($it) && $it->isa('Book')))
+if ((UNIVERSAL::isa($it, 'Book')))
 
 === type switch binding shadows type name
-if (eval { $operand->isa('VInt') })
+if (UNIVERSAL::isa($operand, 'VInt'))
 
 === empty map in return statement
 return {}
 
 === match case binding shadows type in body
-if (eval { $v->isa('VInt') })
+if (UNIVERSAL::isa($v, 'VInt'))
 
 === map literal with interface value in return
 return { "a" => Leaf->new(1) }
