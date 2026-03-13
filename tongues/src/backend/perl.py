@@ -2742,11 +2742,11 @@ class _PerlEmitter(Emitter):
             return "do { my $__t = " + s + "; $__t =~ s/[" + c + "]+$//; $__t }"
         if name == "Split":
             return (
-                "do { my $__s = "
+                "(do { my $__s = "
                 + self._a(args, 0)
                 + "; my $__sep = "
                 + self._a(args, 1)
-                + "; [split(/\\Q$__sep\\E/, $__s)] }"
+                + "; [split(/\\Q$__sep\\E/, $__s)] })"
             )
         if name == "SplitN":
             splitn_val: TExpr = args[1].value

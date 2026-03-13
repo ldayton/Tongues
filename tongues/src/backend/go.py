@@ -3665,8 +3665,8 @@ class _GoEmitter(Emitter):
         return has_nil and has_type and len(stmt.cases) == 2
 
     def _emit_optional_match(self, stmt: TMatchStmt, expr_s: str) -> None:
-        nil_case = None
-        type_case = None
+        nil_case: TMatchCase | None = None
+        type_case: TMatchCase | None = None
         for case in stmt.cases:
             if isinstance(case.pattern, TPatternNil):
                 nil_case = case

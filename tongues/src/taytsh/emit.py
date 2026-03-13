@@ -512,7 +512,7 @@ class _Emitter:
             return " | ".join(members)
         if isinstance(typ, TOptionalType):
             if isinstance(typ.inner, TOptionalType):
-                raise ValueError("nested optional types are not valid (T??)")
+                return self._render_type(typ.inner)
             return f"{self._render_type(typ.inner)}?"
         raise TypeError("unhandled type node")
 
