@@ -300,6 +300,7 @@ _EXCEPTION_MAP: dict[str, str] = {
     "RuntimeError": "RuntimeException",
 }
 
+
 _JAVA_STDLIB_EXCEPTIONS: frozenset[str] = frozenset(
     {
         "RuntimeException",
@@ -826,7 +827,17 @@ class _JavaEmitter(Emitter):
             elif isinstance(decl, TInterfaceDecl):
                 defined.add(decl.name)
         mapped = set(_EXCEPTION_MAP.values())
+        # Ensure ValueError is emitted before UnicodeDecodeError (its subclass)
+        reordered: list[str] = []
+        seen: set[str] = set()
         for name in sorted(thrown - defined):
+            if name == "UnicodeDecodeError" and "ValueError" not in seen:
+                reordered.append("ValueError")
+                seen.add("ValueError")
+            if name not in seen:
+                reordered.append(name)
+                seen.add(name)
+        for name in reordered:
             java_name = _EXCEPTION_MAP.get(name, name)
             if java_name in mapped and name in _EXCEPTION_MAP:
                 continue
@@ -835,7 +846,8 @@ class _JavaEmitter(Emitter):
             if name in self.fn_names:
                 continue
             self._line()
-            self._line("static class " + java_name + " extends RuntimeException {")
+            exc_parent = "ValueError" if name == "UnicodeDecodeError" else "RuntimeException"
+            self._line("static class " + java_name + " extends " + exc_parent + " {")
             self.indent += 1
             self._line(java_name + "(String message) { super(message); }")
             self._line(java_name + "() { super(); }")
