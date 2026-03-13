@@ -1,5 +1,5 @@
 === isinstance check
-eval { $a->isa('Dog') }
+(UNIVERSAL::isa($a, 'Dog'))
 
 === isinstance with tuple of types
-(eval { $a->isa('Dog') }) || (eval { $a->isa('Cat') })
+(UNIVERSAL::isa($a, 'Dog')) || (UNIVERSAL::isa($a, 'Cat'))

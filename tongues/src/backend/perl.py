@@ -1851,15 +1851,15 @@ class _PerlEmitter(Emitter):
             if typ.name in ("list", "List"):
                 return "(ref(" + expr + ") eq 'ARRAY')"
             if typ.name in self.struct_names:
-                return "eval { " + expr + "->isa('" + typ.name + "') }"
+                return "UNIVERSAL::isa(" + expr + ", '" + typ.name + "')"
             return (
                 "defined("
                 + expr
-                + ") && eval { "
+                + ") && UNIVERSAL::isa("
                 + expr
-                + "->isa('"
+                + ", '"
                 + typ.name
-                + "') }"
+                + "')"
             )
         if isinstance(typ, TPrimitive):
             if is_optional:
@@ -1870,7 +1870,7 @@ class _PerlEmitter(Emitter):
                 return "!ref(" + expr + ") && !looks_like_number(" + expr + ")"
             if typ.kind == "bool":
                 return "!ref(" + expr + ")"
-        return "defined(" + expr + ") && eval { " + expr + "->isa('UNSUPPORTED') }"
+        return "defined(" + expr + ") && UNIVERSAL::isa(" + expr + ", 'UNSUPPORTED')"
 
     def _emit_match_default(self, default: TDefault, expr: str, first: bool) -> None:
         if first:
@@ -3323,7 +3323,7 @@ class _PerlEmitter(Emitter):
                 return "looks_like_number(" + a0 + ")"
             if type_name in ("bool", "Bool"):
                 return "!ref(" + a0 + ")"
-            return "(eval { " + a0 + "->isa('" + type_name + "') })"
+            return "(UNIVERSAL::isa(" + a0 + ", '" + type_name + "'))"
         if name == "Assert":
             cond = self._a(args, 0)
             if len(args) > 1:
