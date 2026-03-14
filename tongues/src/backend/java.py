@@ -5483,7 +5483,7 @@ def _stmts_use_builtin(stmts: list[TStmt], name: str) -> bool:
     for stmt in stmts:
         if isinstance(stmt, TExprStmt) and _expr_uses_builtin(stmt.expr, name):
             return True
-        if isinstance(stmt, TLetStmt) and _expr_uses_builtin(stmt.value, name):
+        if isinstance(stmt, TLetStmt) and stmt.value is not None and _expr_uses_builtin(stmt.value, name):
             return True
         if isinstance(stmt, TAssignStmt) and _expr_uses_builtin(stmt.value, name):
             return True
@@ -5496,7 +5496,7 @@ def _stmts_use_builtin(stmts: list[TStmt], name: str) -> bool:
         if isinstance(stmt, TIfStmt):
             if _stmts_use_builtin(stmt.then_body, name):
                 return True
-            if _stmts_use_builtin(stmt.else_body, name):
+            if stmt.else_body is not None and _stmts_use_builtin(stmt.else_body, name):
                 return True
         if isinstance(stmt, TForStmt) and _stmts_use_builtin(stmt.body, name):
             return True
@@ -5508,7 +5508,7 @@ def _stmts_use_builtin(stmts: list[TStmt], name: str) -> bool:
             for catch in stmt.catches:
                 if _stmts_use_builtin(catch.body, name):
                     return True
-            if _stmts_use_builtin(stmt.finally_body, name):
+            if stmt.finally_body is not None and _stmts_use_builtin(stmt.finally_body, name):
                 return True
         if isinstance(stmt, TMatchStmt):
             for case in stmt.cases:
