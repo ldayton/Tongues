@@ -107,6 +107,7 @@ Options:
   --strict-tostring   Enable strict tostring mode
   -o, --output FILE   Write output to FILE instead of stdout
   --help              Show this help message
+  --version           Show version number
 """
 
 
@@ -1336,7 +1337,17 @@ def parse_args() -> tuple[str, str | None, bool, bool, bool, str | None, str | N
     i = 0
     while i < len(args):
         arg = args[i]
-        if arg == "--help" or arg == "-h":
+        if arg == "--version":
+            from pathlib import Path
+
+            import tomllib
+
+            pyproject = Path(__file__).parent.parent / "pyproject.toml"
+            with open(pyproject, "rb") as f:
+                data = tomllib.load(f)
+            print(data["project"]["version"])
+            sys.exit(0)
+        elif arg == "--help" or arg == "-h":
             print(str(USAGE), end="")
             sys.exit(0)
         elif arg == "--target":
