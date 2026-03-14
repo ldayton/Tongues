@@ -92,6 +92,8 @@ PHASES: list[str] = [
     "analyze",
 ]
 
+VERSION: str = "0.2.0"
+
 USAGE: str = """\
 tongues [OPTIONS] [INPUT] [-o OUTPUT]
 
@@ -1338,14 +1340,7 @@ def parse_args() -> tuple[str, str | None, bool, bool, bool, str | None, str | N
     while i < len(args):
         arg = args[i]
         if arg == "--version":
-            from pathlib import Path
-
-            import tomllib
-
-            pyproject = Path(__file__).parent.parent / "pyproject.toml"
-            with open(pyproject, "rb") as f:
-                data = tomllib.load(f)
-            print(data["project"]["version"])
+            print(VERSION)
             sys.exit(0)
         elif arg == "--help" or arg == "-h":
             print(str(USAGE), end="")
