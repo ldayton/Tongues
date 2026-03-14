@@ -456,6 +456,11 @@ jobs:
       - style
       - pytest-gen-tycheck
       - pytest-gen-softfloat
+      - transpile-tongues-python
+      - transpile-tongues-ruby
+      - transpile-tongues-perl
+      - transpile-tongues-javascript
+      - transpile-tongues-java
       - test-tongues-python
       - idempotence
       - vm-taytsh-apptests-python
@@ -483,6 +488,11 @@ jobs:
             "${{ needs.style.result }}" \
             "${{ needs.pytest-gen-tycheck.result }}" \
             "${{ needs.pytest-gen-softfloat.result }}" \
+            "${{ needs.transpile-tongues-python.result }}" \
+            "${{ needs.transpile-tongues-ruby.result }}" \
+            "${{ needs.transpile-tongues-perl.result }}" \
+            "${{ needs.transpile-tongues-javascript.result }}" \
+            "${{ needs.transpile-tongues-java.result }}" \
             "${{ needs.test-tongues-python.result }}" \
             "${{ needs.idempotence.result }}" \
             "${{ needs.vm-taytsh-apptests-python.result }}" \

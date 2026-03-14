@@ -164,7 +164,7 @@ lang target *args:
 # Self-transpile to Java, compile, and run tests
 lang-java:
     #!/usr/bin/env bash
-    set -uo pipefail
+    set -euo pipefail
     pids=()
     declare -A pid_names=()
     _cleanup_done=0
@@ -288,7 +288,7 @@ test-tongues target *args:
 # Run test suite with Java binary
 _test-tongues-java *args:
     #!/usr/bin/env bash
-    set -uo pipefail
+    set -euo pipefail
     just -f {{justfile()}} _transpile-tongues java
     just -f {{justfile()}} _compile-java
     printf '\033[32m[test-tongues-java]\033[0m\n'
