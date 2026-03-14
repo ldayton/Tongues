@@ -91,6 +91,13 @@ def f(b: bytearray) -> None:
 error: method
 ---
 
+=== bytearray method decode lowers to BytesFrom then Decode
+def f(b: bytearray) -> str:
+    return b.decode()
+---
+Decode(BytesFrom(b))
+---
+
 === bytearray method hex unsupported
 def f(b: bytearray) -> str:
     return b.hex()

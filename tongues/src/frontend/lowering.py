@@ -3060,6 +3060,9 @@ def _lower_method_call(
         return _lower_string_method(pos, obj, method_name, args, env, ctx)
     # ByteArray methods
     if isinstance(actual_type, ByteArrayType):
+        if method_name == "decode":
+            bytes_obj = _make_call(pos, "BytesFrom", [obj])
+            return _make_call_ann(pos, "Decode", [bytes_obj], {"type": "string"})
         return _lower_list_method(
             pos, obj, obj_node, method_name, args, env, ctx, type_name="bytearray"
         )

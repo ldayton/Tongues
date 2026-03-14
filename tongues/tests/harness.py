@@ -268,6 +268,7 @@ RUNTIMES = {
     "python": [sys.executable],
     "perl": ["perl"],
     "ruby": ["ruby"],
+    "javascript": ["node"],
     "java": [str(Path(__file__).parent / "run-java.sh")],
 }
 

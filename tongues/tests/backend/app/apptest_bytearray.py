@@ -142,38 +142,148 @@ def test_bytearray_list_conversion() -> None:
     assert items == [104, 105]
 
 
+def test_bytearray_decode() -> None:
+    """decode() converts bytearray to string."""
+    ba: bytearray = bytearray(b"hello")
+    s: str = ba.decode()
+    assert s == "hello"
+
+
+def test_bytearray_decode_empty() -> None:
+    """decode() on empty bytearray."""
+    ba: bytearray = bytearray()
+    assert ba.decode() == ""
+
+
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_bytearray_empty_constructor", test_bytearray_empty_constructor),
-        ("test_bytearray_from_bytes", test_bytearray_from_bytes),
-        ("test_bytearray_length", test_bytearray_length),
-        ("test_bytearray_indexing", test_bytearray_indexing),
-        ("test_bytearray_append", test_bytearray_append),
-        ("test_bytearray_pop", test_bytearray_pop),
-        ("test_bytearray_insert", test_bytearray_insert),
-        ("test_bytearray_extend", test_bytearray_extend),
-        ("test_bytearray_copy", test_bytearray_copy),
-        ("test_bytearray_sort", test_bytearray_sort),
-        ("test_bytearray_reverse", test_bytearray_reverse),
-        ("test_bytearray_clear", test_bytearray_clear),
-        ("test_bytearray_remove", test_bytearray_remove),
-        ("test_bytearray_index", test_bytearray_index),
-        ("test_bytearray_iteration", test_bytearray_iteration),
-        ("test_bytearray_list_conversion", test_bytearray_list_conversion),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
+    try:
+        test_bytearray_empty_constructor()
+        passed += 1
+        print("  PASS test_bytearray_empty_constructor")
+    except Exception as e:
+        failed += 1
+        print(f"  FAIL test_bytearray_empty_constructor: {e!s}")
+    try:
+        test_bytearray_from_bytes()
+        passed += 1
+        print("  PASS test_bytearray_from_bytes")
+    except Exception as e:
+        failed += 1
+        print(f"  FAIL test_bytearray_from_bytes: {e!s}")
+    try:
+        test_bytearray_length()
+        passed += 1
+        print("  PASS test_bytearray_length")
+    except Exception as e:
+        failed += 1
+        print(f"  FAIL test_bytearray_length: {e!s}")
+    try:
+        test_bytearray_indexing()
+        passed += 1
+        print("  PASS test_bytearray_indexing")
+    except Exception as e:
+        failed += 1
+        print(f"  FAIL test_bytearray_indexing: {e!s}")
+    try:
+        test_bytearray_append()
+        passed += 1
+        print("  PASS test_bytearray_append")
+    except Exception as e:
+        failed += 1
+        print(f"  FAIL test_bytearray_append: {e!s}")
+    try:
+        test_bytearray_pop()
+        passed += 1
+        print("  PASS test_bytearray_pop")
+    except Exception as e:
+        failed += 1
+        print(f"  FAIL test_bytearray_pop: {e!s}")
+    try:
+        test_bytearray_insert()
+        passed += 1
+        print("  PASS test_bytearray_insert")
+    except Exception as e:
+        failed += 1
+        print(f"  FAIL test_bytearray_insert: {e!s}")
+    try:
+        test_bytearray_extend()
+        passed += 1
+        print("  PASS test_bytearray_extend")
+    except Exception as e:
+        failed += 1
+        print(f"  FAIL test_bytearray_extend: {e!s}")
+    try:
+        test_bytearray_copy()
+        passed += 1
+        print("  PASS test_bytearray_copy")
+    except Exception as e:
+        failed += 1
+        print(f"  FAIL test_bytearray_copy: {e!s}")
+    try:
+        test_bytearray_sort()
+        passed += 1
+        print("  PASS test_bytearray_sort")
+    except Exception as e:
+        failed += 1
+        print(f"  FAIL test_bytearray_sort: {e!s}")
+    try:
+        test_bytearray_reverse()
+        passed += 1
+        print("  PASS test_bytearray_reverse")
+    except Exception as e:
+        failed += 1
+        print(f"  FAIL test_bytearray_reverse: {e!s}")
+    try:
+        test_bytearray_clear()
+        passed += 1
+        print("  PASS test_bytearray_clear")
+    except Exception as e:
+        failed += 1
+        print(f"  FAIL test_bytearray_clear: {e!s}")
+    try:
+        test_bytearray_remove()
+        passed += 1
+        print("  PASS test_bytearray_remove")
+    except Exception as e:
+        failed += 1
+        print(f"  FAIL test_bytearray_remove: {e!s}")
+    try:
+        test_bytearray_index()
+        passed += 1
+        print("  PASS test_bytearray_index")
+    except Exception as e:
+        failed += 1
+        print(f"  FAIL test_bytearray_index: {e!s}")
+    try:
+        test_bytearray_iteration()
+        passed += 1
+        print("  PASS test_bytearray_iteration")
+    except Exception as e:
+        failed += 1
+        print(f"  FAIL test_bytearray_iteration: {e!s}")
+    try:
+        test_bytearray_list_conversion()
+        passed += 1
+        print("  PASS test_bytearray_list_conversion")
+    except Exception as e:
+        failed += 1
+        print(f"  FAIL test_bytearray_list_conversion: {e!s}")
+    try:
+        test_bytearray_decode()
+        passed += 1
+        print("  PASS test_bytearray_decode")
+    except Exception as e:
+        failed += 1
+        print(f"  FAIL test_bytearray_decode: {e!s}")
+    try:
+        test_bytearray_decode_empty()
+        passed += 1
+        print("  PASS test_bytearray_decode_empty")
+    except Exception as e:
+        failed += 1
+        print(f"  FAIL test_bytearray_decode_empty: {e!s}")
     print(f"{passed!s} passed, {failed!s} failed")
     if failed > 0:
         return 1
