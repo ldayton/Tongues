@@ -133,17 +133,75 @@ STRICT_INT_COMPOUND: dict[str, str] = {
 }
 
 
+def _emit_line(lines: list[str], indent: int, text: str = "") -> None:
+    """Append an indented line to the output buffer."""
+    if text:
+        lines.append("    " * indent + text)
+    else:
+        lines.append("")
+
+
+def _emit_output(lines: list[str]) -> str:
+    """Join buffered lines into final output."""
+    return "\n".join(lines) + "\n"
+
+
+def _check_int_expr(expr: TExpr, var_types: dict[str, TType]) -> bool:
+    """Check if an expression is known to be int-typed."""
+    ann: str = expr.annotations.get("type", "")
+    if ann:
+        return ann == "int"
+    if isinstance(expr, TIntLit):
+        return True
+    if isinstance(expr, TVar):
+        typ: TType | None = var_types.get(expr.name)
+        return isinstance(typ, TPrimitive) and typ.kind == "int"
+    if isinstance(expr, TBinaryOp):
+        return _check_int_expr(expr.left, var_types)
+    if isinstance(expr, TUnaryOp) and (expr.op in ("-", "~")):
+        return _check_int_expr(expr.operand, var_types)
+    return False
+
+
+def _check_float_expr(expr: TExpr, var_types: dict[str, TType]) -> bool:
+    """Check if an expression is known to be float-typed."""
+    ann: str = expr.annotations.get("type", "")
+    if ann:
+        return ann == "float"
+    if isinstance(expr, TFloatLit):
+        return True
+    if isinstance(expr, TVar):
+        typ: TType | None = var_types.get(expr.name)
+        return isinstance(typ, TPrimitive) and typ.kind == "float"
+    if isinstance(expr, TBinaryOp):
+        return _check_float_expr(expr.left, var_types)
+    if isinstance(expr, TUnaryOp) and expr.op == "-":
+        return _check_float_expr(expr.operand, var_types)
+    return False
+
+
+def _check_float_list(expr: TExpr, var_types: dict[str, TType]) -> bool:
+    """Check if an expression is known to be list[float]-typed."""
+    ann: str = expr.annotations.get("type", "")
+    if ann:
+        return ann == "list[float]"
+    if isinstance(expr, TListLit) and expr.elements:
+        return _check_float_expr(expr.elements[0], var_types)
+    if isinstance(expr, TVar):
+        typ: TType | None = var_types.get(expr.name)
+        if isinstance(typ, TListType) and isinstance(typ.element, TPrimitive):
+            return typ.element.kind == "float"
+    return False
+
+
 class Emitter:
     """Base class for code emitters with indentation tracking."""
 
     def _line(self, text: str = "") -> None:
-        if text:
-            self.lines.append("    " * self.indent + text)
-        else:
-            self.lines.append("")
+        raise NotImplementedError
 
     def output(self) -> str:
-        return "\n".join(self.lines) + "\n"
+        raise NotImplementedError
 
     def _expr(self, expr: TExpr) -> str:
         raise NotImplementedError
@@ -176,46 +234,13 @@ class Emitter:
         return first.name == name
 
     def _is_int_expr(self, expr: TExpr) -> bool:
-        ann: str = expr.annotations.get("type", "")
-        if ann:
-            return ann == "int"
-        if isinstance(expr, TIntLit):
-            return True
-        if isinstance(expr, TVar):
-            typ: TType | None = self.var_types.get(expr.name)
-            return isinstance(typ, TPrimitive) and typ.kind == "int"
-        if isinstance(expr, TBinaryOp):
-            return self._is_int_expr(expr.left)
-        if isinstance(expr, TUnaryOp) and (expr.op in ("-", "~")):
-            return self._is_int_expr(expr.operand)
-        return False
+        raise NotImplementedError
 
     def _is_float_expr(self, expr: TExpr) -> bool:
-        ann: str = expr.annotations.get("type", "")
-        if ann:
-            return ann == "float"
-        if isinstance(expr, TFloatLit):
-            return True
-        if isinstance(expr, TVar):
-            typ: TType | None = self.var_types.get(expr.name)
-            return isinstance(typ, TPrimitive) and typ.kind == "float"
-        if isinstance(expr, TBinaryOp):
-            return self._is_float_expr(expr.left)
-        if isinstance(expr, TUnaryOp) and expr.op == "-":
-            return self._is_float_expr(expr.operand)
-        return False
+        raise NotImplementedError
 
     def _is_float_list(self, expr: TExpr) -> bool:
-        ann: str = expr.annotations.get("type", "")
-        if ann:
-            return ann == "list[float]"
-        if isinstance(expr, TListLit) and expr.elements:
-            return self._is_float_expr(expr.elements[0])
-        if isinstance(expr, TVar):
-            typ: TType | None = self.var_types.get(expr.name)
-            if isinstance(typ, TListType) and isinstance(typ.element, TPrimitive):
-                return typ.element.kind == "float"
-        return False
+        raise NotImplementedError
 
     def _is_zero(self, expr: TExpr) -> bool:
         return isinstance(expr, TIntLit) and expr.value == 0

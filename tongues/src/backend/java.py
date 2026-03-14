@@ -5,6 +5,11 @@ from __future__ import annotations
 
 from .util import (
     Emitter,
+    _check_float_expr,
+    _check_float_list,
+    _check_int_expr,
+    _emit_line,
+    _emit_output,
     collect_builtin_calls,
     escape_string,
 )
@@ -483,6 +488,21 @@ class _JavaEmitter(Emitter):
         self._interface_methods: dict[str, list[TFnDecl]] = {}
         self._interface_fields: dict[str, list[TFieldDecl]] = {}
         self._tmp_counter: int = 0
+
+    def _line(self, text: str = "") -> None:
+        _emit_line(self.lines, self.indent, text)
+
+    def output(self) -> str:
+        return _emit_output(self.lines)
+
+    def _is_int_expr(self, expr: TExpr) -> bool:
+        return _check_int_expr(expr, self.var_types)
+
+    def _is_float_expr(self, expr: TExpr) -> bool:
+        return _check_float_expr(expr, self.var_types)
+
+    def _is_float_list(self, expr: TExpr) -> bool:
+        return _check_float_list(expr, self.var_types)
 
     # ── Type emission ────────────────────────────────────────
 
@@ -2380,7 +2400,7 @@ class _JavaEmitter(Emitter):
                 return right
             if right is None:
                 return left
-            return TBinaryOp(cond.pos, cond.op, left, right, cond.annotations)
+            return TBinaryOp(cond.pos, cond.annotations, cond.op, left, right)
         if self._isinstance_info(cond) is not None:
             return None
         return cond

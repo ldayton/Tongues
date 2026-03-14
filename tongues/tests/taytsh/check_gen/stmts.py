@@ -90,9 +90,9 @@ class StmtGen:
             if i == count - 1 and must_return is not None:
                 if not type_eq(must_return, VOID_T):
                     ret_expr = self.gen.expr_gen.gen_expr(must_return)
-                    stmts.append(TReturnStmt(pos=P, value=ret_expr, annotations=A))
+                    stmts.append(TReturnStmt(pos=P, annotations=A, value=ret_expr))
                 else:
-                    stmts.append(TReturnStmt(pos=P, value=None, annotations=A))
+                    stmts.append(TReturnStmt(pos=P, annotations=A, value=None))
                 break
             stmt = self._pick_stmt(depth)
             if stmt is not None:
@@ -204,7 +204,7 @@ class StmtGen:
             value = self.gen.expr_gen.gen_expr(typ)
 
         self.gen.scope.declare(name, typ)
-        return TLetStmt(pos=P, name=name, typ=ttype, value=value, annotations=A)
+        return TLetStmt(pos=P, annotations=A, name=name, typ=ttype, value=value)
 
     def _gen_assign(self) -> TStmt:
         can_gen = self.gen.expr_gen._can_gen_type
@@ -227,14 +227,14 @@ class StmtGen:
             value = self.gen.expr_gen.gen_expr(ftype)
             return TAssignStmt(
                 pos=P,
+                annotations=A,
                 target=TFieldAccess(
                     pos=P,
-                    obj=TVar(pos=P, name=var_name, annotations=A),
-                    field=fname,
                     annotations=A,
+                    obj=TVar(pos=P, annotations=A, name=var_name),
+                    field=fname,
                 ),
                 value=value,
-                annotations=A,
             )
         if kind == "index":
             var_name, elem_type, key_type = info
@@ -242,22 +242,22 @@ class StmtGen:
             value = self.gen.expr_gen.gen_expr(elem_type)
             return TAssignStmt(
                 pos=P,
+                annotations=A,
                 target=TIndex(
                     pos=P,
-                    obj=TVar(pos=P, name=var_name, annotations=A),
-                    index=key_expr,
                     annotations=A,
+                    obj=TVar(pos=P, annotations=A, name=var_name),
+                    index=key_expr,
                 ),
                 value=value,
-                annotations=A,
             )
         b = self.rng.choice(bindings)
         value = self.gen.expr_gen.gen_expr(b.typ)
         return TAssignStmt(
             pos=P,
-            target=TVar(pos=P, name=b.name, annotations=A),
-            value=value,
             annotations=A,
+            target=TVar(pos=P, annotations=A, name=b.name),
+            value=value,
         )
 
     def _find_numeric_binding(self) -> tuple[str, Type] | None:
@@ -279,10 +279,10 @@ class StmtGen:
         value = self.gen.expr_gen.gen_expr(typ)
         return TOpAssignStmt(
             pos=P,
-            target=TVar(pos=P, name=var_name, annotations=A),
+            annotations=A,
+            target=TVar(pos=P, annotations=A, name=var_name),
             op=op,
             value=value,
-            annotations=A,
         )
 
     def _find_tuple_binding(self) -> tuple[str, TupleT] | None:
@@ -307,15 +307,15 @@ class StmtGen:
             init = self.gen.expr_gen.gen_expr(elem_t)
             self.gen.scope.declare(tgt_name, elem_t)
             preamble.append(
-                TLetStmt(pos=P, name=tgt_name, typ=ttype, value=init, annotations=A)
+                TLetStmt(pos=P, annotations=A, name=tgt_name, typ=ttype, value=init)
             )
-            targets.append(TVar(pos=P, name=tgt_name, annotations=A))
+            targets.append(TVar(pos=P, annotations=A, name=tgt_name))
         self._pending_stmts = self._pending_stmts + preamble
         return TTupleAssignStmt(
             pos=P,
-            targets=targets,
-            value=TVar(pos=P, name=var_name, annotations=A),
             annotations=A,
+            targets=targets,
+            value=TVar(pos=P, annotations=A, name=var_name),
         )
 
     def _gen_if(self, depth: int) -> TStmt:
@@ -345,7 +345,7 @@ class StmtGen:
         else:
             else_body = None
         return TIfStmt(
-            pos=P, cond=cond, then_body=then_body, else_body=else_body, annotations=A
+            pos=P, annotations=A, cond=cond, then_body=then_body, else_body=else_body
         )
 
     def _find_optional_binding(self) -> tuple[str, Type] | None:
@@ -377,10 +377,10 @@ class StmtGen:
         inner = remove_nil(opt_type)
         cond = TBinaryOp(
             pos=P,
-            op="!=",
-            left=TVar(pos=P, name=var_name, annotations=A),
-            right=TNilLit(pos=P, annotations=A),
             annotations=A,
+            op="!=",
+            left=TVar(pos=P, annotations=A, name=var_name),
+            right=TNilLit(pos=P, annotations=A),
         )
         self.gen.scope.enter_scope()
         self.gen.scope.narrow(var_name, inner)
@@ -401,7 +401,7 @@ class StmtGen:
         if else_body is None and self._block_always_exits(then_body):
             self.gen.scope.narrow(var_name, NIL_T)
         return TIfStmt(
-            pos=P, cond=cond, then_body=then_body, else_body=else_body, annotations=A
+            pos=P, annotations=A, cond=cond, then_body=then_body, else_body=else_body
         )
 
     @staticmethod
@@ -424,16 +424,16 @@ class StmtGen:
             return None
         cond: TExpr = TCall(
             pos=P,
-            func=TVar(pos=P, name="IsType", annotations=A),
+            annotations=A,
+            func=TVar(pos=P, annotations=A, name="IsType"),
             args=[
-                TArg(pos=P, name=None, value=TVar(pos=P, name=var_name, annotations=A)),
+                TArg(pos=P, name=None, value=TVar(pos=P, annotations=A, name=var_name)),
                 TArg(
                     pos=P,
                     name=None,
-                    value=TStringLit(pos=P, value=vname, annotations=A),
+                    value=TStringLit(pos=P, annotations=A, value=vname),
                 ),
             ],
-            annotations=A,
         )
         # Optionally negate for guard narrowing: if !IsType(x, "V") { return }
         if (
@@ -441,19 +441,19 @@ class StmtGen:
             and not self.gen.in_finally
             and self.rng.random() < 0.3
         ):
-            neg_cond = TUnaryOp(pos=P, op="!", operand=cond, annotations=A)
+            neg_cond = TUnaryOp(pos=P, annotations=A, op="!", operand=cond)
             self.gen.scope.enter_scope()
             ret = self.gen.current_fn_ret
             if type_eq(ret, VOID_T):
                 guard_body: list[TStmt] = [
-                    TReturnStmt(pos=P, value=None, annotations=A)
+                    TReturnStmt(pos=P, annotations=A, value=None)
                 ]
             else:
                 guard_body = [
                     TReturnStmt(
                         pos=P,
-                        value=self.gen.expr_gen.gen_expr(ret),
                         annotations=A,
+                        value=self.gen.expr_gen.gen_expr(ret),
                     )
                 ]
             self.gen.scope.exit_scope()
@@ -461,10 +461,10 @@ class StmtGen:
             self.gen.scope.narrow(var_name, st)
             return TIfStmt(
                 pos=P,
+                annotations=A,
                 cond=neg_cond,
                 then_body=guard_body,
                 else_body=None,
-                annotations=A,
             )
         # Normal IsType: narrow in then-scope
         self.gen.scope.enter_scope()
@@ -482,7 +482,7 @@ class StmtGen:
         else:
             else_body = None
         return TIfStmt(
-            pos=P, cond=cond, then_body=then_body, else_body=else_body, annotations=A
+            pos=P, annotations=A, cond=cond, then_body=then_body, else_body=else_body
         )
 
     def _gen_while(self, depth: int) -> TStmt:
@@ -493,7 +493,7 @@ class StmtGen:
         body = self.gen_block(self.rng.randint(1, 3), must_return=None, depth=depth + 1)
         self.gen.scope.exit_scope()
         self.gen.in_loop = old_in_loop
-        return TWhileStmt(pos=P, cond=cond, body=body, annotations=A)
+        return TWhileStmt(pos=P, annotations=A, cond=cond, body=body)
 
     def _gen_for(self, depth: int) -> TStmt:
         old_in_loop = self.gen.in_loop
@@ -507,9 +507,9 @@ class StmtGen:
                 all_names.add(b.name)
             var_name = self.gen.names.var_name(all_names)
             self.gen.scope.declare(var_name, INT_T, is_loop_var=True)
-            start = TIntLit(pos=P, value=0, raw="0", annotations=A)
-            end = TIntLit(pos=P, value=10, raw="10", annotations=A)
-            iterable = TRange(pos=P, args=[start, end], annotations=A)
+            start = TIntLit(pos=P, annotations=A, value=0, raw="0")
+            end = TIntLit(pos=P, annotations=A, value=10, raw="10")
+            iterable = TRange(pos=P, annotations=A, args=[start, end])
             binding = [var_name]
         else:
             # Find a collection binding
@@ -522,7 +522,7 @@ class StmtGen:
             ]
             if collection_bindings:
                 cb = self.rng.choice(collection_bindings)
-                iterable = TVar(pos=P, name=cb.name, annotations=A)
+                iterable = TVar(pos=P, annotations=A, name=cb.name)
                 binding, bound_types = self._for_binding_types(cb.typ)
                 for bname, btype in zip(binding, bound_types):
                     self.gen.scope.declare(bname, btype, is_loop_var=True)
@@ -533,16 +533,16 @@ class StmtGen:
                     all_names.add(b.name)
                 var_name = self.gen.names.var_name(all_names)
                 self.gen.scope.declare(var_name, INT_T, is_loop_var=True)
-                start = TIntLit(pos=P, value=0, raw="0", annotations=A)
-                end = TIntLit(pos=P, value=5, raw="5", annotations=A)
-                iterable = TRange(pos=P, args=[start, end], annotations=A)
+                start = TIntLit(pos=P, annotations=A, value=0, raw="0")
+                end = TIntLit(pos=P, annotations=A, value=5, raw="5")
+                iterable = TRange(pos=P, annotations=A, args=[start, end])
                 binding = [var_name]
 
         body = self.gen_block(self.rng.randint(1, 2), must_return=None, depth=depth + 1)
         self.gen.scope.exit_scope()
         self.gen.in_loop = old_in_loop
         return TForStmt(
-            pos=P, binding=binding, iterable=iterable, body=body, annotations=A
+            pos=P, annotations=A, binding=binding, iterable=iterable, body=body
         )
 
     def _for_binding_types(self, iter_type: Type) -> tuple[list[str], list[Type]]:
@@ -693,7 +693,7 @@ class StmtGen:
                         TMatchCase(pos=P, pattern=pat, body=body, annotations=A)
                     )
 
-        expr = TVar(pos=P, name=var_name, annotations=A)
+        expr = TVar(pos=P, annotations=A, name=var_name)
         default = None
         if (
             self.gen.features.match_default
@@ -714,7 +714,7 @@ class StmtGen:
             )
             self.gen.scope.exit_scope()
             default = TDefault(pos=P, name=bind_name, body=body, annotations=A)
-        return TMatchStmt(pos=P, expr=expr, cases=cases, default=default, annotations=A)
+        return TMatchStmt(pos=P, annotations=A, expr=expr, cases=cases, default=default)
 
     def _compute_residual(self, scrutinee: Type, cases: list[TMatchCase]) -> Type:
         """Mirror checker's _compute_default_type: scrutinee minus covered cases.
@@ -840,7 +840,7 @@ class StmtGen:
             )
 
         return TTryStmt(
-            pos=P, body=body, catches=catches, finally_body=finally_body, annotations=A
+            pos=P, annotations=A, body=body, catches=catches, finally_body=finally_body
         )
 
     def _gen_throw(self) -> TStmt:
@@ -849,14 +849,14 @@ class StmtGen:
             return self._gen_let()
         st = self.rng.choice(struct_types)
         expr = self.gen.expr_gen.gen_expr(st)
-        return TThrowStmt(pos=P, expr=expr, annotations=A)
+        return TThrowStmt(pos=P, annotations=A, expr=expr)
 
     def _gen_return(self) -> TStmt:
         ret = self.gen.current_fn_ret
         if ret is None or type_eq(ret, VOID_T):
-            return TReturnStmt(pos=P, value=None, annotations=A)
+            return TReturnStmt(pos=P, annotations=A, value=None)
         value = self.gen.expr_gen.gen_expr(ret)
-        return TReturnStmt(pos=P, value=value, annotations=A)
+        return TReturnStmt(pos=P, annotations=A, value=value)
 
     def _gen_expr_stmt(self) -> TStmt:
         options: list[tuple[str, object]] = []
@@ -885,26 +885,26 @@ class StmtGen:
         if kind == "builtin":
             expr = self.gen.builtin_gen.gen_void_builtin(0)
             if expr is not None:
-                return TExprStmt(pos=P, expr=expr, annotations=A)
+                return TExprStmt(pos=P, annotations=A, expr=expr)
             # Fall through to struct constructor
             if struct_types:
                 kind, info = "struct", None
             else:
                 return TExprStmt(
                     pos=P,
-                    expr=TStringLit(pos=P, value="noop", annotations=A),
                     annotations=A,
+                    expr=TStringLit(pos=P, annotations=A, value="noop"),
                 )
         if not options:
             return TExprStmt(
                 pos=P,
-                expr=TStringLit(pos=P, value="noop", annotations=A),
                 annotations=A,
+                expr=TStringLit(pos=P, annotations=A, value="noop"),
             )
         if kind == "struct":
             st = self.rng.choice(struct_types)
             expr = self.gen.expr_gen._gen_struct_constructor(st, 0)
-            return TExprStmt(pos=P, expr=expr, annotations=A)
+            return TExprStmt(pos=P, annotations=A, expr=expr)
         if kind == "fn_call":
             fn_name, fn_type = info
             args: list[TArg] = []
@@ -918,11 +918,11 @@ class StmtGen:
                 )
             expr = TCall(
                 pos=P,
-                func=TVar(pos=P, name=fn_name, annotations=A),
-                args=args,
                 annotations=A,
+                func=TVar(pos=P, annotations=A, name=fn_name),
+                args=args,
             )
-            return TExprStmt(pos=P, expr=expr, annotations=A)
+            return TExprStmt(pos=P, annotations=A, expr=expr)
         if kind == "method":
             var_name, mname, mtype = info
             args = []
@@ -936,18 +936,18 @@ class StmtGen:
                 )
             expr = TCall(
                 pos=P,
+                annotations=A,
                 func=TFieldAccess(
                     pos=P,
-                    obj=TVar(pos=P, name=var_name, annotations=A),
-                    field=mname,
                     annotations=A,
+                    obj=TVar(pos=P, annotations=A, name=var_name),
+                    field=mname,
                 ),
                 args=args,
-                annotations=A,
             )
-            return TExprStmt(pos=P, expr=expr, annotations=A)
+            return TExprStmt(pos=P, annotations=A, expr=expr)
         return TExprStmt(
             pos=P,
-            expr=TStringLit(pos=P, value="noop", annotations=A),
             annotations=A,
+            expr=TStringLit(pos=P, annotations=A, value="noop"),
         )

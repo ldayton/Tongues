@@ -175,7 +175,7 @@ def gen_fn_lit_nonlocal(expr_gen: ExprGen, fn_type: FnT, depth: int) -> TExpr:
         body = []
         if gen.stmt_gen._pending_stmts:
             body.extend(gen.stmt_gen._pending_stmts)
-        body.append(TReturnStmt(pos=P, value=ret_expr, annotations=A))
+        body.append(TReturnStmt(pos=P, annotations=A, value=ret_expr))
 
     # Restore outer pending stmts
     gen.stmt_gen._pending_stmts = saved_pending
@@ -200,10 +200,10 @@ def gen_fn_lit_nonlocal(expr_gen: ExprGen, fn_type: FnT, depth: int) -> TExpr:
 
     return TFnLit(
         pos=P,
+        annotations=A,
         params=final_params,
         ret=make_ttype(fn_type.ret),
         body=body,
-        annotations=A,
     )
 
 
@@ -238,7 +238,7 @@ def try_extend_fn_param(expr_gen: ExprGen, target: Type) -> TExpr | None:
     ext.params.append(TParam(pos=P, name=pname, typ=make_ttype(target), annotations=A))
     gen.scope.declare(pname, target)
 
-    return TVar(pos=P, name=pname, annotations=A)
+    return TVar(pos=P, annotations=A, name=pname)
 
 
 # ---------------------------------------------------------------------------
@@ -268,9 +268,9 @@ def try_nonlocal_let(
 
     gen.scope.declare(name, target)
     stmt_gen._pending_stmts.append(
-        TLetStmt(pos=P, name=name, typ=ttype, value=init_expr, annotations=A)
+        TLetStmt(pos=P, annotations=A, name=name, typ=ttype, value=init_expr)
     )
-    return TVar(pos=P, name=name, annotations=A)
+    return TVar(pos=P, annotations=A, name=name)
 
 
 # ---------------------------------------------------------------------------
@@ -311,7 +311,7 @@ def try_need_driven_match(
 
     stmt_gen._pending_stmts.append(
         TLetStmt(
-            pos=P, name=result_name, typ=ttype, value=_zero_value(target), annotations=A
+            pos=P, annotations=A, name=result_name, typ=ttype, value=_zero_value(target)
         )
     )
 
@@ -331,9 +331,9 @@ def try_need_driven_match(
         if st.name == useful_variant:
             value_expr: TExpr = TFieldAccess(
                 pos=P,
-                obj=TVar(pos=P, name=bind_name, annotations=A),
-                field=field_name,
                 annotations=A,
+                obj=TVar(pos=P, annotations=A, name=bind_name),
+                field=field_name,
             )
         else:
             value_expr = expr_gen.gen_expr(target, depth=3)
@@ -341,9 +341,9 @@ def try_need_driven_match(
         body: list[TStmt] = [
             TAssignStmt(
                 pos=P,
-                target=TVar(pos=P, name=result_name, annotations=A),
-                value=value_expr,
                 annotations=A,
+                target=TVar(pos=P, annotations=A, name=result_name),
+                value=value_expr,
             )
         ]
         gen.scope.exit_scope()
@@ -355,13 +355,13 @@ def try_need_driven_match(
     stmt_gen._pending_stmts.append(
         TMatchStmt(
             pos=P,
-            expr=TVar(pos=P, name=var_name, annotations=A),
+            annotations=A,
+            expr=TVar(pos=P, annotations=A, name=var_name),
             cases=cases,
             default=None,
-            annotations=A,
         )
     )
-    return TVar(pos=P, name=result_name, annotations=A)
+    return TVar(pos=P, annotations=A, name=result_name)
 
 
 def _find_match_candidate(
@@ -747,9 +747,9 @@ def patch_generator() -> None:
                     if self._pending_stmts:
                         stmts.extend(self._pending_stmts)
                         self._pending_stmts = []
-                    stmts.append(TReturnStmt(pos=P, value=ret_expr, annotations=A))
+                    stmts.append(TReturnStmt(pos=P, annotations=A, value=ret_expr))
                 else:
-                    stmts.append(TReturnStmt(pos=P, value=None, annotations=A))
+                    stmts.append(TReturnStmt(pos=P, annotations=A, value=None))
                 break
             stmt = self._pick_stmt(depth)
             if stmt is not None:

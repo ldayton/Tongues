@@ -333,7 +333,7 @@ class Parser:
         self.expect("->")
         ret = self.parse_type()
         body = self.parse_block()
-        return TFnDecl(pos, name_tok.value, params, ret, body, {})
+        return TFnDecl(pos, {}, name_tok.value, params, ret, body)
 
     def parse_param_list(self) -> list[TParam]:
         params: list[TParam] = []
@@ -392,7 +392,7 @@ class Parser:
         # Empty struct (tag type) — no fields
         if self.at("}"):
             self.expect("}")
-            return TStructDecl(pos, name_tok.value, parent, fields, methods, {})
+            return TStructDecl(pos, {}, name_tok.value, parent, fields, methods)
         fields.append(self.parse_field_decl())
         while not self.at("}"):
             if self.at("fn"):
@@ -400,7 +400,7 @@ class Parser:
             else:
                 fields.append(self.parse_field_decl())
         self.expect("}")
-        return TStructDecl(pos, name_tok.value, parent, fields, methods, {})
+        return TStructDecl(pos, {}, name_tok.value, parent, fields, methods)
 
     def parse_field_decl(self) -> TFieldDecl:
         pos = self._pos()
@@ -423,7 +423,7 @@ class Parser:
         while not self.at("}"):
             fields.append(self.parse_field_decl())
         self.expect("}")
-        return TInterfaceDecl(pos, name_tok.value, {}, fields)
+        return TInterfaceDecl(pos, {}, name_tok.value, fields)
 
     def parse_enum_decl(self) -> TEnumDecl:
         pos = self._pos()
@@ -436,7 +436,7 @@ class Parser:
         if not variants:
             raise self.error("enum must have at least one variant")
         self.expect("}")
-        return TEnumDecl(pos, name_tok.value, variants, {})
+        return TEnumDecl(pos, {}, name_tok.value, variants)
 
     # ── Types ────────────────────────────────────────────────
 
@@ -568,7 +568,7 @@ class Parser:
         if self.at("="):
             self.advance()
             value = self.parse_expr()
-        return TLetStmt(pos, name_tok.value, typ, value, {})
+        return TLetStmt(pos, {}, name_tok.value, typ, value)
 
     def parse_if_stmt(self) -> TIfStmt:
         pos = self._pos()
@@ -583,14 +583,14 @@ class Parser:
                 else_body = [if_stmt]
             else:
                 else_body = self.parse_block()
-        return TIfStmt(pos, cond, then_body, else_body, {})
+        return TIfStmt(pos, {}, cond, then_body, else_body)
 
     def parse_while_stmt(self) -> TWhileStmt:
         pos = self._pos()
         self.expect("while")
         cond = self.parse_expr()
         body = self.parse_block()
-        return TWhileStmt(pos, cond, body, {})
+        return TWhileStmt(pos, {}, cond, body)
 
     def parse_for_stmt(self) -> TForStmt:
         pos = self._pos()
@@ -606,7 +606,7 @@ class Parser:
         else:
             iterable = self.parse_expr()
         body = self.parse_block()
-        return TForStmt(pos, binding, iterable, body, {})
+        return TForStmt(pos, {}, binding, iterable, body)
 
     def parse_range(self) -> TRange:
         pos = self._pos()
@@ -617,7 +617,7 @@ class Parser:
             self.advance()
             args.append(self.parse_expr())
         self.expect(")")
-        return TRange(pos, args, {})
+        return TRange(pos, {}, args)
 
     def parse_match_stmt(self) -> TMatchStmt:
         pos = self._pos()
@@ -639,7 +639,7 @@ class Parser:
             raise ParseError(
                 "match must have at least one case or default", pos.line, pos.col
             )
-        return TMatchStmt(pos, expr, cases, default, {})
+        return TMatchStmt(pos, {}, expr, cases, default)
 
     def parse_case(self) -> TMatchCase:
         pos = self._pos()
@@ -687,7 +687,7 @@ class Parser:
             finally_body = self.parse_block()
         if not catches and finally_body is None:
             raise ParseError("try must have catch or finally", pos.line, pos.col)
-        return TTryStmt(pos, body, catches, finally_body, {})
+        return TTryStmt(pos, {}, body, catches, finally_body)
 
     def parse_catch(self) -> TCatch:
         pos = self._pos()
@@ -709,13 +709,13 @@ class Parser:
         value: TExpr | None = None
         if self._at_expr_start():
             value = self.parse_expr()
-        return TReturnStmt(pos, value, {})
+        return TReturnStmt(pos, {}, value)
 
     def parse_throw_stmt(self) -> TThrowStmt:
         pos = self._pos()
         self.expect("throw")
         expr = self.parse_expr()
-        return TThrowStmt(pos, expr, {})
+        return TThrowStmt(pos, {}, expr)
 
     def parse_expr_stmt(self) -> TStmt:
         """ExprStmt = Expr ( AssignTail )?"""
@@ -725,12 +725,12 @@ class Parser:
         if tok.value == "=" and tok.type == TK_OP:
             self.advance()
             value = self.parse_expr()
-            return TAssignStmt(pos, expr, value, {})
+            return TAssignStmt(pos, {}, expr, value)
         if tok.value in ASSIGN_OPS and tok.value != "=":
             op = tok.value
             self.advance()
             value = self.parse_expr()
-            return TOpAssignStmt(pos, expr, op, value, {})
+            return TOpAssignStmt(pos, {}, expr, op, value)
         if tok.value == ",":
             targets: list[TExpr] = [expr]
             while self.at(","):
@@ -738,8 +738,8 @@ class Parser:
                 targets.append(self.parse_expr())
             self.expect("=")
             value = self.parse_expr()
-            return TTupleAssignStmt(pos, targets, value, {})
-        return TExprStmt(pos, expr, {})
+            return TTupleAssignStmt(pos, {}, targets, value)
+        return TExprStmt(pos, {}, expr)
 
     def _at_expr_start(self) -> bool:
         """Check if current token can start an expression."""
@@ -777,7 +777,7 @@ class Parser:
             then_expr = self.parse_expr()
             self.expect(":")
             else_expr = self.parse_ternary()
-            return TTernary(expr.pos, expr, then_expr, else_expr, {})
+            return TTernary(expr.pos, {}, expr, then_expr, else_expr)
         return expr
 
     def parse_or(self) -> TExpr:
@@ -786,7 +786,7 @@ class Parser:
         while self.at("||"):
             self.advance()
             right = self.parse_and()
-            left = TBinaryOp(left.pos, "||", left, right, {})
+            left = TBinaryOp(left.pos, {}, "||", left, right)
         return left
 
     def parse_and(self) -> TExpr:
@@ -795,7 +795,7 @@ class Parser:
         while self.at("&&"):
             self.advance()
             right = self.parse_compare()
-            left = TBinaryOp(left.pos, "&&", left, right, {})
+            left = TBinaryOp(left.pos, {}, "&&", left, right)
         return left
 
     def parse_compare(self) -> TExpr:
@@ -806,7 +806,7 @@ class Parser:
             op = tok.value
             self.advance()
             right = self.parse_bit_or()
-            return TBinaryOp(left.pos, op, left, right, {})
+            return TBinaryOp(left.pos, {}, op, left, right)
         return left
 
     def parse_bit_or(self) -> TExpr:
@@ -815,7 +815,7 @@ class Parser:
         while self.at("|"):
             self.advance()
             right = self.parse_bit_xor()
-            left = TBinaryOp(left.pos, "|", left, right, {})
+            left = TBinaryOp(left.pos, {}, "|", left, right)
         return left
 
     def parse_bit_xor(self) -> TExpr:
@@ -824,7 +824,7 @@ class Parser:
         while self.at("^"):
             self.advance()
             right = self.parse_bit_and()
-            left = TBinaryOp(left.pos, "^", left, right, {})
+            left = TBinaryOp(left.pos, {}, "^", left, right)
         return left
 
     def parse_bit_and(self) -> TExpr:
@@ -833,7 +833,7 @@ class Parser:
         while self.at("&"):
             self.advance()
             right = self.parse_shift()
-            left = TBinaryOp(left.pos, "&", left, right, {})
+            left = TBinaryOp(left.pos, {}, "&", left, right)
         return left
 
     def parse_shift(self) -> TExpr:
@@ -842,7 +842,7 @@ class Parser:
         while self.at("<<") or self.at(">>>") or self.at(">>"):
             op = self.advance().value
             right = self.parse_sum()
-            left = TBinaryOp(left.pos, op, left, right, {})
+            left = TBinaryOp(left.pos, {}, op, left, right)
         return left
 
     def parse_sum(self) -> TExpr:
@@ -851,7 +851,7 @@ class Parser:
         while self.at("+") or self.at("-"):
             op = self.advance().value
             right = self.parse_product()
-            left = TBinaryOp(left.pos, op, left, right, {})
+            left = TBinaryOp(left.pos, {}, op, left, right)
         return left
 
     def parse_product(self) -> TExpr:
@@ -860,7 +860,7 @@ class Parser:
         while self.at("*") or self.at("/") or self.at("%"):
             op = self.advance().value
             right = self.parse_unary()
-            left = TBinaryOp(left.pos, op, left, right, {})
+            left = TBinaryOp(left.pos, {}, op, left, right)
         return left
 
     def parse_unary(self) -> TExpr:
@@ -872,7 +872,7 @@ class Parser:
             pos = self._pos()
             op = self.advance().value
             operand = self.parse_unary()
-            return TUnaryOp(pos, op, operand, {})
+            return TUnaryOp(pos, {}, op, operand)
         return self.parse_postfix()
 
     def parse_postfix(self) -> TExpr:
@@ -890,10 +890,10 @@ class Parser:
                 tok = self.current()
                 if tok.type == TK_INT:
                     self.advance()
-                    expr = TTupleAccess(expr.pos, expr, int(tok.value), {})
+                    expr = TTupleAccess(expr.pos, {}, expr, int(tok.value))
                 elif tok.type == TK_IDENT or tok.value in KEYWORDS:
                     self.advance()
-                    expr = TFieldAccess(expr.pos, expr, tok.value, {})
+                    expr = TFieldAccess(expr.pos, {}, expr, tok.value)
                 else:
                     raise self.error("expected field name or tuple index after '.'")
             elif self.at("["):
@@ -903,15 +903,15 @@ class Parser:
                     self.advance()
                     high = self.parse_expr()
                     self.expect("]")
-                    expr = TSlice(expr.pos, expr, index, high, {})
+                    expr = TSlice(expr.pos, {}, expr, index, high)
                 else:
                     self.expect("]")
-                    expr = TIndex(expr.pos, expr, index, {})
+                    expr = TIndex(expr.pos, {}, expr, index)
             elif self.at("("):
                 self.advance()
                 args = self.parse_arg_list()
                 self.expect(")")
-                expr = TCall(expr.pos, expr, args, {})
+                expr = TCall(expr.pos, {}, expr, args)
             else:
                 break
         for k in ann:
@@ -948,30 +948,30 @@ class Parser:
         # Literals
         if tok.type == TK_INT:
             self.advance()
-            return TIntLit(pos, _safe_int(tok.value), tok.value, {})
+            return TIntLit(pos, {}, _safe_int(tok.value), tok.value)
         if tok.type == TK_FLOAT:
             self.advance()
-            return TFloatLit(pos, float(tok.value), tok.value, {})
+            return TFloatLit(pos, {}, float(tok.value), tok.value)
         if tok.type == TK_BYTE:
             self.advance()
-            return TByteLit(pos, int(tok.value, 16), tok.value, {})
+            return TByteLit(pos, {}, int(tok.value, 16), tok.value)
         if tok.type == TK_STRING:
             self.advance()
-            return TStringLit(pos, tok.value, {})
+            return TStringLit(pos, {}, tok.value)
         if tok.type == TK_RUNE:
             self.advance()
-            return TRuneLit(pos, tok.value, {})
+            return TRuneLit(pos, {}, tok.value)
         if tok.type == TK_BYTES:
             self.advance()
-            return TBytesLit(pos, tok.bytes_value, {})
+            return TBytesLit(pos, {}, tok.bytes_value)
 
         # Bool/nil keywords
         if tok.value == "true":
             self.advance()
-            return TBoolLit(pos, True, {})
+            return TBoolLit(pos, {}, True)
         if tok.value == "false":
             self.advance()
-            return TBoolLit(pos, False, {})
+            return TBoolLit(pos, {}, False)
         if tok.value == "nil":
             self.advance()
             return TNilLit(pos, {})
@@ -979,7 +979,7 @@ class Parser:
         # Identifier (this is a keyword but valid in expression position)
         if tok.type == TK_IDENT or tok.value == "this":
             self.advance()
-            return TVar(pos, tok.value, {})
+            return TVar(pos, {}, tok.value)
 
         # ( — fn literal, tuple, or parens
         if tok.value == "(":
@@ -993,7 +993,7 @@ class Parser:
                     self.advance()
                     elements.append(self.parse_expr())
                 self.expect(")")
-                return TTupleLit(pos, elements, {})
+                return TTupleLit(pos, {}, elements)
             self.expect(")")
             return first
 
@@ -1007,7 +1007,7 @@ class Parser:
                     self.advance()
                     elements_list.append(self.parse_expr())
             self.expect("]")
-            return TListLit(pos, elements_list, {})
+            return TListLit(pos, {}, elements_list)
 
         # { — map or set literal
         if tok.value == "{":
@@ -1027,7 +1027,7 @@ class Parser:
                     v = self.parse_expr()
                     entries.append((k, v))
                 self.expect("}")
-                return TMapLit(pos, entries, {})
+                return TMapLit(pos, {}, entries)
             else:
                 # Set literal
                 set_elements: list[TExpr] = [first]
@@ -1035,7 +1035,7 @@ class Parser:
                     self.advance()
                     set_elements.append(self.parse_expr())
                 self.expect("}")
-                return TSetLit(pos, set_elements, {})
+                return TSetLit(pos, {}, set_elements)
 
         raise self.error("expected expression, got '" + tok.value + "'")
 
@@ -1065,9 +1065,9 @@ class Parser:
         ret = self.parse_type()
         if self.at("{"):
             body = self.parse_block()
-            return TFnLit(pos, params, ret, body, {})
+            return TFnLit(pos, {}, params, ret, body)
         self.expect("=>")
         expr = self.parse_expr()
         return TFnLit(
-            pos, params, ret, [TExprStmt(pos, expr, {})], {"fn_lit.arrow": "true"}
+            pos, {"fn_lit.arrow": "true"}, params, ret, [TExprStmt(pos, {}, expr)]
         )

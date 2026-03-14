@@ -234,7 +234,7 @@ class BuiltinGen:
                     "ParseInt",
                     [
                         e.gen_expr(STRING_T, depth + 1),
-                        TIntLit(pos=P, value=10, raw="10", annotations=A),
+                        TIntLit(pos=P, annotations=A, value=10, raw="10"),
                     ],
                 ),
             )
@@ -470,10 +470,10 @@ class BuiltinGen:
         args = [TArg(pos=P, name=None, value=v) for v in arg_exprs]
         return TCall(
             pos=P,
-            func=TVar(pos=P, name=name, annotations=A),
-            args=args,
             annotations=A,
+            func=TVar(pos=P, annotations=A, name=name),
+            args=args,
         )
 
     def _var(self, name: str) -> TVar:
-        return TVar(pos=P, name=name, annotations=A)
+        return TVar(pos=P, annotations=A, name=name)

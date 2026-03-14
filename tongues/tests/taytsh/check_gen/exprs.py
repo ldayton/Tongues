@@ -100,7 +100,7 @@ class ExprGen:
                 (
                     10,
                     TIntLit(
-                        pos=P, value=self.rng.randint(-100, 100), raw="", annotations=A
+                        pos=P, annotations=A, value=self.rng.randint(-100, 100), raw=""
                     ),
                 )
             )
@@ -112,7 +112,7 @@ class ExprGen:
                 productions.append((2, lambda: self._gen_unary_op("~", target, depth)))
         elif type_eq(target, FLOAT_T):
             v = round(self.rng.uniform(-100.0, 100.0), 2)
-            productions.append((10, TFloatLit(pos=P, value=v, raw="", annotations=A)))
+            productions.append((10, TFloatLit(pos=P, annotations=A, value=v, raw="")))
             if depth < MAX_DEPTH - 1:
                 productions.append((5, lambda: self._gen_arith_op(target, depth)))
                 productions.append((3, lambda: self._gen_unary_op("-", target, depth)))
@@ -121,7 +121,7 @@ class ExprGen:
                 (
                     10,
                     TBoolLit(
-                        pos=P, value=self.rng.choice([True, False]), annotations=A
+                        pos=P, annotations=A, value=self.rng.choice([True, False])
                     ),
                 )
             )
@@ -134,9 +134,9 @@ class ExprGen:
                         3,
                         lambda: TUnaryOp(
                             pos=P,
+                            annotations=A,
                             op="!",
                             operand=self.gen_expr(BOOL_T, depth + 1),
-                            annotations=A,
                         ),
                     )
                 )
@@ -145,7 +145,7 @@ class ExprGen:
                 (
                     10,
                     TByteLit(
-                        pos=P, value=self.rng.randint(0, 255), raw="", annotations=A
+                        pos=P, annotations=A, value=self.rng.randint(0, 255), raw=""
                     ),
                 )
             )
@@ -156,12 +156,12 @@ class ExprGen:
                 productions.append((3, lambda: self._gen_unary_op("-", target, depth)))
                 productions.append((2, lambda: self._gen_unary_op("~", target, depth)))
         elif type_eq(target, BYTES_T):
-            productions.append((10, TBytesLit(pos=P, value=b"hello", annotations=A)))
+            productions.append((10, TBytesLit(pos=P, annotations=A, value=b"hello")))
         elif type_eq(target, STRING_T):
             s = self.rng.choice(["hello", "world", "test", "foo", "bar"])
-            productions.append((10, TStringLit(pos=P, value=s, annotations=A)))
+            productions.append((10, TStringLit(pos=P, annotations=A, value=s)))
         elif type_eq(target, RUNE_T):
-            productions.append((10, TRuneLit(pos=P, value="a", annotations=A)))
+            productions.append((10, TRuneLit(pos=P, annotations=A, value="a")))
         elif type_eq(target, NIL_T):
             return TNilLit(pos=P, annotations=A)
         elif isinstance(target, ListT):
@@ -188,9 +188,9 @@ class ExprGen:
                     10,
                     TFieldAccess(
                         pos=P,
-                        obj=TVar(pos=P, name=target.name, annotations=A),
-                        field=variant,
                         annotations=A,
+                        obj=TVar(pos=P, annotations=A, name=target.name),
+                        field=variant,
                     ),
                 )
             )
@@ -286,7 +286,7 @@ class ExprGen:
                 if item is None:
                     if bindings:
                         b = self.rng.choice(bindings)
-                        return TVar(pos=P, name=b.name, annotations=A)
+                        return TVar(pos=P, annotations=A, name=b.name)
                     return self._fallback(target)
                 if callable(item):
                     result = item()
@@ -325,30 +325,30 @@ class ExprGen:
         op = self.rng.choice(["+", "-", "*", "/", "%"])
         left = self.gen_expr(target, depth + 1)
         right = self.gen_expr(target, depth + 1)
-        return TBinaryOp(pos=P, op=op, left=left, right=right, annotations=A)
+        return TBinaryOp(pos=P, annotations=A, op=op, left=left, right=right)
 
     def _gen_bitwise_op(self, target: Type, depth: int) -> TExpr:
         op = self.rng.choice(["&", "|", "^"])
         left = self.gen_expr(target, depth + 1)
         right = self.gen_expr(target, depth + 1)
-        return TBinaryOp(pos=P, op=op, left=left, right=right, annotations=A)
+        return TBinaryOp(pos=P, annotations=A, op=op, left=left, right=right)
 
     def _gen_shift_op(self, target: Type, depth: int) -> TExpr:
         op = self.rng.choice(["<<", ">>"])
         left = self.gen_expr(target, depth + 1)
         right = self.gen_expr(INT_T, depth + 1)
-        return TBinaryOp(pos=P, op=op, left=left, right=right, annotations=A)
+        return TBinaryOp(pos=P, annotations=A, op=op, left=left, right=right)
 
     def _gen_unary_op(self, op: str, target: Type, depth: int) -> TExpr:
         operand = self.gen_expr(target, depth + 1)
-        return TUnaryOp(pos=P, op=op, operand=operand, annotations=A)
+        return TUnaryOp(pos=P, annotations=A, op=op, operand=operand)
 
     def _gen_comparison_op(self, depth: int) -> TExpr:
         operand_type = self.rng.choice([INT_T, FLOAT_T, BYTE_T, RUNE_T, STRING_T])
         op = self.rng.choice(["<", "<=", ">", ">="])
         left = self.gen_expr(operand_type, depth + 1)
         right = self.gen_expr(operand_type, depth + 1)
-        return TBinaryOp(pos=P, op=op, left=left, right=right, annotations=A)
+        return TBinaryOp(pos=P, annotations=A, op=op, left=left, right=right)
 
     def _has_nondet_type(self, t: Type) -> bool:
         """Types that resolve non-deterministically (interface/union dispatch)."""
@@ -379,13 +379,13 @@ class ExprGen:
         op = self.rng.choice(["==", "!="])
         left = self.gen_expr(operand_type, depth + 1)
         right = self.gen_expr(operand_type, depth + 1)
-        return TBinaryOp(pos=P, op=op, left=left, right=right, annotations=A)
+        return TBinaryOp(pos=P, annotations=A, op=op, left=left, right=right)
 
     def _gen_logical_op(self, depth: int) -> TExpr:
         op = self.rng.choice(["&&", "||"])
         left = self.gen_expr(BOOL_T, depth + 1)
         right = self.gen_expr(BOOL_T, depth + 1)
-        return TBinaryOp(pos=P, op=op, left=left, right=right, annotations=A)
+        return TBinaryOp(pos=P, annotations=A, op=op, left=left, right=right)
 
     def _can_gen_type(self, t: Type) -> bool:
         """Check if we can generate a valid expression of this type in current context."""
@@ -454,18 +454,18 @@ class ExprGen:
         var_name, field = self.rng.choice(candidates)
         return TFieldAccess(
             pos=P,
-            obj=TVar(pos=P, name=var_name, annotations=A),
-            field=field,
             annotations=A,
+            obj=TVar(pos=P, annotations=A, name=var_name),
+            field=field,
         )
 
     def _gen_tuple_access_from(self, candidates: list[tuple[str, int]]) -> TExpr:
         var_name, idx = self.rng.choice(candidates)
         return TTupleAccess(
             pos=P,
-            obj=TVar(pos=P, name=var_name, annotations=A),
-            index=idx,
             annotations=A,
+            obj=TVar(pos=P, annotations=A, name=var_name),
+            index=idx,
         )
 
     def _gen_index_from(self, candidates: list[tuple[str, Type]], depth: int) -> TExpr:
@@ -473,9 +473,9 @@ class ExprGen:
         key_expr = self.gen_expr(key_type, depth + 1)
         return TIndex(
             pos=P,
-            obj=TVar(pos=P, name=var_name, annotations=A),
-            index=key_expr,
             annotations=A,
+            obj=TVar(pos=P, annotations=A, name=var_name),
+            index=key_expr,
         )
 
     def _gen_slice_from(self, candidates: list[str], depth: int) -> TExpr:
@@ -484,10 +484,10 @@ class ExprGen:
         high = self.gen_expr(INT_T, depth + 1)
         return TSlice(
             pos=P,
-            obj=TVar(pos=P, name=var_name, annotations=A),
+            annotations=A,
+            obj=TVar(pos=P, annotations=A, name=var_name),
             low=low,
             high=high,
-            annotations=A,
         )
 
     # ── Phase 3: Ternary, function calls, method calls ──
@@ -510,10 +510,10 @@ class ExprGen:
         else_expr = self.gen_expr(gen_target, depth + 1)
         return TTernary(
             pos=P,
+            annotations=A,
             cond=cond,
             then_expr=then_expr,
             else_expr=else_expr,
-            annotations=A,
         )
 
     def _callable_fn_candidates(self, target: Type) -> list[tuple[str, FnT]]:
@@ -549,9 +549,9 @@ class ExprGen:
             args.append(TArg(pos=P, name=None, value=self.gen_expr(pt, depth + 1)))
         return TCall(
             pos=P,
-            func=TVar(pos=P, name=fn_name, annotations=A),
-            args=args,
             annotations=A,
+            func=TVar(pos=P, annotations=A, name=fn_name),
+            args=args,
         )
 
     def _gen_method_call(
@@ -564,14 +564,14 @@ class ExprGen:
             args.append(TArg(pos=P, name=None, value=self.gen_expr(pt, depth + 1)))
         return TCall(
             pos=P,
+            annotations=A,
             func=TFieldAccess(
                 pos=P,
-                obj=TVar(pos=P, name=var_name, annotations=A),
-                field=method_name,
                 annotations=A,
+                obj=TVar(pos=P, annotations=A, name=var_name),
+                field=method_name,
             ),
             args=args,
-            annotations=A,
         )
 
     def _gen_fn_value_call(
@@ -583,9 +583,9 @@ class ExprGen:
             args.append(TArg(pos=P, name=None, value=self.gen_expr(pt, depth + 1)))
         return TCall(
             pos=P,
-            func=TVar(pos=P, name=var_name, annotations=A),
-            args=args,
             annotations=A,
+            func=TVar(pos=P, annotations=A, name=var_name),
+            args=args,
         )
 
     # ── Existing helpers ──
@@ -622,23 +622,23 @@ class ExprGen:
     def _fallback(self, target: Type) -> TExpr:
         """Last resort: literal or zero value."""
         if type_eq(target, INT_T):
-            return TIntLit(pos=P, value=0, raw="0", annotations=A)
+            return TIntLit(pos=P, annotations=A, value=0, raw="0")
         if type_eq(target, FLOAT_T):
-            return TFloatLit(pos=P, value=0.0, raw="0.0", annotations=A)
+            return TFloatLit(pos=P, annotations=A, value=0.0, raw="0.0")
         if type_eq(target, BOOL_T):
-            return TBoolLit(pos=P, value=False, annotations=A)
+            return TBoolLit(pos=P, annotations=A, value=False)
         if type_eq(target, BYTE_T):
-            return TByteLit(pos=P, value=0, raw="0x00", annotations=A)
+            return TByteLit(pos=P, annotations=A, value=0, raw="0x00")
         if type_eq(target, BYTES_T):
-            return TBytesLit(pos=P, value=b"", annotations=A)
+            return TBytesLit(pos=P, annotations=A, value=b"")
         if type_eq(target, STRING_T):
-            return TStringLit(pos=P, value="", annotations=A)
+            return TStringLit(pos=P, annotations=A, value="")
         if type_eq(target, RUNE_T):
-            return TRuneLit(pos=P, value="a", annotations=A)
+            return TRuneLit(pos=P, annotations=A, value="a")
         if type_eq(target, NIL_T):
             return TNilLit(pos=P, annotations=A)
         if type_eq(target, VOID_T):
-            return TIntLit(pos=P, value=0, raw="0", annotations=A)
+            return TIntLit(pos=P, annotations=A, value=0, raw="0")
         if isinstance(target, ListT):
             return self._gen_list_lit(target, MAX_DEPTH)
         if isinstance(target, MapT):
@@ -658,9 +658,9 @@ class ExprGen:
         if isinstance(target, EnumT):
             return TFieldAccess(
                 pos=P,
-                obj=TVar(pos=P, name=target.name, annotations=A),
-                field=target.variants[0],
                 annotations=A,
+                obj=TVar(pos=P, annotations=A, name=target.name),
+                field=target.variants[0],
             )
         if isinstance(target, UnionT):
             for m in target.members:
@@ -679,29 +679,29 @@ class ExprGen:
             # Can't generate non-void fn lit in finally — try a variable
             for b in self._accessible_bindings():
                 if type_eq(b.typ, target):
-                    return TVar(pos=P, name=b.name, annotations=A)
+                    return TVar(pos=P, annotations=A, name=b.name)
             return self._gen_fn_lit(target, MAX_DEPTH)
-        return TIntLit(pos=P, value=0, raw="0", annotations=A)
+        return TIntLit(pos=P, annotations=A, value=0, raw="0")
 
     def _gen_list_lit(self, target: ListT, depth: int) -> TExpr:
         n = self.rng.randint(1, 3)
         elements = [self.gen_expr(target.element, depth + 1) for _ in range(n)]
-        return TListLit(pos=P, elements=elements, annotations=A)
+        return TListLit(pos=P, annotations=A, elements=elements)
 
     def _gen_map_lit(self, target: MapT, depth: int) -> TExpr:
         # Single entry to avoid duplicate key errors
         k = self.gen_expr(target.key, depth + 1)
         v = self.gen_expr(target.value, depth + 1)
-        return TMapLit(pos=P, entries=[(k, v)], annotations=A)
+        return TMapLit(pos=P, annotations=A, entries=[(k, v)])
 
     def _gen_set_lit(self, target: SetT, depth: int) -> TExpr:
         n = self.rng.randint(1, 3)
         elements = [self.gen_expr(target.element, depth + 1) for _ in range(n)]
-        return TSetLit(pos=P, elements=elements, annotations=A)
+        return TSetLit(pos=P, annotations=A, elements=elements)
 
     def _gen_tuple_lit(self, target: TupleT, depth: int) -> TExpr:
         elements = [self.gen_expr(e, depth + 1) for e in target.elements]
-        return TTupleLit(pos=P, elements=elements, annotations=A)
+        return TTupleLit(pos=P, annotations=A, elements=elements)
 
     def _gen_struct_constructor(self, target: StructT, depth: int) -> TExpr:
         args: list[TArg] = []
@@ -710,9 +710,9 @@ class ExprGen:
             args.append(TArg(pos=P, name=fname, value=val))
         return TCall(
             pos=P,
-            func=TVar(pos=P, name=target.name, annotations=A),
-            args=args,
             annotations=A,
+            func=TVar(pos=P, annotations=A, name=target.name),
+            args=args,
         )
 
     def _gen_fn_lit(self, fn_type: FnT, depth: int) -> TExpr:
@@ -738,15 +738,15 @@ class ExprGen:
             body = self.gen.stmt_gen.gen_block(self.rng.randint(1, 2), must_return=None)
         else:
             ret_expr = self.gen_expr(fn_type.ret, depth + 1)
-            body = [TReturnStmt(pos=P, value=ret_expr, annotations=A)]
+            body = [TReturnStmt(pos=P, annotations=A, value=ret_expr)]
 
         self.gen.scope.exit_scope()
         self.gen.in_fn_lit = old_fn_lit
 
         return TFnLit(
             pos=P,
+            annotations=A,
             params=params,
             ret=make_ttype(fn_type.ret),
             body=body,
-            annotations=A,
         )

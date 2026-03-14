@@ -41,8 +41,8 @@ class DeclGen:
             decls.append(
                 TInterfaceDecl(
                     pos=P,
-                    name=info.resolved.name,
                     annotations=A,
+                    name=info.resolved.name,
                     fields=[],
                 )
             )
@@ -61,11 +61,11 @@ class DeclGen:
             decls.append(
                 TStructDecl(
                     pos=P,
+                    annotations=A,
                     name=st.name,
                     parent=si.parent,
                     fields=fields,
                     methods=methods,
-                    annotations=A,
                 )
             )
 
@@ -74,7 +74,7 @@ class DeclGen:
             et = ei.resolved
             decls.append(
                 TEnumDecl(
-                    pos=P, name=et.name, variants=list(et.variants), annotations=A
+                    pos=P, annotations=A, name=et.name, variants=list(et.variants)
                 )
             )
 
@@ -128,11 +128,11 @@ class DeclGen:
             methods.append(
                 TFnDecl(
                     pos=P,
+                    annotations=A,
                     name=method_name,
                     params=params,
                     ret=make_ttype(ret_type),
                     body=body,
-                    annotations=A,
                 )
             )
         return methods
@@ -188,11 +188,11 @@ class DeclGen:
 
         return TFnDecl(
             pos=P,
+            annotations=A,
             name=fn_name,
             params=params,
             ret=make_ttype(ret_type),
             body=body,
-            annotations=A,
         )
 
     def emit_main(self) -> TFnDecl:
@@ -208,9 +208,9 @@ class DeclGen:
 
         return TFnDecl(
             pos=P,
+            annotations=A,
             name="Main",
             params=[],
             ret=TPrimitive(pos=P, kind="void"),
             body=body,
-            annotations=A,
         )

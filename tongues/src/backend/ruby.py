@@ -8,6 +8,10 @@ from .util import (
     STRICT_INT_BINARY,
     STRICT_INT_COMPOUND,
     Emitter,
+    _check_float_expr,
+    _check_float_list,
+    _check_int_expr,
+    _emit_output,
     collect_builtin_calls,
     escape_string,
     to_snake,
@@ -635,6 +639,18 @@ class _RubyEmitter(Emitter):
             self.lines.append("  " * self.indent + text)
         else:
             self.lines.append("")
+
+    def output(self) -> str:
+        return _emit_output(self.lines)
+
+    def _is_int_expr(self, expr: TExpr) -> bool:
+        return _check_int_expr(expr, self.var_types)
+
+    def _is_float_expr(self, expr: TExpr) -> bool:
+        return _check_float_expr(expr, self.var_types)
+
+    def _is_float_list(self, expr: TExpr) -> bool:
+        return _check_float_list(expr, self.var_types)
 
     def _decl_name(self, name: str, annotations: Ann) -> str:
         """Declare a local variable, lowercasing inside function bodies."""

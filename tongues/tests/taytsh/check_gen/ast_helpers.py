@@ -64,11 +64,11 @@ A: dict[str, str] = {}
 
 
 def var(name: str) -> TVar:
-    return TVar(pos=P, name=name, annotations=A)
+    return TVar(pos=P, annotations=A, name=name)
 
 
 def int_lit(n: int) -> TIntLit:
-    return TIntLit(pos=P, value=n, raw=str(n), annotations=A)
+    return TIntLit(pos=P, annotations=A, value=n, raw=str(n))
 
 
 def nil_lit() -> TNilLit:
@@ -76,55 +76,55 @@ def nil_lit() -> TNilLit:
 
 
 def bool_lit(v: bool) -> TBoolLit:
-    return TBoolLit(pos=P, value=v, annotations=A)
+    return TBoolLit(pos=P, annotations=A, value=v)
 
 
 def str_lit(s: str) -> TStringLit:
-    return TStringLit(pos=P, value=s, annotations=A)
+    return TStringLit(pos=P, annotations=A, value=s)
 
 
 def let_stmt(name: str, typ: Type, value=None) -> TLetStmt:
-    return TLetStmt(pos=P, name=name, typ=make_ttype(typ), value=value, annotations=A)
+    return TLetStmt(pos=P, annotations=A, name=name, typ=make_ttype(typ), value=value)
 
 
 def return_stmt(value=None) -> TReturnStmt:
-    return TReturnStmt(pos=P, value=value, annotations=A)
+    return TReturnStmt(pos=P, annotations=A, value=value)
 
 
 def expr_stmt(expr) -> TExprStmt:
-    return TExprStmt(pos=P, expr=expr, annotations=A)
+    return TExprStmt(pos=P, annotations=A, expr=expr)
 
 
 def call(func_name: str, *args) -> TCall:
     targs = [TArg(pos=P, name=None, value=a) for a in args]
-    return TCall(pos=P, func=var(func_name), args=targs, annotations=A)
+    return TCall(pos=P, annotations=A, func=var(func_name), args=targs)
 
 
 def field_access(obj, field: str) -> TFieldAccess:
-    return TFieldAccess(pos=P, obj=obj, field=field, annotations=A)
+    return TFieldAccess(pos=P, annotations=A, obj=obj, field=field)
 
 
 def if_stmt(cond, then_body, else_body=None) -> TIfStmt:
     return TIfStmt(
-        pos=P, cond=cond, then_body=then_body, else_body=else_body, annotations=A
+        pos=P, annotations=A, cond=cond, then_body=then_body, else_body=else_body
     )
 
 
 def while_stmt(cond, body) -> TWhileStmt:
-    return TWhileStmt(pos=P, cond=cond, body=body, annotations=A)
+    return TWhileStmt(pos=P, annotations=A, cond=cond, body=body)
 
 
 def not_op(expr) -> TUnaryOp:
-    return TUnaryOp(pos=P, op="!", operand=expr, annotations=A)
+    return TUnaryOp(pos=P, annotations=A, op="!", operand=expr)
 
 
 def binop(left, op, right) -> TBinaryOp:
-    return TBinaryOp(pos=P, op=op, left=left, right=right, annotations=A)
+    return TBinaryOp(pos=P, annotations=A, op=op, left=left, right=right)
 
 
 def ternary(cond, then_expr, else_expr) -> TTernary:
     return TTernary(
-        pos=P, cond=cond, then_expr=then_expr, else_expr=else_expr, annotations=A
+        pos=P, annotations=A, cond=cond, then_expr=then_expr, else_expr=else_expr
     )
 
 
@@ -139,11 +139,11 @@ def filler_stmts(n: int) -> list:
 def main_fn(body: list) -> TFnDecl:
     return TFnDecl(
         pos=P,
+        annotations=A,
         name="Main",
         params=[],
         ret=TPrimitive(pos=P, kind="void"),
         body=body,
-        annotations=A,
     )
 
 
@@ -161,52 +161,52 @@ def empty_module() -> TModule:
 def zero_value(t: Type) -> TExpr:
     """Generate a zero/default value expression for a type."""
     if type_eq(t, INT_T):
-        return TIntLit(pos=P, value=0, raw="0", annotations=A)
+        return TIntLit(pos=P, annotations=A, value=0, raw="0")
     if type_eq(t, FLOAT_T):
-        return TFloatLit(pos=P, value=0.0, raw="0.0", annotations=A)
+        return TFloatLit(pos=P, annotations=A, value=0.0, raw="0.0")
     if type_eq(t, BOOL_T):
-        return TBoolLit(pos=P, value=False, annotations=A)
+        return TBoolLit(pos=P, annotations=A, value=False)
     if type_eq(t, BYTE_T):
-        return TByteLit(pos=P, value=0, raw="0x00", annotations=A)
+        return TByteLit(pos=P, annotations=A, value=0, raw="0x00")
     if type_eq(t, BYTES_T):
-        return TBytesLit(pos=P, value=b"", annotations=A)
+        return TBytesLit(pos=P, annotations=A, value=b"")
     if type_eq(t, STRING_T):
-        return TStringLit(pos=P, value="", annotations=A)
+        return TStringLit(pos=P, annotations=A, value="")
     if type_eq(t, RUNE_T):
-        return TRuneLit(pos=P, value="a", annotations=A)
+        return TRuneLit(pos=P, annotations=A, value="a")
     if type_eq(t, NIL_T):
         return TNilLit(pos=P, annotations=A)
     if isinstance(t, StructT):
         args = [TArg(pos=P, name=f, value=zero_value(ft)) for f, ft in t.fields.items()]
         return TCall(
             pos=P,
-            func=TVar(pos=P, name=t.name, annotations=A),
-            args=args,
             annotations=A,
+            func=TVar(pos=P, annotations=A, name=t.name),
+            args=args,
         )
     if isinstance(t, ListT):
-        return TListLit(pos=P, elements=[], annotations=A)
+        return TListLit(pos=P, annotations=A, elements=[])
     if isinstance(t, MapT):
-        return TMapLit(pos=P, entries=[], annotations=A)
+        return TMapLit(pos=P, annotations=A, entries=[])
     if isinstance(t, SetT):
-        return TSetLit(pos=P, elements=[], annotations=A)
+        return TSetLit(pos=P, annotations=A, elements=[])
     if isinstance(t, TupleT):
         return TTupleLit(
-            pos=P, elements=[zero_value(e) for e in t.elements], annotations=A
+            pos=P, annotations=A, elements=[zero_value(e) for e in t.elements]
         )
     if isinstance(t, EnumT):
         return TFieldAccess(
             pos=P,
-            obj=TVar(pos=P, name=t.name, annotations=A),
-            field=t.variants[0],
             annotations=A,
+            obj=TVar(pos=P, annotations=A, name=t.name),
+            field=t.variants[0],
         )
     if isinstance(t, UnionT):
         for m in t.members:
             if type_eq(m, NIL_T):
                 return TNilLit(pos=P, annotations=A)
         return zero_value(t.members[0])
-    return TIntLit(pos=P, value=0, raw="0", annotations=A)
+    return TIntLit(pos=P, annotations=A, value=0, raw="0")
 
 
 # ── Error filtering ──────────────────────────────────────────────
