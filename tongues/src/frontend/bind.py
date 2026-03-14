@@ -1724,6 +1724,33 @@ def is_all_caps(name: str) -> bool:
     return has_letter
 
 
+def _collect_called_names(nodes: list[ASTNode], out: set[str]) -> None:
+    """Collect names that appear as the function in a Call node."""
+    for node in nodes:
+        node_type = get_str(node, "_type")
+        if node_type == "Call":
+            func = get_node(node, "func")
+            if func and get_str(func, "_type") == "Name":
+                out.add(get_str(func, "id"))
+        # Recurse into child statement lists
+        for key in ("body", "orelse", "handlers", "finalbody"):
+            children = get_nodes(node, key)
+            if children:
+                _collect_called_names(children, out)
+        # Recurse into single child expressions
+        for key in ("test", "value", "left", "right", "func", "iter", "target"):
+            child = get_node(node, key)
+            if child:
+                _collect_called_names([child], out)
+        # Recurse into argument lists
+        args = get_nodes(node, "args")
+        if args:
+            _collect_called_names(args, out)
+        elts = get_nodes(node, "elts")
+        if elts:
+            _collect_called_names(elts, out)
+
+
 class NameResolver:
     """Resolves names in a dict-based AST."""
 
@@ -1990,39 +2017,33 @@ class NameResolver:
         self, func_node: ASTNode, class_name: str, func_name: str
     ) -> None:
         """Process a function: collect params/locals, then resolve references."""
-        # Collect parameters
+        # Collect parameters, deferring shadow warnings until after body scan
         args_node = get_node(func_node, "args")
         args_list = get_nodes(args_node, "args")
+        shadow_params: list[tuple[ASTNode, str]] = []
         for i, arg in enumerate(args_list):
             arg_name = get_str(arg, "arg")
             lineno = get_int(arg, "lineno")
             col = get_int(arg, "col_offset")
-            # Add self/cls without shadowing warning
             if i == 0 and arg_name in ("self", "cls"):
                 info = NameInfo(
                     arg_name, "parameter", "local", lineno, col, class_name, func_name
                 )
                 self.result.table.add_local(class_name, func_name, info)
                 continue
-            # Warn if parameter shadows a builtin
             if arg_name in ALLOWED_BUILTINS:
-                self.warning(
-                    arg, "shadowing", "parameter '" + arg_name + "' shadows builtin"
-                )
+                shadow_params.append((arg, arg_name))
             info = NameInfo(
                 arg_name, "parameter", "local", lineno, col, class_name, func_name
             )
             self.result.table.add_local(class_name, func_name, info)
-        # Collect keyword-only parameters
         kw_list = get_nodes(args_node, "kwonlyargs")
         for kw_arg in kw_list:
             arg_name = get_str(kw_arg, "arg")
             lineno = get_int(kw_arg, "lineno")
             col = get_int(kw_arg, "col_offset")
             if arg_name in ALLOWED_BUILTINS:
-                self.warning(
-                    kw_arg, "shadowing", "parameter '" + arg_name + "' shadows builtin"
-                )
+                shadow_params.append((kw_arg, arg_name))
             info = NameInfo(
                 arg_name, "parameter", "local", lineno, col, class_name, func_name
             )
@@ -2032,6 +2053,17 @@ class NameResolver:
         self.collect_locals_from_body(body, class_name, func_name)
         # Resolve all Name references
         self.resolve_references_in_body(body, class_name, func_name)
+        # Warn only for shadowed builtins that are called in the body
+        if shadow_params:
+            called: set[str] = set()
+            _collect_called_names(body, called)
+            for arg_node, arg_name in shadow_params:
+                if arg_name in called:
+                    self.warning(
+                        arg_node,
+                        "shadowing",
+                        "parameter '" + arg_name + "' shadows builtin",
+                    )
 
     def collect_locals_from_body(
         self, body: list[ASTNode], class_name: str, func_name: str
