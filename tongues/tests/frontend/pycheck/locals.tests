@@ -286,3 +286,47 @@ def f(method: str, items: list[str]) -> str:
 ---
 ok
 ---
+
+=== reassign list variable to str via join rejected
+def f(items: list[str]) -> str:
+    parts: list[str] = []
+    for item in items:
+        parts.append(item)
+    parts = " ".join(parts)
+    return parts
+---
+error: cannot assign
+---
+
+=== reassign int variable to str rejected
+def f() -> None:
+    x: int = 42
+    x = "hello"
+---
+error: cannot assign
+---
+
+=== reassign annotated str variable to int rejected
+def f() -> None:
+    x: str = "hello"
+    x = 42
+---
+error: cannot assign
+---
+
+=== reassign to same type accepted
+def f() -> int:
+    x: int = 42
+    x = 100
+    return x
+---
+ok
+---
+
+=== reassign annotated list to different element type rejected
+def f() -> None:
+    items: list[int] = [1, 2, 3]
+    items = ["a", "b"]
+---
+error: cannot assign
+---

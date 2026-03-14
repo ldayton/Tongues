@@ -402,6 +402,7 @@ class TypeEnv:
     def __init__(self) -> None:
         self.types: dict[str, TypeNode] = {}
         self.guarded_attrs: set[str] = set()
+        self.annotated: dict[str, TypeNode] = {}
 
     def copy(self) -> TypeEnv:
         env = TypeEnv()
@@ -411,6 +412,9 @@ class TypeEnv:
         gkeys = list(self.guarded_attrs)
         for gkey in gkeys:
             env.guarded_attrs.add(gkey)
+        akeys = list(self.annotated.keys())
+        for akey in akeys:
+            env.annotated[akey] = self.annotated[akey]
         return env
 
     def set(self, name: str, typ: TypeNode) -> None:
@@ -1063,23 +1067,6 @@ def _resolve_struct_attr(
                         params_a.append(param.typ)
                 return FuncType(params_a, method.return_type)
         current = anc
-    if _depth < 3:
-        all_classes = list(ctx.class_bases.keys())
-        resolved: TypeNode = ANY_TYPE
-        found = 0
-        for child in all_classes:
-            child_bases = ctx.class_bases.get(child, [])
-            for cb in child_bases:
-                if cb == sname:
-                    found += 1
-                    sub_type = _resolve_struct_attr(child, attr, ctx, _depth + 1)
-                    if sub_type != ANY_TYPE:
-                        if resolved == ANY_TYPE:
-                            resolved = sub_type
-                        elif resolved != sub_type:
-                            return ANY_TYPE
-        if found >= 2 and resolved != ANY_TYPE:
-            return resolved
     return ANY_TYPE
 
 
@@ -2306,6 +2293,19 @@ def _validate_assign(
                         if isinstance(uid_jv, JInt):
                             ctx.result.expr_types[uid_jv.value] = existing
                     if not _type_eq(val_type, existing):
+                        ann_type = env.annotated.get(name)
+                        if ann_type is not None and not _is_assignable(
+                            val_type, ann_type, ctx.hier_result
+                        ):
+                            ctx.result.add_error(
+                                lineno,
+                                0,
+                                "cannot assign "
+                                + _type_name(val_type)
+                                + " to "
+                                + _type_name(ann_type),
+                            )
+                            return
                         env.set(name, val_type)
                 else:
                     if _is_empty_collection(value) and is_any(_element_type(val_type)):
@@ -2483,6 +2483,7 @@ def _validate_ann_assign(
         name = get_str(target, "id")
         if name:
             env.set(name, ann_type)
+            env.annotated[name] = ann_type
             flow_id = _find_succ_assign(ctx, name, lineno)
             if flow_id >= 0:
                 ctx.assigned_types[flow_id] = ann_type
@@ -4426,10 +4427,9 @@ def _check_needs_narrowing(
         sname = _struct_name(typ)
         if sname and sname in ctx.known_classes:
             if not _class_has_attr(sname, attr_name, ctx):
-                if not _all_subclasses_have_attr(sname, attr_name, ctx):
-                    ctx.result.add_error(
-                        lineno, 0, "cannot access '" + attr_name + "' on " + sname
-                    )
+                ctx.result.add_error(
+                    lineno, 0, "cannot access '" + attr_name + "' on " + sname
+                )
 
 
 def _validate_expr_access(
@@ -4537,26 +4537,24 @@ def _validate_expr_access(
                 check_sname = _struct_name(self_type)
                 if check_sname and check_sname in ctx.known_classes:
                     if not _class_has_attr(check_sname, attr_str, ctx):
-                        if not _all_subclasses_have_attr(check_sname, attr_str, ctx):
-                            ctx.result.add_error(
-                                lineno,
-                                0,
-                                "cannot access '" + attr_str + "' on " + check_sname,
-                            )
-                            return
+                        ctx.result.add_error(
+                            lineno,
+                            0,
+                            "cannot access '" + attr_str + "' on " + check_sname,
+                        )
+                        return
             if use_this:
                 this_type = env.get_type("this")
                 if this_type is not None:
                     sname = _struct_name(this_type)
                     if sname and sname in ctx.known_classes:
                         if not _class_has_attr(sname, attr_str, ctx):
-                            if not _all_subclasses_have_attr(sname, attr_str, ctx):
-                                ctx.result.add_error(
-                                    lineno,
-                                    0,
-                                    "cannot access '" + attr_str + "' on " + sname,
-                                )
-                                return
+                            ctx.result.add_error(
+                                lineno,
+                                0,
+                                "cannot access '" + attr_str + "' on " + sname,
+                            )
+                            return
         if value and not _is_type(value, ["Name"]) and attr_str != "kind":
             val_path = _attr_path(value)
             is_guarded = val_path != "" and env.is_attr_guarded(val_path)
@@ -4575,13 +4573,12 @@ def _validate_expr_access(
                 sname = _struct_name(check_type)
                 if sname and sname in ctx.known_classes:
                     if not _class_has_attr(sname, attr_str, ctx):
-                        if not _all_subclasses_have_attr(sname, attr_str, ctx):
-                            ctx.result.add_error(
-                                lineno,
-                                0,
-                                "cannot access '" + attr_str + "' on " + sname,
-                            )
-                            return
+                        ctx.result.add_error(
+                            lineno,
+                            0,
+                            "cannot access '" + attr_str + "' on " + sname,
+                        )
+                        return
                 if not is_guarded and isinstance(check_type, UnionType):
                     for v in check_type.variants:
                         vsname = _struct_name(v)
@@ -4670,24 +4667,6 @@ def _validate_expr_access(
         if orelse:
             _validate_expr_access(orelse, else_env, ctx, lineno)
         return
-
-
-def _all_subclasses_have_attr(base_name: str, attr_name: str, ctx: _InferCtx) -> bool:
-    """Check if all direct subclasses of base_name have the given attribute.
-
-    Only returns True when there are 2+ subclasses, to avoid suppressing
-    errors in simple base/child hierarchies where narrowing is expected.
-    """
-    all_classes = list(ctx.class_bases.keys())
-    count = 0
-    for cls in all_classes:
-        bases = ctx.class_bases.get(cls, [])
-        for base in bases:
-            if base == base_name:
-                count += 1
-                if not _class_has_attr(cls, attr_name, ctx):
-                    return False
-    return count >= 2
 
 
 def _check_builtin_arg_optional(

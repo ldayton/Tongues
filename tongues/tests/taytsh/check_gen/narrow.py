@@ -134,25 +134,26 @@ _POINT = StructT(
 )
 
 _TYPE_DECLS: list[TModuleItem] = [
-    TInterfaceDecl(pos=P, name="Shape", annotations=A, fields=[]),
+    TInterfaceDecl(pos=P, annotations=A, name="Shape", fields=[]),
     TStructDecl(
         pos=P,
+        annotations=A,
         name="Circle",
         parent="Shape",
         fields=[TFieldDecl(pos=P, name="radius", typ=TPrimitive(pos=P, kind="int"))],
         methods=[],
-        annotations=A,
     ),
     TStructDecl(
         pos=P,
+        annotations=A,
         name="Square",
         parent="Shape",
         fields=[TFieldDecl(pos=P, name="side", typ=TPrimitive(pos=P, kind="int"))],
         methods=[],
-        annotations=A,
     ),
     TStructDecl(
         pos=P,
+        annotations=A,
         name="Point",
         parent=None,
         fields=[
@@ -160,7 +161,6 @@ _TYPE_DECLS: list[TModuleItem] = [
             TFieldDecl(pos=P, name="y", typ=TPrimitive(pos=P, kind="int")),
         ],
         methods=[],
-        annotations=A,
     ),
 ]
 
@@ -361,7 +361,7 @@ def _build_narrowing_module(
             return _empty_module()
         # Only nil checks narrow in while conditions
         while_body = (
-            filler + use_stmts + [TReturnStmt(pos=P, value=None, annotations=A)]
+            filler + use_stmts + [TReturnStmt(pos=P, annotations=A, value=None)]
         )
         body.append(_while(cond, while_body))
 
@@ -523,10 +523,10 @@ def _build_match_body(spec, var, use_stmts, filler):
         body.append(
             TMatchStmt(
                 pos=P,
+                annotations=A,
                 expr=_var(var),
                 cases=cases,
                 default=None,
-                annotations=A,
             )
         )
 
@@ -564,10 +564,10 @@ def _build_match_body(spec, var, use_stmts, filler):
         body.append(
             TMatchStmt(
                 pos=P,
+                annotations=A,
                 expr=_var(var),
                 cases=cases,
                 default=None,
-                annotations=A,
             )
         )
 
@@ -585,11 +585,11 @@ _HOLDER = StructT(
 
 _HOLDER_DECL = TStructDecl(
     pos=P,
+    annotations=A,
     name="Holder",
     parent=None,
     fields=[TFieldDecl(pos=P, name="data", typ=make_ttype(make_optional(INT_T)))],
     methods=[],
-    annotations=A,
 )
 
 

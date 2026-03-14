@@ -59,16 +59,16 @@ def _different_prim(kind: str) -> str:
 
 def _wrong_type_literal(kind: str) -> TExpr:
     if kind == "int":
-        return TStringLit(pos=P, value="wrong", annotations=A)
-    return TIntLit(pos=P, value=42, raw="42", annotations=A)
+        return TStringLit(pos=P, annotations=A, value="wrong")
+    return TIntLit(pos=P, annotations=A, value=42, raw="42")
 
 
 def _literal_for(kind: str) -> TExpr:
     if kind == "string":
-        return TStringLit(pos=P, value="test", annotations=A)
+        return TStringLit(pos=P, annotations=A, value="test")
     if kind == "bool":
-        return TBoolLit(pos=P, value=True, annotations=A)
-    return TIntLit(pos=P, value=0, raw="0", annotations=A)
+        return TBoolLit(pos=P, annotations=A, value=True)
+    return TIntLit(pos=P, annotations=A, value=0, raw="0")
 
 
 # ── AST Walkers ──
@@ -236,7 +236,7 @@ def wrong_arg_count(module: TModule, rng: Random) -> MutationResult | None:
             TArg(
                 pos=P,
                 name=None,
-                value=TIntLit(pos=P, value=99, raw="99", annotations=A),
+                value=TIntLit(pos=P, annotations=A, value=99, raw="99"),
             )
         )
         return True
@@ -253,9 +253,9 @@ def wrong_return_type(module: TModule, rng: Random) -> MutationResult | None:
                 if isinstance(s, TReturnStmt) and s.value is not None:
                     # Pick a type guaranteed incompatible with the return type
                     if ret_kind == "string":
-                        s.value = TIntLit(pos=P, value=42, raw="42", annotations=A)
+                        s.value = TIntLit(pos=P, annotations=A, value=42, raw="42")
                     else:
-                        s.value = TStringLit(pos=P, value="WRONG_RETURN", annotations=A)
+                        s.value = TStringLit(pos=P, annotations=A, value="WRONG_RETURN")
                     return True
         return False
 
@@ -311,8 +311,8 @@ def capture_variable(module: TModule, rng: Random) -> MutationResult | None:
                 assert isinstance(fn_lit, TFnLit)
                 capture_ref = TExprStmt(
                     pos=P,
-                    expr=TVar(pos=P, name=outer_let.name, annotations=A),
                     annotations=A,
+                    expr=TVar(pos=P, annotations=A, name=outer_let.name),
                 )
                 fn_lit.body.insert(0, capture_ref)
                 return True
@@ -332,10 +332,10 @@ def shadow_binding(module: TModule, rng: Random) -> MutationResult | None:
                 second = lets[1]
                 dup = TLetStmt(
                     pos=P,
+                    annotations=A,
                     name=existing.name,
                     typ=TPrimitive(pos=P, kind="int"),
-                    value=TIntLit(pos=P, value=0, raw="0", annotations=A),
-                    annotations=A,
+                    value=TIntLit(pos=P, annotations=A, value=0, raw="0"),
                 )
                 idx = fn.body.index(second)
                 fn.body.insert(idx + 1, dup)
@@ -364,9 +364,9 @@ def assign_to_this(module: TModule, rng: Random) -> MutationResult | None:
                 method = d.methods[0]
                 stmt = TAssignStmt(
                     pos=P,
-                    target=TVar(pos=P, name="this", annotations=A),
-                    value=TIntLit(pos=P, value=0, raw="0", annotations=A),
                     annotations=A,
+                    target=TVar(pos=P, annotations=A, name="this"),
+                    value=TIntLit(pos=P, annotations=A, value=0, raw="0"),
                 )
                 method.body.insert(0, stmt)
                 return True
@@ -411,18 +411,18 @@ def use_before_assign(module: TModule, rng: Random) -> MutationResult | None:
 
                     new_let = TLetStmt(
                         pos=P,
+                        annotations=A,
                         name="uninit_var",
                         typ=TIdentType(pos=P, name=d.name),
                         value=None,
-                        annotations=A,
                     )
                     # Assign the uninitialized variable to another variable to trigger read
                     read_let = TLetStmt(
                         pos=P,
+                        annotations=A,
                         name="uninit_read",
                         typ=TIdentType(pos=P, name=d.name),
-                        value=TVar(pos=P, name="uninit_var", annotations=A),
-                        annotations=A,
+                        value=TVar(pos=P, annotations=A, name="uninit_var"),
                     )
                     fn.body.insert(0, new_let)
                     fn.body.insert(1, read_let)
@@ -466,13 +466,13 @@ def call_non_function(module: TModule, rng: Random) -> MutationResult | None:
         let = lets[0]
         call_stmt = TExprStmt(
             pos=P,
+            annotations=A,
             expr=TCall(
                 pos=P,
-                func=TVar(pos=P, name=let.name, annotations=A),
-                args=[],
                 annotations=A,
+                func=TVar(pos=P, annotations=A, name=let.name),
+                args=[],
             ),
-            annotations=A,
         )
         fn.body.insert(fn.body.index(let) + 1, call_stmt)
         return True
@@ -528,8 +528,8 @@ def throw_non_struct(module: TModule, rng: Random) -> MutationResult | None:
             0,
             TThrowStmt(
                 pos=P,
-                expr=TIntLit(pos=P, value=42, raw="42", annotations=A),
                 annotations=A,
+                expr=TIntLit(pos=P, annotations=A, value=42, raw="42"),
             ),
         )
         return True
@@ -545,8 +545,8 @@ def expr_no_effect(module: TModule, rng: Random) -> MutationResult | None:
         fn = fns[-1]
         stmt = TExprStmt(
             pos=P,
-            expr=TIntLit(pos=P, value=42, raw="42", annotations=A),
             annotations=A,
+            expr=TIntLit(pos=P, annotations=A, value=42, raw="42"),
         )
         fn.body.insert(0, stmt)
         return True
@@ -560,7 +560,7 @@ def control_flow_in_finally(module: TModule, rng: Random) -> MutationResult | No
             for s in _walk_stmts(fn.body):
                 if isinstance(s, TTryStmt) and s.finally_body is not None:
                     s.finally_body.insert(
-                        0, TReturnStmt(pos=P, value=None, annotations=A)
+                        0, TReturnStmt(pos=P, annotations=A, value=None)
                     )
                     return True
         return False
@@ -579,10 +579,10 @@ def unreachable_code(module: TModule, rng: Random) -> MutationResult | None:
                         if isinstance(stmt, (TReturnStmt, TBreakStmt)):
                             dead = TLetStmt(
                                 pos=P,
+                                annotations=A,
                                 name="dead_code",
                                 typ=TPrimitive(pos=P, kind="int"),
-                                value=TIntLit(pos=P, value=0, raw="0", annotations=A),
-                                annotations=A,
+                                value=TIntLit(pos=P, annotations=A, value=0, raw="0"),
                             )
                             s.body.insert(i + 1, dead)
                             return True
@@ -600,15 +600,15 @@ def assign_to_slice(module: TModule, rng: Random) -> MutationResult | None:
                     idx = fn.body.index(let)
                     assign = TAssignStmt(
                         pos=P,
+                        annotations=A,
                         target=TSlice(
                             pos=P,
-                            obj=TVar(pos=P, name=let.name, annotations=A),
-                            low=TIntLit(pos=P, value=0, raw="0", annotations=A),
-                            high=TIntLit(pos=P, value=1, raw="1", annotations=A),
                             annotations=A,
+                            obj=TVar(pos=P, annotations=A, name=let.name),
+                            low=TIntLit(pos=P, annotations=A, value=0, raw="0"),
+                            high=TIntLit(pos=P, annotations=A, value=1, raw="1"),
                         ),
-                        value=TStringLit(pos=P, value="x", annotations=A),
-                        annotations=A,
+                        value=TStringLit(pos=P, annotations=A, value="x"),
                     )
                     fn.body.insert(idx + 1, assign)
                     return True

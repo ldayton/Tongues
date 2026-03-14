@@ -67,10 +67,10 @@ def _make_let_and_match(
 ) -> list:
     let_stmt = TLetStmt(
         pos=P,
+        annotations=A,
         name=var_name,
         typ=make_ttype(scrutinee_type),
         value=None,
-        annotations=A,
     )
     match_cases = [
         TMatchCase(pos=P, pattern=c.pattern, body=[], annotations=A) for c in cases
@@ -80,10 +80,10 @@ def _make_let_and_match(
     )
     match_stmt = TMatchStmt(
         pos=P,
-        expr=TVar(pos=P, name=var_name, annotations=A),
+        annotations=A,
+        expr=TVar(pos=P, annotations=A, name=var_name),
         cases=match_cases,
         default=default,
-        annotations=A,
     )
     return [let_stmt, match_stmt]
 
@@ -186,7 +186,7 @@ def _optional_exhaustive(inner_type: Type) -> Callable[[list[CaseSpec]], bool]:
 def _simple_enum_config() -> TypeConfig:
     et = EnumT(kind="enum", name="Color", variants=["Red", "Green", "Blue"])
     decl = TEnumDecl(
-        pos=P, name="Color", variants=["Red", "Green", "Blue"], annotations=A
+        pos=P, annotations=A, name="Color", variants=["Red", "Green", "Blue"]
     )
     cases = [
         CaseSpec("Color.Red", TPatternEnum(pos=P, enum_name="Color", variant="Red")),
@@ -201,7 +201,7 @@ def _simple_enum_config() -> TypeConfig:
 def _large_enum_config() -> TypeConfig:
     variants = ["A", "B", "C", "D", "E", "F"]
     et = EnumT(kind="enum", name="Big", variants=variants)
-    decl = TEnumDecl(pos=P, name="Big", variants=variants, annotations=A)
+    decl = TEnumDecl(pos=P, annotations=A, name="Big", variants=variants)
     cases = [
         CaseSpec("Big." + v, TPatternEnum(pos=P, enum_name="Big", variant=v))
         for v in variants
@@ -228,22 +228,22 @@ def _simple_interface_config() -> TypeConfig:
     )
     it = InterfaceT(kind="interface", name="Shape", variants=["Circle", "Square"])
     decls: list[TModuleItem] = [
-        TInterfaceDecl(pos=P, name="Shape", annotations=A, fields=[]),
+        TInterfaceDecl(pos=P, annotations=A, name="Shape", fields=[]),
         TStructDecl(
             pos=P,
+            annotations=A,
             name="Circle",
             parent="Shape",
             fields=[TFieldDecl(pos=P, name="r", typ=TPrimitive(pos=P, kind="int"))],
             methods=[],
-            annotations=A,
         ),
         TStructDecl(
             pos=P,
+            annotations=A,
             name="Square",
             parent="Shape",
             fields=[TFieldDecl(pos=P, name="s", typ=TPrimitive(pos=P, kind="int"))],
             methods=[],
-            annotations=A,
         ),
     ]
     cases = [
@@ -263,7 +263,7 @@ def _interface_4_config() -> TypeConfig:
     names = ["Lit", "Bin", "Neg", "Call"]
     structs = []
     decls: list[TModuleItem] = [
-        TInterfaceDecl(pos=P, name="Expr", annotations=A, fields=[])
+        TInterfaceDecl(pos=P, annotations=A, name="Expr", fields=[])
     ]
     for n in names:
         st = StructT(
@@ -278,11 +278,11 @@ def _interface_4_config() -> TypeConfig:
         decls.append(
             TStructDecl(
                 pos=P,
+                annotations=A,
                 name=n,
                 parent="Expr",
                 fields=[TFieldDecl(pos=P, name="v", typ=TPrimitive(pos=P, kind="int"))],
                 methods=[],
-                annotations=A,
             )
         )
     it = InterfaceT(kind="interface", name="Expr", variants=names)
@@ -383,22 +383,22 @@ def _union_with_interface_config() -> TypeConfig:
     it = InterfaceT(kind="interface", name="Node", variants=["Lit", "Bin"])
     union = UnionT(kind="union", members=[it, INT_T])
     decls: list[TModuleItem] = [
-        TInterfaceDecl(pos=P, name="Node", annotations=A, fields=[]),
+        TInterfaceDecl(pos=P, annotations=A, name="Node", fields=[]),
         TStructDecl(
             pos=P,
+            annotations=A,
             name="Lit",
             parent="Node",
             fields=[TFieldDecl(pos=P, name="v", typ=TPrimitive(pos=P, kind="int"))],
             methods=[],
-            annotations=A,
         ),
         TStructDecl(
             pos=P,
+            annotations=A,
             name="Bin",
             parent="Node",
             fields=[TFieldDecl(pos=P, name="v", typ=TPrimitive(pos=P, kind="int"))],
             methods=[],
-            annotations=A,
         ),
     ]
     # Cases can be: int, Node (interface), Lit (struct), Bin (struct)
@@ -432,7 +432,7 @@ def _optional_enum_config() -> TypeConfig:
     et = EnumT(kind="enum", name="Dir", variants=["Up", "Down", "Left", "Right"])
     opt = make_optional(et)
     decl = TEnumDecl(
-        pos=P, name="Dir", variants=["Up", "Down", "Left", "Right"], annotations=A
+        pos=P, annotations=A, name="Dir", variants=["Up", "Down", "Left", "Right"]
     )
     cases = [
         CaseSpec("Dir.Up", TPatternEnum(pos=P, enum_name="Dir", variant="Up")),
