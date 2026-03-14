@@ -368,6 +368,8 @@ def _typenode_to_ttype(pos: Pos, t: TypeNode) -> TType:
     """Convert a TypeNode (from signatures/pycheck) to a Taytsh TType node."""
     if isinstance(t, PrimitiveType):
         return TPrimitive(pos, t.kind)
+    if isinstance(t, ByteArrayType):
+        return TListType(pos, TPrimitive(pos, "int"))
     if isinstance(t, SliceType):
         if isinstance(t.element, PrimitiveType) and t.element.kind == "byte":
             return TPrimitive(pos, "bytes")
@@ -2313,7 +2315,7 @@ def _lower_conversion_call(
         if not args:
             return TListLit(pos, [], {})
         if len(args) == 1 and isinstance(args[0], dict):
-            return _make_call(pos, "ToList", [_lower_expr(args[0], env, ctx)])
+            return _make_call(pos, "ListFrom", [_lower_expr(args[0], env, ctx)])
     if fname == "hex":
         if args and isinstance(args[0], dict):
             arg_type = _infer_expr_type(args[0], env, ctx)
@@ -3058,25 +3060,6 @@ def _lower_method_call(
         return _lower_string_method(pos, obj, method_name, args, env, ctx)
     # ByteArray methods
     if isinstance(actual_type, ByteArrayType):
-        _BYTEARRAY_READ_METHODS = {
-            "decode",
-            "find",
-            "rfind",
-            "count",
-            "startswith",
-            "endswith",
-            "replace",
-            "upper",
-            "lower",
-            "strip",
-            "lstrip",
-            "rstrip",
-            "split",
-            "join",
-            "hex",
-        }
-        if method_name in _BYTEARRAY_READ_METHODS:
-            return _lower_bytes_method(pos, obj, method_name, args, env, ctx)
         return _lower_list_method(
             pos, obj, obj_node, method_name, args, env, ctx, type_name="bytearray"
         )
@@ -6192,20 +6175,23 @@ def _lower_expr_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             method = get_str(func, "attr")
             obj_node = get_node(func, "value")
             obj_type = _infer_expr_type(obj_node, env, ctx)
+            _is_list_like = _is_type_dict(obj_type, ["Slice"]) or isinstance(
+                obj_type, ByteArrayType
+            )
             # list.clear() → xs = []
-            if _is_type_dict(obj_type, ["Slice"]) and method == "clear":
+            if _is_list_like and method == "clear":
                 obj = _lower_expr(obj_node, env, ctx)
                 return [TAssignStmt(pos, obj, TListLit(pos, [], {}), {})]
             # list.reverse() → xs = Reversed(xs)
-            if _is_type_dict(obj_type, ["Slice"]) and method == "reverse":
+            if _is_list_like and method == "reverse":
                 obj = _lower_expr(obj_node, env, ctx)
                 return [TAssignStmt(pos, obj, _make_call(pos, "Reversed", [obj]), {})]
             # list.sort() → xs = Sorted(xs)
-            if _is_type_dict(obj_type, ["Slice"]) and method == "sort":
+            if _is_list_like and method == "sort":
                 obj = _lower_expr(obj_node, env, ctx)
                 return [TAssignStmt(pos, obj, _make_call(pos, "Sorted", [obj]), {})]
             # list.extend(other) → xs = Concat(xs, other)
-            if _is_type_dict(obj_type, ["Slice"]) and method == "extend":
+            if _is_list_like and method == "extend":
                 vargs = get_nodes(value, "args")
                 if vargs and isinstance(vargs[0], dict):
                     obj = _lower_expr(obj_node, env, ctx)
