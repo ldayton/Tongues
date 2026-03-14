@@ -217,9 +217,16 @@ class Foo:
 ok
 ---
 
-=== parameter shadows builtin
+=== parameter shadows unused builtin no warning
 def f(len: int) -> int:
     return len
+---
+ok
+---
+
+=== parameter shadows builtin when called in body
+def f(len: int) -> int:
+    return len("hello")
 ---
 warning: shadows builtin
 ---
