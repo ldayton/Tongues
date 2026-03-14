@@ -571,6 +571,17 @@ vscode:
     fi
     code --install-extension "${vsix[0]}"
 
+# Quick sequential check: style, then test each language (stop on first failure)
+quick-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    just -f {{justfile()}} style --fix
+    just -f {{justfile()}} test-tongues javascript
+    just -f {{justfile()}} test-tongues java
+    just -f {{justfile()}} test-tongues python
+    just -f {{justfile()}} test-tongues ruby
+    just -f {{justfile()}} test-tongues perl
+
 # Run the full CI check suite locally
 full-check:
     #!/usr/bin/env bash
