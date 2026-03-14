@@ -238,3 +238,46 @@ def f(c: Container) -> Node:
 ---
 ok
 ---
+
+=== subclass field not accessible on base when multiple subclasses share it
+class Node:
+    kind: str
+class Command(Node):
+    words: list[str]
+class Pipeline(Node):
+    words: list[str]
+def f(n: Node) -> list[str]:
+    return n.words
+---
+error: words
+---
+
+=== subclass field not accessible on base even with all subclasses agreeing
+class Base:
+    pass
+class A(Base):
+    value: int
+class B(Base):
+    value: int
+class C(Base):
+    value: int
+def f(b: Base) -> int:
+    return b.value
+---
+error: value
+---
+
+=== subclass field accessible after isinstance narrowing
+class Node:
+    kind: str
+class Command(Node):
+    words: list[str]
+class Pipeline(Node):
+    words: list[str]
+def f(n: Node) -> list[str]:
+    if isinstance(n, Command):
+        return n.words
+    return []
+---
+ok
+---
