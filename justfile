@@ -120,7 +120,6 @@ lang target *args:
     else
         just -f {{justfile()}} cross-equivalence {{target}} & pids+=($!); pid_names[$!]=cross-equivalence-{{target}}
     fi
-    just -f {{justfile()}} _treewalker {{target}} & pids+=($!); pid_names[$!]=tw-taytsh-apptests-{{target}}
     just -f {{justfile()}} _vm {{target}} & pids+=($!); pid_names[$!]=vm-taytsh-apptests-{{target}}
     if [ "{{target}}" != "perl" ]; then
         just -f {{justfile()}} _vm-test-tongues {{target}} & pids+=($!); pid_names[$!]=vm-test-tongues-{{target}}
@@ -178,7 +177,6 @@ lang-java:
     failed=0
     declare -A results=()
     just -f {{justfile()}} cross-equivalence java & pids+=($!); pid_names[$!]=cross-equivalence-java
-    just -f {{justfile()}} _treewalker-java & pids+=($!); pid_names[$!]=tw-taytsh-apptests-java
     just -f {{justfile()}} _vm-java & pids+=($!); pid_names[$!]=vm-taytsh-apptests-java
     just -f {{justfile()}} _vm-test-tongues-java & pids+=($!); pid_names[$!]=vm-test-tongues-java
     printf '\033[32m[test-tongues-java]\033[0m\n'
@@ -237,31 +235,6 @@ _compile-java:
     fi
     printf '\033[32m[compile:java] %ds\033[0m\n' "$((SECONDS - start))"
 
-# Run taytsh app tests through the treewalker with Java binary
-_treewalker-java:
-    #!/usr/bin/env bash
-    set -uo pipefail
-    printf '\033[32m[tw-taytsh-apptests-java]\033[0m\n'
-    start=$SECONDS
-    passed=0; failed=0
-    cd tongues
-    for f in tests/taytsh/app/*.ty; do
-        name=$(basename "$f" .ty)
-        if java -cp .out/java-classes Main taytsh "$f" >/dev/null 2>&1; then
-            passed=$((passed + 1))
-        else
-            echo "  FAIL $name"
-            failed=$((failed + 1))
-        fi
-    done
-    elapsed=$((SECONDS - start))
-    if [ $failed -eq 0 ]; then
-        printf '\033[32m[tw-taytsh-apptests-java] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
-    else
-        printf '\033[31m[tw-taytsh-apptests-java] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
-        exit 1
-    fi
-
 # Run taytsh app tests through the VM with Java binary
 _vm-java:
     #!/usr/bin/env bash
@@ -272,7 +245,7 @@ _vm-java:
     cd tongues
     for f in tests/taytsh/app/*.ty; do
         name=$(basename "$f" .ty)
-        if java -cp .out/java-classes Main taytsh --vm "$f" >/dev/null 2>&1; then
+        if java -cp .out/java-classes Main taytsh "$f" >/dev/null 2>&1; then
             passed=$((passed + 1))
         else
             echo "  FAIL $name"
@@ -444,33 +417,6 @@ _vm-test-tongues target *args:
     fi
     exit $rc
 
-# Run taytsh app tests through the treewalker in target language
-_treewalker target:
-    #!/usr/bin/env bash
-    set -uo pipefail
-    declare -A ext=([python]=py [ruby]=rb [perl]=pl [javascript]=js)
-    declare -A runner=([python]="uv run python3" [ruby]=ruby [perl]=perl [javascript]=node)
-    printf '\033[32m[tw-taytsh-apptests-{{target}}]\033[0m\n'
-    start=$SECONDS
-    passed=0; failed=0
-    cd tongues
-    for f in tests/taytsh/app/*.ty; do
-        name=$(basename "$f" .ty)
-        if ${runner[{{target}}]} ".out/tongues.${ext[{{target}}]}" taytsh "$f" >/dev/null 2>&1; then
-            passed=$((passed + 1))
-        else
-            echo "  FAIL $name"
-            failed=$((failed + 1))
-        fi
-    done
-    elapsed=$((SECONDS - start))
-    if [ $failed -eq 0 ]; then
-        printf '\033[32m[tw-taytsh-apptests-{{target}}] %ds (%d passed)\033[0m\n' "$elapsed" "$passed"
-    else
-        printf '\033[31m[tw-taytsh-apptests-{{target}}] %ds (%d passed, %d failed)\033[0m\n' "$elapsed" "$passed" "$failed"
-        exit 1
-    fi
-
 # Run taytsh app tests through the VM in target language
 _vm target:
     #!/usr/bin/env bash
@@ -483,7 +429,7 @@ _vm target:
     cd tongues
     for f in tests/taytsh/app/*.ty; do
         name=$(basename "$f" .ty)
-        if ${runner[{{target}}]} ".out/tongues.${ext[{{target}}]}" taytsh --vm "$f" >/dev/null 2>&1; then
+        if ${runner[{{target}}]} ".out/tongues.${ext[{{target}}]}" taytsh "$f" >/dev/null 2>&1; then
             passed=$((passed + 1))
         else
             echo "  FAIL $name"

@@ -1,4 +1,4 @@
-"""Taytsh app tests: .ty programs on the treewalker."""
+"""Taytsh app tests: .ty programs on the VM."""
 
 from pathlib import Path
 
@@ -10,8 +10,8 @@ from tests.harness import (
     _invoke_binary,
     discover_ty_apps,
     taytsh_parse,
-    taytsh_run,
 )
+from src.taytsh.vm import vm_run
 
 TESTS = {
     "ty_app": {"dir": "taytsh/app", "run": "ty_app"},
@@ -37,7 +37,7 @@ def test_ty_app(ty_app: Path):
         return
     source = ty_app.read_text()
     module = taytsh_parse(source)
-    result = taytsh_run(module)
+    result = vm_run(module)
     if result.exit_code != 0:
-        output = (result.stdout + result.stderr).decode(errors="replace").strip()
+        output = (result.stdout + result.stderr).strip()
         pytest.fail(f"Exit code {result.exit_code}:\n{output}")
