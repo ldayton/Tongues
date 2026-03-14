@@ -28,7 +28,7 @@ Focus on what matters to users:
 
 Put the changelog in the PR body. The workflow extracts it for the GitHub release.
 
-Run `cd tongues && just check` before pushing. PR title: `Release v$ARGUMENTS`
+Run `just full-check` before pushing. PR title: `Release v$ARGUMENTS`
 
 ## After merge
 
