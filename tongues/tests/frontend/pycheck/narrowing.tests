@@ -308,7 +308,7 @@ def f(n: Node) -> Node:
 ok
 ---
 
-=== variable reassignment to wider type
+=== variable reassignment to sibling type rejected
 class Node:
     pass
 class Expr(Node):
@@ -319,7 +319,7 @@ def f() -> None:
     x: Expr = Expr()
     x = Stmt()
 ---
-ok
+error: cannot assign
 ---
 
 === reveal_type basic

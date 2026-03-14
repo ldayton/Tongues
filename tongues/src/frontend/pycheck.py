@@ -402,6 +402,7 @@ class TypeEnv:
     def __init__(self) -> None:
         self.types: dict[str, TypeNode] = {}
         self.guarded_attrs: set[str] = set()
+        self.annotated: dict[str, TypeNode] = {}
 
     def copy(self) -> TypeEnv:
         env = TypeEnv()
@@ -411,6 +412,9 @@ class TypeEnv:
         gkeys = list(self.guarded_attrs)
         for gkey in gkeys:
             env.guarded_attrs.add(gkey)
+        akeys = list(self.annotated.keys())
+        for akey in akeys:
+            env.annotated[akey] = self.annotated[akey]
         return env
 
     def set(self, name: str, typ: TypeNode) -> None:
@@ -2306,6 +2310,19 @@ def _validate_assign(
                         if isinstance(uid_jv, JInt):
                             ctx.result.expr_types[uid_jv.value] = existing
                     if not _type_eq(val_type, existing):
+                        ann_type = env.annotated.get(name)
+                        if ann_type is not None and not _is_assignable(
+                            val_type, ann_type, ctx.hier_result
+                        ):
+                            ctx.result.add_error(
+                                lineno,
+                                0,
+                                "cannot assign "
+                                + _type_name(val_type)
+                                + " to "
+                                + _type_name(ann_type),
+                            )
+                            return
                         env.set(name, val_type)
                 else:
                     if _is_empty_collection(value) and is_any(_element_type(val_type)):
@@ -2483,6 +2500,7 @@ def _validate_ann_assign(
         name = get_str(target, "id")
         if name:
             env.set(name, ann_type)
+            env.annotated[name] = ann_type
             flow_id = _find_succ_assign(ctx, name, lineno)
             if flow_id >= 0:
                 ctx.assigned_types[flow_id] = ann_type

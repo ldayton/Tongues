@@ -306,9 +306,9 @@ def f() -> None:
 error: cannot assign
 ---
 
-=== reassign str variable to int rejected
+=== reassign annotated str variable to int rejected
 def f() -> None:
-    x = "hello"
+    x: str = "hello"
     x = 42
 ---
 error: cannot assign
@@ -316,7 +316,7 @@ error: cannot assign
 
 === reassign to same type accepted
 def f() -> int:
-    x = 42
+    x: int = 42
     x = 100
     return x
 ---
