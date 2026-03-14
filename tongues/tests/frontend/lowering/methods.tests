@@ -83,3 +83,17 @@ def f(xs: list[int]) -> None:
 ---
 error: method
 ---
+
+=== unrecognized bytearray method rejected
+def f(b: bytearray) -> None:
+    b.gobbledygook()
+---
+error: method
+---
+
+=== bytearray method hex unsupported
+def f(b: bytearray) -> str:
+    return b.hex()
+---
+error: unsupported method 'hex' on bytearray
+---

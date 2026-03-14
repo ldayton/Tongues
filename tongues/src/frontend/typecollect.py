@@ -6,6 +6,7 @@ from .types import (
     TypeNode,
     PrimitiveType,
     SliceType,
+    ByteArrayType,
     MapType,
     SetType,
     TupleType,
@@ -418,8 +419,10 @@ def py_type_to_type_dict(
     if s == "object":
         return InterfaceRef("any")
     # bytes -> Slice(byte)
-    if s == "bytes" or s == "bytearray":
+    if s == "bytes":
         return SliceType(PrimitiveType("byte"))
+    if s == "bytearray":
+        return ByteArrayType(PrimitiveType("int"))
     # Bare collection types (no subscript) -> any element
     if s == "list":
         return SliceType(InterfaceRef("any"))

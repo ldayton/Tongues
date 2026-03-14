@@ -8,7 +8,8 @@ argument-hint: [version]
 Create a PR with branch name `release/v$ARGUMENTS` containing only these changes:
 
 1. Update version in `tongues/pyproject.toml`
-2. Run `cd tongues && uv sync -U` to update dependencies
+2. Update `VERSION` in `tongues/src/tongues.py` to match
+3. Run `cd tongues && uv sync -U` to update dependencies
 
 No other changes—no refactors, no fixes, no documentation updates.
 

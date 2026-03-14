@@ -444,6 +444,13 @@ def f(xs: list[str]) -> str:
 ok
 ---
 
+=== bytearray annotation allowed
+def f(b: bytearray) -> None:
+    pass
+---
+ok
+---
+
 === type not allowed
 def f(x: object) -> object:
     return type(x)
