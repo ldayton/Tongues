@@ -59,6 +59,7 @@ from .types import (
     IteratorType,
     TypeGuardType,
     LiteralType,
+    ByteArrayType,
     ANY_TYPE,
     INT_TYPE,
     FLOAT_TYPE,
@@ -67,6 +68,7 @@ from .types import (
     VOID_TYPE,
     NEVER_TYPE,
     BYTES_TYPE,
+    BYTEARRAY_TYPE,
     is_any,
     contains_any,
     type_eq as _type_eq,
@@ -720,6 +722,8 @@ def _synth_name(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         return FuncType([INT_TYPE], STR_TYPE)
     if name == "bytes":
         return FuncType([ANY_TYPE], BYTES_TYPE)
+    if name == "bytearray":
+        return FuncType([ANY_TYPE], BYTEARRAY_TYPE)
     if name == "list":
         return FuncType([ANY_TYPE], SliceType(ANY_TYPE))
     if name == "set" or name == "frozenset":
@@ -833,6 +837,58 @@ def _resolve_attr(
             )
         lineno = get_int(value_node, "lineno") if isinstance(value_node, dict) else 0
         ctx.result.add_error(lineno, 0, "unsupported method '" + attr + "' on str")
+        return ANY_TYPE
+    # ByteArray methods (read-only bytes methods + mutating list methods)
+    if isinstance(obj_type, ByteArrayType):
+        elem = INT_TYPE
+        if attr == "decode":
+            return FuncType([], STR_TYPE)
+        if attr == "find" or attr == "rfind":
+            return FuncType([BYTES_TYPE], INT_TYPE)
+        if attr == "count":
+            return FuncType([elem], INT_TYPE)
+        if attr == "startswith" or attr == "endswith":
+            return FuncType([BYTES_TYPE], BOOL_TYPE)
+        if attr == "replace":
+            return FuncType([BYTES_TYPE, BYTES_TYPE], obj_type)
+        if (
+            attr == "upper"
+            or attr == "lower"
+            or attr == "strip"
+            or attr == "lstrip"
+            or attr == "rstrip"
+        ):
+            return FuncType([], obj_type)
+        if attr == "split":
+            return FuncType([], SliceType(obj_type))
+        if attr == "join":
+            return FuncType([SliceType(BYTES_TYPE)], obj_type)
+        if attr == "hex":
+            return FuncType([], STR_TYPE)
+        if attr == "append":
+            return FuncType([elem], VOID_TYPE)
+        if attr == "extend":
+            return FuncType([obj_type], VOID_TYPE)
+        if attr == "insert":
+            return FuncType([INT_TYPE, elem], VOID_TYPE)
+        if attr == "pop":
+            return FuncType([], elem)
+        if attr == "copy":
+            return FuncType([], obj_type)
+        if attr == "sort":
+            return FuncType([], VOID_TYPE)
+        if attr == "reverse":
+            return FuncType([], VOID_TYPE)
+        if attr == "clear":
+            return FuncType([], VOID_TYPE)
+        if attr == "index":
+            return FuncType([elem], INT_TYPE)
+        if attr == "remove":
+            return FuncType([elem], VOID_TYPE)
+        lineno = get_int(value_node, "lineno") if isinstance(value_node, dict) else 0
+        ctx.result.add_error(
+            lineno, 0, "unsupported method '" + attr + "' on bytearray"
+        )
         return ANY_TYPE
     # Bytes methods
     if _prim_kind(obj_type) == "bytes" or (
@@ -1202,6 +1258,8 @@ def _synth_name_call(
         return SliceType(INT_TYPE)
     if fname == "bytes":
         return BYTES_TYPE
+    if fname == "bytearray":
+        return BYTEARRAY_TYPE
     if fname == "frozenset":
         if args:
             first = args[0]
@@ -1361,6 +1419,8 @@ def _synth_method_call(
 
 def _element_type(t: TypeNode) -> TypeNode:
     """Get the element type of a collection."""
+    if isinstance(t, ByteArrayType):
+        return INT_TYPE
     if isinstance(t, SliceType):
         if isinstance(t.element, PrimitiveType) and t.element.kind == "byte":
             return INT_TYPE
@@ -2795,6 +2855,46 @@ def _validate_collection_method_args(
     lineno: int,
 ) -> None:
     """Validate collection method argument types."""
+    if isinstance(obj_type, ByteArrayType):
+        elem = INT_TYPE
+        if method == "append":
+            if args:
+                at = _synth_expr(args[0], env, ctx)
+                if not _is_assignable(at, elem, ctx.hier_result):
+                    ctx.result.add_error(
+                        lineno,
+                        0,
+                        "cannot assign "
+                        + _type_name(at)
+                        + " to bytearray element "
+                        + _type_name(elem),
+                    )
+        elif method == "extend":
+            if args:
+                at = _synth_expr(args[0], env, ctx)
+                aelem = _element_type(at)
+                if not _is_assignable(aelem, elem, ctx.hier_result):
+                    ctx.result.add_error(
+                        lineno,
+                        0,
+                        "cannot assign "
+                        + _type_name(aelem)
+                        + " to bytearray element "
+                        + _type_name(elem),
+                    )
+        elif method == "insert":
+            if len(args) > 1:
+                at = _synth_expr(args[1], env, ctx)
+                if not _is_assignable(at, elem, ctx.hier_result):
+                    ctx.result.add_error(
+                        lineno,
+                        0,
+                        "cannot assign "
+                        + _type_name(at)
+                        + " to bytearray element "
+                        + _type_name(elem),
+                    )
+        return
     if isinstance(obj_type, SliceType):
         elem = obj_type.element
         if method == "append":

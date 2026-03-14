@@ -286,3 +286,122 @@ def f(xs: list[int]) -> None:
 ---
 error: method
 ---
+
+=== unrecognized bytearray method rejected
+def f(b: bytearray) -> None:
+    b.gobbledygook()
+---
+error: method
+---
+
+=== bytearray method append accepted
+def f(b: bytearray) -> None:
+    b.append(65)
+---
+ok
+---
+
+=== bytearray method extend accepted
+def f(b: bytearray) -> None:
+    b.extend(bytearray())
+---
+ok
+---
+
+=== bytearray method decode accepted
+def f(b: bytearray) -> str:
+    return b.decode()
+---
+ok
+---
+
+=== bytearray method find accepted
+def f(b: bytearray) -> int:
+    return b.find(b"x")
+---
+ok
+---
+
+=== bytearray method hex accepted
+def f(b: bytearray) -> str:
+    return b.hex()
+---
+ok
+---
+
+=== bytearray method pop accepted
+def f(b: bytearray) -> int:
+    return b.pop()
+---
+ok
+---
+
+=== bytearray method copy accepted
+def f(b: bytearray) -> bytearray:
+    return b.copy()
+---
+ok
+---
+
+=== bytearray method reverse accepted
+def f(b: bytearray) -> None:
+    b.reverse()
+---
+ok
+---
+
+=== bytearray method clear accepted
+def f(b: bytearray) -> None:
+    b.clear()
+---
+ok
+---
+
+=== bytearray method insert accepted
+def f(b: bytearray) -> None:
+    b.insert(0, 65)
+---
+ok
+---
+
+=== bytearray method remove accepted
+def f(b: bytearray) -> None:
+    b.remove(65)
+---
+ok
+---
+
+=== bytearray method sort accepted
+def f(b: bytearray) -> None:
+    b.sort()
+---
+ok
+---
+
+=== bytearray method index accepted
+def f(b: bytearray) -> int:
+    return b.index(65)
+---
+ok
+---
+
+=== bytearray method replace accepted
+def f(b: bytearray, old: bytes, new: bytes) -> bytearray:
+    return b.replace(old, new)
+---
+ok
+---
+
+=== bytearray append type error
+def f(b: bytearray) -> None:
+    b.append("x")
+---
+error: cannot assign
+---
+
+=== unrecognized bytearray method does not type as int
+def f(b: bytearray) -> int:
+    return b.gobbledygook()
+---
+error: method
+---

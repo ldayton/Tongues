@@ -92,6 +92,7 @@ from .types import (
     TypeNode,
     PrimitiveType,
     SliceType,
+    ByteArrayType,
     MapType,
     SetType,
     TupleType,
@@ -586,6 +587,8 @@ def _type_dict_kind(td: TypeNode) -> str:
         return _type_dict_kind(td.target)
     if isinstance(td, TupleType) and td.variadic:
         return "Slice"
+    if isinstance(td, ByteArrayType):
+        return "ByteArray"
     if isinstance(td, SliceType):
         return "Slice"
     if isinstance(td, MapType):
@@ -2306,6 +2309,11 @@ def _lower_conversion_call(
                 return _make_call(pos, "Bytes", [_lower_expr(args[0], env, ctx)])
             if _is_type_dict(arg_type, ["Slice"]):
                 return _make_call(pos, "BytesFrom", [_lower_expr(args[0], env, ctx)])
+    if fname == "bytearray":
+        if not args:
+            return TListLit(pos, [], {})
+        if len(args) == 1 and isinstance(args[0], dict):
+            return _make_call(pos, "ToList", [_lower_expr(args[0], env, ctx)])
     if fname == "hex":
         if args and isinstance(args[0], dict):
             arg_type = _infer_expr_type(args[0], env, ctx)
@@ -3048,6 +3056,30 @@ def _lower_method_call(
     # String methods
     if _is_type_dict(actual_type, ["string"]):
         return _lower_string_method(pos, obj, method_name, args, env, ctx)
+    # ByteArray methods
+    if isinstance(actual_type, ByteArrayType):
+        _BYTEARRAY_READ_METHODS = {
+            "decode",
+            "find",
+            "rfind",
+            "count",
+            "startswith",
+            "endswith",
+            "replace",
+            "upper",
+            "lower",
+            "strip",
+            "lstrip",
+            "rstrip",
+            "split",
+            "join",
+            "hex",
+        }
+        if method_name in _BYTEARRAY_READ_METHODS:
+            return _lower_bytes_method(pos, obj, method_name, args, env, ctx)
+        return _lower_list_method(
+            pos, obj, obj_node, method_name, args, env, ctx, type_name="bytearray"
+        )
     # Bytes methods
     if _is_type_dict(actual_type, ["bytes"]) or _is_bytes_slice(actual_type):
         return _lower_bytes_method(pos, obj, method_name, args, env, ctx)

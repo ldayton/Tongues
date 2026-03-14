@@ -36,6 +36,13 @@ class SliceType(TypeNode):
 
 
 @dataclass
+class ByteArrayType(TypeNode):
+    """bytearray — mutable byte sequence, lowers to list[int]."""
+
+    element: TypeNode
+
+
+@dataclass
 class MapType(TypeNode):
     """dict[K, V]."""
 
@@ -349,6 +356,8 @@ def contains_any(t: TypeNode) -> bool:
         return True
     if isinstance(t, SliceType):
         return contains_any(t.element)
+    if isinstance(t, ByteArrayType):
+        return contains_any(t.element)
     if isinstance(t, MapType):
         return contains_any(t.key) or contains_any(t.value)
     if isinstance(t, SetType):
@@ -387,6 +396,8 @@ def type_name(t: TypeNode) -> str:
         if t.kind == "never":
             return "never"
         return t.kind
+    if isinstance(t, ByteArrayType):
+        return "bytearray"
     if isinstance(t, SliceType):
         return "list[" + type_name(t.element) + "]"
     if isinstance(t, MapType):
@@ -448,6 +459,8 @@ def type_eq(a: TypeNode, b: TypeNode) -> bool:
         return a.kind == b.kind
     if isinstance(a, PrimitiveType) or isinstance(b, PrimitiveType):
         return False
+    if isinstance(a, ByteArrayType) and isinstance(b, ByteArrayType):
+        return type_eq(a.element, b.element)
     if isinstance(a, SliceType) and isinstance(b, SliceType):
         return type_eq(a.element, b.element)
     if isinstance(a, MapType) and isinstance(b, MapType):
@@ -662,6 +675,8 @@ def typenode_to_dict(t: TypeNode) -> JsonValue:
     """Convert a TypeNode to a JsonValue dict for serialization."""
     if isinstance(t, PrimitiveType):
         return JDict({"kind": JStr(t.kind)})
+    if isinstance(t, ByteArrayType):
+        return JDict({"_type": JStr("Slice"), "element": JDict({"kind": JStr("int")})})
     if isinstance(t, SliceType):
         return JDict({"_type": JStr("Slice"), "element": typenode_to_dict(t.element)})
     if isinstance(t, MapType):
@@ -749,3 +764,4 @@ STR_TYPE: TypeNode = PrimitiveType("string")
 VOID_TYPE: TypeNode = PrimitiveType("void")
 NEVER_TYPE: TypeNode = PrimitiveType("never")
 BYTES_TYPE: TypeNode = SliceType(PrimitiveType("byte"))
+BYTEARRAY_TYPE: TypeNode = ByteArrayType(PrimitiveType("int"))

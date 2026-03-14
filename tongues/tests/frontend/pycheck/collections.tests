@@ -487,6 +487,37 @@ reveal:4 = str
 reveal:5 = float
 ---
 
+=== bytearray iteration yields int
+def f(b: bytearray) -> int:
+    total: int = 0
+    for x in b:
+        total += x
+    return total
+---
+ok
+---
+
+=== bytearray constructor no args
+def f() -> bytearray:
+    return bytearray()
+---
+ok
+---
+
+=== bytearray constructor from bytes
+def f(b: bytes) -> bytearray:
+    return bytearray(b)
+---
+ok
+---
+
+=== list of bytearray iteration
+def f(b: bytearray) -> list[int]:
+    return list(b)
+---
+ok
+---
+
 === mutated list param passable to non-mutating function
 class Item:
     pass
