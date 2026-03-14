@@ -32,7 +32,6 @@ TRANSPILED_BINARY: str | None = os.environ.get("TONGUES_TRANSPILED_BINARY")
 
 _TRANSPILED_MODULE = None
 _TRANSPILED_TY_MODULE = None
-_TAYTSH_RUNNER: str = os.environ.get("TONGUES_TAYTSH_RUNNER", "treewalker")
 if TRANSPILED_BINARY is not None and TRANSPILED_BINARY.endswith(".py"):
     _spec = importlib.util.spec_from_file_location(
         "tongues_transpiled", TRANSPILED_BINARY
@@ -237,27 +236,22 @@ from src.middleend.returns import analyze_returns
 from src.middleend.scope import analyze_scope
 from src.middleend.strings import analyze_strings
 from src.taytsh import parse as taytsh_parse
-from src.taytsh.treewalker import run as taytsh_run, prepare as _taytsh_prepare
+from src.taytsh.vm import (
+    vm_run as taytsh_run,
+    vm_prepare as _taytsh_vm_prepare,
+    VM as _TaytshVM,
+)
 from src.taytsh.ast import (
     collect_expr_annotations,
     serialize_annotations,
 )
 from src.taytsh.check import check_with_info
-from src.taytsh.vm import (
-    vm_run as _taytsh_vm_run,
-    vm_prepare as _taytsh_vm_prepare,
-    VM as _TaytshVM,
-)
 
-_TAYTSH_RUNTIME = None
 _TAYTSH_COMPILED = None
 
 if TRANSPILED_BINARY is not None and TRANSPILED_BINARY.endswith(".ty"):
     _TRANSPILED_TY_MODULE = taytsh_parse(Path(TRANSPILED_BINARY).resolve().read_text())
-    if _TAYTSH_RUNNER == "vm":
-        _TAYTSH_COMPILED = _taytsh_vm_prepare(_TRANSPILED_TY_MODULE)
-    else:
-        _TAYTSH_RUNTIME = _taytsh_prepare(_TRANSPILED_TY_MODULE)
+    _TAYTSH_COMPILED = _taytsh_vm_prepare(_TRANSPILED_TY_MODULE)
 
 PARSE_TIMEOUT = 5
 TESTS_DIR = Path(__file__).parent
@@ -608,22 +602,14 @@ def _run_inprocess(
 def _run_taytsh_inprocess(
     argv: list[str], *, stdin_data: bytes = b""
 ) -> subprocess.CompletedProcess:
-    """Run the transpiled Taytsh module in-process through treewalker or VM."""
-    if _TAYTSH_RUNNER == "vm":
-        vm = _TaytshVM(_TAYTSH_COMPILED)
-        result = vm.invoke(stdin=stdin_data, args=argv)
-        return subprocess.CompletedProcess(
-            args=argv,
-            returncode=result.exit_code,
-            stdout=result.stdout.encode(),
-            stderr=result.stderr.encode(),
-        )
-    result = _TAYTSH_RUNTIME.invoke(stdin=stdin_data, args=argv)
+    """Run the transpiled Taytsh module in-process through the VM."""
+    vm = _TaytshVM(_TAYTSH_COMPILED)
+    result = vm.invoke(stdin=stdin_data, args=argv)
     return subprocess.CompletedProcess(
         args=argv,
         returncode=result.exit_code,
-        stdout=result.stdout,
-        stderr=result.stderr,
+        stdout=result.stdout.encode(),
+        stderr=result.stderr.encode(),
     )
 
 

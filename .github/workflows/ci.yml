@@ -101,7 +101,7 @@ jobs:
             tongues/.out/java-classes/
 
   # ---------------------------------------------------------------------------
-  # Python: test, idempotence, treewalker, vm, pyright
+  # Python: test, idempotence, vm, pyright
   # ---------------------------------------------------------------------------
 
   test-tongues-python:
@@ -144,19 +144,6 @@ jobs:
       - run: docker build -t tongues-python docker/python
       - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _pyright
 
-  tw-taytsh-apptests-python:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: transpile-tongues-python
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
-        with:
-          name: transpiled-python
-          path: tongues/.out
-      - run: docker build -t tongues-python docker/python
-      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _treewalker python
-
   vm-taytsh-apptests-python:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -171,7 +158,7 @@ jobs:
       - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _vm python
 
   # ---------------------------------------------------------------------------
-  # Ruby: test, cross-equivalence, treewalker, vm
+  # Ruby: test, cross-equivalence, vm
   # ---------------------------------------------------------------------------
 
   test-tongues-ruby:
@@ -201,19 +188,6 @@ jobs:
       - run: docker build -t tongues-ruby docker/ruby
       - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile cross-equivalence ruby
 
-  tw-taytsh-apptests-ruby:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: transpile-tongues-ruby
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
-        with:
-          name: transpiled-ruby
-          path: tongues/.out
-      - run: docker build -t tongues-ruby docker/ruby
-      - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile _treewalker ruby
-
   vm-taytsh-apptests-ruby:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -228,7 +202,7 @@ jobs:
       - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile _vm ruby
 
   # ---------------------------------------------------------------------------
-  # Perl: test, cross-equivalence, treewalker, vm
+  # Perl: test, cross-equivalence, vm
   # ---------------------------------------------------------------------------
 
   test-tongues-perl:
@@ -258,19 +232,6 @@ jobs:
       - run: docker build -t tongues-perl docker/perl
       - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile cross-equivalence perl
 
-  tw-taytsh-apptests-perl:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: transpile-tongues-perl
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
-        with:
-          name: transpiled-perl
-          path: tongues/.out
-      - run: docker build -t tongues-perl docker/perl
-      - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile _treewalker perl
-
   vm-taytsh-apptests-perl:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -285,7 +246,7 @@ jobs:
       - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile _vm perl
 
   # ---------------------------------------------------------------------------
-  # JavaScript: test, cross-equivalence, treewalker, vm
+  # JavaScript: test, cross-equivalence, vm
   # ---------------------------------------------------------------------------
 
   test-tongues-javascript:
@@ -315,19 +276,6 @@ jobs:
       - run: docker build -t tongues-javascript docker/javascript
       - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile cross-equivalence javascript
 
-  tw-taytsh-apptests-javascript:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: transpile-tongues-javascript
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
-        with:
-          name: transpiled-javascript
-          path: tongues/.out
-      - run: docker build -t tongues-javascript docker/javascript
-      - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile _treewalker javascript
-
   vm-taytsh-apptests-javascript:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -342,7 +290,7 @@ jobs:
       - run: docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile _vm javascript
 
   # ---------------------------------------------------------------------------
-  # Java: test, cross-equivalence, treewalker, vm
+  # Java: test, cross-equivalence, vm
   # ---------------------------------------------------------------------------
 
   test-tongues-java:
@@ -370,19 +318,6 @@ jobs:
           path: tongues/.out
       - run: docker build -t tongues-java docker/java
       - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile cross-equivalence java
-
-  tw-taytsh-apptests-java:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: transpile-tongues-java
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
-        with:
-          name: transpiled-java
-          path: tongues/.out
-      - run: docker build -t tongues-java docker/java
-      - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile _treewalker-java
 
   vm-taytsh-apptests-java:
     runs-on: ubuntu-latest
@@ -523,28 +458,23 @@ jobs:
       - pytest-gen-softfloat
       - test-tongues-python
       - idempotence
-      - tw-taytsh-apptests-python
       - vm-taytsh-apptests-python
       - vm-test-tongues-python
       - pyright
       - test-tongues-ruby
       - cross-equivalence-ruby
-      - tw-taytsh-apptests-ruby
       - vm-taytsh-apptests-ruby
       - vm-test-tongues-ruby
       - test-tongues-perl
       - cross-equivalence-perl
-      - tw-taytsh-apptests-perl
       - vm-taytsh-apptests-perl
       - vm-test-tongues-perl
       - test-tongues-javascript
       - cross-equivalence-javascript
-      - tw-taytsh-apptests-javascript
       - vm-taytsh-apptests-javascript
       - vm-test-tongues-javascript
       - test-tongues-java
       - cross-equivalence-java
-      - tw-taytsh-apptests-java
       - vm-taytsh-apptests-java
       - vm-test-tongues-java
     steps:
@@ -555,28 +485,23 @@ jobs:
             "${{ needs.pytest-gen-softfloat.result }}" \
             "${{ needs.test-tongues-python.result }}" \
             "${{ needs.idempotence.result }}" \
-            "${{ needs.tw-taytsh-apptests-python.result }}" \
             "${{ needs.vm-taytsh-apptests-python.result }}" \
             "${{ needs.vm-test-tongues-python.result }}" \
             "${{ needs.pyright.result }}" \
             "${{ needs.test-tongues-ruby.result }}" \
             "${{ needs.cross-equivalence-ruby.result }}" \
-            "${{ needs.tw-taytsh-apptests-ruby.result }}" \
             "${{ needs.vm-taytsh-apptests-ruby.result }}" \
             "${{ needs.vm-test-tongues-ruby.result }}" \
             "${{ needs.test-tongues-perl.result }}" \
             "${{ needs.cross-equivalence-perl.result }}" \
-            "${{ needs.tw-taytsh-apptests-perl.result }}" \
             "${{ needs.vm-taytsh-apptests-perl.result }}" \
             "${{ needs.vm-test-tongues-perl.result }}" \
             "${{ needs.test-tongues-javascript.result }}" \
             "${{ needs.cross-equivalence-javascript.result }}" \
-            "${{ needs.tw-taytsh-apptests-javascript.result }}" \
             "${{ needs.vm-taytsh-apptests-javascript.result }}" \
             "${{ needs.vm-test-tongues-javascript.result }}" \
             "${{ needs.test-tongues-java.result }}" \
             "${{ needs.cross-equivalence-java.result }}" \
-            "${{ needs.tw-taytsh-apptests-java.result }}" \
             "${{ needs.vm-taytsh-apptests-java.result }}" \
             "${{ needs.vm-test-tongues-java.result }}"; do
             if [ "$result" != "success" ] && [ "$result" != "skipped" ]; then
