@@ -1258,7 +1258,17 @@ def _pipeline_post_parse(
     if stop_at == "lowering":
         return (0, to_json(module_to_dict(module)))
     checker = Checker()
-    checker.collect_declarations(module)
+    try:
+        checker.collect_declarations(module)
+    except Exception as exc:
+        if checker.errors:
+            err_strs: list[str] = [str(e) for e in checker.errors]
+            _print_errors(err_strs)
+        print(
+            "error: check phase crashed (malformed lowered AST): " + str(exc),
+            file=sys.stderr,
+        )
+        return (1, "")
     if checker.errors:
         err_strs: list[str] = [str(e) for e in checker.errors]
         _print_errors(err_strs)
