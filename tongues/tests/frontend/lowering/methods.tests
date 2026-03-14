@@ -91,9 +91,9 @@ def f(b: bytearray) -> None:
 error: method
 ---
 
-=== bytearray method hex passthrough
+=== bytearray method hex unsupported
 def f(b: bytearray) -> str:
     return b.hex()
 ---
-b.hex()
+error: unsupported method 'hex' on bytearray
 ---
