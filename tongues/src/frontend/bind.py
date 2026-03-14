@@ -2057,12 +2057,12 @@ class NameResolver:
         if shadow_params:
             called: set[str] = set()
             _collect_called_names(body, called)
-            for arg_node, arg_name in shadow_params:
-                if arg_name in called:
+            for shadow_node, shadow_name in shadow_params:
+                if shadow_name in called:
                     self.warning(
-                        arg_node,
+                        shadow_node,
                         "shadowing",
-                        "parameter '" + arg_name + "' shadows builtin",
+                        "parameter '" + shadow_name + "' shadows builtin",
                     )
 
     def collect_locals_from_body(
