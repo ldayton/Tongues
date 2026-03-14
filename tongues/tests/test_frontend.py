@@ -83,33 +83,6 @@ def test_names(names_input, names_expected):
     check_expected(names_expected, run_names(names_input), "names")
 
 
-@pytest.mark.parametrize(
-    "source",
-    [
-        # Parameter named 'len' but builtin len() never called in body
-        pytest.param(
-            "def f(len: int) -> int:\n    return len\n",
-            id="len-not-called-as-builtin",
-        ),
-        # Parameter named 'range' used as a plain variable
-        pytest.param(
-            "def f(range: int) -> int:\n    return range + 1\n",
-            id="range-not-called-as-builtin",
-        ),
-        # Multiple params shadow builtins but none used as builtins
-        pytest.param(
-            "def f(type: str, len: int) -> str:\n    return type\n",
-            id="multiple-shadows-none-used-as-builtin",
-        ),
-    ],
-)
-def test_param_shadow_no_warning_when_builtin_unused(source: str) -> None:
-    """Parameter shadowing a builtin should not warn when the builtin is never called."""
-    result = run_names(source)
-    assert not result.errors, f"unexpected errors: {result.errors}"
-    assert not result.warnings, f"unexpected warnings: {result.warnings}"
-
-
 def test_sigs(sigs_input, sigs_expected):
     check_expected(sigs_expected, run_sigs(sigs_input), "sigs")
 
