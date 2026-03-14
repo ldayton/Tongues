@@ -2039,13 +2039,13 @@ class NameResolver:
             self.result.table.add_local(class_name, func_name, info)
         kw_list = get_nodes(args_node, "kwonlyargs")
         for kw_arg in kw_list:
-            arg_name = get_str(kw_arg, "arg")
-            lineno = get_int(kw_arg, "lineno")
-            col = get_int(kw_arg, "col_offset")
-            if arg_name in ALLOWED_BUILTINS:
-                shadow_params.append((kw_arg, arg_name))
+            kw_name = get_str(kw_arg, "arg")
+            kw_lineno = get_int(kw_arg, "lineno")
+            kw_col = get_int(kw_arg, "col_offset")
+            if kw_name in ALLOWED_BUILTINS:
+                shadow_params.append((kw_arg, kw_name))
             info = NameInfo(
-                arg_name, "parameter", "local", lineno, col, class_name, func_name
+                kw_name, "parameter", "local", kw_lineno, kw_col, class_name, func_name
             )
             self.result.table.add_local(class_name, func_name, info)
         # Collect local variables from body
