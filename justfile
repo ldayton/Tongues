@@ -571,16 +571,54 @@ vscode:
     fi
     code --install-extension "${vsix[0]}"
 
-# Quick sequential check: style, then test each language (stop on first failure)
+# Quick check: style --fix + test-tongues for all languages in parallel
 quick-check:
     #!/usr/bin/env bash
-    set -euo pipefail
-    just -f {{justfile()}} style --fix
-    just -f {{justfile()}} test-tongues javascript
-    just -f {{justfile()}} test-tongues java
-    just -f {{justfile()}} test-tongues python
-    just -f {{justfile()}} test-tongues ruby
-    just -f {{justfile()}} test-tongues perl
+    set -uo pipefail
+    pids=()
+    declare -A pid_names=()
+    _cleanup_done=0
+    cleanup() { (( _cleanup_done )) && return; _cleanup_done=1; for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done; for p in "${pids[@]}"; do wait "$p" 2>/dev/null || true; done; }
+    trap 'cleanup; trap - INT; kill -INT $$' INT
+    trap 'cleanup; trap - TERM; kill -TERM $$' TERM
+    trap 'cleanup' EXIT
+    printf '\033[32m[quick-check]\033[0m\n'
+    start=$SECONDS
+    just -f {{justfile()}} style --fix & pids+=($!); pid_names[$!]="style"
+    just -f {{justfile()}} test-tongues javascript & pids+=($!); pid_names[$!]="test-tongues-javascript"
+    just -f {{justfile()}} test-tongues java & pids+=($!); pid_names[$!]="test-tongues-java"
+    just -f {{justfile()}} test-tongues python & pids+=($!); pid_names[$!]="test-tongues-python"
+    just -f {{justfile()}} test-tongues ruby & pids+=($!); pid_names[$!]="test-tongues-ruby"
+    just -f {{justfile()}} test-tongues perl & pids+=($!); pid_names[$!]="test-tongues-perl"
+    failed=0
+    declare -A results=()
+    for pid in "${pids[@]}"; do
+        name="${pid_names[$pid]}"
+        if wait "$pid"; then
+            results[$name]=PASS
+        else
+            results[$name]=FAIL
+            failed=1
+        fi
+    done
+    elapsed=$((SECONDS - start))
+    printf '\n%-30s %s\n' "SUITE" "RESULT"
+    printf '%-30s %s\n' "-----" "------"
+    for name in $(echo "${!results[@]}" | tr ' ' '\n' | sort); do
+        r="${results[$name]}"
+        if [ "$r" = "PASS" ]; then
+            printf '%-30s \033[32m%s\033[0m\n' "$name" "$r"
+        else
+            printf '%-30s \033[31m%s\033[0m\n' "$name" "$r"
+        fi
+    done
+    printf '\n'
+    if [ $failed -eq 0 ]; then
+        printf '\033[32m[quick-check] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[quick-check] %ds (FAILED)\033[0m\n' "$elapsed"
+        exit 1
+    fi
 
 # Run the full CI check suite locally
 full-check:
