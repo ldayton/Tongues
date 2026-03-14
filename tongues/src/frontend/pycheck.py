@@ -838,33 +838,13 @@ def _resolve_attr(
         lineno = get_int(value_node, "lineno") if isinstance(value_node, dict) else 0
         ctx.result.add_error(lineno, 0, "unsupported method '" + attr + "' on str")
         return ANY_TYPE
-    # ByteArray methods (read-only bytes methods + mutating list methods)
+    # ByteArray methods (mutating list methods + decode)
     if isinstance(obj_type, ByteArrayType):
         elem = INT_TYPE
         if attr == "decode":
             return FuncType([], STR_TYPE)
-        if attr == "find" or attr == "rfind":
-            return FuncType([BYTES_TYPE], INT_TYPE)
         if attr == "count":
             return FuncType([elem], INT_TYPE)
-        if attr == "startswith" or attr == "endswith":
-            return FuncType([BYTES_TYPE], BOOL_TYPE)
-        if attr == "replace":
-            return FuncType([BYTES_TYPE, BYTES_TYPE], obj_type)
-        if (
-            attr == "upper"
-            or attr == "lower"
-            or attr == "strip"
-            or attr == "lstrip"
-            or attr == "rstrip"
-        ):
-            return FuncType([], obj_type)
-        if attr == "split":
-            return FuncType([], SliceType(obj_type))
-        if attr == "join":
-            return FuncType([SliceType(BYTES_TYPE)], obj_type)
-        if attr == "hex":
-            return FuncType([], STR_TYPE)
         if attr == "append":
             return FuncType([elem], VOID_TYPE)
         if attr == "extend":

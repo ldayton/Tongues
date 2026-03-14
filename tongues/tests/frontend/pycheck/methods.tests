@@ -315,18 +315,18 @@ def f(b: bytearray) -> str:
 ok
 ---
 
-=== bytearray method find accepted
+=== bytearray method find rejected
 def f(b: bytearray) -> int:
     return b.find(b"x")
 ---
-ok
+error: method
 ---
 
-=== bytearray method hex accepted
+=== bytearray method hex rejected
 def f(b: bytearray) -> str:
     return b.hex()
 ---
-ok
+error: method
 ---
 
 === bytearray method pop accepted
@@ -385,11 +385,11 @@ def f(b: bytearray) -> int:
 ok
 ---
 
-=== bytearray method replace accepted
+=== bytearray method replace rejected
 def f(b: bytearray, old: bytes, new: bytes) -> bytearray:
     return b.replace(old, new)
 ---
-ok
+error: method
 ---
 
 === bytearray append type error

@@ -820,6 +820,8 @@ class _JavaEmitter(Emitter):
 
     def _emit_builtin_exception_stubs(self, module: TModule) -> None:
         thrown = _collect_thrown_types(module)
+        if _module_uses_builtin(module, "Decode"):
+            thrown.add("UnicodeDecodeError")
         defined: set[str] = set()
         for decl in module.decls:
             if isinstance(decl, TStructDecl):
@@ -5445,6 +5447,88 @@ def _visit_thrown_types(stmts: list[TStmt], names: set[str]) -> None:
                 _visit_thrown_types(case.body, names)
             if stmt.default is not None:
                 _visit_thrown_types(stmt.default.body, names)
+
+
+def _expr_uses_builtin(expr: TExpr, name: str) -> bool:
+    """Check if an expression tree contains a call to the given builtin."""
+    if isinstance(expr, TCall):
+        if isinstance(expr.func, TVar) and expr.func.name == name:
+            return True
+        if _expr_uses_builtin(expr.func, name):
+            return True
+        for arg in expr.args:
+            if _expr_uses_builtin(arg.value, name):
+                return True
+    if isinstance(expr, TBinaryOp):
+        return _expr_uses_builtin(expr.left, name) or _expr_uses_builtin(
+            expr.right, name
+        )
+    if isinstance(expr, TUnaryOp):
+        return _expr_uses_builtin(expr.operand, name)
+    if isinstance(expr, TIndex):
+        return _expr_uses_builtin(expr.obj, name) or _expr_uses_builtin(
+            expr.index, name
+        )
+    if isinstance(expr, TTernary):
+        return (
+            _expr_uses_builtin(expr.cond, name)
+            or _expr_uses_builtin(expr.then_expr, name)
+            or _expr_uses_builtin(expr.else_expr, name)
+        )
+    return False
+
+
+def _stmts_use_builtin(stmts: list[TStmt], name: str) -> bool:
+    """Check if any statement in a list uses the given builtin."""
+    for stmt in stmts:
+        if isinstance(stmt, TExprStmt) and _expr_uses_builtin(stmt.expr, name):
+            return True
+        if isinstance(stmt, TLetStmt) and _expr_uses_builtin(stmt.value, name):
+            return True
+        if isinstance(stmt, TAssignStmt) and _expr_uses_builtin(stmt.value, name):
+            return True
+        if (
+            isinstance(stmt, TReturnStmt)
+            and stmt.value is not None
+            and _expr_uses_builtin(stmt.value, name)
+        ):
+            return True
+        if isinstance(stmt, TIfStmt):
+            if _stmts_use_builtin(stmt.then_body, name):
+                return True
+            if _stmts_use_builtin(stmt.else_body, name):
+                return True
+        if isinstance(stmt, TForStmt) and _stmts_use_builtin(stmt.body, name):
+            return True
+        if isinstance(stmt, TWhileStmt) and _stmts_use_builtin(stmt.body, name):
+            return True
+        if isinstance(stmt, TTryStmt):
+            if _stmts_use_builtin(stmt.body, name):
+                return True
+            for catch in stmt.catches:
+                if _stmts_use_builtin(catch.body, name):
+                    return True
+            if _stmts_use_builtin(stmt.finally_body, name):
+                return True
+        if isinstance(stmt, TMatchStmt):
+            for case in stmt.cases:
+                if _stmts_use_builtin(case.body, name):
+                    return True
+            if stmt.default is not None and _stmts_use_builtin(stmt.default.body, name):
+                return True
+    return False
+
+
+def _module_uses_builtin(module: TModule, name: str) -> bool:
+    """Check if any function in the module uses the given builtin."""
+    for decl in module.decls:
+        if isinstance(decl, TFnDecl) and _stmts_use_builtin(decl.body, name):
+            return True
+        if isinstance(decl, TStructDecl):
+            for m in decl.methods:
+                if _stmts_use_builtin(m.body, name):
+                    return True
+    return False
 
 
 def _collect_thrown_types(module: TModule) -> set[str]:
