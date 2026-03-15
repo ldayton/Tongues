@@ -477,7 +477,13 @@ def _backpatch_hoisted(pos: Pos, name: str, typ: TypeNode, env: _Env) -> None:
     # Merge with existing type if variable was assigned in another branch
     existing = env.var_types.get(name)
     if existing is not None:
-        typ = combine_types([existing, typ])
+        # rune + string → string (rune is auto-coerced via ToString)
+        if _is_type_dict(existing, ["rune"]) and _is_type_dict(typ, ["string"]):
+            typ = PrimitiveType("string")
+        elif _is_type_dict(existing, ["string"]) and _is_type_dict(typ, ["rune"]):
+            typ = PrimitiveType("string")
+        else:
+            typ = combine_types([existing, typ])
     # Convert pure void to error (void is only valid as part of Optional)
     if _is_type_dict(typ, ["void"]):
         typ = PrimitiveType("error")
@@ -3162,8 +3168,8 @@ def _lower_method_call(
     obj = _lower_expr(obj_node, env, ctx)
     # Unwrap pointer for type dispatch
     actual_type = _unwrap_pointer(obj_type)
-    # String methods
-    if _is_type_dict(actual_type, ["string"]):
+    # String methods (rune supports the same character-level methods)
+    if _is_type_dict(actual_type, ["string"]) or _is_type_dict(actual_type, ["rune"]):
         return _lower_string_method(pos, obj, method_name, args, env, ctx)
     # ByteArray methods
     if isinstance(actual_type, ByteArrayType):
