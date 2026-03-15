@@ -387,6 +387,35 @@ fn Main() -> void {
 error: cannot index optional
 ---
 
+=== valid: assignment narrows optional in branch
+fn Main() -> void {
+    let words: list[int]? = nil
+    if true {
+        words = [1, 2, 3]
+        reveal_type(words)
+        Append(words, 4)
+    }
+}
+---
+ok
+reveal:5=list[int]
+---
+
+=== valid: assignment narrows optional used in field constructor
+struct Foo {
+    name: string
+}
+fn Main() -> void {
+    let name: string? = nil
+    if true {
+        name = "hello"
+        let f: Foo = Foo(name)
+    }
+}
+---
+ok
+---
+
 === valid: bool variable narrowing
 fn Main() -> void {
     let val: int?

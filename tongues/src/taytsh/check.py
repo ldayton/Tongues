@@ -563,6 +563,27 @@ def _body_always_exits(stmts: list[TStmt]) -> bool:
     return isinstance(last, (TReturnStmt, TBreakStmt, TContinueStmt, TThrowStmt))
 
 
+def _is_narrowing_value(expr: TExpr) -> bool:
+    """True for expressions that are safe to narrow an optional on assignment."""
+    return isinstance(
+        expr,
+        (
+            TCall,
+            TListLit,
+            TMapLit,
+            TSetLit,
+            TTupleLit,
+            TIntLit,
+            TFloatLit,
+            TStringLit,
+            TBoolLit,
+            TByteLit,
+            TBytesLit,
+            TRuneLit,
+        ),
+    )
+
+
 def _field_access_path(expr: TExpr) -> str | None:
     """Build a dotted path from nested TFieldAccess, e.g. 'a.b.c'."""
     if isinstance(expr, TVar):
@@ -1766,12 +1787,15 @@ class Checker:
             if isinstance(stmt.target, TVar) and val_type is not None and self.scopes:
                 varname = stmt.target.name
                 if (
-                    isinstance(stmt.value, TCall)
-                    and isinstance(target_type, UnionT)
+                    isinstance(target_type, UnionT)
                     and not type_eq(val_type, target_type)
                     and not type_eq(val_type, NIL_T)
+                    and (
+                        isinstance(stmt.value, TCall)
+                        or (_is_narrowing_value(stmt.value) and len(self.scopes) > 2)
+                    )
                 ):
-                    # Non-nil call result assigned to union → narrow
+                    # Non-nil value assigned to union → narrow
                     self.scopes[-1][varname] = val_type
                 elif is_simple_optional(target_type) and (
                     contains_nil(val_type) or type_eq(val_type, NIL_T)
