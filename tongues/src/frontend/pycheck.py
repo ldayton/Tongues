@@ -2685,6 +2685,11 @@ def _validate_call_args(
             _check_call_args(func_info, args, env, ctx, lineno, n_kw)
             return
         if fname in ctx.known_classes:
+            methods = ctx.tc_result.methods.get(fname)
+            if methods is not None:
+                init_method = methods.get("__init__")
+                if init_method is not None:
+                    _check_call_args(init_method, args, env, ctx, lineno, n_kw)
             return
         ftype = env.get_type(fname)
         if ftype is not None and isinstance(ftype, FuncType):
