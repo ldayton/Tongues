@@ -1,3 +1,13 @@
+=== none-init then annotated redeclaration in branch
+def f(cond: bool) -> None:
+    words = None
+    if cond:
+        words: list[int] = []
+        words.append(1)
+---
+let words: list[int]? = nil
+---
+
 === simple function
 def f(x: int) -> str:
     return str(x)
