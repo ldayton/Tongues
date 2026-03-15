@@ -3072,20 +3072,25 @@ def _lower_struct_constructor(
     lowered_args: list[TArg] = []
     if args and keywords:
         # Mixed positional and keyword: convert all to named args.
+        # Map param names to field names via param_to_field.
         cls_info = ctx.tc_result.classes.get(class_name)
-        field_names: list[str] = []
+        init_params: list[str] = []
+        ptf: dict[str, str] = {}
         if cls_info is not None:
-            field_names = cls_info.init_params
+            init_params = cls_info.init_params
+            ptf = cls_info.param_to_field
         for i, a in enumerate(args):
             name: str | None = None
-            if i < len(field_names):
-                name = field_names[i]
+            if i < len(init_params):
+                pname = init_params[i]
+                name = ptf.get(pname, pname)
             lowered_args.append(TArg(pos, name, _lower_expr(a, env, ctx)))
         for kw in keywords:
             kw_name = get_str(kw, "arg")
             kw_val = get_node(kw, "value")
             if kw_name and kw_val:
-                lowered_args.append(TArg(pos, kw_name, _lower_expr(kw_val, env, ctx)))
+                field_name = ptf.get(kw_name, kw_name)
+                lowered_args.append(TArg(pos, field_name, _lower_expr(kw_val, env, ctx)))
     else:
         for a in args:
             lowered_args.append(TArg(pos, None, _lower_expr(a, env, ctx)))
