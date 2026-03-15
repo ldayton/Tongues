@@ -6758,14 +6758,13 @@ def _build_struct(
             ancestor_fields = _collect_ancestor_fields(pos, name, ctx)
             inherited_field_names: set[str] = set()
             for af_name, af_type, af_has_default, af_self_ref in ancestor_fields:
-                if not af_has_default and af_name in cls_info.const_fields:
-                    af_has_default = True
+                has_def = af_has_default
+                if not has_def and af_name in cls_info.const_fields:
+                    has_def = True
                 child_finfo = cls_info.fields.get(af_name)
-                if not af_has_default and child_finfo is not None and child_finfo.has_default:
-                    af_has_default = True
-                fields.append(
-                    TFieldDecl(pos, af_name, af_type, af_has_default, af_self_ref)
-                )
+                if not has_def and child_finfo is not None and child_finfo.has_default:
+                    has_def = True
+                fields.append(TFieldDecl(pos, af_name, af_type, has_def, af_self_ref))
                 inherited_field_names.add(af_name)
             fkeys = _collect_field_keys(cls_info, inherited_field_names)
             for fname in fkeys:
