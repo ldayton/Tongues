@@ -1793,6 +1793,11 @@ class Checker:
                     and (
                         isinstance(stmt.value, TCall)
                         or (_is_narrowing_value(stmt.value) and len(self.scopes) > 2)
+                        or (
+                            isinstance(stmt.value, (TVar, TFieldAccess))
+                            and not contains_nil(val_type)
+                            and len(self.scopes) > 2
+                        )
                     )
                 ):
                     # Non-nil value assigned to union → narrow
@@ -2693,10 +2698,8 @@ class Checker:
                     left.kind == TY_INT and right.kind == TY_BYTE
                 ):
                     return BOOL_T
-                # Allow comparing optional/union-containing-nil with nil
-                if left.kind == TY_NIL and contains_nil(right):
-                    return BOOL_T
-                if right.kind == TY_NIL and contains_nil(left):
+                # Allow comparing any type with nil
+                if left.kind == TY_NIL or right.kind == TY_NIL:
                     return BOOL_T
                 self.error(
                     "cannot compare " + type_name(left) + " and " + type_name(right),

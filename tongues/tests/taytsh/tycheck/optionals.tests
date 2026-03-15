@@ -506,3 +506,26 @@ fn Main() -> void {
 ---
 ok
 ---
+
+=== valid: hoisted optional var narrowed by field nil check
+struct Token { value: string }
+struct Lexer {
+    cache: Token?
+
+    fn Get(this) -> Token {
+        let tok: Token? = nil
+        if this.cache != nil {
+            tok = this.cache
+            return tok
+        }
+        tok = Token("")
+        return tok
+    }
+}
+fn Main() -> void {
+    let lex: Lexer = Lexer(nil)
+    let t: Token = lex.Get()
+}
+---
+ok
+---

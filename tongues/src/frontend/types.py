@@ -505,12 +505,15 @@ def type_eq(a: TypeNode, b: TypeNode) -> bool:
 
 def combine_types(types: list[TypeNode]) -> TypeNode:
     """Flatten, deduplicate, and normalize a list of types into a single type."""
-    # Flatten nested unions
+    # Flatten nested unions and optionals
     flat: list[TypeNode] = []
     for t in types:
         if isinstance(t, UnionType):
             for variant in t.variants:
                 flat.append(variant)
+        elif isinstance(t, OptionalType):
+            flat.append(t.inner)
+            flat.append(PrimitiveType("void"))
         else:
             flat.append(t)
     # Filter out never

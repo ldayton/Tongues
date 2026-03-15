@@ -227,8 +227,8 @@ let abs: int = x > 0 ? x : -x
 | `?:`     | `bool, T, T` | `T`    | 1    | right | ternary conditional                                                                                                               |
 | `\|\|`   | `bool, bool` | `bool` | 2    | left  | logical or, short-circuit                                                                                                         |
 | `&&`     | `bool, bool` | `bool` | 3    | left  | logical and, short-circuit                                                                                                        |
-| `==`     | `T, T`       | `bool` | 4    | none  | equality; T must not transitively contain fn; deep structural for structs/collections/interfaces, IEEE 754 for float (NaN != NaN) |
-| `!=`     | `T, T`       | `bool` | 4    | none  | inequality                                                                                                                        |
+| `==`     | `T, T`       | `bool` | 4    | none  | equality; T must not transitively contain fn; deep structural for structs/collections/interfaces, IEEE 754 for float (NaN != NaN). Comparing any type to `nil` is always valid (result is statically known for non-optional types). |
+| `!=`     | `T, T`       | `bool` | 4    | none  | inequality; same nil rule as `==`                                                                                                 |
 | `<`      | `T, T`       | `bool` | 4    | none  | less than (int, float, byte, rune, string)                                                                                        |
 | `<=`     | `T, T`       | `bool` | 4    | none  | less or equal (int, float, byte, rune, string)                                                                                    |
 | `>`      | `T, T`       | `bool` | 4    | none  | greater than (int, float, byte, rune, string)                                                                                     |

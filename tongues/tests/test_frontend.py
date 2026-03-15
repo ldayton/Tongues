@@ -351,6 +351,10 @@ def test_hoisted_var_nil_narrowing() -> None:
         "        tok = Token('')\n"
         "        self._last_read_token = tok\n"
         "        return tok\n"
+        "def main() -> None:\n"
+        "    pass\n"
+        "if __name__ == '__main__':\n"
+        "    main()\n"
     )
     output, err = emit_from_python(source, "perl")
     assert err is None, f"emit error: {err}"
