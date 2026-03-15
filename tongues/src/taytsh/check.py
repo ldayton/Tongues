@@ -1778,6 +1778,19 @@ class Checker:
                 ):
                     # Optional/nil assigned to narrowed optional → reset
                     self.scopes[-1][varname] = target_type
+            if (
+                isinstance(stmt.target, TFieldAccess)
+                and val_type is not None
+                and self.scopes
+            ):
+                path = _field_access_path(stmt.target)
+                if path is not None:
+                    if is_simple_optional(target_type) and (
+                        contains_nil(val_type) or type_eq(val_type, NIL_T)
+                    ):
+                        self.scopes[-1][path] = target_type
+                    elif not type_eq(val_type, target_type):
+                        self.scopes[-1][path] = val_type
 
     def check_op_assign_stmt(self, stmt: TOpAssignStmt) -> None:
         target_type = self.check_expr(stmt.target, None)
@@ -1927,8 +1940,11 @@ class Checker:
         if stmt.else_body is None:
             nil_guard_checks = _collect_nil_checks_guard(stmt.cond)
             for ngv, ngk in nil_guard_checks:
-                if ngk == "is_nil" and "." not in ngv and ngv not in then_exit_types:
-                    looked = self._try_lookup(ngv)
+                if ngk == "is_nil" and ngv not in then_exit_types:
+                    if "." in ngv:
+                        looked = self._lookup_field_type(ngv, stmt.pos)
+                    else:
+                        looked = self._try_lookup(ngv)
                     if looked is not None:
                         then_exit_types[ngv] = looked
         self.exit_scope()
@@ -1992,11 +2008,14 @@ class Checker:
         if stmt.else_body is None and not then_exits:
             nil_checks = _collect_nil_checks_guard(stmt.cond)
             for var_name, check_kind in nil_checks:
-                if check_kind != "is_nil" or "." in var_name:
+                if check_kind != "is_nil":
                     continue
                 t_type = then_exit_types.get(var_name)
                 if t_type is not None and not contains_nil(t_type):
-                    var_type = self.lookup(var_name, stmt.pos)
+                    if "." in var_name:
+                        var_type = self._lookup_field_type(var_name, stmt.pos)
+                    else:
+                        var_type = self.lookup(var_name, stmt.pos)
                     if var_type is not None and contains_nil(var_type):
                         if self.scopes:
                             self.scopes[-1][var_name] = remove_nil(var_type)
