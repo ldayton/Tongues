@@ -1079,6 +1079,7 @@ class Checker:
         self.in_finally: bool = False
         self.uninitialized: set[str] = set()
         self._declared: dict[str, Type] = {}
+        self._declared_shadow_stack: list[dict[str, Type]] = []
         self._allow_shadow: bool = False
         self.expr_types: dict[tuple[int, int], Type] = {}
         self.bool_facts: dict[str, TExpr] = {}
@@ -1097,9 +1098,14 @@ class Checker:
 
     def enter_scope(self) -> None:
         self.scopes.append({})
+        self._declared_shadow_stack.append({})
 
     def exit_scope(self) -> None:
-        self.scopes.pop()
+        leaving = self.scopes.pop()
+        saved = self._declared_shadow_stack.pop()
+        for name in leaving:
+            if name in saved:
+                self._declared[name] = saved[name]
 
     def declare(self, name: str, typ: Type, pos: Pos) -> None:
         if name == "_":
@@ -1121,6 +1127,12 @@ class Checker:
                 i -= 1
         if self.scopes:
             self.scopes[-1][name] = typ
+            if (
+                self._allow_shadow
+                and name in self._declared
+                and self._declared_shadow_stack
+            ):
+                self._declared_shadow_stack[-1][name] = self._declared[name]
             self._declared[name] = typ
 
     def narrow(self, name: str, typ: Type) -> None:
