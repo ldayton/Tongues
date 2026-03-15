@@ -465,6 +465,16 @@ ok
 reveal:3 = str
 ---
 
+=== string iteration append to list
+def f(s: str) -> list[str]:
+    chars: list[str] = []
+    for ch in s:
+        chars.append(ch)
+    return chars
+---
+ok
+---
+
 === zip bytes for loop var types
 def f(a: bytes, b: bytes) -> None:
     for x, y in zip(a, b):
