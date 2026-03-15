@@ -1815,11 +1815,17 @@ def _lower_single_compare(
     # is None → IsNil(x) (keep IsNil to avoid checker narrowing to nil in then-body)
     if op_type == "Is":
         if _is_ast(comp_node, "Constant") and isinstance(comp_node.get("value"), JNull):
+            lt = _lookup_expr_type(left_node, env, ctx)
+            if not _is_optional_type(lt):
+                return TBoolLit(pos, {}, False)
             left = _lower_expr(left_node, env, ctx)
             return _make_call(pos, "IsNil", [left])
     # is not None → x != nil (TVar) or !IsNil(expr)
     if op_type == "IsNot":
         if _is_ast(comp_node, "Constant") and isinstance(comp_node.get("value"), JNull):
+            lt = _lookup_expr_type(left_node, env, ctx)
+            if not _is_optional_type(lt):
+                return TBoolLit(pos, {}, True)
             left = _lower_expr(left_node, env, ctx)
             if isinstance(left, TVar):
                 return TBinaryOp(pos, {}, "!=", left, TNilLit(pos, {}))
