@@ -6824,15 +6824,18 @@ def _build_struct(
                     fields.append(
                         TFieldDecl(pos, fname, ftype, finfo.has_default, finfo.self_ref)
                     )
-        # Reorder: non-default fields first, then default fields.
+        # Reorder: required first, then own-class defaulted, then inherited defaulted.
         required: list[TFieldDecl] = []
-        defaulted: list[TFieldDecl] = []
+        own_defaulted: list[TFieldDecl] = []
+        inherited_defaulted: list[TFieldDecl] = []
         for f in fields:
-            if f.has_default:
-                defaulted.append(f)
-            else:
+            if not f.has_default:
                 required.append(f)
-        fields = required + defaulted
+            elif f.name in inherited_field_names:
+                inherited_defaulted.append(f)
+            else:
+                own_defaulted.append(f)
+        fields = required + own_defaulted + inherited_defaulted
     # Build methods — own + inherited from ancestors
     methods: list[TFnDecl] = []
     own_method_names: set[str] = set()
