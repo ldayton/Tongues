@@ -1288,6 +1288,9 @@ def _lower_name(node: ASTNode, env: _Env, ctx: _LowerCtx) -> TExpr:
         return TNilLit(pos, {})
     if name == "self":
         return TVar(pos, {}, "this")
+    sub = env.isinstance_subs.get(name)
+    if sub is not None:
+        return TVar(pos, _name_ann(sub, name), sub)
     safe = _safe_name(name)
     return TVar(pos, _name_ann(safe, name), safe)
 
@@ -5640,6 +5643,8 @@ def _lower_isinstance_chain(
             binding_name = binding_name + str(suffix)
         env.declared.add(binding_name)
         case_env = env.copy()
+        if var_name:
+            case_env.isinstance_subs[var_name] = binding_name
         if extra_conds is not None:
             # Lower extra conditions as && chain
             cond: TExpr = _lower_as_bool(extra_conds[0], case_env, ctx)
@@ -5719,6 +5724,8 @@ def _lower_match(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
             binding_name = _match_binding_name(type_name, env)
             env.declared.add(binding_name)
             case_env = env.copy()
+            if subj_name:
+                case_env.isinstance_subs[subj_name] = binding_name
             case_body = _lower_stmts(case_body_nodes, case_env, ctx)
             tp = TPatternType(pos, binding_name, TIdentType(pos, type_name), {})
             type_cases.append(TMatchCase(pos, tp, case_body, {}))
@@ -5741,8 +5748,6 @@ def _lower_match(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                             type_cases.append(TMatchCase(pos, ep, case_body, {}))
         elif pt == "MatchOr":
             subs = get_nodes(pattern, "patterns")
-            case_env = env.copy()
-            case_body = _lower_stmts(case_body_nodes, case_env, ctx)
             # Emit one case arm per MatchClass/MatchValue alternative
             for sub in subs:
                 if get_str(sub, "_type") == "MatchClass":
@@ -5750,11 +5755,16 @@ def _lower_match(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                     type_name = get_str(sub_cls, "id")
                     binding_name = _match_binding_name(type_name, env)
                     env.declared.add(binding_name)
+                    case_env = env.copy()
+                    if subj_name:
+                        case_env.isinstance_subs[subj_name] = binding_name
+                    case_body = _lower_stmts(case_body_nodes, case_env, ctx)
                     tp = TPatternType(pos, binding_name, TIdentType(pos, type_name), {})
                     type_cases.append(TMatchCase(pos, tp, case_body, {}))
                 elif get_str(sub, "_type") == "MatchSingleton":
                     v = sub.get("value")
                     if isinstance(v, JNull):
+                        case_body = _lower_stmts(case_body_nodes, env.copy(), ctx)
                         nil_cases.append(
                             TMatchCase(pos, TPatternNil(pos), case_body, {})
                         )
@@ -5766,6 +5776,9 @@ def _lower_match(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                             sv_enum = get_str(sv_obj, "id")
                             sv_variant = get_str(sv, "attr")
                             if sv_enum in ctx.enum_classes and sv_variant:
+                                case_body = _lower_stmts(
+                                    case_body_nodes, env.copy(), ctx
+                                )
                                 ep = TPatternEnum(pos, sv_enum, sv_variant)
                                 type_cases.append(TMatchCase(pos, ep, case_body, {}))
     if default is None:

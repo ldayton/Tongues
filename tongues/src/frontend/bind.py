@@ -1702,6 +1702,20 @@ def get_name_id(node: ASTNode) -> str | None:
     return None
 
 
+def _is_union_annotation(node: ASTNode | None) -> bool:
+    """Check if an AST node is a Union[...] subscript or A | B pipe union."""
+    if node is None:
+        return False
+    node_t = get_str(node, "_type")
+    if node_t == "Subscript":
+        value_node = get_node(node, "value")
+        return get_str(value_node, "id") == "Union"
+    if node_t == "BinOp":
+        op = get_node(node, "op")
+        return get_str(op, "_type") == "BitOr"
+    return False
+
+
 def is_all_caps(name: str) -> bool:
     """Check if name is ALL_CAPS (constant convention)."""
     if not name:
@@ -1841,7 +1855,12 @@ class NameResolver:
                 for tgt in targets:
                     if get_str(tgt, "_type") == "Name":
                         name = get_str(tgt, "id")
-                        if is_all_caps(name):
+                        if _is_union_annotation(value):
+                            info = NameInfo(
+                                name, "type_alias", "module", lineno, col, "", ""
+                            )
+                            self._register_module_name(stmt, info)
+                        elif is_all_caps(name):
                             info = NameInfo(
                                 name, "constant", "module", lineno, col, "", ""
                             )
@@ -2478,7 +2497,8 @@ def _compute_derived(
         result.known_funcs.add(bname)
     ta_body = get_nodes(ast_dict, "body")
     for ta_stmt in ta_body:
-        if get_str(ta_stmt, "_type") == "TypeAlias":
+        ta_type = get_str(ta_stmt, "_type")
+        if ta_type == "TypeAlias":
             ta_name_node = get_node(ta_stmt, "name")
             ta_name = get_str(ta_name_node, "id")
             if ta_name:
@@ -2489,6 +2509,17 @@ def _compute_derived(
                 ta_str = annotation_to_str(ta_value)
                 if ta_str:
                     result.type_aliases[ta_name] = ta_str
+        elif ta_type == "Assign":
+            ta_value = get_node(ta_stmt, "value")
+            if _is_union_annotation(ta_value):
+                ta_targets = get_nodes(ta_stmt, "targets")
+                for ta_tgt in ta_targets:
+                    if get_str(ta_tgt, "_type") == "Name":
+                        ta_name = get_str(ta_tgt, "id")
+                        if ta_name:
+                            ta_str = annotation_to_str(ta_value)
+                            if ta_str:
+                                result.type_aliases[ta_name] = ta_str
     csf_body = get_nodes(ast_dict, "body")
     for csf_node in csf_body:
         if get_str(csf_node, "_type") == "ClassDef":
