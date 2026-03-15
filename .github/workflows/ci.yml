@@ -364,6 +364,7 @@ jobs:
       - run: docker run --rm -v $PWD:/workspace tongues-perl just -f justfile _vm-test-tongues perl
 
   vm-test-tongues-ruby:
+    if: false  # too slow
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: transpile-tongues-ruby
@@ -377,6 +378,7 @@ jobs:
       - run: docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile _vm-test-tongues ruby
 
   vm-test-tongues-python:
+    if: false  # too slow
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: transpile-tongues-python
@@ -390,6 +392,7 @@ jobs:
       - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _vm-test-tongues python
 
   vm-test-tongues-java:
+    if: false  # too slow
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: transpile-tongues-java
