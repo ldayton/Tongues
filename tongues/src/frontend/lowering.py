@@ -6433,6 +6433,16 @@ def _lower_try(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     body = get_nodes(node, "body")
     handlers = get_nodes(node, "handlers")
     finalbody = get_nodes(node, "finalbody")
+    # Hoist variables first-assigned inside try/except bodies
+    all_branch_nodes: list[ASTNode] = []
+    for b in body:
+        all_branch_nodes.append(b)
+    for h in handlers:
+        for hb in get_nodes(h, "body"):
+            all_branch_nodes.append(hb)
+    hoist_names = _scan_hoist_names(all_branch_nodes, env)
+    pre_stmts: list[TStmt] = []
+    _emit_hoisted_placeholders(pos, hoist_names, env, pre_stmts)
     body_stmts = _lower_stmts(body, env, ctx)
     catches: list[TCatch] = []
     for h in handlers:
@@ -6456,7 +6466,8 @@ def _lower_try(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     finally_body: list[TStmt] | None = None
     if finalbody:
         finally_body = _lower_stmts(finalbody, env, ctx)
-    return [TTryStmt(pos, {}, body_stmts, catches, finally_body)]
+    pre_stmts.append(TTryStmt(pos, {}, body_stmts, catches, finally_body))
+    return pre_stmts
 
 
 def _lower_raise(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
