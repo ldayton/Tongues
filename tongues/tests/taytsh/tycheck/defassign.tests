@@ -199,6 +199,76 @@ fn Main() -> void {
 error: variable used before assignment
 ---
 
+=== valid: bare let + try assigns + catch returns
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let f: Foo
+    try {
+        f = Foo(1)
+    } catch e: ValueError {
+        return
+    }
+    let y: int = f.x
+}
+---
+ok
+---
+
+=== valid: bare let + try assigns + all catches return
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let f: Foo
+    try {
+        f = Foo(1)
+    } catch e: ValueError {
+        return
+    } catch e {
+        return
+    }
+    let y: int = f.x
+}
+---
+ok
+---
+
+=== error: bare let + try assigns + catch does not return
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let f: Foo
+    try {
+        f = Foo(1)
+    } catch e: ValueError {
+        WritelnErr(e.message)
+    }
+    let y: int = f.x
+}
+---
+error: variable used before assignment
+---
+
+=== valid: bare let + try assigns + catch throws
+struct Foo {
+    x: int
+}
+fn Main() -> void {
+    let f: Foo
+    try {
+        f = Foo(1)
+    } catch e: ValueError {
+        throw e
+    }
+    let y: int = f.x
+}
+---
+ok
+---
+
 === valid: for-in string loop variable is initialized
 fn Main() -> void {
     let line: string = "hello"
