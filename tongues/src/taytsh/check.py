@@ -568,8 +568,18 @@ def _is_narrowing_value(expr: TExpr) -> bool:
     return isinstance(
         expr,
         (
-            TCall, TListLit, TMapLit, TSetLit, TTupleLit,
-            TIntLit, TFloatLit, TStringLit, TBoolLit, TByteLit, TBytesLit, TRuneLit,
+            TCall,
+            TListLit,
+            TMapLit,
+            TSetLit,
+            TTupleLit,
+            TIntLit,
+            TFloatLit,
+            TStringLit,
+            TBoolLit,
+            TByteLit,
+            TBytesLit,
+            TRuneLit,
         ),
     )
 
@@ -1780,9 +1790,10 @@ class Checker:
                     isinstance(target_type, UnionT)
                     and not type_eq(val_type, target_type)
                     and not type_eq(val_type, NIL_T)
-                    and (isinstance(stmt.value, TCall) or (
-                        _is_narrowing_value(stmt.value) and len(self.scopes) > 2
-                    ))
+                    and (
+                        isinstance(stmt.value, TCall)
+                        or (_is_narrowing_value(stmt.value) and len(self.scopes) > 2)
+                    )
                 ):
                     # Non-nil value assigned to union → narrow
                     self.scopes[-1][varname] = val_type
