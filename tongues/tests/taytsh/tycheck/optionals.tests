@@ -19,6 +19,58 @@ fn Main() -> void {
 ok
 ---
 
+=== valid: return local assigned from narrowed optional field after nil-assign
+struct Cache {
+    val: int?
+    last: int
+
+    fn Pop(this) -> int {
+        if this.val != nil {
+            let v: int = this.val
+            this.val = nil
+            this.last = v
+            return v
+        }
+        return 0
+    }
+}
+fn Main() -> void {
+    let c: Cache = Cache(42, 0)
+    WritelnOut(ToString(c.Pop()))
+}
+---
+ok
+---
+
+=== valid: return from method returning optional via local after nil check
+fn Maybe() -> int? {
+    return 42
+}
+fn Main() -> int {
+    let tok: int? = Maybe()
+    if tok != nil {
+        return tok
+    }
+    return 0
+}
+---
+ok
+---
+
+=== valid: assert narrows optional to non-nil
+fn Maybe() -> int? {
+    return 42
+}
+fn Main() -> void {
+    let x: int? = Maybe()
+    assert x != nil
+    let y: int = x
+    WritelnOut(ToString(y))
+}
+---
+ok
+---
+
 === valid: optional assignment
 fn Main() -> void {
     let x: int? = nil

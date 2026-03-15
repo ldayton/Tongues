@@ -1736,6 +1736,10 @@ class Checker:
         if isinstance(stmt.target, TVar):
             self.uninitialized.discard(stmt.target.name)
             target_type = self.lookup_declared(stmt.target.name, stmt.pos)
+        elif isinstance(stmt.target, TFieldAccess):
+            # Use declared field type, not narrowed type, so assigning nil
+            # to a T? field works even after narrowing.
+            target_type = self._declared_field_type(stmt.target)
         else:
             target_type = self.check_expr(stmt.target, None)
         if target_type is not None:
@@ -2834,6 +2838,15 @@ class Checker:
             # Different types → union
             return normalize_union([then_type, else_type])
         return then_type
+
+    def _declared_field_type(self, expr: TFieldAccess) -> Type | None:
+        """Return the declared (non-narrowed) type of a field access."""
+        obj_type = self.check_expr(expr.obj, None)
+        if obj_type is None:
+            return None
+        if isinstance(obj_type, StructT) and expr.field in obj_type.fields:
+            return obj_type.fields[expr.field]
+        return self.check_field_access(expr)
 
     def check_field_access(self, expr: TFieldAccess) -> Type | None:
         # Special case: Enum.Variant — TVar.field
