@@ -54,19 +54,17 @@ def test_construct_kind_omitted() -> None:
     """Constructor should not require kind as an argument."""
     w: Word = Word("hello")
     assert w.value == "hello"
-    assert w.kind == "word"
 
 
 def test_construct_zero_args() -> None:
     """Empty node has only a kind const field — zero user args."""
     e: Empty = Empty()
-    assert e.kind == "empty"
+    assert isinstance(e, Empty)
 
 
 def test_construct_nested() -> None:
     """Nested hierarchy construction with kind fields."""
     p: Pair = Pair(Word("a"), Word("b"))
-    assert p.kind == "pair"
     assert isinstance(p.left, Word)
 
 

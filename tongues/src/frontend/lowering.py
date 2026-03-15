@@ -6758,6 +6758,11 @@ def _build_struct(
             ancestor_fields = _collect_ancestor_fields(pos, name, ctx)
             inherited_field_names: set[str] = set()
             for af_name, af_type, af_has_default, af_self_ref in ancestor_fields:
+                if not af_has_default and af_name in cls_info.const_fields:
+                    af_has_default = True
+                child_finfo = cls_info.fields.get(af_name)
+                if not af_has_default and child_finfo is not None and child_finfo.has_default:
+                    af_has_default = True
                 fields.append(
                     TFieldDecl(pos, af_name, af_type, af_has_default, af_self_ref)
                 )
@@ -6780,6 +6785,15 @@ def _build_struct(
                     fields.append(
                         TFieldDecl(pos, fname, ftype, finfo.has_default, finfo.self_ref)
                     )
+        # Reorder: non-default fields first, then default fields.
+        required: list[TFieldDecl] = []
+        defaulted: list[TFieldDecl] = []
+        for f in fields:
+            if f.has_default:
+                defaulted.append(f)
+            else:
+                required.append(f)
+        fields = required + defaulted
     # Build methods — own + inherited from ancestors
     methods: list[TFnDecl] = []
     own_method_names: set[str] = set()
