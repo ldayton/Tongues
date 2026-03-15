@@ -281,3 +281,36 @@ def f(n: Node) -> list[str]:
 ---
 ok
 ---
+
+=== constructor rejects base type where subclass expected
+class Node:
+    pass
+class ArithNode(Node):
+    pass
+class ArithBinaryOp(ArithNode):
+    def __init__(self, left: ArithNode, right: ArithNode) -> None:
+        self.left: ArithNode = left
+        self.right: ArithNode = right
+def parse_expr() -> Node:
+    return ArithNode()
+def f() -> ArithBinaryOp:
+    left: Node = parse_expr()
+    right: Node = parse_expr()
+    return ArithBinaryOp(left, right)
+---
+error: argument 1 has type Node, expected ArithNode
+---
+
+=== constructor accepts subclass where base expected
+class Node:
+    pass
+class Expr(Node):
+    pass
+class Wrapper:
+    def __init__(self, child: Node) -> None:
+        self.child: Node = child
+def f() -> Wrapper:
+    return Wrapper(Expr())
+---
+ok
+---
