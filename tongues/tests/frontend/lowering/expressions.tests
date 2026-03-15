@@ -101,6 +101,20 @@ def f(x: int | None) -> bool:
 x != nil
 ---
 
+=== is None non-optional
+def f(x: str) -> bool:
+    return x is None
+---
+false
+---
+
+=== is not None non-optional
+def f(x: str) -> bool:
+    return x is not None
+---
+true
+---
+
 === isinstance check
 class Node:
     def __init__(self) -> None:
