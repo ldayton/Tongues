@@ -748,5 +748,4 @@ class Word(Node):
         self.parts = parts
 ---
 classes.Word.fields.parts.has_default = true
-classes.Word.init_params = ["value", "parts"]
 ---
