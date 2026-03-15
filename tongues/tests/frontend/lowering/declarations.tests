@@ -259,3 +259,38 @@ def f() -> None:
 ---
 error: non-zero default parameter value
 ---
+
+=== error constructor too few arguments
+from dataclasses import dataclass
+@dataclass
+class Point:
+    x: int
+    y: int
+    z: int
+def f() -> Point:
+    return Point(1, 2)
+---
+error: constructor arity
+---
+
+=== error constructor too many arguments
+from dataclasses import dataclass
+@dataclass
+class Word:
+    text: str
+def f() -> Word:
+    return Word("hi", "extra")
+---
+error: constructor arity
+---
+
+=== ok constructor with default parameter omitted
+from dataclasses import dataclass
+@dataclass
+class Config:
+    host: str
+    port: int = 8080
+def f() -> Config:
+    return Config("localhost")
+---
+---
