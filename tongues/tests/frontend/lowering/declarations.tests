@@ -283,3 +283,14 @@ def f() -> Word:
 ---
 error: constructor arity
 ---
+
+=== ok constructor with default parameter omitted
+from dataclasses import dataclass
+@dataclass
+class Config:
+    host: str
+    port: int = 8080
+def f() -> Config:
+    return Config("localhost")
+---
+---
