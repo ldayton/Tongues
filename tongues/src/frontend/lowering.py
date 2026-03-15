@@ -630,7 +630,13 @@ def _is_type_dict(td: TypeNode | None, names: list[str]) -> bool:
 
 
 def _is_optional_type(td: TypeNode) -> bool:
-    return isinstance(td, OptionalType)
+    if isinstance(td, OptionalType):
+        return True
+    if isinstance(td, UnionType):
+        return any(
+            _is_optional_type(v) or _is_type_dict(v, ["void"]) for v in td.variants
+        )
+    return False
 
 
 def _is_definitely_non_optional(node: ASTNode, env: _Env) -> bool:
@@ -640,7 +646,7 @@ def _is_definitely_non_optional(node: ASTNode, env: _Env) -> bool:
     vt = env.var_types.get(get_str(node, "id"))
     if vt is None:
         return False
-    return not isinstance(vt, OptionalType)
+    return not _is_optional_type(vt)
 
 
 def _is_variadic_tuple(td: TypeNode) -> bool:
@@ -4795,11 +4801,17 @@ def _lower_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         if name not in env.declared and name not in env.loop_bindings:
             env.declared.add(name)
             decl_type: TypeNode = val_type
-            if _is_type_dict(decl_type, ["void"]):
+            is_none_init = _is_type_dict(decl_type, ["void"])
+            if is_none_init:
                 decl_type = PrimitiveType("error")
             env.var_types[name] = decl_type
             ttype = _typenode_to_ttype(pos, decl_type)
-            stmts: list[TStmt] = [TLetStmt(pos, ann, safe, ttype, value)]
+            let_stmt = TLetStmt(pos, ann, safe, ttype, value)
+            if is_none_init:
+                # None-initialized: store for later annotation backpatch
+                env.hoisted_stmts[name] = let_stmt
+                env.var_types[name] = val_type  # keep void for combine_types
+            stmts: list[TStmt] = [let_stmt]
             stmts.extend(_method_side_effects(value_node, env, ctx))
             return stmts
         # Re-assignment
@@ -5000,10 +5012,11 @@ def _lower_ann_assign(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
     if isinstance(ttype, TPrimitive) and ttype.kind == "void":
         ttype = TPrimitive(pos, "nil")
     env.declared.add(name)
-    env.var_types[name] = type_dict
     if name in env.hoisted_stmts:
         _backpatch_hoisted(pos, name, type_dict, env)
         env.hoisted_stmts.pop(name)
+    else:
+        env.var_types[name] = type_dict
     safe = _safe_name(name)
     ann = _name_ann(safe, name)
     val: TExpr | None = None

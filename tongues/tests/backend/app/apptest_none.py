@@ -132,6 +132,18 @@ def test_none_ternary() -> None:
     assert result == 5
 
 
+def test_none_init_then_annotated_redecl() -> None:
+    """Variable initialized as None then redeclared with annotation in branch."""
+    words = None
+    if True:
+        words: list[int] = []
+        words.append(1)
+        words.append(2)
+    assert words is not None
+    assert len(words) == 2
+    assert words[0] == 1
+
+
 def test_none_not_equal_to_falsy() -> None:
     """None is not equal to other falsy values."""
     assert None != 0
