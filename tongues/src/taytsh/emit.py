@@ -205,10 +205,7 @@ class _Emitter:
         raise TypeError("unhandled decl type")
 
     def _emit_fn_decl(self, decl: TFnDecl) -> None:
-        if self._taytsh:
-            params = self._render_param_list_with_defaults(decl.params)
-        else:
-            params = self._render_param_list(decl.params)
+        params = self._render_param_list_with_defaults(decl.params)
         ret = self._render_type(decl.ret)
         self._emit_line("fn " + decl.name + "(" + params + ") -> " + ret + " {")
         self._emit_stmt_block(decl.body)
@@ -222,10 +219,7 @@ class _Emitter:
         self._emit_line(header)
         self._indent_level += 1
         for field in decl.fields:
-            if self._taytsh:
-                self._emit_field(field)
-            else:
-                self._emit_line(field.name + ": " + self._render_type(field.typ))
+            self._emit_field(field)
         for method in decl.methods:
             self._lines.append("")
             if self._taytsh:
