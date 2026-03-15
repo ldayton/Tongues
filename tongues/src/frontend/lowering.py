@@ -3090,7 +3090,9 @@ def _lower_struct_constructor(
             kw_val = get_node(kw, "value")
             if kw_name and kw_val:
                 field_name = ptf.get(kw_name, kw_name)
-                lowered_args.append(TArg(pos, field_name, _lower_expr(kw_val, env, ctx)))
+                lowered_args.append(
+                    TArg(pos, field_name, _lower_expr(kw_val, env, ctx))
+                )
     else:
         for a in args:
             lowered_args.append(TArg(pos, None, _lower_expr(a, env, ctx)))
