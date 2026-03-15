@@ -295,3 +295,16 @@ def f() -> Config:
 ---
 ---
 
+=== ok mixed positional and keyword args in constructor
+from dataclasses import dataclass
+@dataclass
+class Config:
+    host: str
+    port: int = 8080
+    debug: bool = False
+def f() -> Config:
+    return Config("localhost", debug=True)
+---
+return Config(host: "localhost", debug: True)
+---
+
