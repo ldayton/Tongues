@@ -29,3 +29,39 @@ def f(x: str) -> Items:
 ---
 error: type
 ---
+
+=== assignment-style union alias
+from typing import Union
+from dataclasses import dataclass
+@dataclass
+class A:
+    x: int
+@dataclass
+class B:
+    y: str
+Node = Union[A, B]
+def f(n: Node) -> int:
+    if isinstance(n, A):
+        return n.x
+    return 0
+---
+ok
+---
+
+=== assignment-style union alias used before definition
+from typing import Union
+from dataclasses import dataclass
+@dataclass
+class A:
+    x: int
+@dataclass
+class B:
+    y: str
+def f(n: Node) -> int:
+    if isinstance(n, A):
+        return n.x
+    return 0
+Node = Union[A, B]
+---
+ok
+---
