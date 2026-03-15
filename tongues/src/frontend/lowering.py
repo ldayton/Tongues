@@ -2956,6 +2956,24 @@ def _lower_struct_constructor(
                 "cannot construct interface '" + class_name + "'",
             )
         )
+    class_info = ctx.tc_result.classes.get(class_name)
+    if class_info is not None:
+        expected = len(class_info.init_params)
+        actual = len(args) + len(keywords)
+        if actual != expected:
+            ctx.errors.append(
+                LoweringError(
+                    pos.line,
+                    pos.col,
+                    "constructor arity mismatch for '"
+                    + class_name
+                    + "': expected "
+                    + str(expected)
+                    + " arguments, got "
+                    + str(actual),
+                )
+            )
+            return TNilLit(pos, {})
     lowered_args: list[TArg] = []
     for a in args:
         lowered_args.append(TArg(pos, None, _lower_expr(a, env, ctx)))
