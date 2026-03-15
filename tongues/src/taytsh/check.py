@@ -2409,9 +2409,12 @@ class Checker:
         self.enter_scope()
         self.check_stmts(stmt.body)
         self.exit_scope()
+        try_uninit = set(self.uninitialized)
         seen_catch_all = False
         seen_catch_types: list[Type] = []
+        all_catches_exit = len(stmt.catches) > 0
         for catch in stmt.catches:
+            self.uninitialized = set(saved_uninit)
             self.enter_scope()
             if not catch.types:
                 catch_type = ERROR_T
@@ -2442,6 +2445,8 @@ class Checker:
             self.declare(catch.name, catch_type, catch.pos)
             self.check_stmts(catch.body)
             self.exit_scope()
+            if not _block_always_exits(catch.body):
+                all_catches_exit = False
         if stmt.finally_body is not None:
             old_in_finally = self.in_finally
             self.in_finally = True
@@ -2449,7 +2454,10 @@ class Checker:
             self.check_stmts(stmt.finally_body)
             self.exit_scope()
             self.in_finally = old_in_finally
-        self.uninitialized = saved_uninit
+        if all_catches_exit:
+            self.uninitialized = try_uninit
+        else:
+            self.uninitialized = saved_uninit
 
     # ── Expression checking ───────────────────────────────────
 
