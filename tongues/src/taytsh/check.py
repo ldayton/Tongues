@@ -1790,10 +1790,7 @@ class Checker:
                     isinstance(target_type, UnionT)
                     and not type_eq(val_type, target_type)
                     and not type_eq(val_type, NIL_T)
-                    and (
-                        isinstance(stmt.value, TCall)
-                        or (_is_narrowing_value(stmt.value) and len(self.scopes) > 2)
-                    )
+                    and (isinstance(stmt.value, TCall) or len(self.scopes) > 2)
                 ):
                     # Non-nil value assigned to union → narrow
                     self.scopes[-1][varname] = val_type
@@ -1971,11 +1968,13 @@ class Checker:
                         looked = self._try_lookup(ngv)
                     if looked is not None:
                         then_exit_types[ngv] = looked
+        then_scope = dict(self.scopes[-1])
         self.exit_scope()
         then_uninit = set(self.uninitialized)
         # Check else-body with reverse narrowing
         self.uninitialized = set(saved_uninit)
         else_exit_types: dict[str, Type] = {}
+        else_scope: dict[str, Type] = {}
         if stmt.else_body is not None:
             self.enter_scope()
             for name, _then_type, else_type in narrowings:
@@ -1984,6 +1983,7 @@ class Checker:
             for name, _then_type, _else_type in narrowings:
                 if name in self.scopes[-1]:
                     else_exit_types[name] = self.scopes[-1][name]
+            else_scope = dict(self.scopes[-1])
             self.exit_scope()
         else:
             for name, _then_type, else_type in narrowings:
@@ -2043,6 +2043,25 @@ class Checker:
                     if var_type is not None and contains_nil(var_type):
                         if self.scopes:
                             self.scopes[-1][var_name] = remove_nil(var_type)
+        # Merge assignment narrowings across both branches
+        if stmt.else_body is not None and self.scopes:
+            narrowing_names: set[str] = set()
+            for n, _, _ in narrowings:
+                narrowing_names.add(n)
+            for name, t_type in then_scope.items():
+                if name in narrowing_names:
+                    continue
+                outer = self._try_lookup(name)
+                if outer is None or not contains_nil(outer):
+                    continue
+                if then_exits:
+                    e_type = else_scope.get(name)
+                    if e_type is not None and not contains_nil(e_type):
+                        self.scopes[-1][name] = e_type
+                elif not contains_nil(t_type):
+                    e_type = else_scope.get(name)
+                    if else_exits or (e_type is not None and not contains_nil(e_type)):
+                        self.scopes[-1][name] = t_type
 
     def check_while_stmt(self, stmt: TWhileStmt) -> None:
         cond_type = self.check_expr(stmt.cond, BOOL_T)
@@ -2638,6 +2657,17 @@ class Checker:
             right = self.check_expr(expr.right, right_expected)
         if left is None or right is None:
             return None
+        # Allow nil comparison on variables narrowed from optional
+        if expr.op in ("==", "!=") and left is not None and right is not None:
+            nil_var: TExpr | None = None
+            if right.kind == TY_NIL and not contains_nil(left):
+                nil_var = expr.left
+            elif left.kind == TY_NIL and not contains_nil(right):
+                nil_var = expr.right
+            if nil_var is not None and isinstance(nil_var, TVar):
+                declared = self.lookup_declared(nil_var.name, expr.pos)
+                if declared is not None and contains_nil(declared):
+                    return BOOL_T
         return self.check_binary_op_types(expr.op, left, right, expr.pos)
 
     def check_binary_op_types(
