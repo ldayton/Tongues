@@ -2942,6 +2942,88 @@ def _lower_print_call(
     )
 
 
+def _resolve_constructor_params(
+    class_name: str, ctx: _LowerCtx
+) -> tuple[int, int] | None:
+    """Return (min_args, max_args) for a constructor, including inherited fields."""
+    class_info = ctx.tc_result.classes.get(class_name)
+    if class_info is None:
+        return None
+    if class_info.has_explicit_init:
+        # Explicit __init__: init_params is already correct.
+        max_args = len(class_info.init_params)
+        min_args = 0
+        for p in class_info.init_params:
+            if not class_info.param_defaults.get(p, False):
+                min_args += 1
+        return (min_args, max_args)
+    if not class_info.is_dataclass:
+        # Non-dataclass without explicit __init__: find nearest parent __init__.
+        cur = class_name
+        while True:
+            bases = ctx.class_bases.get(cur, [])
+            found = False
+            for b in bases:
+                parent_info = ctx.tc_result.classes.get(b)
+                if parent_info is not None and parent_info.has_explicit_init:
+                    return _resolve_constructor_params(b, ctx)
+                if parent_info is not None:
+                    cur = b
+                    found = True
+                    break
+            if not found:
+                return None
+    # Dataclass with generated __init__: walk up the hierarchy to collect
+    # inherited fields that Python includes in the generated constructor.
+    chain: list[str] = []
+    cur = class_name
+    while True:
+        bases = ctx.class_bases.get(cur, [])
+        parent: str = ""
+        for b in bases:
+            if b in ctx.tc_result.classes:
+                parent = b
+                break
+        if not parent:
+            break
+        chain.append(parent)
+        cur = parent
+    chain.reverse()
+    all_params: list[str] = []
+    all_defaults: dict[str, bool] = {}
+    seen: set[str] = set()
+    for ancestor in chain:
+        anc_info = ctx.tc_result.classes.get(ancestor)
+        if anc_info is None:
+            continue
+        fkeys = (
+            anc_info.field_order
+            if anc_info.field_order
+            else list(anc_info.fields.keys())
+        )
+        for fk in fkeys:
+            if fk not in seen and not anc_info.fields[fk].exclude_from_init:
+                seen.add(fk)
+                all_params.append(fk)
+                all_defaults[fk] = anc_info.fields[fk].has_default
+    fkeys = (
+        class_info.field_order
+        if class_info.field_order
+        else list(class_info.fields.keys())
+    )
+    for fk in fkeys:
+        if fk not in seen and not class_info.fields[fk].exclude_from_init:
+            seen.add(fk)
+            all_params.append(fk)
+            all_defaults[fk] = class_info.fields[fk].has_default
+    max_args = len(all_params)
+    min_args = 0
+    for p in all_params:
+        if not all_defaults.get(p, False):
+            min_args += 1
+    return (min_args, max_args)
+
+
 def _lower_struct_constructor(
     pos: Pos,
     class_name: str,
@@ -2959,11 +3041,15 @@ def _lower_struct_constructor(
                 "cannot construct interface '" + class_name + "'",
             )
         )
-    class_info = ctx.tc_result.classes.get(class_name)
-    if class_info is not None:
-        expected = len(class_info.init_params)
+    arity = _resolve_constructor_params(class_name, ctx)
+    if arity is not None:
+        min_args, max_args = arity
         actual = len(args) + len(keywords)
-        if actual != expected:
+        if actual < min_args or actual > max_args:
+            if min_args == max_args:
+                expected_str = str(max_args)
+            else:
+                expected_str = str(min_args) + " to " + str(max_args)
             ctx.errors.append(
                 LoweringError(
                     pos.line,
@@ -2971,7 +3057,7 @@ def _lower_struct_constructor(
                     "constructor arity mismatch for '"
                     + class_name
                     + "': expected "
-                    + str(expected)
+                    + expected_str
                     + " arguments, got "
                     + str(actual),
                 )

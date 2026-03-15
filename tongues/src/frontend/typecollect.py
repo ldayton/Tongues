@@ -1029,6 +1029,7 @@ class FieldInfo:
         self.py_name: str = py_name
         self.has_default: bool = has_default
         self.default: TypeNode | None = default
+        self.exclude_from_init: bool = False
         self.self_ref: bool = False
 
     def to_dict(self) -> JsonValue:
@@ -1054,9 +1055,11 @@ class ClassInfo:
         self.fields: dict[str, FieldInfo] = {}
         self.field_order: list[str] = []
         self.init_params: list[str] = []
+        self.param_defaults: dict[str, bool] = {}
         self.param_to_field: dict[str, str] = {}
         self.const_fields: dict[str, str] = {}
         self.is_dataclass: bool = False
+        self.has_explicit_init: bool = False
         self.kw_only: bool = False
         self.needs_constructor: bool = False
         self.is_enum: bool = False
@@ -1310,6 +1313,24 @@ def _is_field_call_default_factory(node: ASTNode) -> bool:
     return False
 
 
+def _is_field_call_init_false(node: ASTNode) -> bool:
+    """Detect field(init=False)."""
+    if not _is_type(node, ["Call"]):
+        return False
+    func = get_node(node, "func")
+    if not (_is_type(func, ["Name"]) and get_str(func, "id") == "field"):
+        return False
+    keywords = get_nodes(node, "keywords")
+    for kw in keywords:
+        if get_str(kw, "arg") == "init":
+            val = get_node(kw, "value")
+            if val and _is_type(val, ["Constant"]):
+                v = val.get("value")
+                if isinstance(v, JBool) and not v.value:
+                    return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Conditional field assignment check
 # ---------------------------------------------------------------------------
@@ -1527,6 +1548,7 @@ def _collect_init_fields(
         if pname and pname != "self":
             has_kw_def = i < len(kw_defaults) and not isinstance(kw_defaults[i], JNull)
             param_has_default[pname] = has_kw_def
+    info.param_defaults = param_has_default
     has_computed_init = False
     body = get_nodes(init, "body")
     lineno = get_int(init, "lineno")
@@ -1831,21 +1853,28 @@ def _collect_class_fields(
                                 lineno, 0, "field(default_factory=...) not allowed"
                             )
                             return
+                        exclude_from_init = _is_field_call_init_false(value_node)
                         has_default = True
                         default_expr = _make_default_expr(value_node)
+                    else:
+                        exclude_from_init = False
                     if field_name not in info.fields:
                         info.field_order.append(field_name)
-                    info.fields[field_name] = FieldInfo(
+                    fi = FieldInfo(
                         name=field_name,
                         typ=typ,
                         py_name=field_name,
                         has_default=has_default,
                         default=default_expr,
                     )
+                    if exclude_from_init:
+                        fi.exclude_from_init = True
+                    info.fields[field_name] = fi
     has_init = False
     for stmt in body:
         if _is_type(stmt, ["FunctionDef"]) and get_str(stmt, "name") == "__init__":
             has_init = True
+            info.has_explicit_init = True
             _collect_init_fields(
                 stmt, info, known_classes, func_return_types, result._errors
             )
@@ -1854,7 +1883,10 @@ def _collect_class_fields(
     if is_dc and not has_init:
         fkeys = info.field_order if info.field_order else list(info.fields.keys())
         for fkey in fkeys:
+            if info.fields[fkey].exclude_from_init:
+                continue
             info.init_params.append(fkey)
+            info.param_defaults[fkey] = info.fields[fkey].has_default
     known_field_set: set[str] = set()
     fkeys = info.field_order if info.field_order else list(info.fields.keys())
     for fkey in fkeys:
