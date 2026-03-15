@@ -344,6 +344,17 @@ def contains_nil(t: Type) -> bool:
     return False
 
 
+def is_simple_optional(t: Type) -> bool:
+    """Return True if t is T? (union of exactly one non-nil type and nil)."""
+    if isinstance(t, UnionT) and len(t.members) == 2:
+        has_nil = False
+        for m in t.members:
+            if type_eq(m, NIL_T):
+                has_nil = True
+        return has_nil
+    return False
+
+
 def remove_nil(t: Type) -> Type:
     """Remove nil from a type (for narrowing)."""
     if type_eq(t, NIL_T):
@@ -1752,16 +1763,21 @@ class Checker:
                     + type_name(target_type),
                     stmt.pos,
                 )
-            if (
-                isinstance(stmt.target, TVar)
-                and val_type is not None
-                and isinstance(stmt.value, TCall)
-                and isinstance(target_type, UnionT)
-                and not type_eq(val_type, target_type)
-                and not type_eq(val_type, NIL_T)
-                and self.scopes
-            ):
-                self.scopes[-1][stmt.target.name] = val_type
+            if isinstance(stmt.target, TVar) and val_type is not None and self.scopes:
+                varname = stmt.target.name
+                if (
+                    isinstance(stmt.value, TCall)
+                    and isinstance(target_type, UnionT)
+                    and not type_eq(val_type, target_type)
+                    and not type_eq(val_type, NIL_T)
+                ):
+                    # Non-nil call result assigned to union → narrow
+                    self.scopes[-1][varname] = val_type
+                elif is_simple_optional(target_type) and (
+                    contains_nil(val_type) or type_eq(val_type, NIL_T)
+                ):
+                    # Optional/nil assigned to narrowed optional → reset
+                    self.scopes[-1][varname] = target_type
 
     def check_op_assign_stmt(self, stmt: TOpAssignStmt) -> None:
         target_type = self.check_expr(stmt.target, None)
