@@ -1127,7 +1127,11 @@ class Checker:
                 i -= 1
         if self.scopes:
             self.scopes[-1][name] = typ
-            if self._allow_shadow and name in self._declared and self._declared_shadow_stack:
+            if (
+                self._allow_shadow
+                and name in self._declared
+                and self._declared_shadow_stack
+            ):
                 self._declared_shadow_stack[-1][name] = self._declared[name]
             self._declared[name] = typ
 
