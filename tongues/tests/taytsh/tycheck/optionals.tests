@@ -42,16 +42,19 @@ fn Main() -> void {
 ok
 ---
 
-=== valid: return from method returning optional via local after nil check
+=== valid: return narrowed optional from non-Main function
 fn Maybe() -> int? {
     return 42
 }
-fn Main() -> int {
+fn Fetch() -> int {
     let tok: int? = Maybe()
     if tok != nil {
         return tok
     }
     return 0
+}
+fn Main() -> void {
+    WritelnOut(ToString(Fetch()))
 }
 ---
 ok
@@ -61,11 +64,13 @@ ok
 fn Maybe() -> int? {
     return 42
 }
+fn Consume(x: int) -> void {
+    WritelnOut(ToString(x))
+}
 fn Main() -> void {
     let x: int? = Maybe()
-    assert x != nil
-    let y: int = x
-    WritelnOut(ToString(y))
+    Assert(x != nil)
+    Consume(x)
 }
 ---
 ok
