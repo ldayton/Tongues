@@ -1766,12 +1766,12 @@ class Checker:
             if isinstance(stmt.target, TVar) and val_type is not None and self.scopes:
                 varname = stmt.target.name
                 if (
-                    isinstance(stmt.value, TCall)
-                    and isinstance(target_type, UnionT)
+                    isinstance(target_type, UnionT)
                     and not type_eq(val_type, target_type)
                     and not type_eq(val_type, NIL_T)
+                    and (isinstance(stmt.value, TCall) or len(self.scopes) > 2)
                 ):
-                    # Non-nil call result assigned to union → narrow
+                    # Non-nil value assigned to union → narrow
                     self.scopes[-1][varname] = val_type
                 elif is_simple_optional(target_type) and (
                     contains_nil(val_type) or type_eq(val_type, NIL_T)
