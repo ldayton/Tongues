@@ -6443,3 +6443,4 @@ def f(a: Animal) -> str:
 ---
 error: cannot access 'bark' on Animal
 ---
+

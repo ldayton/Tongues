@@ -1903,6 +1903,14 @@ class Checker:
         for name, _then_type, _else_type in narrowings:
             if name in self.scopes[-1]:
                 then_exit_types[name] = self.scopes[-1][name]
+        # Also capture types for nil-guard-with-assignment pattern
+        if stmt.else_body is None:
+            nil_guard_checks = _collect_nil_checks_guard(stmt.cond)
+            for ngv, ngk in nil_guard_checks:
+                if ngk == "is_nil" and "." not in ngv and ngv not in then_exit_types:
+                    looked = self._try_lookup(ngv)
+                    if looked is not None:
+                        then_exit_types[ngv] = looked
         self.exit_scope()
         then_uninit = set(self.uninitialized)
         # Check else-body with reverse narrowing
@@ -1959,6 +1967,19 @@ class Checker:
                 merged = UnionT(kind="union", members=[t_type, e_type])
             if self.scopes:
                 self.scopes[-1][name] = merged
+        # Nil guard with assignment: if IsNil(v) { v = non_nil } → narrow v
+        # Only for no-else blocks where the nil branch reassigns the variable
+        if stmt.else_body is None and not then_exits:
+            nil_checks = _collect_nil_checks_guard(stmt.cond)
+            for var_name, check_kind in nil_checks:
+                if check_kind != "is_nil" or "." in var_name:
+                    continue
+                t_type = then_exit_types.get(var_name)
+                if t_type is not None and not contains_nil(t_type):
+                    var_type = self.lookup(var_name, stmt.pos)
+                    if var_type is not None and contains_nil(var_type):
+                        if self.scopes:
+                            self.scopes[-1][var_name] = remove_nil(var_type)
 
     def check_while_stmt(self, stmt: TWhileStmt) -> None:
         cond_type = self.check_expr(stmt.cond, BOOL_T)
