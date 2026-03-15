@@ -478,15 +478,6 @@ def _block_is_complete(stmts: list[TStmt]) -> bool:
     return False
 
 
-def _body_assigns_var(stmts: list[TStmt], name: str) -> bool:
-    """Return True if the body contains a direct assignment to the named variable."""
-    for s in stmts:
-        if isinstance(s, TAssignStmt) and isinstance(s.target, TVar):
-            if s.target.name == name:
-                return True
-    return False
-
-
 def _block_always_exits(stmts: list[TStmt]) -> bool:
     """Return True if all paths exit via return, throw, break, or continue."""
     if not stmts:
@@ -1611,18 +1602,6 @@ class Checker:
                         resolved = self._narrow_to_type(current, tc_type_name)
                         if resolved is not None:
                             self.narrow(tc_var, resolved)
-            # After if-stmt with nil guard + assignment, narrow to non-nil
-            # if IsNil(v) { v = Foo(0) } → v is non-nil after
-            if isinstance(s, TIfStmt) and s.else_body is None:
-                if not _body_always_exits(s.then_body):
-                    checks = _collect_nil_checks_guard(s.cond)
-                    for var_name, check_kind in checks:
-                        if check_kind != "is_nil" or "." in var_name:
-                            continue
-                        var_type = self.lookup(var_name, s.pos)
-                        if var_type is not None and contains_nil(var_type):
-                            if _body_assigns_var(s.then_body, var_name):
-                                self.narrow(var_name, remove_nil(var_type))
             # After Assert(cond), narrow nil-checked and type-checked vars
             if isinstance(s, TExprStmt) and isinstance(s.expr, TCall):
                 if isinstance(s.expr.func, TVar) and s.expr.func.name == "Assert":
@@ -1924,6 +1903,14 @@ class Checker:
         for name, _then_type, _else_type in narrowings:
             if name in self.scopes[-1]:
                 then_exit_types[name] = self.scopes[-1][name]
+        # Also capture types for nil-guard-with-assignment pattern
+        if stmt.else_body is None:
+            nil_guard_checks = _collect_nil_checks_guard(stmt.cond)
+            for ngv, ngk in nil_guard_checks:
+                if ngk == "is_nil" and "." not in ngv and ngv not in then_exit_types:
+                    looked = self._try_lookup(ngv)
+                    if looked is not None:
+                        then_exit_types[ngv] = looked
         self.exit_scope()
         then_uninit = set(self.uninitialized)
         # Check else-body with reverse narrowing
@@ -1980,6 +1967,19 @@ class Checker:
                 merged = UnionT(kind="union", members=[t_type, e_type])
             if self.scopes:
                 self.scopes[-1][name] = merged
+        # Nil guard with assignment: if IsNil(v) { v = non_nil } → narrow v
+        # Only for no-else blocks where the nil branch reassigns the variable
+        if stmt.else_body is None and not then_exits:
+            nil_checks = _collect_nil_checks_guard(stmt.cond)
+            for var_name, check_kind in nil_checks:
+                if check_kind != "is_nil" or "." in var_name:
+                    continue
+                t_type = then_exit_types.get(var_name)
+                if t_type is not None and not contains_nil(t_type):
+                    var_type = self.lookup(var_name, stmt.pos)
+                    if var_type is not None and contains_nil(var_type):
+                        if self.scopes:
+                            self.scopes[-1][var_name] = remove_nil(var_type)
 
     def check_while_stmt(self, stmt: TWhileStmt) -> None:
         cond_type = self.check_expr(stmt.cond, BOOL_T)
