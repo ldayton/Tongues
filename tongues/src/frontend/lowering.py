@@ -2959,6 +2959,49 @@ def _lower_struct_constructor(
                 "cannot construct interface '" + class_name + "'",
             )
         )
+    n_required = -1
+    n_total = -1
+    class_methods = ctx.tc_result.methods.get(class_name)
+    if class_methods is not None:
+        init_method = class_methods.get("__init__")
+        if init_method is not None:
+            n_required = 0
+            n_total = 0
+            for p in init_method.params:
+                if p.modifier != "keyword":
+                    n_total += 1
+                    if not p.has_default:
+                        n_required += 1
+    if n_total == -1:
+        cls_info = ctx.tc_result.classes.get(class_name)
+        if cls_info is not None and cls_info.is_dataclass and cls_info.init_params:
+            bases = ctx.class_bases.get(class_name)
+            is_standalone = bases is None or len(bases) == 0
+            if is_standalone:
+                n_required = 0
+                n_total = len(cls_info.init_params)
+                for pname in cls_info.init_params:
+                    fname = cls_info.param_to_field.get(pname)
+                    if fname is None:
+                        fname = pname
+                    finfo = cls_info.fields.get(fname)
+                    if finfo is None or not finfo.has_default:
+                        n_required += 1
+    if n_total != -1:
+        actual = len(args) + len(keywords)
+        if actual < n_required or actual > n_total:
+            ctx.errors.append(
+                LoweringError(
+                    pos.line,
+                    pos.col,
+                    "constructor '"
+                    + class_name
+                    + "' expects "
+                    + str(n_total)
+                    + " argument(s), got "
+                    + str(actual),
+                )
+            )
     lowered_args: list[TArg] = []
     for a in args:
         lowered_args.append(TArg(pos, None, _lower_expr(a, env, ctx)))
