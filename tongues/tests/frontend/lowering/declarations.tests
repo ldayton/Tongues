@@ -239,41 +239,6 @@ def f() -> Type:
 error: cannot construct interface
 ---
 
-=== error constructor too few positional args
-from dataclasses import dataclass
-@dataclass
-class Point:
-    x: int
-    y: int
-def f() -> Point:
-    return Point(1)
----
-error: constructor
----
-
-=== error constructor too many positional args
-from dataclasses import dataclass
-@dataclass
-class Point:
-    x: int
-    y: int
-def f() -> Point:
-    return Point(1, 2, 3)
----
-error: constructor
----
-
-=== error constructor zero args when fields expected
-from dataclasses import dataclass
-@dataclass
-class Wrapper:
-    value: int
-def f() -> Wrapper:
-    return Wrapper()
----
-error: constructor
----
-
 === error function with non-zero default parameter value
 def decode(s: str, strict: bool = True) -> str:
     return s
@@ -293,4 +258,39 @@ def f() -> None:
     _ = c.decode("")
 ---
 error: non-zero default parameter value
+---
+
+=== error constructor too few arguments
+from dataclasses import dataclass
+@dataclass
+class Point:
+    x: int
+    y: int
+    z: int
+def f() -> Point:
+    return Point(1, 2)
+---
+error: constructor arity
+---
+
+=== error constructor too many arguments
+from dataclasses import dataclass
+@dataclass
+class Word:
+    text: str
+def f() -> Word:
+    return Word("hi", "extra")
+---
+error: constructor arity
+---
+
+=== ok constructor with default parameter omitted
+from dataclasses import dataclass
+@dataclass
+class Config:
+    host: str
+    port: int = 8080
+def f() -> Config:
+    return Config("localhost")
+---
 ---
