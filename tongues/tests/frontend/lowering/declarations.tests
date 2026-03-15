@@ -295,6 +295,29 @@ def f() -> Config:
 ---
 ---
 
+=== inherited const field ordered after own defaulted init params
+class Node:
+    kind: str
+    def __init__(self) -> None:
+        pass
+class Word(Node):
+    value: str
+    parts: list[Node]
+    def __init__(self, value: str, parts: list[Node] | None = None) -> None:
+        self.kind = "word"
+        self.value = value
+        if parts is None:
+            parts = []
+        self.parts = parts
+def f() -> Word:
+    return Word("hello", [])
+---
+struct Word : Node {
+    value: string
+    parts: list[Node] = []
+    kind: string = ""
+---
+
 === ok mixed positional and keyword args in constructor
 from dataclasses import dataclass
 @dataclass
