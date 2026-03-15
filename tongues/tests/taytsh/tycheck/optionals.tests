@@ -398,3 +398,82 @@ fn Main() -> void {
 ---
 ok
 ---
+
+=== valid: field narrowed after nil-guard ensure pattern
+struct Token {
+    value: int
+}
+struct Lexer {
+    _cache: Token? = nil
+
+    fn Next(this) -> Token {
+        return Token(0)
+    }
+
+    fn Peek(this) -> Token {
+        if IsNil(this._cache) {
+            this._cache = this.Next()
+        }
+        return this._cache
+    }
+}
+fn Main() -> void {
+    let lex: Lexer = Lexer(nil)
+    let t: Token = lex.Peek()
+}
+---
+ok
+---
+
+=== valid: field narrowed after nil-guard ensure then access
+struct Token {
+    value: int
+}
+struct Lexer {
+    _cache: Token? = nil
+
+    fn Next(this) -> Token {
+        return Token(0)
+    }
+
+    fn CachedValue(this) -> int {
+        if IsNil(this._cache) {
+            this._cache = this.Next()
+        }
+        return this._cache.value
+    }
+}
+fn Main() -> void {
+    let lex: Lexer = Lexer(nil)
+    WritelnOut(ToString(lex.CachedValue()))
+}
+---
+ok
+---
+
+=== valid: field narrowed after nil-guard ensure then assign to local
+struct Token {
+    value: int
+}
+struct Lexer {
+    _cache: Token? = nil
+
+    fn Next(this) -> Token {
+        return Token(0)
+    }
+
+    fn EnsureAndGet(this) -> Token {
+        if IsNil(this._cache) {
+            this._cache = this.Next()
+        }
+        let result: Token = this._cache
+        return result
+    }
+}
+fn Main() -> void {
+    let lex: Lexer = Lexer(nil)
+    let t: Token = lex.EnsureAndGet()
+}
+---
+ok
+---
