@@ -47,7 +47,10 @@ def main() -> int:
     passed: int = 0
     failed: int = 0
     tests = [
-        ("test_common_field_through_sub_interface", test_common_field_through_sub_interface),
+        (
+            "test_common_field_through_sub_interface",
+            test_common_field_through_sub_interface,
+        ),
     ]
     for name, fn in tests:
         try:

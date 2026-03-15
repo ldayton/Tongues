@@ -2898,15 +2898,13 @@ class Checker:
             vtype = self.types.get(vname)
             if vtype is None:
                 return None
+            ft: Type | None = None
             if isinstance(vtype, InterfaceT):
                 ft = self._interface_field_type(vtype, field)
-                if ft is None:
-                    return None
             elif isinstance(vtype, StructT):
-                if field not in vtype.fields:
-                    return None
-                ft = vtype.fields[field]
-            else:
+                if field in vtype.fields:
+                    ft = vtype.fields[field]
+            if ft is None:
                 return None
             if result is None:
                 result = ft
