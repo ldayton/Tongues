@@ -269,6 +269,18 @@ def f() -> int:
 a, b = DivMod(10, 3)
 ---
 
+=== tuple unpack from list pop into self attributes
+class State:
+    def __init__(self) -> None:
+        self.x: int = 0
+        self.y: str = ""
+        self._stack: list[tuple[int, str]] = []
+    def pop(self) -> None:
+        self.x, self.y = self._stack.pop()
+---
+this.x, this.y = Pop(this._stack)
+---
+
 === optional annotated declaration
 def f() -> None:
     x: str | None = None
