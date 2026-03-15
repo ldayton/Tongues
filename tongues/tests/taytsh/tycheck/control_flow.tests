@@ -511,3 +511,4 @@ fn Main() -> void {
 ---
 error: unreachable catch
 ---
+
