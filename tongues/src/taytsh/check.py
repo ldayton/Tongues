@@ -478,6 +478,15 @@ def _block_is_complete(stmts: list[TStmt]) -> bool:
     return False
 
 
+def _body_assigns_var(stmts: list[TStmt], name: str) -> bool:
+    """Return True if the body contains a direct assignment to the named variable."""
+    for s in stmts:
+        if isinstance(s, TAssignStmt) and isinstance(s.target, TVar):
+            if s.target.name == name:
+                return True
+    return False
+
+
 def _block_always_exits(stmts: list[TStmt]) -> bool:
     """Return True if all paths exit via return, throw, break, or continue."""
     if not stmts:
@@ -1602,6 +1611,18 @@ class Checker:
                         resolved = self._narrow_to_type(current, tc_type_name)
                         if resolved is not None:
                             self.narrow(tc_var, resolved)
+            # After if-stmt with nil guard + assignment, narrow to non-nil
+            # if IsNil(v) { v = Foo(0) } → v is non-nil after
+            if isinstance(s, TIfStmt) and s.else_body is None:
+                if not _body_always_exits(s.then_body):
+                    checks = _collect_nil_checks_guard(s.cond)
+                    for var_name, check_kind in checks:
+                        if check_kind != "is_nil" or "." in var_name:
+                            continue
+                        var_type = self.lookup(var_name, s.pos)
+                        if var_type is not None and contains_nil(var_type):
+                            if _body_assigns_var(s.then_body, var_name):
+                                self.narrow(var_name, remove_nil(var_type))
             # After Assert(cond), narrow nil-checked and type-checked vars
             if isinstance(s, TExprStmt) and isinstance(s.expr, TCall):
                 if isinstance(s.expr.func, TVar) and s.expr.func.name == "Assert":

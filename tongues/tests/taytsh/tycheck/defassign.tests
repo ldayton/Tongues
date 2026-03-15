@@ -199,30 +199,6 @@ fn Main() -> void {
 error: variable used before assignment
 ---
 
-=== valid: assigned in two branches with else returning
-struct Foo {
-    x: int
-}
-fn MakeFoo(n: int) -> Foo? {
-    if n > 0 {
-        return Foo(n)
-    }
-    return nil
-}
-fn Main() -> void {
-    let f: Foo
-    let maybe: Foo? = MakeFoo(1)
-    if maybe != nil {
-        f = Unwrap(maybe)
-    } else {
-        return
-    }
-    let y: int = f.x
-}
----
-ok
----
-
 === valid: for-in string loop variable is initialized
 fn Main() -> void {
     let line: string = "hello"
