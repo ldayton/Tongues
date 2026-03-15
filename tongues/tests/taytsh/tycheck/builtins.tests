@@ -899,3 +899,15 @@ fn Main() -> void {
 ---
 ok
 ---
+
+=== valid: method call on rune variable
+fn Main() -> void {
+    let r: rune = 'a'
+    let a: bool = r.IsDigit()
+    let b: bool = r.IsAlpha()
+    let c: rune = r.ToUpper()
+    let d: rune = r.ToLower()
+}
+---
+ok
+---

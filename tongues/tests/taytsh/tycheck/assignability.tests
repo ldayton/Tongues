@@ -458,3 +458,35 @@ fn Main() -> void {
 ---
 error: cannot assign
 ---
+
+=== rune assignable to string
+fn Main() -> void {
+    let r: rune = 'x'
+    let s: string = r
+}
+---
+ok
+---
+
+=== rune appendable to list of string
+fn Main() -> void {
+    let chars: list[string]
+    let r: rune = 'x'
+    Append(chars, r)
+}
+---
+ok
+---
+
+=== rune in string iteration appendable to list of string
+fn Main() -> void {
+    let line: string = "hello"
+    let chars: list[string]
+    for ch in line {
+        Append(chars, ch)
+    }
+}
+---
+ok
+---
+---
