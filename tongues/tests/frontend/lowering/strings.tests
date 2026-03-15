@@ -247,6 +247,43 @@ def f(s: str) -> list[str]:
 Append(chars, ToString(ch))
 ---
 
+=== rune method call lowered to builtin function
+def f(name: str) -> bool:
+    for c in name:
+        if not c.isalnum():
+            return False
+    return True
+---
+IsAlnum(c)
+---
+
+=== hoisted string iteration var is string not rune union
+from dataclasses import dataclass
+@dataclass
+class Lexer:
+    source: str
+    pos: int
+    length: int
+    def advance(self) -> str:
+        c = self.source[self.pos]
+        self.pos += 1
+        return c
+    def parse(self) -> list[str]:
+        chars: list[str] = []
+        flag: bool = False
+        while self.pos < self.length:
+            if flag:
+                line: str = "x"
+                for ch in line:
+                    chars.append(ch)
+                continue
+            ch = self.advance()
+            chars.append(ch)
+        return chars
+---
+let ch: string
+---
+
 === bytes index returns int
 def f(b: bytes) -> int:
     return b[0]
