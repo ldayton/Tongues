@@ -387,13 +387,13 @@ fn Main() -> void {
 error: cannot assign
 ---
 
-=== no implicit rune to string
+=== rune assignable to string
 fn Main() -> void {
     let c: rune = 'a'
     let s: string = c
 }
 ---
-error: cannot assign
+ok
 ---
 
 === unhashable type as map key

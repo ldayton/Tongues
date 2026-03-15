@@ -726,6 +726,9 @@ def is_assignable(source: Type, target: Type) -> bool:
     # Error type: assignable to/from anything (prevents cascading)
     if source.kind == TY_ERROR or target.kind == TY_ERROR:
         return True
+    # Rune is assignable to string (auto-coerced via ToString)
+    if source.kind == TY_RUNE and target.kind == TY_STRING:
+        return True
     # Source is nil, target contains nil
     if source.kind == TY_NIL and contains_nil(target):
         return True
@@ -3243,7 +3246,7 @@ class Checker:
             return ERROR_T
         if isinstance(obj_type, (MapT, ListT, SetT)):
             return self._check_collection_method(obj_type, access.field, args, pos)
-        if obj_type.kind in (TY_STRING, TY_BYTES, TY_ERROR):
+        if obj_type.kind in (TY_STRING, TY_BYTES, TY_RUNE, TY_ERROR):
             return ERROR_T
         self.error("cannot call method on " + type_name(obj_type), pos)
         return None
