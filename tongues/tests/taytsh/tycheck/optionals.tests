@@ -1,3 +1,24 @@
+=== valid: assign nil to optional field after narrowing
+struct Lexer {
+    cache: int?
+
+    fn Next(this) -> int {
+        if this.cache != nil {
+            let tok: int = this.cache
+            this.cache = nil
+            return tok
+        }
+        return 0
+    }
+}
+fn Main() -> void {
+    let lex: Lexer = Lexer(nil)
+    let n: int = lex.Next()
+}
+---
+ok
+---
+
 === valid: optional assignment
 fn Main() -> void {
     let x: int? = nil
