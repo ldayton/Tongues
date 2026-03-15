@@ -1681,6 +1681,10 @@ def _collect_init_fields(
                                     info.const_fields[field_name] = v.value
                             else:
                                 has_computed_init = True
+                            if field_name in info.fields and is_simple_param:
+                                param_name = get_str(value, "id")
+                                if param_has_default.get(param_name, False):
+                                    info.fields[field_name].has_default = True
                             if field_name not in info.fields:
                                 if is_simple_param:
                                     param_name = get_str(value, "id")
