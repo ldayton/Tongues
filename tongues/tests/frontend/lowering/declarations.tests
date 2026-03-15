@@ -305,6 +305,6 @@ class Config:
 def f() -> Config:
     return Config("localhost", debug=True)
 ---
-return Config("localhost", debug: true)
+return Config(host: "localhost", debug: True)
 ---
 
