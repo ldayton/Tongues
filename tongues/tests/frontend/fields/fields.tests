@@ -731,3 +731,22 @@ classes.Cfg.fields.flag.has_default = true
 classes.Cfg.fields.flag.default._type = BoolLit
 classes.Cfg.fields.flag.default.value = false
 ---
+
+=== class annotation field gets has_default from init param
+class Node:
+    kind: str
+    def __init__(self) -> None:
+        pass
+class Word(Node):
+    value: str
+    parts: list[int]
+    def __init__(self, value: str, parts: list[int] | None = None) -> None:
+        self.kind = "word"
+        self.value = value
+        if parts is None:
+            parts = []
+        self.parts = parts
+---
+classes.Word.fields.parts.has_default = true
+classes.Word.init_params = ["value", "parts"]
+---
