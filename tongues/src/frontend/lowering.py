@@ -633,6 +633,16 @@ def _is_optional_type(td: TypeNode) -> bool:
     return isinstance(td, OptionalType)
 
 
+def _is_definitely_non_optional(node: ASTNode, env: _Env) -> bool:
+    """Check if a Name node has a known non-optional type from env.var_types."""
+    if not isinstance(node, dict) or get_str(node, "_type") != "Name":
+        return False
+    vt = env.var_types.get(get_str(node, "id"))
+    if vt is None:
+        return False
+    return not isinstance(vt, OptionalType)
+
+
 def _is_variadic_tuple(td: TypeNode) -> bool:
     return isinstance(td, TupleType) and td.variadic
 
@@ -1815,11 +1825,15 @@ def _lower_single_compare(
     # is None → IsNil(x) (keep IsNil to avoid checker narrowing to nil in then-body)
     if op_type == "Is":
         if _is_ast(comp_node, "Constant") and isinstance(comp_node.get("value"), JNull):
+            if _is_definitely_non_optional(left_node, env):
+                return TBoolLit(pos, {}, False)
             left = _lower_expr(left_node, env, ctx)
             return _make_call(pos, "IsNil", [left])
     # is not None → x != nil (TVar) or !IsNil(expr)
     if op_type == "IsNot":
         if _is_ast(comp_node, "Constant") and isinstance(comp_node.get("value"), JNull):
+            if _is_definitely_non_optional(left_node, env):
+                return TBoolLit(pos, {}, True)
             left = _lower_expr(left_node, env, ctx)
             if isinstance(left, TVar):
                 return TBinaryOp(pos, {}, "!=", left, TNilLit(pos, {}))
