@@ -76,6 +76,43 @@ fn Main() -> void {
 ok
 ---
 
+=== valid: reused optional local narrowed after reassignment
+fn MaybeA() -> int? { return 42 }
+fn MaybeB() -> int? { return nil }
+fn Fetch() -> int {
+    let v: int? = MaybeA()
+    if v != nil {
+        return v
+    }
+    v = MaybeB()
+    if v != nil {
+        return v
+    }
+    return 0
+}
+fn Main() -> void {
+    WritelnOut(ToString(Fetch()))
+}
+---
+ok
+---
+
+=== valid: Append to optional list after assignment narrows type
+fn Main() -> void {
+    let xs: list[int]? = nil
+    let cond: bool = true
+    if cond {
+        xs = [1, 2, 3]
+        let w: int? = 42
+        if w != nil {
+            Append(xs, w)
+        }
+    }
+}
+---
+ok
+---
+
 === valid: optional assignment
 fn Main() -> void {
     let x: int? = nil
