@@ -4924,6 +4924,11 @@ def _lower_tuple_assign(
                     elif name in env.hoisted_stmts:
                         _backpatch_hoisted(pos, name, PrimitiveType(result_kind), env)
                     targets.append(TVar(pos, ann, safe))
+                elif _is_ast(e, "Attribute"):
+                    attr = get_str(e, "attr")
+                    obj_node = get_node(e, "value")
+                    obj = _lower_expr(obj_node, env, ctx)
+                    targets.append(TFieldAccess(pos, {}, obj, attr))
             stmts.append(TTupleAssignStmt(pos, {}, targets, value))
             return stmts
     value = _lower_expr(value_node, env, ctx)
@@ -4950,6 +4955,11 @@ def _lower_tuple_assign(
                 et = elem_types[i] if i < len(elem_types) else INT_TYPE
                 _backpatch_hoisted(pos, name, et, env)
             targets.append(TVar(pos, ann, safe))
+        elif _is_ast(e, "Attribute"):
+            attr = get_str(e, "attr")
+            obj_node = get_node(e, "value")
+            obj = _lower_expr(obj_node, env, ctx)
+            targets.append(TFieldAccess(pos, {}, obj, attr))
     stmts.append(TTupleAssignStmt(pos, {}, targets, value))
     return stmts
 
