@@ -32,7 +32,7 @@ def test_string_iter_while_nested() -> None:
     pos: int = 0
     chars: list[str] = []
     while pos < len(source):
-        line: str = source[pos:pos + 1]
+        line: str = source[pos : pos + 1]
         for ch in line:
             chars.append(ch)
         pos += 1
