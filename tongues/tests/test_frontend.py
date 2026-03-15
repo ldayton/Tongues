@@ -318,3 +318,44 @@ def test_emit_stamp_uids() -> None:
     output, err = emit_from_python(source, "python")
     assert err is None, f"emit error: {err}"
     assert output is not None
+
+
+def test_hoisted_var_nil_narrowing() -> None:
+    """Variable assigned both Token and Token|None should still narrow after nil guard (#298)."""
+    source = (
+        "class Token:\n"
+        "    def __init__(self, value: str) -> None:\n"
+        "        self.value: str = value\n"
+        "class Lexer:\n"
+        "    def __init__(self) -> None:\n"
+        "        self._token_cache: Token | None = None\n"
+        "        self._last_read_token: Token | None = None\n"
+        "    def _read_operator(self) -> Token | None:\n"
+        "        return None\n"
+        "    def _read_word(self) -> Token | None:\n"
+        "        return None\n"
+        "    def next_token(self) -> Token:\n"
+        "        if self._token_cache is not None:\n"
+        "            tok = self._token_cache\n"
+        "            self._token_cache = None\n"
+        "            self._last_read_token = tok\n"
+        "            return tok\n"
+        "        tok = self._read_operator()\n"
+        "        if tok is not None:\n"
+        "            self._last_read_token = tok\n"
+        "            return tok\n"
+        "        tok = self._read_word()\n"
+        "        if tok is not None:\n"
+        "            self._last_read_token = tok\n"
+        "            return tok\n"
+        "        tok = Token('')\n"
+        "        self._last_read_token = tok\n"
+        "        return tok\n"
+        "def main() -> None:\n"
+        "    pass\n"
+        "if __name__ == '__main__':\n"
+        "    main()\n"
+    )
+    output, err = emit_from_python(source, "perl")
+    assert err is None, f"emit error: {err}"
+    assert output is not None

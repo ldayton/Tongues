@@ -1018,7 +1018,7 @@ fn Main() -> void {
     let b: bool = x == nil
 }
 ---
-error:
+ok
 ---
 
 === enum variant not callable
