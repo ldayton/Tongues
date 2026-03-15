@@ -237,6 +237,16 @@ def f(s: str) -> None:
 for i, ch in s {
 ---
 
+=== string iteration append to str list
+def f(s: str) -> list[str]:
+    chars: list[str] = []
+    for ch in s:
+        chars.append(ch)
+    return chars
+---
+Append(chars, ToString(ch))
+---
+
 === bytes index returns int
 def f(b: bytes) -> int:
     return b[0]

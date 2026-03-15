@@ -198,3 +198,15 @@ fn Main() -> void {
 ---
 error: variable used before assignment
 ---
+
+=== valid: for-in string loop variable is initialized
+fn Main() -> void {
+    let line: string = "hello"
+    let result: string = ""
+    for ch in line {
+        result = Concat(result, ToString(ch))
+    }
+}
+---
+ok
+---
