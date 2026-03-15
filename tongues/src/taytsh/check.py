@@ -2896,11 +2896,18 @@ class Checker:
         result: Type | None = None
         for vname in iface.variants:
             vtype = self.types.get(vname)
-            if vtype is None or not isinstance(vtype, StructT):
+            if vtype is None:
                 return None
-            if field not in vtype.fields:
+            if isinstance(vtype, InterfaceT):
+                ft = self._interface_field_type(vtype, field)
+                if ft is None:
+                    return None
+            elif isinstance(vtype, StructT):
+                if field not in vtype.fields:
+                    return None
+                ft = vtype.fields[field]
+            else:
                 return None
-            ft = vtype.fields[field]
             if result is None:
                 result = ft
             else:
