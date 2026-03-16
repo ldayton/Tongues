@@ -477,6 +477,7 @@ class _JavaEmitter(Emitter):
         self._needs_bytes_helpers: bool = False
         self._needs_decode_utf8: bool = False
         self._needs_pop_item: bool = False
+        self._needs_set_pop: bool = False
         self._needs_hex_helper: bool = False
         self._needs_argv: bool = False
         self._needs_throwing_runnable: bool = False
@@ -1237,6 +1238,16 @@ class _JavaEmitter(Emitter):
             self._line("while (it.hasNext()) last = it.next();")
             self._line("m.remove(last.getKey());")
             self._line("return Arrays.asList(last.getKey(), last.getValue());")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_set_pop:
+            self._line()
+            self._line("static <T> T _setPop(HashSet<T> s) {")
+            self.indent += 1
+            self._line("var it = s.iterator();")
+            self._line("T val = it.next();")
+            self._line("it.remove();")
+            self._line("return val;")
             self.indent -= 1
             self._line("}")
         if self._needs_throwing_runnable:
@@ -2159,6 +2170,8 @@ class _JavaEmitter(Emitter):
         self.var_types[stmt.name] = stmt.typ
         unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
         jtype = self._type(stmt.typ)
+        if jtype == "void":
+            jtype = "Object"
         # Fallback: if type is error/Object, try to infer from value annotation
         if jtype == "Object" and stmt.value is not None:
             val_ann = stmt.value.annotations.get("type", "")
@@ -2515,7 +2528,19 @@ class _JavaEmitter(Emitter):
             and isinstance(stmt.iterable.func, TVar)
             and stmt.iterable.func.name == "Reversed"
         ):
-            inner = self._expr(stmt.iterable.args[0].value)
+            inner_expr = stmt.iterable.args[0].value
+            inner = self._expr(inner_expr)
+            if self._is_bytes_expr(inner_expr):
+                tmp = "__rev_bytes_" + str(self._tmp_counter)
+                self._tmp_counter += 1
+                self._line("byte[] " + tmp + " = " + inner + ";")
+                self._line("for (int __i = " + tmp + ".length - 1; __i >= 0; __i--) {")
+                self.indent += 1
+                self._line("var " + binding[0] + " = " + tmp + "[__i];")
+                self._emit_stmts(stmt.body)
+                self.indent -= 1
+                self._line("}")
+                return
             self._line("for (var " + binding[0] + " : " + inner + ".reversed()) {")
             self.indent += 1
             self._emit_stmts(stmt.body)
@@ -3877,12 +3902,10 @@ class _JavaEmitter(Emitter):
         return "!" + a + ".equals(" + b + ")"
 
     def _is_concat_expr(self, expr: TExpr) -> bool:
-        """True if the expression is a Concat (string concatenation) call."""
-        return (
-            isinstance(expr, TCall)
-            and isinstance(expr.func, TVar)
-            and expr.func.name == "Concat"
-        )
+        """True if the expression emits inline string concatenation with +."""
+        if not isinstance(expr, TCall) or not isinstance(expr.func, TVar):
+            return False
+        return expr.func.name in ("Concat", "ToRepr")
 
     def _unwrap_tostring_rune(self, expr: TExpr) -> TExpr | None:
         """If expr is ToString(rune_expr), return the rune_expr."""
@@ -4106,6 +4129,14 @@ class _JavaEmitter(Emitter):
         if expr.op in ("not", "!"):
             return self._unary_not(expr.operand)
         operand = self._expr(expr.operand)
+        if isinstance(expr.operand, (TBinaryOp, TTernary)):
+            operand = "(" + operand + ")"
+        elif (
+            expr.op == "-"
+            and isinstance(expr.operand, TUnaryOp)
+            and expr.operand.op == "-"
+        ):
+            operand = "(" + operand + ")"
         if self.strict_math and expr.op == "-" and self._is_int_expr(expr.operand):
             return "Math.negateExact(" + operand + ")"
         return expr.op + operand
@@ -4485,6 +4516,9 @@ class _JavaEmitter(Emitter):
                 + ")"
             )
         if name == "Pop":
+            if self._is_set_expr(args[0].value):
+                self._needs_set_pop = True
+                return "_setPop(" + self._a(args, 0) + ")"
             return self._a(args, 0) + ".removeLast()"
         if name == "PopItem":
             self._needs_pop_item = True
@@ -4848,6 +4882,14 @@ class _JavaEmitter(Emitter):
             if self._is_bytes_expr(args[0].value):
                 self._needs_bytes_helpers = True
                 return "_bytesCount(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+            if self._is_list_expr(args[0].value):
+                return (
+                    "Collections.frequency("
+                    + self._a(args, 0)
+                    + ", "
+                    + self._a(args, 1)
+                    + ")"
+                )
             # Skip Pattern.quote for simple literals without regex metacharacters
             sep_arg = args[1].value
             if isinstance(sep_arg, TStringLit) and not any(
@@ -5105,6 +5147,10 @@ class _JavaEmitter(Emitter):
         ann = self._expr_type_ann(expr)
         return ann == "bytes"
 
+    def _is_set_expr(self, expr: TExpr) -> bool:
+        ann = self._expr_type_ann(expr)
+        return ann.startswith("set[")
+
     def _is_int_list(self, expr: TExpr) -> bool:
         raise NotImplementedError
 
@@ -5174,8 +5220,8 @@ class _JavaEmitter(Emitter):
     def _emit_divmod_assign(self, stmt: TTupleAssignStmt, unused: set[int]) -> None:
         assert isinstance(stmt.value, TCall)
         call: TCall = stmt.value
-        a = self._expr(call.args[0].value)
-        b = self._expr(call.args[1].value)
+        a = self._maybe_paren(call.args[0].value, "/", True)
+        b = self._maybe_paren(call.args[1].value, "/", False)
         q = self._expr(stmt.targets[0])
         r = self._expr(stmt.targets[1])
         if 0 not in unused:
