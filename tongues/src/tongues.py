@@ -92,7 +92,7 @@ PHASES: list[str] = [
     "analyze",
 ]
 
-VERSION: str = "0.2.2"
+VERSION: str = "0.2.3"
 
 USAGE: str = """\
 tongues [OPTIONS] [INPUT] [-o OUTPUT]
