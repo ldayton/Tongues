@@ -1042,6 +1042,7 @@ class FieldInfo:
                 "typ": typenode_to_dict(self.typ),
                 "py_name": JStr(self.py_name),
                 "has_default": JBool(self.has_default),
+                "exclude_from_init": JBool(self.exclude_from_init),
                 "default": dv,
             }
         )
@@ -1175,6 +1176,45 @@ def _value_refs_defaulted_param(
             return True
         if _value_refs_defaulted_param(orelse, param_has_default):
             return True
+    return False
+
+
+def _value_refs_any_param(node: ASTNode, param_names: set[str]) -> bool:
+    """Check if an expression tree references any constructor parameter."""
+    if _is_type(node, ["Name"]):
+        return get_str(node, "id") in param_names
+    if _is_type(node, ["Call"]):
+        func = get_node(node, "func")
+        if _value_refs_any_param(func, param_names):
+            return True
+        for arg in get_nodes(node, "args"):
+            if _value_refs_any_param(arg, param_names):
+                return True
+        for kw in get_nodes(node, "keywords"):
+            val = get_node(kw, "value")
+            if _value_refs_any_param(val, param_names):
+                return True
+        return False
+    if _is_type(node, ["BinOp"]):
+        left = get_node(node, "left")
+        right = get_node(node, "right")
+        return _value_refs_any_param(left, param_names) or _value_refs_any_param(
+            right, param_names
+        )
+    if _is_type(node, ["UnaryOp"]):
+        return _value_refs_any_param(get_node(node, "operand"), param_names)
+    if _is_type(node, ["Attribute"]):
+        return _value_refs_any_param(get_node(node, "value"), param_names)
+    if _is_type(node, ["Subscript"]):
+        return _value_refs_any_param(
+            get_node(node, "value"), param_names
+        ) or _value_refs_any_param(get_node(node, "slice"), param_names)
+    if _is_type(node, ["IfExp"]):
+        return (
+            _value_refs_any_param(get_node(node, "test"), param_names)
+            or _value_refs_any_param(get_node(node, "body"), param_names)
+            or _value_refs_any_param(get_node(node, "orelse"), param_names)
+        )
     return False
 
 
@@ -1639,6 +1679,10 @@ def _collect_init_fields(
                                 )
                                 if _call_refs_self(vn):
                                     finfo_new.self_ref = True
+                                if _value_refs_any_param(
+                                    vn, set(param_has_default.keys())
+                                ):
+                                    finfo_new.exclude_from_init = True
                             info.fields[field_name] = finfo_new
                         ann_val2 = stmt.get("value")
                         if ann_val2 is not None and not isinstance(ann_val2, JNull):
@@ -1732,13 +1776,18 @@ def _collect_init_fields(
                                     if inferred_typ is not None:
                                         if field_name not in info.fields:
                                             info.field_order.append(field_name)
-                                        info.fields[field_name] = FieldInfo(
+                                        fi = FieldInfo(
                                             name=field_name,
                                             typ=_unwrap_field_type(inferred_typ),
                                             py_name=field_name,
                                             has_default=True,
                                             default=None,
                                         )
+                                        if _value_refs_any_param(
+                                            value, set(param_has_default.keys())
+                                        ):
+                                            fi.exclude_from_init = True
+                                        info.fields[field_name] = fi
                             elif not is_simple_param:
                                 inferred = _infer_type_from_value(
                                     value,

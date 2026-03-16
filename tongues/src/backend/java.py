@@ -1440,6 +1440,12 @@ class _JavaEmitter(Emitter):
             for f in decl.fields:
                 safe = _safe_name(f.name)
                 self._line("this." + safe + " = " + safe + ";")
+            if decl.init_body:
+                old_self = self.self_name
+                self.self_name = "this"
+                for st in decl.init_body:
+                    self._emit_stmt(st)
+                self.self_name = old_self
             self.indent -= 1
             self._line("}")
             required = [f for f in decl.fields if not f.has_default]
@@ -1470,6 +1476,12 @@ class _JavaEmitter(Emitter):
                                 + self._field_default(f, in_body=True)
                                 + ";"
                             )
+                    if decl.init_body:
+                        old_self2 = self.self_name
+                        self.self_name = "this"
+                        for st in decl.init_body:
+                            self._emit_stmt(st)
+                        self.self_name = old_self2
                     self.indent -= 1
                     self._line("}")
         if decl.fields:

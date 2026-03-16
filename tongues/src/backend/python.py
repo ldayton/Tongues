@@ -497,11 +497,21 @@ class _PythonEmitter(Emitter):
         for fld in decl.fields:
             self._emit_field(fld)
         self._current_struct = ""
+        if decl.init_body:
+            self._line()
+            self._line("def __post_init__(self):")
+            self.indent += 1
+            old_self = self.self_name
+            self.self_name = "this"
+            for st in decl.init_body:
+                self._emit_stmt(st)
+            self.self_name = old_self
+            self.indent -= 1
         first_method = True
         for method in decl.methods:
             if method.name == "__eq__":
                 continue
-            if not first_method or decl.fields:
+            if not first_method or decl.fields or decl.init_body:
                 self._line()
             first_method = False
             self._emit_method(method)

@@ -6766,6 +6766,73 @@ def _collect_field_keys(cls_info: ClassInfo, inherited: set[str]) -> list[str]:
     return fkeys
 
 
+def _lower_init_body(
+    pos: Pos,
+    init_node: ASTNode,
+    class_name: str,
+    cls_info: ClassInfo | None,
+    ctx: _LowerCtx,
+) -> list[TStmt]:
+    """Lower computed field assignments from __init__ into constructor body statements."""
+    if cls_info is None:
+        return []
+    excluded: set[str] = set()
+    for fname, finfo in cls_info.fields.items():
+        if finfo.exclude_from_init:
+            excluded.add(fname)
+    if not excluded:
+        return []
+    env = _Env()
+    self_type: TypeNode = PointerType(StructRef(class_name))
+    env.var_types["this"] = self_type
+    env.declared.add("this")
+    ptf = cls_info.param_to_field
+    sig_class_methods = ctx.tc_result.methods.get(class_name, {})
+    init_info = sig_class_methods.get("__init__")
+    if init_info is not None:
+        for p in init_info.params:
+            if p.name != "self":
+                field_name = ptf.get(p.name, p.name)
+                env.var_types[p.name] = p.typ
+                env.declared.add(p.name)
+                if field_name != p.name:
+                    env.isinstance_subs[p.name] = field_name
+    stmts: list[TStmt] = []
+    init_body = get_nodes(init_node, "body")
+    for stmt in init_body:
+        if _is_ast(stmt, "Assign"):
+            targets = get_nodes(stmt, "targets")
+            if len(targets) == 1 and _is_ast(targets[0], "Attribute"):
+                val_node = get_node(targets[0], "value")
+                if _is_ast(val_node, "Name") and get_str(val_node, "id") == "self":
+                    field_name = get_str(targets[0], "attr")
+                    if field_name in excluded:
+                        value = get_node(stmt, "value")
+                        rhs = _lower_expr(value, env, ctx)
+                        lhs = TFieldAccess(pos, {}, TVar(pos, {}, "this"), field_name)
+                        stmts.append(TAssignStmt(pos, {}, lhs, rhs))
+        elif _is_ast(stmt, "AnnAssign"):
+            target = get_node(stmt, "target")
+            if _is_ast(target, "Attribute"):
+                val_node = get_node(target, "value")
+                if _is_ast(val_node, "Name") and get_str(val_node, "id") == "self":
+                    field_name = get_str(target, "attr")
+                    if field_name in excluded:
+                        ann_val = stmt.get("value")
+                        if ann_val is not None:
+                            value_node = (
+                                ann_val.entries
+                                if isinstance(ann_val, JDict)
+                                else ann_val
+                            )
+                            rhs = _lower_expr(value_node, env, ctx)
+                            lhs = TFieldAccess(
+                                pos, {}, TVar(pos, {}, "this"), field_name
+                            )
+                            stmts.append(TAssignStmt(pos, {}, lhs, rhs))
+    return stmts
+
+
 def _build_struct(
     node: ASTNode,
     ctx: _LowerCtx,
@@ -6879,10 +6946,13 @@ def _build_struct(
     own_method_names: set[str] = set()
     body = get_nodes(node, "body")
     env = _Env()
+    init_body: list[TStmt] = []
     for item in body:
         if _is_ast(item, "FunctionDef"):
             mname = get_str(item, "name")
-            if mname != "__init__":
+            if mname == "__init__":
+                init_body = _lower_init_body(pos, item, name, cls_info, ctx)
+            else:
                 own_method_names.add(mname)
                 methods.append(_build_method(item, name, env, ctx))
     ancestor_methods = _collect_ancestor_methods(name, own_method_names, ctx)
@@ -6897,7 +6967,7 @@ def _build_struct(
     ann: Ann = {}
     if is_exception:
         ann["_is_exception"] = "true"
-    return TStructDecl(pos, ann, name, parent, fields, methods)
+    return TStructDecl(pos, ann, name, parent, fields, methods, init_body)
 
 
 def _is_struct_ttype(typ: TType | None) -> bool:

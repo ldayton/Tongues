@@ -569,6 +569,16 @@ class Foo:
 classes.Foo.fields.total.typ.kind = int
 ---
 
+=== computed field from param excluded from init
+class Container:
+    def __init__(self, data: str) -> None:
+        self.data: str = data
+        self.size: int = len(data)
+---
+classes.Container.fields.data.exclude_from_init = false
+classes.Container.fields.size.exclude_from_init = true
+---
+
 === field ordering body then init
 class Foo:
     x: int

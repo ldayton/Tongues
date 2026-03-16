@@ -800,7 +800,7 @@ class _RubyEmitter(Emitter):
             attrs = ", ".join(":" + _safe_name(f.name) for f in decl.fields)
             self._line("attr_accessor " + attrs)
             self._line()
-            self._emit_initialize(decl.fields, True)
+            self._emit_initialize(decl.fields, True, decl.init_body)
         for i, method in enumerate(decl.methods):
             if i > 0 or decl.fields:
                 self._line()
@@ -825,7 +825,7 @@ class _RubyEmitter(Emitter):
             attrs = ", ".join(":" + _safe_name(f.name) for f in decl.fields)
             self._line("attr_accessor " + attrs)
             self._line()
-            self._emit_initialize(decl.fields, False)
+            self._emit_initialize(decl.fields, False, decl.init_body)
         for i, method in enumerate(decl.methods):
             if i > 0 or decl.fields:
                 self._line()
@@ -833,7 +833,9 @@ class _RubyEmitter(Emitter):
         self.indent -= 1
         self._line("end")
 
-    def _emit_initialize(self, fields: list[TFieldDecl], is_error: bool) -> None:
+    def _emit_initialize(
+        self, fields: list[TFieldDecl], is_error: bool, init_body: list | None = None
+    ) -> None:
         params: list[str] = []
         for f in fields:
             name = _safe_name(f.name)
@@ -868,6 +870,12 @@ class _RubyEmitter(Emitter):
                 )
             else:
                 self._line("@" + name + " = " + name)
+        if init_body:
+            old_self = self.self_name
+            self.self_name = "this"
+            for st in init_body:
+                self._emit_stmt(st)
+            self.self_name = old_self
         self.indent -= 1
         self._line("end")
 

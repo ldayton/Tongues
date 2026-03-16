@@ -220,6 +220,14 @@ class _Emitter:
         self._indent_level += 1
         for field in decl.fields:
             self._emit_field(field)
+        if decl.init_body:
+            self._lines.append("")
+            self._emit_line("init {")
+            self._indent_level += 1
+            for st in decl.init_body:
+                self._emit_stmt(st)
+            self._indent_level -= 1
+            self._emit_line("}")
         for method in decl.methods:
             self._lines.append("")
             if self._taytsh:

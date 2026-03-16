@@ -614,6 +614,12 @@ class _JavaScriptEmitter(Emitter):
             for fld in decl.fields:
                 safe = _safe_name(fld.name)
                 self._emit_field_assign(fld, safe)
+            if decl.init_body:
+                old_self = self.self_name
+                self.self_name = "this"
+                for st in decl.init_body:
+                    self._emit_stmt(st)
+                self.self_name = old_self
             self.indent -= 1
             self._line("}")
         for i, method in enumerate(decl.methods):

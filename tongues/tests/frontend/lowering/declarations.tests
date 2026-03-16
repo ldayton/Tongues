@@ -341,3 +341,20 @@ def f() -> Config:
 return Config(host: "localhost", debug: True)
 ---
 
+=== computed field from param not in constructor
+class Container:
+    def __init__(self, data: str):
+        self.data: str = data
+        self.size: int = len(data)
+def f() -> Container:
+    return Container("hello")
+---
+struct Container {
+    data: string
+    size: int = 0
+
+    init {
+        this.size = Len(data)
+    }
+---
+
