@@ -341,46 +341,16 @@ jobs:
       - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile _vm-test-tongues-java
 
   # ---------------------------------------------------------------------------
-  # Generative / property-based tests
+  # Source-level pytest (all tests including generative)
   # ---------------------------------------------------------------------------
 
-  pytest-gen:
+  pytest:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-      - run: docker build -t tongues-python docker/python
-      - run: docker save tongues-python -o /tmp/tongues-python.tar
-      - uses: actions/upload-artifact@v4
-        with:
-          name: docker-python
-          path: /tmp/tongues-python.tar
-
-  pytest-gen-tycheck:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: pytest-gen
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
-        with:
-          name: docker-python
-          path: /tmp
-      - run: docker load -i /tmp/tongues-python.tar
-      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _pytest-gen-tycheck
-
-  pytest-gen-softfloat:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: pytest-gen
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
-        with:
-          name: docker-python
-          path: /tmp
-      - run: docker load -i /tmp/tongues-python.tar
-      - run: docker run --rm -v $PWD:/workspace tongues-python just -f justfile _pytest-gen-softfloat
+      - run: docker build -t tongues-pytest docker/pytest
+      - run: docker run --rm -v $PWD:/workspace tongues-pytest just -f justfile pytest
 
   # ---------------------------------------------------------------------------
   # Gate — single status check for branch protection
@@ -392,8 +362,7 @@ jobs:
     if: always()
     needs:
       - style
-      - pytest-gen-tycheck
-      - pytest-gen-softfloat
+      - pytest
       - transpile-tongues-python
       - transpile-tongues-ruby
       - transpile-tongues-perl
@@ -419,8 +388,7 @@ jobs:
       - run: |
           for result in \
             "${{ needs.style.result }}" \
-            "${{ needs.pytest-gen-tycheck.result }}" \
-            "${{ needs.pytest-gen-softfloat.result }}" \
+            "${{ needs.pytest.result }}" \
             "${{ needs.transpile-tongues-python.result }}" \
             "${{ needs.transpile-tongues-ruby.result }}" \
             "${{ needs.transpile-tongues-perl.result }}" \
