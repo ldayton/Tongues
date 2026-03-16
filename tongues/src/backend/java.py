@@ -182,6 +182,7 @@ _ISTYPE_MAP: dict[str, str] = {
     "int": "Integer",
     "float": "Double",
     "bool": "Boolean",
+    "AssertError": "AssertionError",
 }
 
 _JAVA_RESERVED = frozenset(
