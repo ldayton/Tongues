@@ -834,7 +834,10 @@ class _RubyEmitter(Emitter):
         self._line("end")
 
     def _emit_initialize(
-        self, fields: list[TFieldDecl], is_error: bool, init_body: list[TStmt] | None = None
+        self,
+        fields: list[TFieldDecl],
+        is_error: bool,
+        init_body: list[TStmt] | None = None,
     ) -> None:
         params: list[str] = []
         for f in fields:
