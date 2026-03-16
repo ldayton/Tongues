@@ -51,6 +51,7 @@ jobs:
       - name: Transpile all targets
         run: |
           cd tongues && uv sync
+          mkdir -p .out
           for target in python ruby perl javascript java; do
             ext=$(echo "$target" | sed 's/python/py/;s/ruby/rb/;s/perl/pl/;s/javascript/js/;s/java/java/')
             uv run bin/tongues --target "$target" -o ".out/tongues.$ext" src
