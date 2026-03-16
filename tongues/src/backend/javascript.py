@@ -2011,11 +2011,14 @@ class _JavaScriptEmitter(Emitter):
 
     def _escape_regex_class(self, s: str) -> str:
         """Escape characters for use inside a regex character class."""
+        ctrl_map = {"\n": "\\n", "\t": "\\t", "\r": "\\r", "\x0b": "\\v", "\x0c": "\\f"}
         out: list[str] = []
         i = 0
         while i < len(s):
             c = s[i]
-            if c in ("\\", "]", "^", "-"):
+            if c in ctrl_map:
+                out.append(ctrl_map[c])
+            elif c in ("\\", "]", "^", "-"):
                 out.append("\\" + c)
             else:
                 out.append(c)
@@ -3262,7 +3265,7 @@ class _JavaScriptEmitter(Emitter):
         if not isinstance(template_expr, TStringLit):
             arg_strs = self._join_args(args, ", ")
             return "Format(" + arg_strs + ")"
-        template = template_expr.value
+        template = template_expr.value.replace("\\", "\\\\").replace("`", "\\`")
         fmt_args = args[1:]
         markers: dict[str, int] = {}
         result = template
