@@ -42,11 +42,31 @@ jobs:
             echo "EOF" >> $GITHUB_OUTPUT
           fi
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Transpile all targets
+        run: |
+          cd tongues && uv sync
+          for target in python ruby perl javascript java; do
+            ext=$(echo "$target" | sed 's/python/py/;s/ruby/rb/;s/perl/pl/;s/javascript/js/;s/java/java/')
+            uv run bin/tongues --target "$target" -o ".out/tongues.$ext" src
+          done
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           body: ${{ steps.notes.outputs.body }}
           generate_release_notes: ${{ steps.notes.outputs.auto == 'true' }}
+          files: |
+            tongues/.out/tongues.py
+            tongues/.out/tongues.rb
+            tongues/.out/tongues.pl
+            tongues/.out/tongues.js
+            tongues/.out/tongues.java
 
       - name: Get tarball SHA256
         id: sha
