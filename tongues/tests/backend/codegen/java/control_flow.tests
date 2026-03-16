@@ -51,4 +51,4 @@ for (int i = 0; i < xs.size(); i++) {
 if (!done) {
 
 === ternary expression
-return x < lo ? lo : (x > hi ? hi : x);
+return (x < lo ? lo : ((x > hi ? hi : x)));

@@ -3873,7 +3873,11 @@ class _JavaEmitter(Emitter):
                 )
         a = self._expr(str_expr)
         b = self._expr(other)
-        if self._is_concat_expr(str_expr) or isinstance(str_expr, TTernary):
+        if (
+            self._is_concat_expr(str_expr)
+            or isinstance(str_expr, TTernary)
+            or " + " in a
+        ):
             a = "(" + a + ")"
         # Use simple != null or == null when comparing to nil
         if isinstance(other, TNilLit):
@@ -4118,6 +4122,14 @@ class _JavaEmitter(Emitter):
         if expr.op in ("not", "!"):
             return self._unary_not(expr.operand)
         operand = self._expr(expr.operand)
+        if isinstance(expr.operand, TBinaryOp):
+            operand = "(" + operand + ")"
+        elif (
+            expr.op == "-"
+            and isinstance(expr.operand, TUnaryOp)
+            and expr.operand.op == "-"
+        ):
+            operand = "(" + operand + ")"
         if self.strict_math and expr.op == "-" and self._is_int_expr(expr.operand):
             return "Math.negateExact(" + operand + ")"
         return expr.op + operand
@@ -4166,13 +4178,15 @@ class _JavaEmitter(Emitter):
             cond_str = " && ".join(parts) if parts else "true"
             then_str = self._expr(expr.then_expr)
             self._var_aliases = old_aliases
-            return cond_str + " ? " + then_str + " : " + else_str
+            return "(" + cond_str + " ? " + then_str + " : " + else_str + ")"
         return (
-            self._expr(expr.cond)
+            "("
+            + self._expr(expr.cond)
             + " ? "
             + self._expr(expr.then_expr)
             + " : "
             + else_str
+            + ")"
         )
 
     def _none_coalesce(self, expr: TTernary) -> str:
