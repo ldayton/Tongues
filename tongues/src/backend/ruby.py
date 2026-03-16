@@ -834,7 +834,7 @@ class _RubyEmitter(Emitter):
         self._line("end")
 
     def _emit_initialize(
-        self, fields: list[TFieldDecl], is_error: bool, init_body: list | None = None
+        self, fields: list[TFieldDecl], is_error: bool, init_body: list[TStmt] | None = None
     ) -> None:
         params: list[str] = []
         for f in fields:
@@ -870,7 +870,7 @@ class _RubyEmitter(Emitter):
                 )
             else:
                 self._line("@" + name + " = " + name)
-        if init_body:
+        if init_body is not None:
             old_self = self.self_name
             self.self_name = "this"
             for st in init_body:

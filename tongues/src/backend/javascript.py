@@ -614,7 +614,7 @@ class _JavaScriptEmitter(Emitter):
             for fld in decl.fields:
                 safe = _safe_name(fld.name)
                 self._emit_field_assign(fld, safe)
-            if decl.init_body:
+            if decl.init_body is not None:
                 old_self = self.self_name
                 self.self_name = "this"
                 for st in decl.init_body:

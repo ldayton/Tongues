@@ -1440,7 +1440,7 @@ class _JavaEmitter(Emitter):
             for f in decl.fields:
                 safe = _safe_name(f.name)
                 self._line("this." + safe + " = " + safe + ";")
-            if decl.init_body:
+            if decl.init_body is not None:
                 old_self = self.self_name
                 self.self_name = "this"
                 for st in decl.init_body:
@@ -1476,7 +1476,7 @@ class _JavaEmitter(Emitter):
                                 + self._field_default(f, in_body=True)
                                 + ";"
                             )
-                    if decl.init_body:
+                    if decl.init_body is not None:
                         old_self2 = self.self_name
                         self.self_name = "this"
                         for st in decl.init_body:

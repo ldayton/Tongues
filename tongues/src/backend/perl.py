@@ -807,7 +807,7 @@ class _PerlEmitter(Emitter):
         self._emit_constructor_fields(decl.fields)
 
     def _emit_constructor_fields(
-        self, fields: list[TFieldDecl], init_body: list | None = None
+        self, fields: list[TFieldDecl], init_body: list[TStmt] | None = None
     ) -> None:
         self._line("sub new {")
         self.indent += 1
@@ -833,7 +833,7 @@ class _PerlEmitter(Emitter):
                 + default
                 + ";"
             )
-        if init_body:
+        if init_body is not None:
             old_self = self.self_name
             self.self_name = "this"
             for st in init_body:
