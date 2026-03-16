@@ -587,6 +587,18 @@ class _JavaEmitter(Emitter):
             return "List<Object>"
         return self._type(typ)
 
+    def _boxed_from_ann(self, ann: str) -> str:
+        """Map a type annotation string to a boxed Java type."""
+        m: dict[str, str] = {
+            "int": "Integer",
+            "float": "Double",
+            "bool": "Boolean",
+            "string": "String",
+            "rune": "Character",
+            "byte": "Integer",
+        }
+        return m.get(ann, "")
+
     def _expr_type_ann(self, expr: TExpr) -> str:
         """Try to determine the type annotation string for an expression."""
         ann = expr.annotations.get("type", "")
@@ -3524,6 +3536,12 @@ class _JavaEmitter(Emitter):
             return self._ternary(expr)
         if isinstance(expr, TListLit):
             if not expr.elements:
+                ann = expr.annotations.get("type", "")
+                if ann.startswith("list["):
+                    inner = ann[5:-1]
+                    boxed = self._boxed_from_ann(inner)
+                    if boxed != "":
+                        return "new ArrayList<" + boxed + ">()"
                 return "new ArrayList<>()"
             has_tuple = any(self._is_tuple_expr(e) for e in expr.elements)
             elems = self._join_exprs(expr.elements, ", ")
