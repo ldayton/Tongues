@@ -477,6 +477,7 @@ class _JavaEmitter(Emitter):
         self._needs_bytes_helpers: bool = False
         self._needs_decode_utf8: bool = False
         self._needs_pop_item: bool = False
+        self._needs_set_pop: bool = False
         self._needs_hex_helper: bool = False
         self._needs_argv: bool = False
         self._needs_throwing_runnable: bool = False
@@ -1237,6 +1238,17 @@ class _JavaEmitter(Emitter):
             self._line("while (it.hasNext()) last = it.next();")
             self._line("m.remove(last.getKey());")
             self._line("return Arrays.asList(last.getKey(), last.getValue());")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_set_pop:
+            self._line()
+            self._line('@SuppressWarnings("unchecked")')
+            self._line("static <T> T _setPop(HashSet<T> s) {")
+            self.indent += 1
+            self._line("var it = s.iterator();")
+            self._line("T val = it.next();")
+            self._line("it.remove();")
+            self._line("return val;")
             self.indent -= 1
             self._line("}")
         if self._needs_throwing_runnable:
@@ -2171,6 +2183,8 @@ class _JavaEmitter(Emitter):
         self.var_types[stmt.name] = stmt.typ
         unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
         jtype = self._type(stmt.typ)
+        if jtype == "void":
+            jtype = "Object"
         # Fallback: if type is error/Object, try to infer from value annotation
         if jtype == "Object" and stmt.value is not None:
             val_ann = stmt.value.annotations.get("type", "")
@@ -4509,6 +4523,9 @@ class _JavaEmitter(Emitter):
                 + ")"
             )
         if name == "Pop":
+            if self._is_set_expr(args[0].value):
+                self._needs_set_pop = True
+                return "_setPop(" + self._a(args, 0) + ")"
             return self._a(args, 0) + ".removeLast()"
         if name == "PopItem":
             self._needs_pop_item = True
@@ -4872,6 +4889,14 @@ class _JavaEmitter(Emitter):
             if self._is_bytes_expr(args[0].value):
                 self._needs_bytes_helpers = True
                 return "_bytesCount(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+            if self._is_list_expr(args[0].value):
+                return (
+                    "Collections.frequency("
+                    + self._a(args, 0)
+                    + ", "
+                    + self._a(args, 1)
+                    + ")"
+                )
             # Skip Pattern.quote for simple literals without regex metacharacters
             sep_arg = args[1].value
             if isinstance(sep_arg, TStringLit) and not any(
@@ -5128,6 +5153,10 @@ class _JavaEmitter(Emitter):
     def _is_bytes_expr(self, expr: TExpr) -> bool:
         ann = self._expr_type_ann(expr)
         return ann == "bytes"
+
+    def _is_set_expr(self, expr: TExpr) -> bool:
+        ann = self._expr_type_ann(expr)
+        return ann.startswith("set[")
 
     def _is_int_list(self, expr: TExpr) -> bool:
         raise NotImplementedError

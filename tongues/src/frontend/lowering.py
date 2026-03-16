@@ -6819,13 +6819,8 @@ def _lower_init_body(
                     field_name = get_str(target, "attr")
                     if field_name in excluded:
                         ann_val = stmt.get("value")
-                        if ann_val is not None:
-                            value_node = (
-                                ann_val.entries
-                                if isinstance(ann_val, JDict)
-                                else ann_val
-                            )
-                            rhs = _lower_expr(value_node, env, ctx)
+                        if ann_val is not None and isinstance(ann_val, JDict):
+                            rhs = _lower_expr(ann_val.entries, env, ctx)
                             lhs = TFieldAccess(
                                 pos, {}, TVar(pos, {}, "this"), field_name
                             )
