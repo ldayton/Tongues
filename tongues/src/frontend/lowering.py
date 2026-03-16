@@ -6946,12 +6946,14 @@ def _build_struct(
     own_method_names: set[str] = set()
     body = get_nodes(node, "body")
     env = _Env()
-    init_body: list[TStmt] = []
+    init_body: list[TStmt] | None = None
     for item in body:
         if _is_ast(item, "FunctionDef"):
             mname = get_str(item, "name")
             if mname == "__init__":
-                init_body = _lower_init_body(pos, item, name, cls_info, ctx)
+                ib = _lower_init_body(pos, item, name, cls_info, ctx)
+                if ib:
+                    init_body = ib
             else:
                 own_method_names.add(mname)
                 methods.append(_build_method(item, name, env, ctx))

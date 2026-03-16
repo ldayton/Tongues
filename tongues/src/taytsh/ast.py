@@ -3,7 +3,7 @@
 from __future__ import annotations
 from typing import assert_never
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from ..frontend.types import JsonValue, JStr, JInt, JFloat, JBool, JNull, JList, JDict
 
@@ -168,7 +168,7 @@ class TStructDecl(TDecl):
     parent: str | None
     fields: list[TFieldDecl]
     methods: list[TFnDecl]
-    init_body: list[TStmt] = field(default_factory=list)
+    init_body: list[TStmt] | None = None
 
 
 @dataclass
