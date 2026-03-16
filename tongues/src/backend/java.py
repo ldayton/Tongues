@@ -4122,7 +4122,7 @@ class _JavaEmitter(Emitter):
         if expr.op in ("not", "!"):
             return self._unary_not(expr.operand)
         operand = self._expr(expr.operand)
-        if isinstance(expr.operand, TBinaryOp):
+        if isinstance(expr.operand, (TBinaryOp, TTernary)):
             operand = "(" + operand + ")"
         elif (
             expr.op == "-"
@@ -4178,15 +4178,13 @@ class _JavaEmitter(Emitter):
             cond_str = " && ".join(parts) if parts else "true"
             then_str = self._expr(expr.then_expr)
             self._var_aliases = old_aliases
-            return "(" + cond_str + " ? " + then_str + " : " + else_str + ")"
+            return cond_str + " ? " + then_str + " : " + else_str
         return (
-            "("
-            + self._expr(expr.cond)
+            self._expr(expr.cond)
             + " ? "
             + self._expr(expr.then_expr)
             + " : "
             + else_str
-            + ")"
         )
 
     def _none_coalesce(self, expr: TTernary) -> str:
@@ -5200,8 +5198,8 @@ class _JavaEmitter(Emitter):
     def _emit_divmod_assign(self, stmt: TTupleAssignStmt, unused: set[int]) -> None:
         assert isinstance(stmt.value, TCall)
         call: TCall = stmt.value
-        a = self._expr(call.args[0].value)
-        b = self._expr(call.args[1].value)
+        a = self._maybe_paren(call.args[0].value, "/", True)
+        b = self._maybe_paren(call.args[1].value, "/", False)
         q = self._expr(stmt.targets[0])
         r = self._expr(stmt.targets[1])
         if 0 not in unused:

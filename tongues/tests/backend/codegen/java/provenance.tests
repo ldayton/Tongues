@@ -47,7 +47,7 @@ while (!done) {
 "hello, " + name
 
 === nil coalesce (raised)
-return (x != null ? x : 0);
+return x != null ? x : 0;
 
 === Get with default using defined-or (raised)
 m.getOrDefault("b", 0)
