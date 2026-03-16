@@ -164,41 +164,180 @@ def test_char_str_repr() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_char_equality", test_char_equality),
-        ("test_char_ordering", test_char_ordering),
-        ("test_ord", test_ord),
-        ("test_ord_boundaries", test_ord_boundaries),
-        ("test_chr", test_chr),
-        ("test_chr_boundaries", test_chr_boundaries),
-        ("test_chr_unicode_boundaries", test_chr_unicode_boundaries),
-        ("test_ord_chr_roundtrip", test_ord_chr_roundtrip),
-        ("test_isalpha", test_isalpha),
-        ("test_isdigit", test_isdigit),
-        ("test_isalnum", test_isalnum),
-        ("test_isspace", test_isspace),
-        ("test_isupper", test_isupper),
-        ("test_islower", test_islower),
-        ("test_upper", test_upper),
-        ("test_lower", test_lower),
-        ("test_char_str_repr", test_char_str_repr),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_char_equality()
+        passed += 1
+        print("  PASS test_char_equality")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_char_equality: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_char_equality: " + str(e))
+    try:
+        test_char_ordering()
+        passed += 1
+        print("  PASS test_char_ordering")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_char_ordering: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_char_ordering: " + str(e))
+    try:
+        test_ord()
+        passed += 1
+        print("  PASS test_ord")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_ord: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_ord: " + str(e))
+    try:
+        test_ord_boundaries()
+        passed += 1
+        print("  PASS test_ord_boundaries")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_ord_boundaries: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_ord_boundaries: " + str(e))
+    try:
+        test_chr()
+        passed += 1
+        print("  PASS test_chr")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_chr: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_chr: " + str(e))
+    try:
+        test_chr_boundaries()
+        passed += 1
+        print("  PASS test_chr_boundaries")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_chr_boundaries: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_chr_boundaries: " + str(e))
+    try:
+        test_chr_unicode_boundaries()
+        passed += 1
+        print("  PASS test_chr_unicode_boundaries")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_chr_unicode_boundaries: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_chr_unicode_boundaries: " + str(e))
+    try:
+        test_ord_chr_roundtrip()
+        passed += 1
+        print("  PASS test_ord_chr_roundtrip")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_ord_chr_roundtrip: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_ord_chr_roundtrip: " + str(e))
+    try:
+        test_isalpha()
+        passed += 1
+        print("  PASS test_isalpha")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_isalpha: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_isalpha: " + str(e))
+    try:
+        test_isdigit()
+        passed += 1
+        print("  PASS test_isdigit")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_isdigit: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_isdigit: " + str(e))
+    try:
+        test_isalnum()
+        passed += 1
+        print("  PASS test_isalnum")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_isalnum: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_isalnum: " + str(e))
+    try:
+        test_isspace()
+        passed += 1
+        print("  PASS test_isspace")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_isspace: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_isspace: " + str(e))
+    try:
+        test_isupper()
+        passed += 1
+        print("  PASS test_isupper")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_isupper: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_isupper: " + str(e))
+    try:
+        test_islower()
+        passed += 1
+        print("  PASS test_islower")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_islower: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_islower: " + str(e))
+    try:
+        test_upper()
+        passed += 1
+        print("  PASS test_upper")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_upper: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_upper: " + str(e))
+    try:
+        test_lower()
+        passed += 1
+        print("  PASS test_lower")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_lower: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_lower: " + str(e))
+    try:
+        test_char_str_repr()
+        passed += 1
+        print("  PASS test_char_str_repr")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_char_str_repr: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_char_str_repr: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

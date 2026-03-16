@@ -463,84 +463,610 @@ def test_len_all_4byte() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_encode_ascii", test_encode_ascii),
-        ("test_encode_2byte", test_encode_2byte),
-        ("test_encode_3byte", test_encode_3byte),
-        ("test_encode_4byte", test_encode_4byte),
-        ("test_encode_surrogate_replaced", test_encode_surrogate_replaced),
-        ("test_encode_out_of_range_replaced", test_encode_out_of_range_replaced),
-        ("test_encode_empty", test_encode_empty),
-        ("test_encode_ascii_string", test_encode_ascii_string),
-        ("test_encode_mixed", test_encode_mixed),
-        ("test_decode_cp_ascii", test_decode_cp_ascii),
-        ("test_decode_cp_2byte", test_decode_cp_2byte),
-        ("test_decode_cp_3byte", test_decode_cp_3byte),
-        ("test_decode_cp_4byte", test_decode_cp_4byte),
-        ("test_decode_cp_offset", test_decode_cp_offset),
-        ("test_decode_empty", test_decode_empty),
-        ("test_decode_ascii_string", test_decode_ascii_string),
-        ("test_decode_mixed", test_decode_mixed),
-        ("test_roundtrip_ascii", test_roundtrip_ascii),
-        ("test_roundtrip_mixed", test_roundtrip_mixed),
-        ("test_roundtrip_boundaries", test_roundtrip_boundaries),
-        ("test_roundtrip_all_ascii", test_roundtrip_all_ascii),
-        ("test_truncated_2byte", test_truncated_2byte),
-        ("test_truncated_3byte_1", test_truncated_3byte_1),
-        ("test_truncated_3byte_2", test_truncated_3byte_2),
-        ("test_truncated_4byte", test_truncated_4byte),
-        ("test_bad_continuation_2byte", test_bad_continuation_2byte),
-        ("test_bad_continuation_3byte", test_bad_continuation_3byte),
-        ("test_bad_continuation_4byte", test_bad_continuation_4byte),
-        ("test_overlong_2byte", test_overlong_2byte),
-        ("test_overlong_3byte", test_overlong_3byte),
-        ("test_overlong_3byte_max", test_overlong_3byte_max),
-        ("test_overlong_3byte_boundary", test_overlong_3byte_boundary),
-        ("test_overlong_4byte", test_overlong_4byte),
-        ("test_overlong_4byte_max", test_overlong_4byte_max),
-        ("test_overlong_4byte_boundary", test_overlong_4byte_boundary),
-        ("test_encoded_surrogate", test_encoded_surrogate),
-        ("test_encoded_surrogate_trail", test_encoded_surrogate_trail),
-        ("test_surrogate_boundary_before", test_surrogate_boundary_before),
-        ("test_surrogate_boundary_after", test_surrogate_boundary_after),
-        ("test_above_max", test_above_max),
-        ("test_f5_byte", test_f5_byte),
-        ("test_fe_byte", test_fe_byte),
-        ("test_ff_byte", test_ff_byte),
-        ("test_bare_continuation", test_bare_continuation),
-        ("test_bare_continuation_bf", test_bare_continuation_bf),
-        ("test_error_position_after_valid", test_error_position_after_valid),
-        ("test_error_position_mid_multibyte", test_error_position_mid_multibyte),
-        ("test_valid_empty", test_valid_empty),
-        ("test_valid_ascii", test_valid_ascii),
-        ("test_valid_multibyte", test_valid_multibyte),
-        ("test_invalid_detected", test_invalid_detected),
-        ("test_noncharacter_fffe", test_noncharacter_fffe),
-        ("test_noncharacter_ffff", test_noncharacter_ffff),
-        ("test_roundtrip_noncharacters", test_roundtrip_noncharacters),
-        ("test_encode_surrogate_boundaries", test_encode_surrogate_boundaries),
-        ("test_encode_max_codepoint_roundtrip", test_encode_max_codepoint_roundtrip),
-        ("test_len_empty", test_len_empty),
-        ("test_len_ascii", test_len_ascii),
-        ("test_len_multibyte", test_len_multibyte),
-        ("test_len_all_4byte", test_len_all_4byte),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_encode_ascii()
+        passed += 1
+        print("  PASS test_encode_ascii")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_ascii: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_ascii: " + str(e))
+    try:
+        test_encode_2byte()
+        passed += 1
+        print("  PASS test_encode_2byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_2byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_2byte: " + str(e))
+    try:
+        test_encode_3byte()
+        passed += 1
+        print("  PASS test_encode_3byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_3byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_3byte: " + str(e))
+    try:
+        test_encode_4byte()
+        passed += 1
+        print("  PASS test_encode_4byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_4byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_4byte: " + str(e))
+    try:
+        test_encode_surrogate_replaced()
+        passed += 1
+        print("  PASS test_encode_surrogate_replaced")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_surrogate_replaced: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_surrogate_replaced: " + str(e))
+    try:
+        test_encode_out_of_range_replaced()
+        passed += 1
+        print("  PASS test_encode_out_of_range_replaced")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_out_of_range_replaced: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_out_of_range_replaced: " + str(e))
+    try:
+        test_encode_empty()
+        passed += 1
+        print("  PASS test_encode_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_empty: " + str(e))
+    try:
+        test_encode_ascii_string()
+        passed += 1
+        print("  PASS test_encode_ascii_string")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_ascii_string: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_ascii_string: " + str(e))
+    try:
+        test_encode_mixed()
+        passed += 1
+        print("  PASS test_encode_mixed")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_mixed: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_mixed: " + str(e))
+    try:
+        test_decode_cp_ascii()
+        passed += 1
+        print("  PASS test_decode_cp_ascii")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_cp_ascii: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_cp_ascii: " + str(e))
+    try:
+        test_decode_cp_2byte()
+        passed += 1
+        print("  PASS test_decode_cp_2byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_cp_2byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_cp_2byte: " + str(e))
+    try:
+        test_decode_cp_3byte()
+        passed += 1
+        print("  PASS test_decode_cp_3byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_cp_3byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_cp_3byte: " + str(e))
+    try:
+        test_decode_cp_4byte()
+        passed += 1
+        print("  PASS test_decode_cp_4byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_cp_4byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_cp_4byte: " + str(e))
+    try:
+        test_decode_cp_offset()
+        passed += 1
+        print("  PASS test_decode_cp_offset")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_cp_offset: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_cp_offset: " + str(e))
+    try:
+        test_decode_empty()
+        passed += 1
+        print("  PASS test_decode_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_empty: " + str(e))
+    try:
+        test_decode_ascii_string()
+        passed += 1
+        print("  PASS test_decode_ascii_string")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_ascii_string: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_ascii_string: " + str(e))
+    try:
+        test_decode_mixed()
+        passed += 1
+        print("  PASS test_decode_mixed")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_mixed: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_mixed: " + str(e))
+    try:
+        test_roundtrip_ascii()
+        passed += 1
+        print("  PASS test_roundtrip_ascii")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_ascii: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_ascii: " + str(e))
+    try:
+        test_roundtrip_mixed()
+        passed += 1
+        print("  PASS test_roundtrip_mixed")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_mixed: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_mixed: " + str(e))
+    try:
+        test_roundtrip_boundaries()
+        passed += 1
+        print("  PASS test_roundtrip_boundaries")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_boundaries: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_boundaries: " + str(e))
+    try:
+        test_roundtrip_all_ascii()
+        passed += 1
+        print("  PASS test_roundtrip_all_ascii")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_all_ascii: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_all_ascii: " + str(e))
+    try:
+        test_truncated_2byte()
+        passed += 1
+        print("  PASS test_truncated_2byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_truncated_2byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_truncated_2byte: " + str(e))
+    try:
+        test_truncated_3byte_1()
+        passed += 1
+        print("  PASS test_truncated_3byte_1")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_truncated_3byte_1: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_truncated_3byte_1: " + str(e))
+    try:
+        test_truncated_3byte_2()
+        passed += 1
+        print("  PASS test_truncated_3byte_2")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_truncated_3byte_2: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_truncated_3byte_2: " + str(e))
+    try:
+        test_truncated_4byte()
+        passed += 1
+        print("  PASS test_truncated_4byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_truncated_4byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_truncated_4byte: " + str(e))
+    try:
+        test_bad_continuation_2byte()
+        passed += 1
+        print("  PASS test_bad_continuation_2byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bad_continuation_2byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bad_continuation_2byte: " + str(e))
+    try:
+        test_bad_continuation_3byte()
+        passed += 1
+        print("  PASS test_bad_continuation_3byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bad_continuation_3byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bad_continuation_3byte: " + str(e))
+    try:
+        test_bad_continuation_4byte()
+        passed += 1
+        print("  PASS test_bad_continuation_4byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bad_continuation_4byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bad_continuation_4byte: " + str(e))
+    try:
+        test_overlong_2byte()
+        passed += 1
+        print("  PASS test_overlong_2byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_overlong_2byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_overlong_2byte: " + str(e))
+    try:
+        test_overlong_3byte()
+        passed += 1
+        print("  PASS test_overlong_3byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_overlong_3byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_overlong_3byte: " + str(e))
+    try:
+        test_overlong_3byte_max()
+        passed += 1
+        print("  PASS test_overlong_3byte_max")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_overlong_3byte_max: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_overlong_3byte_max: " + str(e))
+    try:
+        test_overlong_3byte_boundary()
+        passed += 1
+        print("  PASS test_overlong_3byte_boundary")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_overlong_3byte_boundary: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_overlong_3byte_boundary: " + str(e))
+    try:
+        test_overlong_4byte()
+        passed += 1
+        print("  PASS test_overlong_4byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_overlong_4byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_overlong_4byte: " + str(e))
+    try:
+        test_overlong_4byte_max()
+        passed += 1
+        print("  PASS test_overlong_4byte_max")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_overlong_4byte_max: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_overlong_4byte_max: " + str(e))
+    try:
+        test_overlong_4byte_boundary()
+        passed += 1
+        print("  PASS test_overlong_4byte_boundary")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_overlong_4byte_boundary: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_overlong_4byte_boundary: " + str(e))
+    try:
+        test_encoded_surrogate()
+        passed += 1
+        print("  PASS test_encoded_surrogate")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encoded_surrogate: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encoded_surrogate: " + str(e))
+    try:
+        test_encoded_surrogate_trail()
+        passed += 1
+        print("  PASS test_encoded_surrogate_trail")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encoded_surrogate_trail: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encoded_surrogate_trail: " + str(e))
+    try:
+        test_surrogate_boundary_before()
+        passed += 1
+        print("  PASS test_surrogate_boundary_before")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_surrogate_boundary_before: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_surrogate_boundary_before: " + str(e))
+    try:
+        test_surrogate_boundary_after()
+        passed += 1
+        print("  PASS test_surrogate_boundary_after")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_surrogate_boundary_after: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_surrogate_boundary_after: " + str(e))
+    try:
+        test_above_max()
+        passed += 1
+        print("  PASS test_above_max")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_above_max: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_above_max: " + str(e))
+    try:
+        test_f5_byte()
+        passed += 1
+        print("  PASS test_f5_byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_f5_byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_f5_byte: " + str(e))
+    try:
+        test_fe_byte()
+        passed += 1
+        print("  PASS test_fe_byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_fe_byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_fe_byte: " + str(e))
+    try:
+        test_ff_byte()
+        passed += 1
+        print("  PASS test_ff_byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_ff_byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_ff_byte: " + str(e))
+    try:
+        test_bare_continuation()
+        passed += 1
+        print("  PASS test_bare_continuation")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bare_continuation: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bare_continuation: " + str(e))
+    try:
+        test_bare_continuation_bf()
+        passed += 1
+        print("  PASS test_bare_continuation_bf")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bare_continuation_bf: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bare_continuation_bf: " + str(e))
+    try:
+        test_error_position_after_valid()
+        passed += 1
+        print("  PASS test_error_position_after_valid")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_error_position_after_valid: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_error_position_after_valid: " + str(e))
+    try:
+        test_error_position_mid_multibyte()
+        passed += 1
+        print("  PASS test_error_position_mid_multibyte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_error_position_mid_multibyte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_error_position_mid_multibyte: " + str(e))
+    try:
+        test_valid_empty()
+        passed += 1
+        print("  PASS test_valid_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_valid_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_valid_empty: " + str(e))
+    try:
+        test_valid_ascii()
+        passed += 1
+        print("  PASS test_valid_ascii")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_valid_ascii: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_valid_ascii: " + str(e))
+    try:
+        test_valid_multibyte()
+        passed += 1
+        print("  PASS test_valid_multibyte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_valid_multibyte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_valid_multibyte: " + str(e))
+    try:
+        test_invalid_detected()
+        passed += 1
+        print("  PASS test_invalid_detected")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_invalid_detected: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_invalid_detected: " + str(e))
+    try:
+        test_noncharacter_fffe()
+        passed += 1
+        print("  PASS test_noncharacter_fffe")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_noncharacter_fffe: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_noncharacter_fffe: " + str(e))
+    try:
+        test_noncharacter_ffff()
+        passed += 1
+        print("  PASS test_noncharacter_ffff")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_noncharacter_ffff: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_noncharacter_ffff: " + str(e))
+    try:
+        test_roundtrip_noncharacters()
+        passed += 1
+        print("  PASS test_roundtrip_noncharacters")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_noncharacters: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_noncharacters: " + str(e))
+    try:
+        test_encode_surrogate_boundaries()
+        passed += 1
+        print("  PASS test_encode_surrogate_boundaries")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_surrogate_boundaries: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_surrogate_boundaries: " + str(e))
+    try:
+        test_encode_max_codepoint_roundtrip()
+        passed += 1
+        print("  PASS test_encode_max_codepoint_roundtrip")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_max_codepoint_roundtrip: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_max_codepoint_roundtrip: " + str(e))
+    try:
+        test_len_empty()
+        passed += 1
+        print("  PASS test_len_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_len_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_len_empty: " + str(e))
+    try:
+        test_len_ascii()
+        passed += 1
+        print("  PASS test_len_ascii")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_len_ascii: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_len_ascii: " + str(e))
+    try:
+        test_len_multibyte()
+        passed += 1
+        print("  PASS test_len_multibyte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_len_multibyte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_len_multibyte: " + str(e))
+    try:
+        test_len_all_4byte()
+        passed += 1
+        print("  PASS test_len_all_4byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_len_all_4byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_len_all_4byte: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

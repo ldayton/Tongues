@@ -395,66 +395,390 @@ def test_strip_regex_special_chars() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_string_equality", test_string_equality),
-        ("test_string_ordering", test_string_ordering),
-        ("test_string_length", test_string_length),
-        ("test_string_indexing", test_string_indexing),
-        ("test_string_slicing", test_string_slicing),
-        ("test_string_concatenation", test_string_concatenation),
-        ("test_string_repetition", test_string_repetition),
-        ("test_string_contains", test_string_contains),
-        ("test_string_upper_lower", test_string_upper_lower),
-        ("test_string_strip", test_string_strip),
-        ("test_string_split", test_string_split),
-        ("test_string_join", test_string_join),
-        ("test_string_replace", test_string_replace),
-        ("test_string_find", test_string_find),
-        ("test_string_rfind", test_string_rfind),
-        ("test_string_count", test_string_count),
-        ("test_string_startswith_endswith", test_string_startswith_endswith),
-        ("test_string_isalpha", test_string_isalpha),
-        ("test_string_isdigit", test_string_isdigit),
-        ("test_string_isalnum", test_string_isalnum),
-        ("test_string_isspace", test_string_isspace),
-        ("test_string_isupper_islower", test_string_isupper_islower),
-        ("test_string_bool", test_string_bool),
-        ("test_string_str", test_string_str),
-        ("test_string_escape_sequences", test_string_escape_sequences),
-        ("test_string_multiplication_edge", test_string_multiplication_edge),
-        ("test_string_comparison_empty", test_string_comparison_empty),
-        ("test_string_split_maxsplit", test_string_split_maxsplit),
-        (
-            "test_string_split_consecutive_delimiters",
-            test_string_split_consecutive_delimiters,
-        ),
-        ("test_string_split_whitespace", test_string_split_whitespace),
-        ("test_string_split_leading_trailing", test_string_split_leading_trailing),
-        ("test_unicode_length", test_unicode_length),
-        ("test_unicode_indexing", test_unicode_indexing),
-        ("test_string_multiplication_negative", test_string_multiplication_negative),
-        ("test_string_partition", test_string_partition),
-        ("test_string_rpartition", test_string_rpartition),
-        ("test_string_removeprefix", test_string_removeprefix),
-        ("test_string_removesuffix", test_string_removesuffix),
-        ("test_strip_regex_special_chars", test_strip_regex_special_chars),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_string_equality()
+        passed += 1
+        print("  PASS test_string_equality")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_equality: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_equality: " + str(e))
+    try:
+        test_string_ordering()
+        passed += 1
+        print("  PASS test_string_ordering")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_ordering: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_ordering: " + str(e))
+    try:
+        test_string_length()
+        passed += 1
+        print("  PASS test_string_length")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_length: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_length: " + str(e))
+    try:
+        test_string_indexing()
+        passed += 1
+        print("  PASS test_string_indexing")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_indexing: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_indexing: " + str(e))
+    try:
+        test_string_slicing()
+        passed += 1
+        print("  PASS test_string_slicing")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_slicing: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_slicing: " + str(e))
+    try:
+        test_string_concatenation()
+        passed += 1
+        print("  PASS test_string_concatenation")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_concatenation: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_concatenation: " + str(e))
+    try:
+        test_string_repetition()
+        passed += 1
+        print("  PASS test_string_repetition")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_repetition: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_repetition: " + str(e))
+    try:
+        test_string_contains()
+        passed += 1
+        print("  PASS test_string_contains")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_contains: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_contains: " + str(e))
+    try:
+        test_string_upper_lower()
+        passed += 1
+        print("  PASS test_string_upper_lower")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_upper_lower: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_upper_lower: " + str(e))
+    try:
+        test_string_strip()
+        passed += 1
+        print("  PASS test_string_strip")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_strip: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_strip: " + str(e))
+    try:
+        test_string_split()
+        passed += 1
+        print("  PASS test_string_split")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_split: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_split: " + str(e))
+    try:
+        test_string_join()
+        passed += 1
+        print("  PASS test_string_join")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_join: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_join: " + str(e))
+    try:
+        test_string_replace()
+        passed += 1
+        print("  PASS test_string_replace")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_replace: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_replace: " + str(e))
+    try:
+        test_string_find()
+        passed += 1
+        print("  PASS test_string_find")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_find: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_find: " + str(e))
+    try:
+        test_string_rfind()
+        passed += 1
+        print("  PASS test_string_rfind")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_rfind: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_rfind: " + str(e))
+    try:
+        test_string_count()
+        passed += 1
+        print("  PASS test_string_count")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_count: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_count: " + str(e))
+    try:
+        test_string_startswith_endswith()
+        passed += 1
+        print("  PASS test_string_startswith_endswith")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_startswith_endswith: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_startswith_endswith: " + str(e))
+    try:
+        test_string_isalpha()
+        passed += 1
+        print("  PASS test_string_isalpha")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_isalpha: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_isalpha: " + str(e))
+    try:
+        test_string_isdigit()
+        passed += 1
+        print("  PASS test_string_isdigit")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_isdigit: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_isdigit: " + str(e))
+    try:
+        test_string_isalnum()
+        passed += 1
+        print("  PASS test_string_isalnum")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_isalnum: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_isalnum: " + str(e))
+    try:
+        test_string_isspace()
+        passed += 1
+        print("  PASS test_string_isspace")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_isspace: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_isspace: " + str(e))
+    try:
+        test_string_isupper_islower()
+        passed += 1
+        print("  PASS test_string_isupper_islower")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_isupper_islower: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_isupper_islower: " + str(e))
+    try:
+        test_string_bool()
+        passed += 1
+        print("  PASS test_string_bool")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_bool: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_bool: " + str(e))
+    try:
+        test_string_str()
+        passed += 1
+        print("  PASS test_string_str")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_str: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_str: " + str(e))
+    try:
+        test_string_escape_sequences()
+        passed += 1
+        print("  PASS test_string_escape_sequences")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_escape_sequences: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_escape_sequences: " + str(e))
+    try:
+        test_string_multiplication_edge()
+        passed += 1
+        print("  PASS test_string_multiplication_edge")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_multiplication_edge: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_multiplication_edge: " + str(e))
+    try:
+        test_string_comparison_empty()
+        passed += 1
+        print("  PASS test_string_comparison_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_comparison_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_comparison_empty: " + str(e))
+    try:
+        test_string_split_maxsplit()
+        passed += 1
+        print("  PASS test_string_split_maxsplit")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_split_maxsplit: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_split_maxsplit: " + str(e))
+    try:
+        test_string_split_whitespace()
+        passed += 1
+        print("  PASS test_string_split_whitespace")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_split_whitespace: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_split_whitespace: " + str(e))
+    try:
+        test_string_split_leading_trailing()
+        passed += 1
+        print("  PASS test_string_split_leading_trailing")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_split_leading_trailing: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_split_leading_trailing: " + str(e))
+    try:
+        test_unicode_length()
+        passed += 1
+        print("  PASS test_unicode_length")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_unicode_length: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_unicode_length: " + str(e))
+    try:
+        test_unicode_indexing()
+        passed += 1
+        print("  PASS test_unicode_indexing")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_unicode_indexing: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_unicode_indexing: " + str(e))
+    try:
+        test_string_multiplication_negative()
+        passed += 1
+        print("  PASS test_string_multiplication_negative")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_multiplication_negative: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_multiplication_negative: " + str(e))
+    try:
+        test_string_partition()
+        passed += 1
+        print("  PASS test_string_partition")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_partition: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_partition: " + str(e))
+    try:
+        test_string_rpartition()
+        passed += 1
+        print("  PASS test_string_rpartition")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_rpartition: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_rpartition: " + str(e))
+    try:
+        test_string_removeprefix()
+        passed += 1
+        print("  PASS test_string_removeprefix")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_removeprefix: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_removeprefix: " + str(e))
+    try:
+        test_string_removesuffix()
+        passed += 1
+        print("  PASS test_string_removesuffix")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_removesuffix: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_removesuffix: " + str(e))
+    try:
+        test_strip_regex_special_chars()
+        passed += 1
+        print("  PASS test_strip_regex_special_chars")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_strip_regex_special_chars: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_strip_regex_special_chars: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

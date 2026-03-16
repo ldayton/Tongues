@@ -383,54 +383,310 @@ def test_int_pow_negative_base() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_int_arithmetic_basic", test_int_arithmetic_basic),
-        ("test_int_arithmetic_identity", test_int_arithmetic_identity),
-        ("test_int_arithmetic_associative", test_int_arithmetic_associative),
-        ("test_int_arithmetic_commutative", test_int_arithmetic_commutative),
-        ("test_int_floor_division_positive", test_int_floor_division_positive),
-        ("test_int_floor_division_negative", test_int_floor_division_negative),
-        ("test_int_modulo_positive", test_int_modulo_positive),
-        ("test_int_modulo_negative", test_int_modulo_negative),
-        ("test_int_division_identity", test_int_division_identity),
-        ("test_int_negation", test_int_negation),
-        ("test_int_comparisons_equality", test_int_comparisons_equality),
-        ("test_int_comparisons_ordering", test_int_comparisons_ordering),
-        ("test_int_comparisons_transitive", test_int_comparisons_transitive),
-        ("test_int_conversion_from_int", test_int_conversion_from_int),
-        ("test_int_conversion_from_bool", test_int_conversion_from_bool),
-        ("test_int_conversion_from_string", test_int_conversion_from_string),
-        ("test_int_conversion_whitespace", test_int_conversion_whitespace),
-        ("test_int_string_repr", test_int_string_repr),
-        ("test_int_abs", test_int_abs),
-        ("test_int_min_two_args", test_int_min_two_args),
-        ("test_int_min_multiple_args", test_int_min_multiple_args),
-        ("test_int_max_two_args", test_int_max_two_args),
-        ("test_int_max_multiple_args", test_int_max_multiple_args),
-        ("test_int_divmod_positive", test_int_divmod_positive),
-        ("test_int_divmod_negative", test_int_divmod_negative),
-        ("test_int_divmod_identity", test_int_divmod_identity),
-        ("test_int_pow_basic", test_int_pow_basic),
-        ("test_int_pow_edge_cases", test_int_pow_edge_cases),
-        ("test_hex_oct_bin", test_hex_oct_bin),
-        ("test_int_pow_negative_base", test_int_pow_negative_base),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_int_arithmetic_basic()
+        passed += 1
+        print("  PASS test_int_arithmetic_basic")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_arithmetic_basic: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_arithmetic_basic: " + str(e))
+    try:
+        test_int_arithmetic_identity()
+        passed += 1
+        print("  PASS test_int_arithmetic_identity")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_arithmetic_identity: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_arithmetic_identity: " + str(e))
+    try:
+        test_int_arithmetic_associative()
+        passed += 1
+        print("  PASS test_int_arithmetic_associative")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_arithmetic_associative: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_arithmetic_associative: " + str(e))
+    try:
+        test_int_arithmetic_commutative()
+        passed += 1
+        print("  PASS test_int_arithmetic_commutative")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_arithmetic_commutative: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_arithmetic_commutative: " + str(e))
+    try:
+        test_int_floor_division_positive()
+        passed += 1
+        print("  PASS test_int_floor_division_positive")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_floor_division_positive: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_floor_division_positive: " + str(e))
+    try:
+        test_int_floor_division_negative()
+        passed += 1
+        print("  PASS test_int_floor_division_negative")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_floor_division_negative: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_floor_division_negative: " + str(e))
+    try:
+        test_int_modulo_positive()
+        passed += 1
+        print("  PASS test_int_modulo_positive")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_modulo_positive: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_modulo_positive: " + str(e))
+    try:
+        test_int_modulo_negative()
+        passed += 1
+        print("  PASS test_int_modulo_negative")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_modulo_negative: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_modulo_negative: " + str(e))
+    try:
+        test_int_division_identity()
+        passed += 1
+        print("  PASS test_int_division_identity")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_division_identity: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_division_identity: " + str(e))
+    try:
+        test_int_negation()
+        passed += 1
+        print("  PASS test_int_negation")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_negation: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_negation: " + str(e))
+    try:
+        test_int_comparisons_equality()
+        passed += 1
+        print("  PASS test_int_comparisons_equality")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_comparisons_equality: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_comparisons_equality: " + str(e))
+    try:
+        test_int_comparisons_ordering()
+        passed += 1
+        print("  PASS test_int_comparisons_ordering")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_comparisons_ordering: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_comparisons_ordering: " + str(e))
+    try:
+        test_int_comparisons_transitive()
+        passed += 1
+        print("  PASS test_int_comparisons_transitive")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_comparisons_transitive: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_comparisons_transitive: " + str(e))
+    try:
+        test_int_conversion_from_int()
+        passed += 1
+        print("  PASS test_int_conversion_from_int")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_conversion_from_int: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_conversion_from_int: " + str(e))
+    try:
+        test_int_conversion_from_bool()
+        passed += 1
+        print("  PASS test_int_conversion_from_bool")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_conversion_from_bool: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_conversion_from_bool: " + str(e))
+    try:
+        test_int_conversion_from_string()
+        passed += 1
+        print("  PASS test_int_conversion_from_string")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_conversion_from_string: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_conversion_from_string: " + str(e))
+    try:
+        test_int_conversion_whitespace()
+        passed += 1
+        print("  PASS test_int_conversion_whitespace")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_conversion_whitespace: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_conversion_whitespace: " + str(e))
+    try:
+        test_int_string_repr()
+        passed += 1
+        print("  PASS test_int_string_repr")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_string_repr: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_string_repr: " + str(e))
+    try:
+        test_int_abs()
+        passed += 1
+        print("  PASS test_int_abs")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_abs: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_abs: " + str(e))
+    try:
+        test_int_min_two_args()
+        passed += 1
+        print("  PASS test_int_min_two_args")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_min_two_args: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_min_two_args: " + str(e))
+    try:
+        test_int_min_multiple_args()
+        passed += 1
+        print("  PASS test_int_min_multiple_args")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_min_multiple_args: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_min_multiple_args: " + str(e))
+    try:
+        test_int_max_two_args()
+        passed += 1
+        print("  PASS test_int_max_two_args")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_max_two_args: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_max_two_args: " + str(e))
+    try:
+        test_int_max_multiple_args()
+        passed += 1
+        print("  PASS test_int_max_multiple_args")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_max_multiple_args: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_max_multiple_args: " + str(e))
+    try:
+        test_int_divmod_positive()
+        passed += 1
+        print("  PASS test_int_divmod_positive")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_divmod_positive: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_divmod_positive: " + str(e))
+    try:
+        test_int_divmod_negative()
+        passed += 1
+        print("  PASS test_int_divmod_negative")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_divmod_negative: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_divmod_negative: " + str(e))
+    try:
+        test_int_divmod_identity()
+        passed += 1
+        print("  PASS test_int_divmod_identity")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_divmod_identity: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_divmod_identity: " + str(e))
+    try:
+        test_int_pow_basic()
+        passed += 1
+        print("  PASS test_int_pow_basic")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_pow_basic: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_pow_basic: " + str(e))
+    try:
+        test_int_pow_edge_cases()
+        passed += 1
+        print("  PASS test_int_pow_edge_cases")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_pow_edge_cases: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_pow_edge_cases: " + str(e))
+    try:
+        test_hex_oct_bin()
+        passed += 1
+        print("  PASS test_hex_oct_bin")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_hex_oct_bin: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_hex_oct_bin: " + str(e))
+    try:
+        test_int_pow_negative_base()
+        passed += 1
+        print("  PASS test_int_pow_negative_base")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_pow_negative_base: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_pow_negative_base: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

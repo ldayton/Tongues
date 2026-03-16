@@ -529,91 +529,520 @@ def test_lenient_accepts_nonzero_pad_bits() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_rfc4648_empty", test_rfc4648_empty),
-        ("test_rfc4648_f", test_rfc4648_f),
-        ("test_rfc4648_fo", test_rfc4648_fo),
-        ("test_rfc4648_foo", test_rfc4648_foo),
-        ("test_rfc4648_foob", test_rfc4648_foob),
-        ("test_rfc4648_fooba", test_rfc4648_fooba),
-        ("test_rfc4648_foobar", test_rfc4648_foobar),
-        ("test_pad_0_remainder", test_pad_0_remainder),
-        ("test_pad_1_remainder", test_pad_1_remainder),
-        ("test_pad_2_remainder", test_pad_2_remainder),
-        ("test_null_bytes", test_null_bytes),
-        ("test_max_bytes", test_max_bytes),
-        ("test_ascending_bytes", test_ascending_bytes),
-        ("test_descending_bytes", test_descending_bytes),
-        ("test_roundtrip_empty", test_roundtrip_empty),
-        ("test_roundtrip_single_bytes", test_roundtrip_single_bytes),
-        ("test_roundtrip_two_bytes", test_roundtrip_two_bytes),
-        ("test_roundtrip_three_bytes", test_roundtrip_three_bytes),
-        ("test_roundtrip_longer", test_roundtrip_longer),
-        ("test_roundtrip_binary_pattern", test_roundtrip_binary_pattern),
-        ("test_encode_hello_world", test_encode_hello_world),
-        ("test_encode_digits", test_encode_digits),
-        ("test_encode_binary_data", test_encode_binary_data),
-        ("test_decode_hello_world", test_decode_hello_world),
-        ("test_decode_digits", test_decode_digits),
-        ("test_encode_produces_all_chars", test_encode_produces_all_chars),
-        ("test_decode_each_alphabet_char", test_decode_each_alphabet_char),
-        ("test_6bit_all_zeros", test_6bit_all_zeros),
-        ("test_6bit_all_ones", test_6bit_all_ones),
-        ("test_6bit_boundary", test_6bit_boundary),
-        ("test_6bit_high", test_6bit_high),
-        ("test_encode_pangram", test_encode_pangram),
-        ("test_encode_repeated", test_encode_repeated),
-        ("test_encode_long_binary", test_encode_long_binary),
-        ("test_encoded_length", test_encoded_length),
-        ("test_decoded_length", test_decoded_length),
-        ("test_invalid_char_position_0", test_invalid_char_position_0),
-        ("test_invalid_char_position_1", test_invalid_char_position_1),
-        ("test_invalid_char_position_2", test_invalid_char_position_2),
-        ("test_invalid_char_position_3", test_invalid_char_position_3),
-        ("test_invalid_char_in_second_group", test_invalid_char_in_second_group),
-        ("test_invalid_space", test_invalid_space),
-        ("test_invalid_newline", test_invalid_newline),
-        ("test_invalid_length_1", test_invalid_length_1),
-        ("test_invalid_length_2", test_invalid_length_2),
-        ("test_invalid_length_3", test_invalid_length_3),
-        ("test_invalid_length_5", test_invalid_length_5),
-        ("test_invalid_padding_middle", test_invalid_padding_middle),
-        ("test_invalid_padding_first", test_invalid_padding_first),
-        ("test_various_invalid_chars", test_various_invalid_chars),
-        (
-            "test_strict_rejects_nonzero_pad_bits_2pad",
-            test_strict_rejects_nonzero_pad_bits_2pad,
-        ),
-        (
-            "test_strict_rejects_nonzero_pad_bits_1pad",
-            test_strict_rejects_nonzero_pad_bits_1pad,
-        ),
-        (
-            "test_strict_accepts_canonical_padding",
-            test_strict_accepts_canonical_padding,
-        ),
-        ("test_strict_github_issue_example", test_strict_github_issue_example),
-        (
-            "test_lenient_accepts_nonzero_pad_bits",
-            test_lenient_accepts_nonzero_pad_bits,
-        ),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_rfc4648_empty()
+        passed += 1
+        print("  PASS test_rfc4648_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_rfc4648_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_rfc4648_empty: " + str(e))
+    try:
+        test_rfc4648_f()
+        passed += 1
+        print("  PASS test_rfc4648_f")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_rfc4648_f: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_rfc4648_f: " + str(e))
+    try:
+        test_rfc4648_fo()
+        passed += 1
+        print("  PASS test_rfc4648_fo")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_rfc4648_fo: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_rfc4648_fo: " + str(e))
+    try:
+        test_rfc4648_foo()
+        passed += 1
+        print("  PASS test_rfc4648_foo")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_rfc4648_foo: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_rfc4648_foo: " + str(e))
+    try:
+        test_rfc4648_foob()
+        passed += 1
+        print("  PASS test_rfc4648_foob")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_rfc4648_foob: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_rfc4648_foob: " + str(e))
+    try:
+        test_rfc4648_fooba()
+        passed += 1
+        print("  PASS test_rfc4648_fooba")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_rfc4648_fooba: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_rfc4648_fooba: " + str(e))
+    try:
+        test_rfc4648_foobar()
+        passed += 1
+        print("  PASS test_rfc4648_foobar")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_rfc4648_foobar: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_rfc4648_foobar: " + str(e))
+    try:
+        test_pad_0_remainder()
+        passed += 1
+        print("  PASS test_pad_0_remainder")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_pad_0_remainder: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_pad_0_remainder: " + str(e))
+    try:
+        test_pad_1_remainder()
+        passed += 1
+        print("  PASS test_pad_1_remainder")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_pad_1_remainder: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_pad_1_remainder: " + str(e))
+    try:
+        test_pad_2_remainder()
+        passed += 1
+        print("  PASS test_pad_2_remainder")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_pad_2_remainder: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_pad_2_remainder: " + str(e))
+    try:
+        test_null_bytes()
+        passed += 1
+        print("  PASS test_null_bytes")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_null_bytes: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_null_bytes: " + str(e))
+    try:
+        test_max_bytes()
+        passed += 1
+        print("  PASS test_max_bytes")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_max_bytes: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_max_bytes: " + str(e))
+    try:
+        test_ascending_bytes()
+        passed += 1
+        print("  PASS test_ascending_bytes")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_ascending_bytes: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_ascending_bytes: " + str(e))
+    try:
+        test_descending_bytes()
+        passed += 1
+        print("  PASS test_descending_bytes")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_descending_bytes: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_descending_bytes: " + str(e))
+    try:
+        test_roundtrip_empty()
+        passed += 1
+        print("  PASS test_roundtrip_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_empty: " + str(e))
+    try:
+        test_roundtrip_single_bytes()
+        passed += 1
+        print("  PASS test_roundtrip_single_bytes")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_single_bytes: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_single_bytes: " + str(e))
+    try:
+        test_roundtrip_two_bytes()
+        passed += 1
+        print("  PASS test_roundtrip_two_bytes")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_two_bytes: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_two_bytes: " + str(e))
+    try:
+        test_roundtrip_three_bytes()
+        passed += 1
+        print("  PASS test_roundtrip_three_bytes")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_three_bytes: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_three_bytes: " + str(e))
+    try:
+        test_roundtrip_longer()
+        passed += 1
+        print("  PASS test_roundtrip_longer")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_longer: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_longer: " + str(e))
+    try:
+        test_roundtrip_binary_pattern()
+        passed += 1
+        print("  PASS test_roundtrip_binary_pattern")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_binary_pattern: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_binary_pattern: " + str(e))
+    try:
+        test_encode_hello_world()
+        passed += 1
+        print("  PASS test_encode_hello_world")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_hello_world: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_hello_world: " + str(e))
+    try:
+        test_encode_digits()
+        passed += 1
+        print("  PASS test_encode_digits")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_digits: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_digits: " + str(e))
+    try:
+        test_encode_binary_data()
+        passed += 1
+        print("  PASS test_encode_binary_data")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_binary_data: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_binary_data: " + str(e))
+    try:
+        test_decode_hello_world()
+        passed += 1
+        print("  PASS test_decode_hello_world")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_hello_world: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_hello_world: " + str(e))
+    try:
+        test_decode_digits()
+        passed += 1
+        print("  PASS test_decode_digits")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_digits: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_digits: " + str(e))
+    try:
+        test_encode_produces_all_chars()
+        passed += 1
+        print("  PASS test_encode_produces_all_chars")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_produces_all_chars: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_produces_all_chars: " + str(e))
+    try:
+        test_decode_each_alphabet_char()
+        passed += 1
+        print("  PASS test_decode_each_alphabet_char")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_each_alphabet_char: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_each_alphabet_char: " + str(e))
+    try:
+        test_6bit_all_zeros()
+        passed += 1
+        print("  PASS test_6bit_all_zeros")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_6bit_all_zeros: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_6bit_all_zeros: " + str(e))
+    try:
+        test_6bit_all_ones()
+        passed += 1
+        print("  PASS test_6bit_all_ones")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_6bit_all_ones: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_6bit_all_ones: " + str(e))
+    try:
+        test_6bit_boundary()
+        passed += 1
+        print("  PASS test_6bit_boundary")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_6bit_boundary: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_6bit_boundary: " + str(e))
+    try:
+        test_6bit_high()
+        passed += 1
+        print("  PASS test_6bit_high")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_6bit_high: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_6bit_high: " + str(e))
+    try:
+        test_encode_pangram()
+        passed += 1
+        print("  PASS test_encode_pangram")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_pangram: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_pangram: " + str(e))
+    try:
+        test_encode_repeated()
+        passed += 1
+        print("  PASS test_encode_repeated")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_repeated: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_repeated: " + str(e))
+    try:
+        test_encode_long_binary()
+        passed += 1
+        print("  PASS test_encode_long_binary")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_long_binary: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_long_binary: " + str(e))
+    try:
+        test_encoded_length()
+        passed += 1
+        print("  PASS test_encoded_length")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encoded_length: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encoded_length: " + str(e))
+    try:
+        test_decoded_length()
+        passed += 1
+        print("  PASS test_decoded_length")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decoded_length: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decoded_length: " + str(e))
+    try:
+        test_invalid_char_position_0()
+        passed += 1
+        print("  PASS test_invalid_char_position_0")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_invalid_char_position_0: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_invalid_char_position_0: " + str(e))
+    try:
+        test_invalid_char_position_1()
+        passed += 1
+        print("  PASS test_invalid_char_position_1")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_invalid_char_position_1: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_invalid_char_position_1: " + str(e))
+    try:
+        test_invalid_char_position_2()
+        passed += 1
+        print("  PASS test_invalid_char_position_2")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_invalid_char_position_2: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_invalid_char_position_2: " + str(e))
+    try:
+        test_invalid_char_position_3()
+        passed += 1
+        print("  PASS test_invalid_char_position_3")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_invalid_char_position_3: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_invalid_char_position_3: " + str(e))
+    try:
+        test_invalid_char_in_second_group()
+        passed += 1
+        print("  PASS test_invalid_char_in_second_group")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_invalid_char_in_second_group: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_invalid_char_in_second_group: " + str(e))
+    try:
+        test_invalid_space()
+        passed += 1
+        print("  PASS test_invalid_space")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_invalid_space: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_invalid_space: " + str(e))
+    try:
+        test_invalid_newline()
+        passed += 1
+        print("  PASS test_invalid_newline")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_invalid_newline: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_invalid_newline: " + str(e))
+    try:
+        test_invalid_length_1()
+        passed += 1
+        print("  PASS test_invalid_length_1")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_invalid_length_1: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_invalid_length_1: " + str(e))
+    try:
+        test_invalid_length_2()
+        passed += 1
+        print("  PASS test_invalid_length_2")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_invalid_length_2: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_invalid_length_2: " + str(e))
+    try:
+        test_invalid_length_3()
+        passed += 1
+        print("  PASS test_invalid_length_3")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_invalid_length_3: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_invalid_length_3: " + str(e))
+    try:
+        test_invalid_length_5()
+        passed += 1
+        print("  PASS test_invalid_length_5")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_invalid_length_5: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_invalid_length_5: " + str(e))
+    try:
+        test_invalid_padding_middle()
+        passed += 1
+        print("  PASS test_invalid_padding_middle")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_invalid_padding_middle: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_invalid_padding_middle: " + str(e))
+    try:
+        test_invalid_padding_first()
+        passed += 1
+        print("  PASS test_invalid_padding_first")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_invalid_padding_first: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_invalid_padding_first: " + str(e))
+    try:
+        test_various_invalid_chars()
+        passed += 1
+        print("  PASS test_various_invalid_chars")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_various_invalid_chars: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_various_invalid_chars: " + str(e))
+    try:
+        test_strict_github_issue_example()
+        passed += 1
+        print("  PASS test_strict_github_issue_example")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_strict_github_issue_example: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_strict_github_issue_example: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

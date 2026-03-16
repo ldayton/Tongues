@@ -284,77 +284,540 @@ def test_multiline_quoted_field() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_parse_empty", test_parse_empty),
-        ("test_parse_single_field", test_parse_single_field),
-        ("test_parse_single_field_no_newline", test_parse_single_field_no_newline),
-        ("test_parse_single_record", test_parse_single_record),
-        ("test_parse_multiple_records", test_parse_multiple_records),
-        ("test_parse_no_trailing_newline", test_parse_no_trailing_newline),
-        ("test_quoted_simple", test_quoted_simple),
-        ("test_quoted_with_comma", test_quoted_with_comma),
-        ("test_quoted_with_newline", test_quoted_with_newline),
-        ("test_quoted_with_escaped_quote", test_quoted_with_escaped_quote),
-        ("test_quoted_empty", test_quoted_empty),
-        ("test_quoted_only_quotes", test_quoted_only_quotes),
-        ("test_quoted_multiple_escaped", test_quoted_multiple_escaped),
-        ("test_empty_fields", test_empty_fields),
-        ("test_empty_middle", test_empty_middle),
-        ("test_trailing_comma", test_trailing_comma),
-        ("test_leading_comma", test_leading_comma),
-        ("test_all_empty", test_all_empty),
-        ("test_crlf_line_ending", test_crlf_line_ending),
-        ("test_cr_only_line_ending", test_cr_only_line_ending),
-        ("test_crlf_in_quoted_field", test_crlf_in_quoted_field),
-        ("test_mixed_line_endings", test_mixed_line_endings),
-        ("test_blank_lines_skipped", test_blank_lines_skipped),
-        ("test_multiple_blank_lines", test_multiple_blank_lines),
-        ("test_only_blank_lines", test_only_blank_lines),
-        ("test_bare_quote_in_unquoted", test_bare_quote_in_unquoted),
-        ("test_unterminated_quote", test_unterminated_quote),
-        ("test_unterminated_quote_eof", test_unterminated_quote_eof),
-        ("test_write_empty", test_write_empty),
-        ("test_write_single_record", test_write_single_record),
-        ("test_write_multiple_records", test_write_multiple_records),
-        ("test_write_quotes_comma", test_write_quotes_comma),
-        ("test_write_quotes_newline", test_write_quotes_newline),
-        ("test_write_quotes_quote", test_write_quotes_quote),
-        ("test_write_empty_field", test_write_empty_field),
-        ("test_write_all_empty", test_write_all_empty),
-        ("test_roundtrip_simple", test_roundtrip_simple),
-        ("test_roundtrip_quoted", test_roundtrip_quoted),
-        ("test_roundtrip_empty_fields", test_roundtrip_empty_fields),
-        ("test_roundtrip_single_field", test_roundtrip_single_field),
-        ("test_tsv_parse", test_tsv_parse),
-        ("test_tsv_write", test_tsv_write),
-        ("test_tsv_roundtrip", test_tsv_roundtrip),
-        ("test_tsv_comma_not_special", test_tsv_comma_not_special),
-        ("test_header_and_data", test_header_and_data),
-        ("test_all_quoted_fields", test_all_quoted_fields),
-        ("test_quoted_at_middle", test_quoted_at_middle),
-        ("test_mixed_quoted_unquoted", test_mixed_quoted_unquoted),
-        ("test_field_just_quote", test_field_just_quote),
-        ("test_single_column", test_single_column),
-        ("test_write_cr_in_field", test_write_cr_in_field),
-        ("test_parse_cr_in_quoted_normalized", test_parse_cr_in_quoted_normalized),
-        ("test_multiline_quoted_field", test_multiline_quoted_field),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_parse_empty()
+        passed += 1
+        print("  PASS test_parse_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_parse_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_parse_empty: " + str(e))
+    try:
+        test_parse_single_field()
+        passed += 1
+        print("  PASS test_parse_single_field")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_parse_single_field: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_parse_single_field: " + str(e))
+    try:
+        test_parse_single_field_no_newline()
+        passed += 1
+        print("  PASS test_parse_single_field_no_newline")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_parse_single_field_no_newline: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_parse_single_field_no_newline: " + str(e))
+    try:
+        test_parse_single_record()
+        passed += 1
+        print("  PASS test_parse_single_record")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_parse_single_record: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_parse_single_record: " + str(e))
+    try:
+        test_parse_multiple_records()
+        passed += 1
+        print("  PASS test_parse_multiple_records")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_parse_multiple_records: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_parse_multiple_records: " + str(e))
+    try:
+        test_parse_no_trailing_newline()
+        passed += 1
+        print("  PASS test_parse_no_trailing_newline")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_parse_no_trailing_newline: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_parse_no_trailing_newline: " + str(e))
+    try:
+        test_quoted_simple()
+        passed += 1
+        print("  PASS test_quoted_simple")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_quoted_simple: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_quoted_simple: " + str(e))
+    try:
+        test_quoted_with_comma()
+        passed += 1
+        print("  PASS test_quoted_with_comma")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_quoted_with_comma: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_quoted_with_comma: " + str(e))
+    try:
+        test_quoted_with_newline()
+        passed += 1
+        print("  PASS test_quoted_with_newline")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_quoted_with_newline: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_quoted_with_newline: " + str(e))
+    try:
+        test_quoted_with_escaped_quote()
+        passed += 1
+        print("  PASS test_quoted_with_escaped_quote")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_quoted_with_escaped_quote: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_quoted_with_escaped_quote: " + str(e))
+    try:
+        test_quoted_empty()
+        passed += 1
+        print("  PASS test_quoted_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_quoted_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_quoted_empty: " + str(e))
+    try:
+        test_quoted_only_quotes()
+        passed += 1
+        print("  PASS test_quoted_only_quotes")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_quoted_only_quotes: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_quoted_only_quotes: " + str(e))
+    try:
+        test_quoted_multiple_escaped()
+        passed += 1
+        print("  PASS test_quoted_multiple_escaped")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_quoted_multiple_escaped: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_quoted_multiple_escaped: " + str(e))
+    try:
+        test_empty_fields()
+        passed += 1
+        print("  PASS test_empty_fields")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_empty_fields: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_empty_fields: " + str(e))
+    try:
+        test_empty_middle()
+        passed += 1
+        print("  PASS test_empty_middle")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_empty_middle: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_empty_middle: " + str(e))
+    try:
+        test_trailing_comma()
+        passed += 1
+        print("  PASS test_trailing_comma")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_trailing_comma: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_trailing_comma: " + str(e))
+    try:
+        test_leading_comma()
+        passed += 1
+        print("  PASS test_leading_comma")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_leading_comma: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_leading_comma: " + str(e))
+    try:
+        test_all_empty()
+        passed += 1
+        print("  PASS test_all_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_all_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_all_empty: " + str(e))
+    try:
+        test_crlf_line_ending()
+        passed += 1
+        print("  PASS test_crlf_line_ending")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_crlf_line_ending: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_crlf_line_ending: " + str(e))
+    try:
+        test_cr_only_line_ending()
+        passed += 1
+        print("  PASS test_cr_only_line_ending")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_cr_only_line_ending: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_cr_only_line_ending: " + str(e))
+    try:
+        test_crlf_in_quoted_field()
+        passed += 1
+        print("  PASS test_crlf_in_quoted_field")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_crlf_in_quoted_field: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_crlf_in_quoted_field: " + str(e))
+    try:
+        test_mixed_line_endings()
+        passed += 1
+        print("  PASS test_mixed_line_endings")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_mixed_line_endings: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_mixed_line_endings: " + str(e))
+    try:
+        test_blank_lines_skipped()
+        passed += 1
+        print("  PASS test_blank_lines_skipped")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_blank_lines_skipped: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_blank_lines_skipped: " + str(e))
+    try:
+        test_multiple_blank_lines()
+        passed += 1
+        print("  PASS test_multiple_blank_lines")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_multiple_blank_lines: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_multiple_blank_lines: " + str(e))
+    try:
+        test_only_blank_lines()
+        passed += 1
+        print("  PASS test_only_blank_lines")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_only_blank_lines: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_only_blank_lines: " + str(e))
+    try:
+        test_bare_quote_in_unquoted()
+        passed += 1
+        print("  PASS test_bare_quote_in_unquoted")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bare_quote_in_unquoted: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bare_quote_in_unquoted: " + str(e))
+    try:
+        test_unterminated_quote()
+        passed += 1
+        print("  PASS test_unterminated_quote")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_unterminated_quote: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_unterminated_quote: " + str(e))
+    try:
+        test_unterminated_quote_eof()
+        passed += 1
+        print("  PASS test_unterminated_quote_eof")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_unterminated_quote_eof: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_unterminated_quote_eof: " + str(e))
+    try:
+        test_write_empty()
+        passed += 1
+        print("  PASS test_write_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_write_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_write_empty: " + str(e))
+    try:
+        test_write_single_record()
+        passed += 1
+        print("  PASS test_write_single_record")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_write_single_record: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_write_single_record: " + str(e))
+    try:
+        test_write_multiple_records()
+        passed += 1
+        print("  PASS test_write_multiple_records")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_write_multiple_records: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_write_multiple_records: " + str(e))
+    try:
+        test_write_quotes_comma()
+        passed += 1
+        print("  PASS test_write_quotes_comma")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_write_quotes_comma: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_write_quotes_comma: " + str(e))
+    try:
+        test_write_quotes_newline()
+        passed += 1
+        print("  PASS test_write_quotes_newline")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_write_quotes_newline: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_write_quotes_newline: " + str(e))
+    try:
+        test_write_quotes_quote()
+        passed += 1
+        print("  PASS test_write_quotes_quote")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_write_quotes_quote: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_write_quotes_quote: " + str(e))
+    try:
+        test_write_empty_field()
+        passed += 1
+        print("  PASS test_write_empty_field")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_write_empty_field: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_write_empty_field: " + str(e))
+    try:
+        test_write_all_empty()
+        passed += 1
+        print("  PASS test_write_all_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_write_all_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_write_all_empty: " + str(e))
+    try:
+        test_roundtrip_simple()
+        passed += 1
+        print("  PASS test_roundtrip_simple")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_simple: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_simple: " + str(e))
+    try:
+        test_roundtrip_quoted()
+        passed += 1
+        print("  PASS test_roundtrip_quoted")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_quoted: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_quoted: " + str(e))
+    try:
+        test_roundtrip_empty_fields()
+        passed += 1
+        print("  PASS test_roundtrip_empty_fields")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_empty_fields: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_empty_fields: " + str(e))
+    try:
+        test_roundtrip_single_field()
+        passed += 1
+        print("  PASS test_roundtrip_single_field")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_single_field: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_single_field: " + str(e))
+    try:
+        test_tsv_parse()
+        passed += 1
+        print("  PASS test_tsv_parse")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tsv_parse: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tsv_parse: " + str(e))
+    try:
+        test_tsv_write()
+        passed += 1
+        print("  PASS test_tsv_write")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tsv_write: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tsv_write: " + str(e))
+    try:
+        test_tsv_roundtrip()
+        passed += 1
+        print("  PASS test_tsv_roundtrip")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tsv_roundtrip: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tsv_roundtrip: " + str(e))
+    try:
+        test_tsv_comma_not_special()
+        passed += 1
+        print("  PASS test_tsv_comma_not_special")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tsv_comma_not_special: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tsv_comma_not_special: " + str(e))
+    try:
+        test_header_and_data()
+        passed += 1
+        print("  PASS test_header_and_data")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_header_and_data: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_header_and_data: " + str(e))
+    try:
+        test_all_quoted_fields()
+        passed += 1
+        print("  PASS test_all_quoted_fields")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_all_quoted_fields: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_all_quoted_fields: " + str(e))
+    try:
+        test_quoted_at_middle()
+        passed += 1
+        print("  PASS test_quoted_at_middle")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_quoted_at_middle: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_quoted_at_middle: " + str(e))
+    try:
+        test_mixed_quoted_unquoted()
+        passed += 1
+        print("  PASS test_mixed_quoted_unquoted")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_mixed_quoted_unquoted: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_mixed_quoted_unquoted: " + str(e))
+    try:
+        test_field_just_quote()
+        passed += 1
+        print("  PASS test_field_just_quote")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_field_just_quote: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_field_just_quote: " + str(e))
+    try:
+        test_single_column()
+        passed += 1
+        print("  PASS test_single_column")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_single_column: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_single_column: " + str(e))
+    try:
+        test_write_cr_in_field()
+        passed += 1
+        print("  PASS test_write_cr_in_field")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_write_cr_in_field: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_write_cr_in_field: " + str(e))
+    try:
+        test_parse_cr_in_quoted_normalized()
+        passed += 1
+        print("  PASS test_parse_cr_in_quoted_normalized")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_parse_cr_in_quoted_normalized: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_parse_cr_in_quoted_normalized: " + str(e))
+    try:
+        test_multiline_quoted_field()
+        passed += 1
+        print("  PASS test_multiline_quoted_field")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_multiline_quoted_field: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_multiline_quoted_field: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -668,100 +668,730 @@ def test_dict_any_all_items() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_dict_equality", test_dict_equality),
-        ("test_dict_length", test_dict_length),
-        ("test_dict_get_item", test_dict_get_item),
-        ("test_dict_set_item", test_dict_set_item),
-        ("test_dict_set_item_empty", test_dict_set_item_empty),
-        ("test_dict_contains", test_dict_contains),
-        ("test_dict_contains_empty", test_dict_contains_empty),
-        ("test_dict_bool", test_dict_bool),
-        ("test_dict_get", test_dict_get),
-        ("test_dict_get_none_value", test_dict_get_none_value),
-        ("test_dict_keys", test_dict_keys),
-        ("test_dict_list_from_dict", test_dict_list_from_dict),
-        ("test_dict_set_from_dict", test_dict_set_from_dict),
-        ("test_dict_list_from_empty_dict", test_dict_list_from_empty_dict),
-        ("test_dict_set_from_empty_dict", test_dict_set_from_empty_dict),
-        ("test_dict_values", test_dict_values),
-        ("test_dict_items", test_dict_items),
-        ("test_dict_pop", test_dict_pop),
-        ("test_dict_pop_default", test_dict_pop_default),
-        ("test_dict_setdefault", test_dict_setdefault),
-        ("test_dict_update", test_dict_update),
-        ("test_dict_update_empty", test_dict_update_empty),
-        ("test_dict_clear", test_dict_clear),
-        ("test_dict_copy", test_dict_copy),
-        ("test_dict_iteration_keys", test_dict_iteration_keys),
-        ("test_dict_iteration_items", test_dict_iteration_items),
-        ("test_dict_comprehension", test_dict_comprehension),
-        ("test_dict_comprehension_condition", test_dict_comprehension_condition),
-        ("test_dict_int_keys", test_dict_int_keys),
-        ("test_dict_mixed_operations", test_dict_mixed_operations),
-        ("test_dict_nested", test_dict_nested),
-        ("test_dict_with_list_values", test_dict_with_list_values),
-        ("test_dict_from_tuples", test_dict_from_tuples),
-        ("test_dict_from_zip", test_dict_from_zip),
-        ("test_dict_identity", test_dict_identity),
-        ("test_dict_keys_view_membership", test_dict_keys_view_membership),
-        ("test_dict_values_sum", test_dict_values_sum),
-        ("test_dict_empty_operations", test_dict_empty_operations),
-        ("test_dict_overwrite", test_dict_overwrite),
-        ("test_dict_bool_keys", test_dict_bool_keys),
-        ("test_dict_tuple_keys", test_dict_tuple_keys),
-        ("test_dict_none_value", test_dict_none_value),
-        ("test_dict_update_from_empty", test_dict_update_from_empty),
-        ("test_dict_keys_sorted", test_dict_keys_sorted),
-        ("test_dict_values_sorted", test_dict_values_sorted),
-        ("test_dict_min_max_keys", test_dict_min_max_keys),
-        ("test_dict_min_max_values", test_dict_min_max_values),
-        ("test_dict_int_float_key_equivalence", test_dict_int_float_key_equivalence),
-        ("test_dict_bool_int_key_equivalence", test_dict_bool_int_key_equivalence),
-        ("test_dict_copy_shallow_nested", test_dict_copy_shallow_nested),
-        ("test_dict_copy_shallow_list_values", test_dict_copy_shallow_list_values),
-        ("test_dict_setdefault_no_default", test_dict_setdefault_no_default),
-        (
-            "test_dict_setdefault_existing_unchanged",
-            test_dict_setdefault_existing_unchanged,
-        ),
-        ("test_dict_popitem", test_dict_popitem),
-        ("test_dict_insertion_order_preserved", test_dict_insertion_order_preserved),
-        ("test_dict_fromkeys", test_dict_fromkeys),
-        ("test_dict_fromkeys_default_none", test_dict_fromkeys_default_none),
-        ("test_dict_fromkeys_mutable_gotcha", test_dict_fromkeys_mutable_gotcha),
-        ("test_dict_keys_view_set_operations", test_dict_keys_view_set_operations),
-        ("test_dict_items_view_set_operations", test_dict_items_view_set_operations),
-        ("test_dict_merge_operator", test_dict_merge_operator),
-        ("test_dict_update_operator", test_dict_update_operator),
-        ("test_dict_merge_empty", test_dict_merge_empty),
-        ("test_dict_update_overwrites", test_dict_update_overwrites),
-        ("test_dict_update_preserves_order", test_dict_update_preserves_order),
-        ("test_dict_get_vs_index", test_dict_get_vs_index),
-        ("test_dict_len_after_modifications", test_dict_len_after_modifications),
-        ("test_dict_in_checks_keys_not_values", test_dict_in_checks_keys_not_values),
-        ("test_dict_empty_string_key", test_dict_empty_string_key),
-        ("test_dict_zero_key", test_dict_zero_key),
-        ("test_dict_comprehension_overwrite", test_dict_comprehension_overwrite),
-        ("test_dict_get_falsy_values", test_dict_get_falsy_values),
-        ("test_dict_any_all_items", test_dict_any_all_items),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_dict_equality()
+        passed += 1
+        print("  PASS test_dict_equality")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_equality: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_equality: " + str(e))
+    try:
+        test_dict_length()
+        passed += 1
+        print("  PASS test_dict_length")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_length: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_length: " + str(e))
+    try:
+        test_dict_get_item()
+        passed += 1
+        print("  PASS test_dict_get_item")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_get_item: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_get_item: " + str(e))
+    try:
+        test_dict_set_item()
+        passed += 1
+        print("  PASS test_dict_set_item")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_set_item: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_set_item: " + str(e))
+    try:
+        test_dict_set_item_empty()
+        passed += 1
+        print("  PASS test_dict_set_item_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_set_item_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_set_item_empty: " + str(e))
+    try:
+        test_dict_contains()
+        passed += 1
+        print("  PASS test_dict_contains")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_contains: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_contains: " + str(e))
+    try:
+        test_dict_contains_empty()
+        passed += 1
+        print("  PASS test_dict_contains_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_contains_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_contains_empty: " + str(e))
+    try:
+        test_dict_bool()
+        passed += 1
+        print("  PASS test_dict_bool")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_bool: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_bool: " + str(e))
+    try:
+        test_dict_get()
+        passed += 1
+        print("  PASS test_dict_get")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_get: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_get: " + str(e))
+    try:
+        test_dict_get_none_value()
+        passed += 1
+        print("  PASS test_dict_get_none_value")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_get_none_value: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_get_none_value: " + str(e))
+    try:
+        test_dict_keys()
+        passed += 1
+        print("  PASS test_dict_keys")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_keys: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_keys: " + str(e))
+    try:
+        test_dict_list_from_dict()
+        passed += 1
+        print("  PASS test_dict_list_from_dict")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_list_from_dict: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_list_from_dict: " + str(e))
+    try:
+        test_dict_set_from_dict()
+        passed += 1
+        print("  PASS test_dict_set_from_dict")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_set_from_dict: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_set_from_dict: " + str(e))
+    try:
+        test_dict_list_from_empty_dict()
+        passed += 1
+        print("  PASS test_dict_list_from_empty_dict")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_list_from_empty_dict: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_list_from_empty_dict: " + str(e))
+    try:
+        test_dict_set_from_empty_dict()
+        passed += 1
+        print("  PASS test_dict_set_from_empty_dict")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_set_from_empty_dict: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_set_from_empty_dict: " + str(e))
+    try:
+        test_dict_values()
+        passed += 1
+        print("  PASS test_dict_values")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_values: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_values: " + str(e))
+    try:
+        test_dict_items()
+        passed += 1
+        print("  PASS test_dict_items")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_items: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_items: " + str(e))
+    try:
+        test_dict_pop()
+        passed += 1
+        print("  PASS test_dict_pop")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_pop: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_pop: " + str(e))
+    try:
+        test_dict_pop_default()
+        passed += 1
+        print("  PASS test_dict_pop_default")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_pop_default: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_pop_default: " + str(e))
+    try:
+        test_dict_setdefault()
+        passed += 1
+        print("  PASS test_dict_setdefault")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_setdefault: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_setdefault: " + str(e))
+    try:
+        test_dict_update()
+        passed += 1
+        print("  PASS test_dict_update")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_update: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_update: " + str(e))
+    try:
+        test_dict_update_empty()
+        passed += 1
+        print("  PASS test_dict_update_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_update_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_update_empty: " + str(e))
+    try:
+        test_dict_clear()
+        passed += 1
+        print("  PASS test_dict_clear")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_clear: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_clear: " + str(e))
+    try:
+        test_dict_copy()
+        passed += 1
+        print("  PASS test_dict_copy")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_copy: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_copy: " + str(e))
+    try:
+        test_dict_iteration_keys()
+        passed += 1
+        print("  PASS test_dict_iteration_keys")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_iteration_keys: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_iteration_keys: " + str(e))
+    try:
+        test_dict_iteration_items()
+        passed += 1
+        print("  PASS test_dict_iteration_items")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_iteration_items: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_iteration_items: " + str(e))
+    try:
+        test_dict_comprehension()
+        passed += 1
+        print("  PASS test_dict_comprehension")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_comprehension: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_comprehension: " + str(e))
+    try:
+        test_dict_comprehension_condition()
+        passed += 1
+        print("  PASS test_dict_comprehension_condition")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_comprehension_condition: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_comprehension_condition: " + str(e))
+    try:
+        test_dict_int_keys()
+        passed += 1
+        print("  PASS test_dict_int_keys")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_int_keys: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_int_keys: " + str(e))
+    try:
+        test_dict_mixed_operations()
+        passed += 1
+        print("  PASS test_dict_mixed_operations")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_mixed_operations: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_mixed_operations: " + str(e))
+    try:
+        test_dict_nested()
+        passed += 1
+        print("  PASS test_dict_nested")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_nested: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_nested: " + str(e))
+    try:
+        test_dict_with_list_values()
+        passed += 1
+        print("  PASS test_dict_with_list_values")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_with_list_values: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_with_list_values: " + str(e))
+    try:
+        test_dict_from_tuples()
+        passed += 1
+        print("  PASS test_dict_from_tuples")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_from_tuples: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_from_tuples: " + str(e))
+    try:
+        test_dict_from_zip()
+        passed += 1
+        print("  PASS test_dict_from_zip")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_from_zip: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_from_zip: " + str(e))
+    try:
+        test_dict_identity()
+        passed += 1
+        print("  PASS test_dict_identity")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_identity: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_identity: " + str(e))
+    try:
+        test_dict_keys_view_membership()
+        passed += 1
+        print("  PASS test_dict_keys_view_membership")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_keys_view_membership: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_keys_view_membership: " + str(e))
+    try:
+        test_dict_values_sum()
+        passed += 1
+        print("  PASS test_dict_values_sum")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_values_sum: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_values_sum: " + str(e))
+    try:
+        test_dict_empty_operations()
+        passed += 1
+        print("  PASS test_dict_empty_operations")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_empty_operations: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_empty_operations: " + str(e))
+    try:
+        test_dict_overwrite()
+        passed += 1
+        print("  PASS test_dict_overwrite")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_overwrite: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_overwrite: " + str(e))
+    try:
+        test_dict_bool_keys()
+        passed += 1
+        print("  PASS test_dict_bool_keys")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_bool_keys: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_bool_keys: " + str(e))
+    try:
+        test_dict_tuple_keys()
+        passed += 1
+        print("  PASS test_dict_tuple_keys")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_tuple_keys: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_tuple_keys: " + str(e))
+    try:
+        test_dict_none_value()
+        passed += 1
+        print("  PASS test_dict_none_value")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_none_value: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_none_value: " + str(e))
+    try:
+        test_dict_update_from_empty()
+        passed += 1
+        print("  PASS test_dict_update_from_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_update_from_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_update_from_empty: " + str(e))
+    try:
+        test_dict_keys_sorted()
+        passed += 1
+        print("  PASS test_dict_keys_sorted")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_keys_sorted: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_keys_sorted: " + str(e))
+    try:
+        test_dict_values_sorted()
+        passed += 1
+        print("  PASS test_dict_values_sorted")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_values_sorted: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_values_sorted: " + str(e))
+    try:
+        test_dict_min_max_keys()
+        passed += 1
+        print("  PASS test_dict_min_max_keys")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_min_max_keys: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_min_max_keys: " + str(e))
+    try:
+        test_dict_min_max_values()
+        passed += 1
+        print("  PASS test_dict_min_max_values")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_min_max_values: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_min_max_values: " + str(e))
+    try:
+        test_dict_int_float_key_equivalence()
+        passed += 1
+        print("  PASS test_dict_int_float_key_equivalence")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_int_float_key_equivalence: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_int_float_key_equivalence: " + str(e))
+    try:
+        test_dict_bool_int_key_equivalence()
+        passed += 1
+        print("  PASS test_dict_bool_int_key_equivalence")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_bool_int_key_equivalence: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_bool_int_key_equivalence: " + str(e))
+    try:
+        test_dict_copy_shallow_nested()
+        passed += 1
+        print("  PASS test_dict_copy_shallow_nested")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_copy_shallow_nested: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_copy_shallow_nested: " + str(e))
+    try:
+        test_dict_copy_shallow_list_values()
+        passed += 1
+        print("  PASS test_dict_copy_shallow_list_values")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_copy_shallow_list_values: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_copy_shallow_list_values: " + str(e))
+    try:
+        test_dict_setdefault_no_default()
+        passed += 1
+        print("  PASS test_dict_setdefault_no_default")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_setdefault_no_default: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_setdefault_no_default: " + str(e))
+    try:
+        test_dict_popitem()
+        passed += 1
+        print("  PASS test_dict_popitem")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_popitem: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_popitem: " + str(e))
+    try:
+        test_dict_insertion_order_preserved()
+        passed += 1
+        print("  PASS test_dict_insertion_order_preserved")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_insertion_order_preserved: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_insertion_order_preserved: " + str(e))
+    try:
+        test_dict_fromkeys()
+        passed += 1
+        print("  PASS test_dict_fromkeys")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_fromkeys: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_fromkeys: " + str(e))
+    try:
+        test_dict_fromkeys_default_none()
+        passed += 1
+        print("  PASS test_dict_fromkeys_default_none")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_fromkeys_default_none: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_fromkeys_default_none: " + str(e))
+    try:
+        test_dict_fromkeys_mutable_gotcha()
+        passed += 1
+        print("  PASS test_dict_fromkeys_mutable_gotcha")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_fromkeys_mutable_gotcha: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_fromkeys_mutable_gotcha: " + str(e))
+    try:
+        test_dict_keys_view_set_operations()
+        passed += 1
+        print("  PASS test_dict_keys_view_set_operations")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_keys_view_set_operations: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_keys_view_set_operations: " + str(e))
+    try:
+        test_dict_items_view_set_operations()
+        passed += 1
+        print("  PASS test_dict_items_view_set_operations")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_items_view_set_operations: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_items_view_set_operations: " + str(e))
+    try:
+        test_dict_merge_operator()
+        passed += 1
+        print("  PASS test_dict_merge_operator")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_merge_operator: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_merge_operator: " + str(e))
+    try:
+        test_dict_update_operator()
+        passed += 1
+        print("  PASS test_dict_update_operator")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_update_operator: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_update_operator: " + str(e))
+    try:
+        test_dict_merge_empty()
+        passed += 1
+        print("  PASS test_dict_merge_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_merge_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_merge_empty: " + str(e))
+    try:
+        test_dict_update_overwrites()
+        passed += 1
+        print("  PASS test_dict_update_overwrites")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_update_overwrites: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_update_overwrites: " + str(e))
+    try:
+        test_dict_update_preserves_order()
+        passed += 1
+        print("  PASS test_dict_update_preserves_order")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_update_preserves_order: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_update_preserves_order: " + str(e))
+    try:
+        test_dict_get_vs_index()
+        passed += 1
+        print("  PASS test_dict_get_vs_index")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_get_vs_index: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_get_vs_index: " + str(e))
+    try:
+        test_dict_len_after_modifications()
+        passed += 1
+        print("  PASS test_dict_len_after_modifications")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_len_after_modifications: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_len_after_modifications: " + str(e))
+    try:
+        test_dict_in_checks_keys_not_values()
+        passed += 1
+        print("  PASS test_dict_in_checks_keys_not_values")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_in_checks_keys_not_values: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_in_checks_keys_not_values: " + str(e))
+    try:
+        test_dict_empty_string_key()
+        passed += 1
+        print("  PASS test_dict_empty_string_key")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_empty_string_key: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_empty_string_key: " + str(e))
+    try:
+        test_dict_zero_key()
+        passed += 1
+        print("  PASS test_dict_zero_key")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_zero_key: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_zero_key: " + str(e))
+    try:
+        test_dict_comprehension_overwrite()
+        passed += 1
+        print("  PASS test_dict_comprehension_overwrite")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_comprehension_overwrite: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_comprehension_overwrite: " + str(e))
+    try:
+        test_dict_get_falsy_values()
+        passed += 1
+        print("  PASS test_dict_get_falsy_values")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_get_falsy_values: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_get_falsy_values: " + str(e))
+    try:
+        test_dict_any_all_items()
+        passed += 1
+        print("  PASS test_dict_any_all_items")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_dict_any_all_items: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_dict_any_all_items: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

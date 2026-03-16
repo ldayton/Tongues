@@ -26,25 +26,20 @@ def test_nil_guard_assign() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_nil_guard_assign", test_nil_guard_assign),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_nil_guard_assign()
+        passed += 1
+        print("  PASS test_nil_guard_assign")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_nil_guard_assign: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_nil_guard_assign: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

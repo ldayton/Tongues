@@ -218,65 +218,420 @@ def test_longer_strings2() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_both_empty", test_both_empty),
-        ("test_first_empty", test_first_empty),
-        ("test_second_empty", test_second_empty),
-        ("test_equal_strings", test_equal_strings),
-        ("test_single_equal", test_single_equal),
-        ("test_single_insert", test_single_insert),
-        ("test_single_delete", test_single_delete),
-        ("test_single_substitute", test_single_substitute),
-        ("test_single_char_different", test_single_char_different),
-        ("test_kitten_sitting", test_kitten_sitting),
-        ("test_saturday_sunday", test_saturday_sunday),
-        ("test_rosettacode", test_rosettacode),
-        ("test_swap_ab_ba", test_swap_ab_ba),
-        ("test_swap_abc_bac", test_swap_abc_bac),
-        ("test_prefix", test_prefix),
-        ("test_suffix", test_suffix),
-        ("test_common_prefix_different_suffix", test_common_prefix_different_suffix),
-        ("test_different_prefix_common_suffix", test_different_prefix_common_suffix),
-        ("test_single_vs_long", test_single_vs_long),
-        ("test_long_vs_single", test_long_vs_single),
-        ("test_completely_different", test_completely_different),
-        ("test_longer_completely_different", test_longer_completely_different),
-        ("test_symmetry_kitten", test_symmetry_kitten),
-        ("test_symmetry_empty", test_symmetry_empty),
-        ("test_symmetry_different", test_symmetry_different),
-        ("test_repeated_a", test_repeated_a),
-        ("test_repeated_vs_empty", test_repeated_vs_empty),
-        ("test_repeated_insert_middle", test_repeated_insert_middle),
-        ("test_case_sensitive", test_case_sensitive),
-        ("test_case_one_char", test_case_one_char),
-        ("test_insert_at_start", test_insert_at_start),
-        ("test_insert_at_end", test_insert_at_end),
-        ("test_delete_at_start", test_delete_at_start),
-        ("test_delete_at_end", test_delete_at_end),
-        ("test_unicode_equal", test_unicode_equal),
-        ("test_unicode_one_sub", test_unicode_one_sub),
-        ("test_unicode_cjk", test_unicode_cjk),
-        ("test_unicode_vs_empty", test_unicode_vs_empty),
-        ("test_triangle_inequality", test_triangle_inequality),
-        ("test_longer_strings", test_longer_strings),
-        ("test_longer_strings2", test_longer_strings2),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_both_empty()
+        passed += 1
+        print("  PASS test_both_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_both_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_both_empty: " + str(e))
+    try:
+        test_first_empty()
+        passed += 1
+        print("  PASS test_first_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_first_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_first_empty: " + str(e))
+    try:
+        test_second_empty()
+        passed += 1
+        print("  PASS test_second_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_second_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_second_empty: " + str(e))
+    try:
+        test_equal_strings()
+        passed += 1
+        print("  PASS test_equal_strings")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_equal_strings: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_equal_strings: " + str(e))
+    try:
+        test_single_equal()
+        passed += 1
+        print("  PASS test_single_equal")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_single_equal: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_single_equal: " + str(e))
+    try:
+        test_single_insert()
+        passed += 1
+        print("  PASS test_single_insert")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_single_insert: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_single_insert: " + str(e))
+    try:
+        test_single_delete()
+        passed += 1
+        print("  PASS test_single_delete")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_single_delete: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_single_delete: " + str(e))
+    try:
+        test_single_substitute()
+        passed += 1
+        print("  PASS test_single_substitute")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_single_substitute: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_single_substitute: " + str(e))
+    try:
+        test_single_char_different()
+        passed += 1
+        print("  PASS test_single_char_different")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_single_char_different: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_single_char_different: " + str(e))
+    try:
+        test_kitten_sitting()
+        passed += 1
+        print("  PASS test_kitten_sitting")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_kitten_sitting: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_kitten_sitting: " + str(e))
+    try:
+        test_saturday_sunday()
+        passed += 1
+        print("  PASS test_saturday_sunday")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_saturday_sunday: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_saturday_sunday: " + str(e))
+    try:
+        test_rosettacode()
+        passed += 1
+        print("  PASS test_rosettacode")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_rosettacode: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_rosettacode: " + str(e))
+    try:
+        test_swap_ab_ba()
+        passed += 1
+        print("  PASS test_swap_ab_ba")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_swap_ab_ba: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_swap_ab_ba: " + str(e))
+    try:
+        test_swap_abc_bac()
+        passed += 1
+        print("  PASS test_swap_abc_bac")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_swap_abc_bac: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_swap_abc_bac: " + str(e))
+    try:
+        test_prefix()
+        passed += 1
+        print("  PASS test_prefix")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_prefix: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_prefix: " + str(e))
+    try:
+        test_suffix()
+        passed += 1
+        print("  PASS test_suffix")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_suffix: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_suffix: " + str(e))
+    try:
+        test_common_prefix_different_suffix()
+        passed += 1
+        print("  PASS test_common_prefix_different_suffix")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_common_prefix_different_suffix: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_common_prefix_different_suffix: " + str(e))
+    try:
+        test_different_prefix_common_suffix()
+        passed += 1
+        print("  PASS test_different_prefix_common_suffix")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_different_prefix_common_suffix: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_different_prefix_common_suffix: " + str(e))
+    try:
+        test_single_vs_long()
+        passed += 1
+        print("  PASS test_single_vs_long")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_single_vs_long: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_single_vs_long: " + str(e))
+    try:
+        test_long_vs_single()
+        passed += 1
+        print("  PASS test_long_vs_single")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_long_vs_single: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_long_vs_single: " + str(e))
+    try:
+        test_completely_different()
+        passed += 1
+        print("  PASS test_completely_different")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_completely_different: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_completely_different: " + str(e))
+    try:
+        test_longer_completely_different()
+        passed += 1
+        print("  PASS test_longer_completely_different")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_longer_completely_different: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_longer_completely_different: " + str(e))
+    try:
+        test_symmetry_kitten()
+        passed += 1
+        print("  PASS test_symmetry_kitten")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_symmetry_kitten: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_symmetry_kitten: " + str(e))
+    try:
+        test_symmetry_empty()
+        passed += 1
+        print("  PASS test_symmetry_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_symmetry_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_symmetry_empty: " + str(e))
+    try:
+        test_symmetry_different()
+        passed += 1
+        print("  PASS test_symmetry_different")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_symmetry_different: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_symmetry_different: " + str(e))
+    try:
+        test_repeated_a()
+        passed += 1
+        print("  PASS test_repeated_a")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_repeated_a: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_repeated_a: " + str(e))
+    try:
+        test_repeated_vs_empty()
+        passed += 1
+        print("  PASS test_repeated_vs_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_repeated_vs_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_repeated_vs_empty: " + str(e))
+    try:
+        test_repeated_insert_middle()
+        passed += 1
+        print("  PASS test_repeated_insert_middle")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_repeated_insert_middle: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_repeated_insert_middle: " + str(e))
+    try:
+        test_case_sensitive()
+        passed += 1
+        print("  PASS test_case_sensitive")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_case_sensitive: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_case_sensitive: " + str(e))
+    try:
+        test_case_one_char()
+        passed += 1
+        print("  PASS test_case_one_char")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_case_one_char: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_case_one_char: " + str(e))
+    try:
+        test_insert_at_start()
+        passed += 1
+        print("  PASS test_insert_at_start")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_insert_at_start: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_insert_at_start: " + str(e))
+    try:
+        test_insert_at_end()
+        passed += 1
+        print("  PASS test_insert_at_end")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_insert_at_end: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_insert_at_end: " + str(e))
+    try:
+        test_delete_at_start()
+        passed += 1
+        print("  PASS test_delete_at_start")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_delete_at_start: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_delete_at_start: " + str(e))
+    try:
+        test_delete_at_end()
+        passed += 1
+        print("  PASS test_delete_at_end")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_delete_at_end: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_delete_at_end: " + str(e))
+    try:
+        test_unicode_equal()
+        passed += 1
+        print("  PASS test_unicode_equal")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_unicode_equal: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_unicode_equal: " + str(e))
+    try:
+        test_unicode_one_sub()
+        passed += 1
+        print("  PASS test_unicode_one_sub")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_unicode_one_sub: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_unicode_one_sub: " + str(e))
+    try:
+        test_unicode_cjk()
+        passed += 1
+        print("  PASS test_unicode_cjk")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_unicode_cjk: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_unicode_cjk: " + str(e))
+    try:
+        test_unicode_vs_empty()
+        passed += 1
+        print("  PASS test_unicode_vs_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_unicode_vs_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_unicode_vs_empty: " + str(e))
+    try:
+        test_triangle_inequality()
+        passed += 1
+        print("  PASS test_triangle_inequality")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_triangle_inequality: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_triangle_inequality: " + str(e))
+    try:
+        test_longer_strings()
+        passed += 1
+        print("  PASS test_longer_strings")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_longer_strings: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_longer_strings: " + str(e))
+    try:
+        test_longer_strings2()
+        passed += 1
+        print("  PASS test_longer_strings2")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_longer_strings2: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_longer_strings2: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())

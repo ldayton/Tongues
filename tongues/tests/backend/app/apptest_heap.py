@@ -459,66 +459,430 @@ def test_heapify_idempotent() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_push_single", test_push_single),
-        ("test_push_ascending", test_push_ascending),
-        ("test_push_descending", test_push_descending),
-        ("test_pop_order", test_pop_order),
-        ("test_pop_empty", test_pop_empty),
-        ("test_peek_empty", test_peek_empty),
-        ("test_push_pop_single", test_push_pop_single),
-        ("test_duplicates", test_duplicates),
-        ("test_duplicates_mixed", test_duplicates_mixed),
-        ("test_negative_values", test_negative_values),
-        ("test_heapify_empty", test_heapify_empty),
-        ("test_heapify_single", test_heapify_single),
-        ("test_heapify_sorted", test_heapify_sorted),
-        ("test_heapify_reverse", test_heapify_reverse),
-        ("test_heapify_random", test_heapify_random),
-        ("test_heapify_then_pop_all", test_heapify_then_pop_all),
-        ("test_sort_empty", test_sort_empty),
-        ("test_sort_single", test_sort_single),
-        ("test_sort_already_sorted", test_sort_already_sorted),
-        ("test_sort_reverse", test_sort_reverse),
-        ("test_sort_duplicates", test_sort_duplicates),
-        ("test_sort_negative", test_sort_negative),
-        ("test_sort_preserves_input", test_sort_preserves_input),
-        ("test_push_pop_smaller", test_push_pop_smaller),
-        ("test_push_pop_larger", test_push_pop_larger),
-        ("test_push_pop_equal", test_push_pop_equal),
-        ("test_push_pop_empty", test_push_pop_empty),
-        ("test_replace_basic", test_replace_basic),
-        ("test_replace_smaller", test_replace_smaller),
-        ("test_replace_empty", test_replace_empty),
-        ("test_size_after_operations", test_size_after_operations),
-        ("test_100_elements", test_100_elements),
-        ("test_heapify_100", test_heapify_100),
-        ("test_two_elements", test_two_elements),
-        ("test_two_elements_already_ordered", test_two_elements_already_ordered),
-        ("test_invariant_after_each_pop", test_invariant_after_each_pop),
-        ("test_interleaved", test_interleaved),
-        ("test_all_same", test_all_same),
-        ("test_extreme_values", test_extreme_values),
-        ("test_push_pop_size_unchanged", test_push_pop_size_unchanged),
-        ("test_replace_size_unchanged", test_replace_size_unchanged),
-        ("test_heapify_idempotent", test_heapify_idempotent),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_push_single()
+        passed += 1
+        print("  PASS test_push_single")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_push_single: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_push_single: " + str(e))
+    try:
+        test_push_ascending()
+        passed += 1
+        print("  PASS test_push_ascending")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_push_ascending: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_push_ascending: " + str(e))
+    try:
+        test_push_descending()
+        passed += 1
+        print("  PASS test_push_descending")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_push_descending: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_push_descending: " + str(e))
+    try:
+        test_pop_order()
+        passed += 1
+        print("  PASS test_pop_order")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_pop_order: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_pop_order: " + str(e))
+    try:
+        test_pop_empty()
+        passed += 1
+        print("  PASS test_pop_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_pop_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_pop_empty: " + str(e))
+    try:
+        test_peek_empty()
+        passed += 1
+        print("  PASS test_peek_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_peek_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_peek_empty: " + str(e))
+    try:
+        test_push_pop_single()
+        passed += 1
+        print("  PASS test_push_pop_single")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_push_pop_single: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_push_pop_single: " + str(e))
+    try:
+        test_duplicates()
+        passed += 1
+        print("  PASS test_duplicates")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_duplicates: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_duplicates: " + str(e))
+    try:
+        test_duplicates_mixed()
+        passed += 1
+        print("  PASS test_duplicates_mixed")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_duplicates_mixed: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_duplicates_mixed: " + str(e))
+    try:
+        test_negative_values()
+        passed += 1
+        print("  PASS test_negative_values")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_negative_values: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_negative_values: " + str(e))
+    try:
+        test_heapify_empty()
+        passed += 1
+        print("  PASS test_heapify_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_heapify_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_heapify_empty: " + str(e))
+    try:
+        test_heapify_single()
+        passed += 1
+        print("  PASS test_heapify_single")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_heapify_single: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_heapify_single: " + str(e))
+    try:
+        test_heapify_sorted()
+        passed += 1
+        print("  PASS test_heapify_sorted")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_heapify_sorted: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_heapify_sorted: " + str(e))
+    try:
+        test_heapify_reverse()
+        passed += 1
+        print("  PASS test_heapify_reverse")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_heapify_reverse: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_heapify_reverse: " + str(e))
+    try:
+        test_heapify_random()
+        passed += 1
+        print("  PASS test_heapify_random")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_heapify_random: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_heapify_random: " + str(e))
+    try:
+        test_heapify_then_pop_all()
+        passed += 1
+        print("  PASS test_heapify_then_pop_all")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_heapify_then_pop_all: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_heapify_then_pop_all: " + str(e))
+    try:
+        test_sort_empty()
+        passed += 1
+        print("  PASS test_sort_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_sort_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_sort_empty: " + str(e))
+    try:
+        test_sort_single()
+        passed += 1
+        print("  PASS test_sort_single")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_sort_single: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_sort_single: " + str(e))
+    try:
+        test_sort_already_sorted()
+        passed += 1
+        print("  PASS test_sort_already_sorted")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_sort_already_sorted: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_sort_already_sorted: " + str(e))
+    try:
+        test_sort_reverse()
+        passed += 1
+        print("  PASS test_sort_reverse")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_sort_reverse: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_sort_reverse: " + str(e))
+    try:
+        test_sort_duplicates()
+        passed += 1
+        print("  PASS test_sort_duplicates")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_sort_duplicates: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_sort_duplicates: " + str(e))
+    try:
+        test_sort_negative()
+        passed += 1
+        print("  PASS test_sort_negative")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_sort_negative: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_sort_negative: " + str(e))
+    try:
+        test_sort_preserves_input()
+        passed += 1
+        print("  PASS test_sort_preserves_input")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_sort_preserves_input: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_sort_preserves_input: " + str(e))
+    try:
+        test_push_pop_smaller()
+        passed += 1
+        print("  PASS test_push_pop_smaller")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_push_pop_smaller: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_push_pop_smaller: " + str(e))
+    try:
+        test_push_pop_larger()
+        passed += 1
+        print("  PASS test_push_pop_larger")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_push_pop_larger: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_push_pop_larger: " + str(e))
+    try:
+        test_push_pop_equal()
+        passed += 1
+        print("  PASS test_push_pop_equal")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_push_pop_equal: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_push_pop_equal: " + str(e))
+    try:
+        test_push_pop_empty()
+        passed += 1
+        print("  PASS test_push_pop_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_push_pop_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_push_pop_empty: " + str(e))
+    try:
+        test_replace_basic()
+        passed += 1
+        print("  PASS test_replace_basic")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_replace_basic: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_replace_basic: " + str(e))
+    try:
+        test_replace_smaller()
+        passed += 1
+        print("  PASS test_replace_smaller")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_replace_smaller: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_replace_smaller: " + str(e))
+    try:
+        test_replace_empty()
+        passed += 1
+        print("  PASS test_replace_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_replace_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_replace_empty: " + str(e))
+    try:
+        test_size_after_operations()
+        passed += 1
+        print("  PASS test_size_after_operations")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_size_after_operations: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_size_after_operations: " + str(e))
+    try:
+        test_100_elements()
+        passed += 1
+        print("  PASS test_100_elements")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_100_elements: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_100_elements: " + str(e))
+    try:
+        test_heapify_100()
+        passed += 1
+        print("  PASS test_heapify_100")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_heapify_100: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_heapify_100: " + str(e))
+    try:
+        test_two_elements()
+        passed += 1
+        print("  PASS test_two_elements")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_two_elements: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_two_elements: " + str(e))
+    try:
+        test_two_elements_already_ordered()
+        passed += 1
+        print("  PASS test_two_elements_already_ordered")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_two_elements_already_ordered: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_two_elements_already_ordered: " + str(e))
+    try:
+        test_invariant_after_each_pop()
+        passed += 1
+        print("  PASS test_invariant_after_each_pop")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_invariant_after_each_pop: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_invariant_after_each_pop: " + str(e))
+    try:
+        test_interleaved()
+        passed += 1
+        print("  PASS test_interleaved")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_interleaved: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_interleaved: " + str(e))
+    try:
+        test_all_same()
+        passed += 1
+        print("  PASS test_all_same")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_all_same: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_all_same: " + str(e))
+    try:
+        test_extreme_values()
+        passed += 1
+        print("  PASS test_extreme_values")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_extreme_values: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_extreme_values: " + str(e))
+    try:
+        test_push_pop_size_unchanged()
+        passed += 1
+        print("  PASS test_push_pop_size_unchanged")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_push_pop_size_unchanged: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_push_pop_size_unchanged: " + str(e))
+    try:
+        test_replace_size_unchanged()
+        passed += 1
+        print("  PASS test_replace_size_unchanged")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_replace_size_unchanged: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_replace_size_unchanged: " + str(e))
+    try:
+        test_heapify_idempotent()
+        passed += 1
+        print("  PASS test_heapify_idempotent")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_heapify_idempotent: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_heapify_idempotent: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0
-
 
 if __name__ == "__main__":
     sys.exit(main())
