@@ -1355,26 +1355,6 @@ def discover_app_tests(
     return results
 
 
-_RUNTIME_DEPS: dict[str, list[str]] = {
-    "java": ["javac", "java"],
-}
-
-
-def _available_targets() -> list[str]:
-    """Return targets whose runtimes are available."""
-    available = []
-    for target in sorted(RUNTIMES):
-        cmd = RUNTIMES[target]
-        if target == "python":
-            available.append(target)
-        elif target in _RUNTIME_DEPS:
-            if all(shutil.which(dep) for dep in _RUNTIME_DEPS[target]):
-                available.append(target)
-        elif shutil.which(cmd[0]):
-            available.append(target)
-    return available
-
-
 def _cli_needs_backend(spec: dict) -> bool:
     """True if the test will reach the backend (no --stop-at, expects exit 0)."""
     args = spec["args"]
