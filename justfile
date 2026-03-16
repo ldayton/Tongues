@@ -444,13 +444,13 @@ _vm target:
         exit 1
     fi
 
-# Run pytest on source (frontend, codegen, backend tests)
+# Run pytest on source
 pytest *ARGS:
     #!/usr/bin/env bash
     set -uo pipefail
     printf '\033[32m[pytest]\033[0m\n'
     start=$SECONDS
-    uv run --directory tongues pytest tests/test_frontend.py tests/test_backend_codegen.py tests/test_backend_target.py {{ARGS}}; rc=$?
+    uv run --directory tongues pytest tests/ {{ARGS}}; rc=$?
     elapsed=$((SECONDS - start))
     if [ $rc -eq 0 ]; then
         printf '\033[32m[pytest] %ds\033[0m\n' "$elapsed"
