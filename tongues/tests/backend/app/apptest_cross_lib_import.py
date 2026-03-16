@@ -28,25 +28,57 @@ def test_symmetry() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_basic", test_basic),
-        ("test_insert", test_insert),
-        ("test_substitute", test_substitute),
-        ("test_kitten_sitting", test_kitten_sitting),
-        ("test_symmetry", test_symmetry),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_basic()
+        passed += 1
+        print("  PASS test_basic")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_basic: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_basic: " + str(e))
+    try:
+        test_insert()
+        passed += 1
+        print("  PASS test_insert")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_insert: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_insert: " + str(e))
+    try:
+        test_substitute()
+        passed += 1
+        print("  PASS test_substitute")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_substitute: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_substitute: " + str(e))
+    try:
+        test_kitten_sitting()
+        passed += 1
+        print("  PASS test_kitten_sitting")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_kitten_sitting: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_kitten_sitting: " + str(e))
+    try:
+        test_symmetry()
+        passed += 1
+        print("  PASS test_symmetry")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_symmetry: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_symmetry: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0

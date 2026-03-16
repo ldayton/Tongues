@@ -223,42 +223,227 @@ def test_bool_identity_elements() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_bool_callable", test_bool_callable),
-        ("test_bool_string", test_bool_string),
-        ("test_bool_int", test_bool_int),
-        ("test_bool_ops", test_bool_ops),
-        ("test_bool_int_ops", test_bool_int_ops),
-        ("test_bool_arithmetic", test_bool_arithmetic),
-        ("test_bool_comparisons", test_bool_comparisons),
-        ("test_bool_from_negative", test_bool_from_negative),
-        ("test_bool_floor_division", test_bool_floor_division),
-        ("test_bool_modulo", test_bool_modulo),
-        ("test_bool_divmod", test_bool_divmod),
-        ("test_bool_pow", test_bool_pow),
-        ("test_bool_min_max", test_bool_min_max),
-        ("test_bool_abs", test_bool_abs),
-        ("test_bool_bitwise_with_ints", test_bool_bitwise_with_ints),
-        ("test_bool_shifts", test_bool_shifts),
-        ("test_bool_invert", test_bool_invert),
-        ("test_bool_not_vs_invert", test_bool_not_vs_invert),
-        ("test_bool_in_expressions", test_bool_in_expressions),
-        ("test_bool_from_strings", test_bool_from_strings),
-        ("test_bool_from_collections", test_bool_from_collections),
-        ("test_bool_identity_elements", test_bool_identity_elements),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_bool_callable()
+        passed += 1
+        print("  PASS test_bool_callable")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_callable: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_callable: " + str(e))
+    try:
+        test_bool_string()
+        passed += 1
+        print("  PASS test_bool_string")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_string: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_string: " + str(e))
+    try:
+        test_bool_int()
+        passed += 1
+        print("  PASS test_bool_int")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_int: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_int: " + str(e))
+    try:
+        test_bool_ops()
+        passed += 1
+        print("  PASS test_bool_ops")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_ops: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_ops: " + str(e))
+    try:
+        test_bool_int_ops()
+        passed += 1
+        print("  PASS test_bool_int_ops")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_int_ops: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_int_ops: " + str(e))
+    try:
+        test_bool_arithmetic()
+        passed += 1
+        print("  PASS test_bool_arithmetic")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_arithmetic: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_arithmetic: " + str(e))
+    try:
+        test_bool_comparisons()
+        passed += 1
+        print("  PASS test_bool_comparisons")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_comparisons: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_comparisons: " + str(e))
+    try:
+        test_bool_from_negative()
+        passed += 1
+        print("  PASS test_bool_from_negative")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_from_negative: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_from_negative: " + str(e))
+    try:
+        test_bool_floor_division()
+        passed += 1
+        print("  PASS test_bool_floor_division")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_floor_division: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_floor_division: " + str(e))
+    try:
+        test_bool_modulo()
+        passed += 1
+        print("  PASS test_bool_modulo")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_modulo: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_modulo: " + str(e))
+    try:
+        test_bool_divmod()
+        passed += 1
+        print("  PASS test_bool_divmod")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_divmod: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_divmod: " + str(e))
+    try:
+        test_bool_pow()
+        passed += 1
+        print("  PASS test_bool_pow")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_pow: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_pow: " + str(e))
+    try:
+        test_bool_min_max()
+        passed += 1
+        print("  PASS test_bool_min_max")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_min_max: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_min_max: " + str(e))
+    try:
+        test_bool_abs()
+        passed += 1
+        print("  PASS test_bool_abs")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_abs: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_abs: " + str(e))
+    try:
+        test_bool_bitwise_with_ints()
+        passed += 1
+        print("  PASS test_bool_bitwise_with_ints")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_bitwise_with_ints: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_bitwise_with_ints: " + str(e))
+    try:
+        test_bool_shifts()
+        passed += 1
+        print("  PASS test_bool_shifts")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_shifts: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_shifts: " + str(e))
+    try:
+        test_bool_invert()
+        passed += 1
+        print("  PASS test_bool_invert")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_invert: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_invert: " + str(e))
+    try:
+        test_bool_not_vs_invert()
+        passed += 1
+        print("  PASS test_bool_not_vs_invert")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_not_vs_invert: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_not_vs_invert: " + str(e))
+    try:
+        test_bool_in_expressions()
+        passed += 1
+        print("  PASS test_bool_in_expressions")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_in_expressions: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_in_expressions: " + str(e))
+    try:
+        test_bool_from_strings()
+        passed += 1
+        print("  PASS test_bool_from_strings")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_from_strings: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_from_strings: " + str(e))
+    try:
+        test_bool_from_collections()
+        passed += 1
+        print("  PASS test_bool_from_collections")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_from_collections: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_from_collections: " + str(e))
+    try:
+        test_bool_identity_elements()
+        passed += 1
+        print("  PASS test_bool_identity_elements")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_identity_elements: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_identity_elements: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0

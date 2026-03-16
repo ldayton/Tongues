@@ -284,81 +284,577 @@ def test_decode_invalid_hex() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_encode_empty", test_encode_empty),
-        ("test_encode_alpha_lower", test_encode_alpha_lower),
-        ("test_encode_alpha_upper", test_encode_alpha_upper),
-        ("test_encode_digits", test_encode_digits),
-        ("test_encode_unreserved_symbols", test_encode_unreserved_symbols),
-        ("test_encode_all_unreserved", test_encode_all_unreserved),
-        ("test_encode_space", test_encode_space),
-        ("test_encode_exclamation", test_encode_exclamation),
-        ("test_encode_hash", test_encode_hash),
-        ("test_encode_percent", test_encode_percent),
-        ("test_encode_ampersand", test_encode_ampersand),
-        ("test_encode_plus", test_encode_plus),
-        ("test_encode_slash", test_encode_slash),
-        ("test_encode_colon", test_encode_colon),
-        ("test_encode_equals", test_encode_equals),
-        ("test_encode_question", test_encode_question),
-        ("test_encode_at", test_encode_at),
-        ("test_encode_brackets", test_encode_brackets),
-        ("test_encode_hello_world", test_encode_hello_world),
-        ("test_encode_query_string", test_encode_query_string),
-        ("test_encode_url_path", test_encode_url_path),
-        ("test_encode_email", test_encode_email),
-        ("test_encode_umlaut", test_encode_umlaut),
-        ("test_encode_euro_sign", test_encode_euro_sign),
-        ("test_encode_cjk", test_encode_cjk),
-        ("test_decode_empty", test_decode_empty),
-        ("test_decode_no_encoding", test_decode_no_encoding),
-        ("test_decode_space", test_decode_space),
-        ("test_decode_percent", test_decode_percent),
-        ("test_decode_hello_world", test_decode_hello_world),
-        ("test_decode_mixed", test_decode_mixed),
-        ("test_decode_lowercase_hex", test_decode_lowercase_hex),
-        ("test_decode_uppercase_hex", test_decode_uppercase_hex),
-        ("test_decode_multibyte", test_decode_multibyte),
-        ("test_decode_consecutive", test_decode_consecutive),
-        ("test_decode_unreserved_passthrough", test_decode_unreserved_passthrough),
-        ("test_decode_reserved_passthrough", test_decode_reserved_passthrough),
-        ("test_roundtrip_simple", test_roundtrip_simple),
-        ("test_roundtrip_special", test_roundtrip_special),
-        ("test_roundtrip_all_unreserved", test_roundtrip_all_unreserved),
-        ("test_roundtrip_percent_literal", test_roundtrip_percent_literal),
-        ("test_roundtrip_unicode", test_roundtrip_unicode),
-        ("test_encode_single_unreserved", test_encode_single_unreserved),
-        ("test_encode_single_reserved", test_encode_single_reserved),
-        ("test_encode_tab", test_encode_tab),
-        ("test_encode_newline", test_encode_newline),
-        ("test_encode_null", test_encode_null),
-        ("test_encode_del", test_encode_del),
-        ("test_encode_4byte_emoji", test_encode_4byte_emoji),
-        (
-            "test_encode_mixed_ascii_and_multibyte",
-            test_encode_mixed_ascii_and_multibyte,
-        ),
-        ("test_encode_double_encoding", test_encode_double_encoding),
-        ("test_decode_null_byte", test_decode_null_byte),
-        ("test_decode_4byte_emoji", test_decode_4byte_emoji),
-        ("test_roundtrip_4byte", test_roundtrip_4byte),
-        ("test_roundtrip_mixed_multibyte", test_roundtrip_mixed_multibyte),
-        ("test_decode_trailing_percent", test_decode_trailing_percent),
-        ("test_decode_incomplete_hex", test_decode_incomplete_hex),
-        ("test_decode_invalid_hex", test_decode_invalid_hex),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_encode_empty()
+        passed += 1
+        print("  PASS test_encode_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_empty: " + str(e))
+    try:
+        test_encode_alpha_lower()
+        passed += 1
+        print("  PASS test_encode_alpha_lower")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_alpha_lower: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_alpha_lower: " + str(e))
+    try:
+        test_encode_alpha_upper()
+        passed += 1
+        print("  PASS test_encode_alpha_upper")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_alpha_upper: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_alpha_upper: " + str(e))
+    try:
+        test_encode_digits()
+        passed += 1
+        print("  PASS test_encode_digits")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_digits: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_digits: " + str(e))
+    try:
+        test_encode_unreserved_symbols()
+        passed += 1
+        print("  PASS test_encode_unreserved_symbols")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_unreserved_symbols: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_unreserved_symbols: " + str(e))
+    try:
+        test_encode_all_unreserved()
+        passed += 1
+        print("  PASS test_encode_all_unreserved")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_all_unreserved: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_all_unreserved: " + str(e))
+    try:
+        test_encode_space()
+        passed += 1
+        print("  PASS test_encode_space")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_space: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_space: " + str(e))
+    try:
+        test_encode_exclamation()
+        passed += 1
+        print("  PASS test_encode_exclamation")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_exclamation: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_exclamation: " + str(e))
+    try:
+        test_encode_hash()
+        passed += 1
+        print("  PASS test_encode_hash")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_hash: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_hash: " + str(e))
+    try:
+        test_encode_percent()
+        passed += 1
+        print("  PASS test_encode_percent")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_percent: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_percent: " + str(e))
+    try:
+        test_encode_ampersand()
+        passed += 1
+        print("  PASS test_encode_ampersand")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_ampersand: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_ampersand: " + str(e))
+    try:
+        test_encode_plus()
+        passed += 1
+        print("  PASS test_encode_plus")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_plus: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_plus: " + str(e))
+    try:
+        test_encode_slash()
+        passed += 1
+        print("  PASS test_encode_slash")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_slash: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_slash: " + str(e))
+    try:
+        test_encode_colon()
+        passed += 1
+        print("  PASS test_encode_colon")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_colon: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_colon: " + str(e))
+    try:
+        test_encode_equals()
+        passed += 1
+        print("  PASS test_encode_equals")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_equals: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_equals: " + str(e))
+    try:
+        test_encode_question()
+        passed += 1
+        print("  PASS test_encode_question")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_question: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_question: " + str(e))
+    try:
+        test_encode_at()
+        passed += 1
+        print("  PASS test_encode_at")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_at: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_at: " + str(e))
+    try:
+        test_encode_brackets()
+        passed += 1
+        print("  PASS test_encode_brackets")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_brackets: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_brackets: " + str(e))
+    try:
+        test_encode_hello_world()
+        passed += 1
+        print("  PASS test_encode_hello_world")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_hello_world: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_hello_world: " + str(e))
+    try:
+        test_encode_query_string()
+        passed += 1
+        print("  PASS test_encode_query_string")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_query_string: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_query_string: " + str(e))
+    try:
+        test_encode_url_path()
+        passed += 1
+        print("  PASS test_encode_url_path")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_url_path: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_url_path: " + str(e))
+    try:
+        test_encode_email()
+        passed += 1
+        print("  PASS test_encode_email")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_email: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_email: " + str(e))
+    try:
+        test_encode_umlaut()
+        passed += 1
+        print("  PASS test_encode_umlaut")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_umlaut: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_umlaut: " + str(e))
+    try:
+        test_encode_euro_sign()
+        passed += 1
+        print("  PASS test_encode_euro_sign")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_euro_sign: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_euro_sign: " + str(e))
+    try:
+        test_encode_cjk()
+        passed += 1
+        print("  PASS test_encode_cjk")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_cjk: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_cjk: " + str(e))
+    try:
+        test_decode_empty()
+        passed += 1
+        print("  PASS test_decode_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_empty: " + str(e))
+    try:
+        test_decode_no_encoding()
+        passed += 1
+        print("  PASS test_decode_no_encoding")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_no_encoding: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_no_encoding: " + str(e))
+    try:
+        test_decode_space()
+        passed += 1
+        print("  PASS test_decode_space")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_space: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_space: " + str(e))
+    try:
+        test_decode_percent()
+        passed += 1
+        print("  PASS test_decode_percent")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_percent: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_percent: " + str(e))
+    try:
+        test_decode_hello_world()
+        passed += 1
+        print("  PASS test_decode_hello_world")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_hello_world: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_hello_world: " + str(e))
+    try:
+        test_decode_mixed()
+        passed += 1
+        print("  PASS test_decode_mixed")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_mixed: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_mixed: " + str(e))
+    try:
+        test_decode_lowercase_hex()
+        passed += 1
+        print("  PASS test_decode_lowercase_hex")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_lowercase_hex: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_lowercase_hex: " + str(e))
+    try:
+        test_decode_uppercase_hex()
+        passed += 1
+        print("  PASS test_decode_uppercase_hex")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_uppercase_hex: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_uppercase_hex: " + str(e))
+    try:
+        test_decode_multibyte()
+        passed += 1
+        print("  PASS test_decode_multibyte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_multibyte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_multibyte: " + str(e))
+    try:
+        test_decode_consecutive()
+        passed += 1
+        print("  PASS test_decode_consecutive")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_consecutive: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_consecutive: " + str(e))
+    try:
+        test_decode_unreserved_passthrough()
+        passed += 1
+        print("  PASS test_decode_unreserved_passthrough")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_unreserved_passthrough: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_unreserved_passthrough: " + str(e))
+    try:
+        test_decode_reserved_passthrough()
+        passed += 1
+        print("  PASS test_decode_reserved_passthrough")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_reserved_passthrough: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_reserved_passthrough: " + str(e))
+    try:
+        test_roundtrip_simple()
+        passed += 1
+        print("  PASS test_roundtrip_simple")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_simple: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_simple: " + str(e))
+    try:
+        test_roundtrip_special()
+        passed += 1
+        print("  PASS test_roundtrip_special")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_special: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_special: " + str(e))
+    try:
+        test_roundtrip_all_unreserved()
+        passed += 1
+        print("  PASS test_roundtrip_all_unreserved")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_all_unreserved: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_all_unreserved: " + str(e))
+    try:
+        test_roundtrip_percent_literal()
+        passed += 1
+        print("  PASS test_roundtrip_percent_literal")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_percent_literal: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_percent_literal: " + str(e))
+    try:
+        test_roundtrip_unicode()
+        passed += 1
+        print("  PASS test_roundtrip_unicode")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_unicode: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_unicode: " + str(e))
+    try:
+        test_encode_single_unreserved()
+        passed += 1
+        print("  PASS test_encode_single_unreserved")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_single_unreserved: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_single_unreserved: " + str(e))
+    try:
+        test_encode_single_reserved()
+        passed += 1
+        print("  PASS test_encode_single_reserved")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_single_reserved: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_single_reserved: " + str(e))
+    try:
+        test_encode_tab()
+        passed += 1
+        print("  PASS test_encode_tab")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_tab: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_tab: " + str(e))
+    try:
+        test_encode_newline()
+        passed += 1
+        print("  PASS test_encode_newline")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_newline: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_newline: " + str(e))
+    try:
+        test_encode_null()
+        passed += 1
+        print("  PASS test_encode_null")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_null: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_null: " + str(e))
+    try:
+        test_encode_del()
+        passed += 1
+        print("  PASS test_encode_del")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_del: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_del: " + str(e))
+    try:
+        test_encode_4byte_emoji()
+        passed += 1
+        print("  PASS test_encode_4byte_emoji")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_4byte_emoji: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_4byte_emoji: " + str(e))
+    try:
+        test_encode_double_encoding()
+        passed += 1
+        print("  PASS test_encode_double_encoding")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_encode_double_encoding: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_encode_double_encoding: " + str(e))
+    try:
+        test_decode_null_byte()
+        passed += 1
+        print("  PASS test_decode_null_byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_null_byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_null_byte: " + str(e))
+    try:
+        test_decode_4byte_emoji()
+        passed += 1
+        print("  PASS test_decode_4byte_emoji")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_4byte_emoji: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_4byte_emoji: " + str(e))
+    try:
+        test_roundtrip_4byte()
+        passed += 1
+        print("  PASS test_roundtrip_4byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_4byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_4byte: " + str(e))
+    try:
+        test_roundtrip_mixed_multibyte()
+        passed += 1
+        print("  PASS test_roundtrip_mixed_multibyte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_roundtrip_mixed_multibyte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_roundtrip_mixed_multibyte: " + str(e))
+    try:
+        test_decode_trailing_percent()
+        passed += 1
+        print("  PASS test_decode_trailing_percent")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_trailing_percent: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_trailing_percent: " + str(e))
+    try:
+        test_decode_incomplete_hex()
+        passed += 1
+        print("  PASS test_decode_incomplete_hex")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_incomplete_hex: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_incomplete_hex: " + str(e))
+    try:
+        test_decode_invalid_hex()
+        passed += 1
+        print("  PASS test_decode_invalid_hex")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_decode_invalid_hex: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_decode_invalid_hex: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0

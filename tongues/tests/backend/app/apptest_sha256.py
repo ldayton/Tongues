@@ -194,40 +194,207 @@ def test_same_input_same_output() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_empty", test_empty),
-        ("test_abc", test_abc),
-        ("test_two_block_448bit", test_two_block_448bit),
-        ("test_single_a", test_single_a),
-        ("test_two_block_896bit", test_two_block_896bit),
-        ("test_bytes_length", test_bytes_length),
-        ("test_bytes_hex_roundtrip", test_bytes_hex_roundtrip),
-        ("test_55_bytes", test_55_bytes),
-        ("test_56_bytes", test_56_bytes),
-        ("test_64_bytes", test_64_bytes),
-        ("test_128_bytes", test_128_bytes),
-        ("test_null_byte", test_null_byte),
-        ("test_ff_byte", test_ff_byte),
-        ("test_null_block", test_null_block),
-        ("test_ff_block", test_ff_block),
-        ("test_hello_world", test_hello_world),
-        ("test_digits", test_digits),
-        ("test_space", test_space),
-        ("test_newline", test_newline),
-        ("test_same_input_same_output", test_same_input_same_output),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_empty()
+        passed += 1
+        print("  PASS test_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_empty: " + str(e))
+    try:
+        test_abc()
+        passed += 1
+        print("  PASS test_abc")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_abc: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_abc: " + str(e))
+    try:
+        test_two_block_448bit()
+        passed += 1
+        print("  PASS test_two_block_448bit")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_two_block_448bit: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_two_block_448bit: " + str(e))
+    try:
+        test_single_a()
+        passed += 1
+        print("  PASS test_single_a")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_single_a: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_single_a: " + str(e))
+    try:
+        test_two_block_896bit()
+        passed += 1
+        print("  PASS test_two_block_896bit")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_two_block_896bit: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_two_block_896bit: " + str(e))
+    try:
+        test_bytes_length()
+        passed += 1
+        print("  PASS test_bytes_length")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_length: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_length: " + str(e))
+    try:
+        test_bytes_hex_roundtrip()
+        passed += 1
+        print("  PASS test_bytes_hex_roundtrip")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_hex_roundtrip: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_hex_roundtrip: " + str(e))
+    try:
+        test_55_bytes()
+        passed += 1
+        print("  PASS test_55_bytes")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_55_bytes: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_55_bytes: " + str(e))
+    try:
+        test_56_bytes()
+        passed += 1
+        print("  PASS test_56_bytes")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_56_bytes: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_56_bytes: " + str(e))
+    try:
+        test_64_bytes()
+        passed += 1
+        print("  PASS test_64_bytes")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_64_bytes: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_64_bytes: " + str(e))
+    try:
+        test_128_bytes()
+        passed += 1
+        print("  PASS test_128_bytes")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_128_bytes: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_128_bytes: " + str(e))
+    try:
+        test_null_byte()
+        passed += 1
+        print("  PASS test_null_byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_null_byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_null_byte: " + str(e))
+    try:
+        test_ff_byte()
+        passed += 1
+        print("  PASS test_ff_byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_ff_byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_ff_byte: " + str(e))
+    try:
+        test_null_block()
+        passed += 1
+        print("  PASS test_null_block")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_null_block: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_null_block: " + str(e))
+    try:
+        test_ff_block()
+        passed += 1
+        print("  PASS test_ff_block")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_ff_block: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_ff_block: " + str(e))
+    try:
+        test_hello_world()
+        passed += 1
+        print("  PASS test_hello_world")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_hello_world: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_hello_world: " + str(e))
+    try:
+        test_digits()
+        passed += 1
+        print("  PASS test_digits")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_digits: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_digits: " + str(e))
+    try:
+        test_space()
+        passed += 1
+        print("  PASS test_space")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_space: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_space: " + str(e))
+    try:
+        test_newline()
+        passed += 1
+        print("  PASS test_newline")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_newline: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_newline: " + str(e))
+    try:
+        test_same_input_same_output()
+        passed += 1
+        print("  PASS test_same_input_same_output")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_same_input_same_output: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_same_input_same_output: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0

@@ -20,21 +20,17 @@ def test_field_name_collision() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_field_name_collision", test_field_name_collision),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_field_name_collision()
+        passed += 1
+        print("  PASS test_field_name_collision")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_field_name_collision: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_field_name_collision: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0
