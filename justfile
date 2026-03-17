@@ -444,6 +444,21 @@ _vm target:
         exit 1
     fi
 
+# Run pytest on source
+pytest *ARGS:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    printf '\033[32m[pytest]\033[0m\n'
+    start=$SECONDS
+    uv run --directory tongues pytest tests/ {{ARGS}}; rc=$?
+    elapsed=$((SECONDS - start))
+    if [ $rc -eq 0 ]; then
+        printf '\033[32m[pytest] %ds\033[0m\n' "$elapsed"
+    else
+        printf '\033[31m[pytest] %ds (FAILED)\033[0m\n' "$elapsed"
+    fi
+    exit $rc
+
 # Generative / property-based tests (require pytest + hypothesis)
 pytest-gen:
     #!/usr/bin/env bash

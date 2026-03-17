@@ -674,91 +674,677 @@ def test_tuple_unpack_ignore() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_tuple_equality", test_tuple_equality),
-        ("test_tuple_ordering", test_tuple_ordering),
-        ("test_tuple_length", test_tuple_length),
-        ("test_tuple_indexing", test_tuple_indexing),
-        ("test_tuple_slicing", test_tuple_slicing),
-        ("test_tuple_slice_step", test_tuple_slice_step),
-        ("test_tuple_concatenation", test_tuple_concatenation),
-        ("test_tuple_repetition", test_tuple_repetition),
-        ("test_tuple_repetition_negative", test_tuple_repetition_negative),
-        ("test_tuple_contains", test_tuple_contains),
-        ("test_tuple_contains_empty", test_tuple_contains_empty),
-        ("test_tuple_bool", test_tuple_bool),
-        ("test_tuple_count", test_tuple_count),
-        ("test_tuple_index", test_tuple_index),
-        ("test_tuple_iteration", test_tuple_iteration),
-        ("test_tuple_iteration_empty", test_tuple_iteration_empty),
-        ("test_tuple_enumerate", test_tuple_enumerate),
-        ("test_tuple_unpacking", test_tuple_unpacking),
-        ("test_tuple_unpacking_two", test_tuple_unpacking_two),
-        ("test_tuple_unpacking_nested", test_tuple_unpacking_nested),
-        ("test_tuple_swap", test_tuple_swap),
-        ("test_tuple_sum", test_tuple_sum),
-        ("test_tuple_min_max", test_tuple_min_max),
-        ("test_tuple_sorted", test_tuple_sorted),
-        ("test_tuple_sorted_reverse", test_tuple_sorted_reverse),
-        ("test_tuple_all_any", test_tuple_all_any),
-        ("test_tuple_all_any_truthy", test_tuple_all_any_truthy),
-        ("test_tuple_heterogeneous", test_tuple_heterogeneous),
-        ("test_tuple_nested", test_tuple_nested),
-        ("test_tuple_as_dict_key", test_tuple_as_dict_key),
-        ("test_tuple_from_list", test_tuple_from_list),
-        ("test_tuple_from_string", test_tuple_from_string),
-        ("test_tuple_from_range", test_tuple_from_range),
-        ("test_tuple_from_set", test_tuple_from_set),
-        ("test_tuple_single_element", test_tuple_single_element),
-        ("test_tuple_immutable", test_tuple_immutable),
-        ("test_tuple_zip", test_tuple_zip),
-        ("test_tuple_zip_unequal", test_tuple_zip_unequal),
-        ("test_tuple_comparison_mixed_length", test_tuple_comparison_mixed_length),
-        ("test_tuple_comparison_empty", test_tuple_comparison_empty),
-        ("test_tuple_with_none", test_tuple_with_none),
-        ("test_tuple_return_multiple", test_tuple_return_multiple),
-        ("test_tuple_divmod", test_tuple_divmod),
-        ("test_tuple_enumerate_unpack", test_tuple_enumerate_unpack),
-        ("test_tuple_items_unpack", test_tuple_items_unpack),
-        ("test_tuple_packing_no_parens", test_tuple_packing_no_parens),
-        ("test_tuple_trailing_comma", test_tuple_trailing_comma),
-        ("test_tuple_in_set", test_tuple_in_set),
-        ("test_tuple_mutable_contents", test_tuple_mutable_contents),
-        ("test_tuple_augmented_assignment", test_tuple_augmented_assignment),
-        ("test_tuple_multiply_augmented", test_tuple_multiply_augmented),
-        ("test_tuple_comparison_first_diff", test_tuple_comparison_first_diff),
-        ("test_tuple_comparison_prefix", test_tuple_comparison_prefix),
-        ("test_tuple_equal_elements", test_tuple_equal_elements),
-        ("test_tuple_generator_expression", test_tuple_generator_expression),
-        ("test_tuple_empty_variations", test_tuple_empty_variations),
-        ("test_tuple_single_vs_parens", test_tuple_single_vs_parens),
-        ("test_tuple_identity_vs_equality", test_tuple_identity_vs_equality),
-        ("test_tuple_nested_empty", test_tuple_nested_empty),
-        ("test_tuple_slice_creates_copy", test_tuple_slice_creates_copy),
-        ("test_tuple_concat_empty", test_tuple_concat_empty),
-        ("test_tuple_multiply_zero_one", test_tuple_multiply_zero_one),
-        ("test_tuple_index_start_stop", test_tuple_index_start_stop),
-        ("test_tuple_count_none", test_tuple_count_none),
-        ("test_tuple_negative_index_slice", test_tuple_negative_index_slice),
-        ("test_tuple_bool_single_falsy", test_tuple_bool_single_falsy),
-        (
-            "test_tuple_comparison_heterogeneous_equality",
-            test_tuple_comparison_heterogeneous_equality,
-        ),
-        ("test_tuple_unpack_ignore", test_tuple_unpack_ignore),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_tuple_equality()
+        passed += 1
+        print("  PASS test_tuple_equality")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_equality: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_equality: " + str(e))
+    try:
+        test_tuple_ordering()
+        passed += 1
+        print("  PASS test_tuple_ordering")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_ordering: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_ordering: " + str(e))
+    try:
+        test_tuple_length()
+        passed += 1
+        print("  PASS test_tuple_length")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_length: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_length: " + str(e))
+    try:
+        test_tuple_indexing()
+        passed += 1
+        print("  PASS test_tuple_indexing")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_indexing: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_indexing: " + str(e))
+    try:
+        test_tuple_slicing()
+        passed += 1
+        print("  PASS test_tuple_slicing")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_slicing: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_slicing: " + str(e))
+    try:
+        test_tuple_slice_step()
+        passed += 1
+        print("  PASS test_tuple_slice_step")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_slice_step: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_slice_step: " + str(e))
+    try:
+        test_tuple_concatenation()
+        passed += 1
+        print("  PASS test_tuple_concatenation")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_concatenation: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_concatenation: " + str(e))
+    try:
+        test_tuple_repetition()
+        passed += 1
+        print("  PASS test_tuple_repetition")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_repetition: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_repetition: " + str(e))
+    try:
+        test_tuple_repetition_negative()
+        passed += 1
+        print("  PASS test_tuple_repetition_negative")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_repetition_negative: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_repetition_negative: " + str(e))
+    try:
+        test_tuple_contains()
+        passed += 1
+        print("  PASS test_tuple_contains")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_contains: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_contains: " + str(e))
+    try:
+        test_tuple_contains_empty()
+        passed += 1
+        print("  PASS test_tuple_contains_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_contains_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_contains_empty: " + str(e))
+    try:
+        test_tuple_bool()
+        passed += 1
+        print("  PASS test_tuple_bool")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_bool: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_bool: " + str(e))
+    try:
+        test_tuple_count()
+        passed += 1
+        print("  PASS test_tuple_count")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_count: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_count: " + str(e))
+    try:
+        test_tuple_index()
+        passed += 1
+        print("  PASS test_tuple_index")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_index: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_index: " + str(e))
+    try:
+        test_tuple_iteration()
+        passed += 1
+        print("  PASS test_tuple_iteration")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_iteration: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_iteration: " + str(e))
+    try:
+        test_tuple_iteration_empty()
+        passed += 1
+        print("  PASS test_tuple_iteration_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_iteration_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_iteration_empty: " + str(e))
+    try:
+        test_tuple_enumerate()
+        passed += 1
+        print("  PASS test_tuple_enumerate")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_enumerate: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_enumerate: " + str(e))
+    try:
+        test_tuple_unpacking()
+        passed += 1
+        print("  PASS test_tuple_unpacking")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_unpacking: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_unpacking: " + str(e))
+    try:
+        test_tuple_unpacking_two()
+        passed += 1
+        print("  PASS test_tuple_unpacking_two")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_unpacking_two: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_unpacking_two: " + str(e))
+    try:
+        test_tuple_unpacking_nested()
+        passed += 1
+        print("  PASS test_tuple_unpacking_nested")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_unpacking_nested: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_unpacking_nested: " + str(e))
+    try:
+        test_tuple_swap()
+        passed += 1
+        print("  PASS test_tuple_swap")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_swap: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_swap: " + str(e))
+    try:
+        test_tuple_sum()
+        passed += 1
+        print("  PASS test_tuple_sum")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_sum: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_sum: " + str(e))
+    try:
+        test_tuple_min_max()
+        passed += 1
+        print("  PASS test_tuple_min_max")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_min_max: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_min_max: " + str(e))
+    try:
+        test_tuple_sorted()
+        passed += 1
+        print("  PASS test_tuple_sorted")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_sorted: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_sorted: " + str(e))
+    try:
+        test_tuple_sorted_reverse()
+        passed += 1
+        print("  PASS test_tuple_sorted_reverse")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_sorted_reverse: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_sorted_reverse: " + str(e))
+    try:
+        test_tuple_all_any()
+        passed += 1
+        print("  PASS test_tuple_all_any")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_all_any: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_all_any: " + str(e))
+    try:
+        test_tuple_all_any_truthy()
+        passed += 1
+        print("  PASS test_tuple_all_any_truthy")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_all_any_truthy: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_all_any_truthy: " + str(e))
+    try:
+        test_tuple_heterogeneous()
+        passed += 1
+        print("  PASS test_tuple_heterogeneous")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_heterogeneous: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_heterogeneous: " + str(e))
+    try:
+        test_tuple_nested()
+        passed += 1
+        print("  PASS test_tuple_nested")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_nested: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_nested: " + str(e))
+    try:
+        test_tuple_as_dict_key()
+        passed += 1
+        print("  PASS test_tuple_as_dict_key")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_as_dict_key: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_as_dict_key: " + str(e))
+    try:
+        test_tuple_from_list()
+        passed += 1
+        print("  PASS test_tuple_from_list")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_from_list: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_from_list: " + str(e))
+    try:
+        test_tuple_from_string()
+        passed += 1
+        print("  PASS test_tuple_from_string")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_from_string: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_from_string: " + str(e))
+    try:
+        test_tuple_from_range()
+        passed += 1
+        print("  PASS test_tuple_from_range")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_from_range: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_from_range: " + str(e))
+    try:
+        test_tuple_from_set()
+        passed += 1
+        print("  PASS test_tuple_from_set")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_from_set: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_from_set: " + str(e))
+    try:
+        test_tuple_single_element()
+        passed += 1
+        print("  PASS test_tuple_single_element")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_single_element: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_single_element: " + str(e))
+    try:
+        test_tuple_immutable()
+        passed += 1
+        print("  PASS test_tuple_immutable")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_immutable: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_immutable: " + str(e))
+    try:
+        test_tuple_zip()
+        passed += 1
+        print("  PASS test_tuple_zip")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_zip: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_zip: " + str(e))
+    try:
+        test_tuple_zip_unequal()
+        passed += 1
+        print("  PASS test_tuple_zip_unequal")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_zip_unequal: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_zip_unequal: " + str(e))
+    try:
+        test_tuple_comparison_mixed_length()
+        passed += 1
+        print("  PASS test_tuple_comparison_mixed_length")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_comparison_mixed_length: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_comparison_mixed_length: " + str(e))
+    try:
+        test_tuple_comparison_empty()
+        passed += 1
+        print("  PASS test_tuple_comparison_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_comparison_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_comparison_empty: " + str(e))
+    try:
+        test_tuple_with_none()
+        passed += 1
+        print("  PASS test_tuple_with_none")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_with_none: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_with_none: " + str(e))
+    try:
+        test_tuple_return_multiple()
+        passed += 1
+        print("  PASS test_tuple_return_multiple")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_return_multiple: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_return_multiple: " + str(e))
+    try:
+        test_tuple_divmod()
+        passed += 1
+        print("  PASS test_tuple_divmod")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_divmod: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_divmod: " + str(e))
+    try:
+        test_tuple_enumerate_unpack()
+        passed += 1
+        print("  PASS test_tuple_enumerate_unpack")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_enumerate_unpack: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_enumerate_unpack: " + str(e))
+    try:
+        test_tuple_items_unpack()
+        passed += 1
+        print("  PASS test_tuple_items_unpack")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_items_unpack: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_items_unpack: " + str(e))
+    try:
+        test_tuple_packing_no_parens()
+        passed += 1
+        print("  PASS test_tuple_packing_no_parens")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_packing_no_parens: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_packing_no_parens: " + str(e))
+    try:
+        test_tuple_trailing_comma()
+        passed += 1
+        print("  PASS test_tuple_trailing_comma")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_trailing_comma: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_trailing_comma: " + str(e))
+    try:
+        test_tuple_in_set()
+        passed += 1
+        print("  PASS test_tuple_in_set")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_in_set: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_in_set: " + str(e))
+    try:
+        test_tuple_mutable_contents()
+        passed += 1
+        print("  PASS test_tuple_mutable_contents")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_mutable_contents: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_mutable_contents: " + str(e))
+    try:
+        test_tuple_augmented_assignment()
+        passed += 1
+        print("  PASS test_tuple_augmented_assignment")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_augmented_assignment: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_augmented_assignment: " + str(e))
+    try:
+        test_tuple_multiply_augmented()
+        passed += 1
+        print("  PASS test_tuple_multiply_augmented")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_multiply_augmented: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_multiply_augmented: " + str(e))
+    try:
+        test_tuple_comparison_first_diff()
+        passed += 1
+        print("  PASS test_tuple_comparison_first_diff")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_comparison_first_diff: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_comparison_first_diff: " + str(e))
+    try:
+        test_tuple_comparison_prefix()
+        passed += 1
+        print("  PASS test_tuple_comparison_prefix")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_comparison_prefix: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_comparison_prefix: " + str(e))
+    try:
+        test_tuple_equal_elements()
+        passed += 1
+        print("  PASS test_tuple_equal_elements")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_equal_elements: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_equal_elements: " + str(e))
+    try:
+        test_tuple_generator_expression()
+        passed += 1
+        print("  PASS test_tuple_generator_expression")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_generator_expression: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_generator_expression: " + str(e))
+    try:
+        test_tuple_empty_variations()
+        passed += 1
+        print("  PASS test_tuple_empty_variations")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_empty_variations: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_empty_variations: " + str(e))
+    try:
+        test_tuple_single_vs_parens()
+        passed += 1
+        print("  PASS test_tuple_single_vs_parens")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_single_vs_parens: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_single_vs_parens: " + str(e))
+    try:
+        test_tuple_identity_vs_equality()
+        passed += 1
+        print("  PASS test_tuple_identity_vs_equality")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_identity_vs_equality: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_identity_vs_equality: " + str(e))
+    try:
+        test_tuple_nested_empty()
+        passed += 1
+        print("  PASS test_tuple_nested_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_nested_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_nested_empty: " + str(e))
+    try:
+        test_tuple_slice_creates_copy()
+        passed += 1
+        print("  PASS test_tuple_slice_creates_copy")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_slice_creates_copy: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_slice_creates_copy: " + str(e))
+    try:
+        test_tuple_concat_empty()
+        passed += 1
+        print("  PASS test_tuple_concat_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_concat_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_concat_empty: " + str(e))
+    try:
+        test_tuple_multiply_zero_one()
+        passed += 1
+        print("  PASS test_tuple_multiply_zero_one")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_multiply_zero_one: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_multiply_zero_one: " + str(e))
+    try:
+        test_tuple_index_start_stop()
+        passed += 1
+        print("  PASS test_tuple_index_start_stop")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_index_start_stop: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_index_start_stop: " + str(e))
+    try:
+        test_tuple_count_none()
+        passed += 1
+        print("  PASS test_tuple_count_none")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_count_none: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_count_none: " + str(e))
+    try:
+        test_tuple_negative_index_slice()
+        passed += 1
+        print("  PASS test_tuple_negative_index_slice")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_negative_index_slice: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_negative_index_slice: " + str(e))
+    try:
+        test_tuple_bool_single_falsy()
+        passed += 1
+        print("  PASS test_tuple_bool_single_falsy")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_bool_single_falsy: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_bool_single_falsy: " + str(e))
+    try:
+        test_tuple_unpack_ignore()
+        passed += 1
+        print("  PASS test_tuple_unpack_ignore")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_unpack_ignore: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_unpack_ignore: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0

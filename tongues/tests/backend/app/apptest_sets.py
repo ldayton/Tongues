@@ -682,94 +682,747 @@ def test_set_tuple_elements() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_set_equality", test_set_equality),
-        ("test_set_length", test_set_length),
-        ("test_set_no_duplicates", test_set_no_duplicates),
-        ("test_set_contains", test_set_contains),
-        ("test_set_contains_empty", test_set_contains_empty),
-        ("test_set_bool", test_set_bool),
-        ("test_set_add", test_set_add),
-        ("test_set_add_empty", test_set_add_empty),
-        ("test_set_remove", test_set_remove),
-        ("test_set_discard", test_set_discard),
-        ("test_set_pop", test_set_pop),
-        ("test_set_clear", test_set_clear),
-        ("test_set_copy", test_set_copy),
-        ("test_set_union", test_set_union),
-        ("test_set_union_empty", test_set_union_empty),
-        ("test_set_union_operator", test_set_union_operator),
-        ("test_set_intersection", test_set_intersection),
-        ("test_set_intersection_empty", test_set_intersection_empty),
-        ("test_set_intersection_operator", test_set_intersection_operator),
-        ("test_set_difference", test_set_difference),
-        ("test_set_difference_empty", test_set_difference_empty),
-        ("test_set_difference_operator", test_set_difference_operator),
-        ("test_set_symmetric_difference", test_set_symmetric_difference),
-        ("test_set_symmetric_difference_empty", test_set_symmetric_difference_empty),
-        ("test_set_issubset", test_set_issubset),
-        ("test_set_issubset_operator", test_set_issubset_operator),
-        ("test_set_proper_subset", test_set_proper_subset),
-        ("test_set_issuperset", test_set_issuperset),
-        ("test_set_issuperset_operator", test_set_issuperset_operator),
-        ("test_set_proper_superset", test_set_proper_superset),
-        ("test_set_disjoint", test_set_disjoint),
-        ("test_set_disjoint_empty", test_set_disjoint_empty),
-        ("test_set_iteration", test_set_iteration),
-        ("test_set_iteration_empty", test_set_iteration_empty),
-        ("test_set_comprehension", test_set_comprehension),
-        ("test_set_comprehension_condition", test_set_comprehension_condition),
-        ("test_set_comprehension_dedup", test_set_comprehension_dedup),
-        ("test_set_from_list", test_set_from_list),
-        ("test_set_from_string", test_set_from_string),
-        ("test_set_from_range", test_set_from_range),
-        ("test_set_string_elements", test_set_string_elements),
-        ("test_set_min_max", test_set_min_max),
-        ("test_set_sum", test_set_sum),
-        ("test_set_sorted", test_set_sorted),
-        ("test_set_len_after_operations", test_set_len_after_operations),
-        ("test_set_update", test_set_update),
-        ("test_set_intersection_update", test_set_intersection_update),
-        ("test_set_difference_update", test_set_difference_update),
-        ("test_set_symmetric_difference_update", test_set_symmetric_difference_update),
-        ("test_set_identity", test_set_identity),
-        ("test_set_all_any", test_set_all_any),
-        ("test_set_all_any_truthy", test_set_all_any_truthy),
-        ("test_empty_set_literal_gotcha", test_empty_set_literal_gotcha),
-        ("test_set_update_method", test_set_update_method),
-        ("test_set_update_with_string", test_set_update_with_string),
-        ("test_set_add_vs_update", test_set_add_vs_update),
-        ("test_set_subset_with_self", test_set_subset_with_self),
-        ("test_set_empty_subset_of_all", test_set_empty_subset_of_all),
-        ("test_set_symmetric_difference_self", test_set_symmetric_difference_self),
-        ("test_set_difference_multiple", test_set_difference_multiple),
-        ("test_set_intersection_multiple", test_set_intersection_multiple),
-        ("test_set_union_multiple", test_set_union_multiple),
-        ("test_set_pop_arbitrary", test_set_pop_arbitrary),
-        ("test_set_pop_reduces_length", test_set_pop_reduces_length),
-        ("test_set_equal_different_order", test_set_equal_different_order),
-        ("test_set_disjoint_with_self", test_set_disjoint_with_self),
-        ("test_set_single_element", test_set_single_element),
-        ("test_set_bool_with_zero", test_set_bool_with_zero),
-        ("test_set_update_with_dict", test_set_update_with_dict),
-        ("test_set_remove_vs_discard", test_set_remove_vs_discard),
-        ("test_set_clear_and_reuse", test_set_clear_and_reuse),
-        ("test_set_copy_independent", test_set_copy_independent),
-        ("test_set_generator_expression", test_set_generator_expression),
-        ("test_set_tuple_elements", test_set_tuple_elements),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_set_equality()
+        passed += 1
+        print("  PASS test_set_equality")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_equality: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_equality: " + str(e))
+    try:
+        test_set_length()
+        passed += 1
+        print("  PASS test_set_length")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_length: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_length: " + str(e))
+    try:
+        test_set_no_duplicates()
+        passed += 1
+        print("  PASS test_set_no_duplicates")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_no_duplicates: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_no_duplicates: " + str(e))
+    try:
+        test_set_contains()
+        passed += 1
+        print("  PASS test_set_contains")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_contains: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_contains: " + str(e))
+    try:
+        test_set_contains_empty()
+        passed += 1
+        print("  PASS test_set_contains_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_contains_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_contains_empty: " + str(e))
+    try:
+        test_set_bool()
+        passed += 1
+        print("  PASS test_set_bool")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_bool: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_bool: " + str(e))
+    try:
+        test_set_add()
+        passed += 1
+        print("  PASS test_set_add")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_add: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_add: " + str(e))
+    try:
+        test_set_add_empty()
+        passed += 1
+        print("  PASS test_set_add_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_add_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_add_empty: " + str(e))
+    try:
+        test_set_remove()
+        passed += 1
+        print("  PASS test_set_remove")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_remove: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_remove: " + str(e))
+    try:
+        test_set_discard()
+        passed += 1
+        print("  PASS test_set_discard")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_discard: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_discard: " + str(e))
+    try:
+        test_set_pop()
+        passed += 1
+        print("  PASS test_set_pop")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_pop: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_pop: " + str(e))
+    try:
+        test_set_clear()
+        passed += 1
+        print("  PASS test_set_clear")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_clear: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_clear: " + str(e))
+    try:
+        test_set_copy()
+        passed += 1
+        print("  PASS test_set_copy")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_copy: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_copy: " + str(e))
+    try:
+        test_set_union()
+        passed += 1
+        print("  PASS test_set_union")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_union: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_union: " + str(e))
+    try:
+        test_set_union_empty()
+        passed += 1
+        print("  PASS test_set_union_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_union_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_union_empty: " + str(e))
+    try:
+        test_set_union_operator()
+        passed += 1
+        print("  PASS test_set_union_operator")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_union_operator: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_union_operator: " + str(e))
+    try:
+        test_set_intersection()
+        passed += 1
+        print("  PASS test_set_intersection")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_intersection: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_intersection: " + str(e))
+    try:
+        test_set_intersection_empty()
+        passed += 1
+        print("  PASS test_set_intersection_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_intersection_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_intersection_empty: " + str(e))
+    try:
+        test_set_intersection_operator()
+        passed += 1
+        print("  PASS test_set_intersection_operator")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_intersection_operator: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_intersection_operator: " + str(e))
+    try:
+        test_set_difference()
+        passed += 1
+        print("  PASS test_set_difference")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_difference: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_difference: " + str(e))
+    try:
+        test_set_difference_empty()
+        passed += 1
+        print("  PASS test_set_difference_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_difference_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_difference_empty: " + str(e))
+    try:
+        test_set_difference_operator()
+        passed += 1
+        print("  PASS test_set_difference_operator")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_difference_operator: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_difference_operator: " + str(e))
+    try:
+        test_set_symmetric_difference()
+        passed += 1
+        print("  PASS test_set_symmetric_difference")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_symmetric_difference: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_symmetric_difference: " + str(e))
+    try:
+        test_set_symmetric_difference_empty()
+        passed += 1
+        print("  PASS test_set_symmetric_difference_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_symmetric_difference_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_symmetric_difference_empty: " + str(e))
+    try:
+        test_set_issubset()
+        passed += 1
+        print("  PASS test_set_issubset")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_issubset: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_issubset: " + str(e))
+    try:
+        test_set_issubset_operator()
+        passed += 1
+        print("  PASS test_set_issubset_operator")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_issubset_operator: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_issubset_operator: " + str(e))
+    try:
+        test_set_proper_subset()
+        passed += 1
+        print("  PASS test_set_proper_subset")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_proper_subset: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_proper_subset: " + str(e))
+    try:
+        test_set_issuperset()
+        passed += 1
+        print("  PASS test_set_issuperset")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_issuperset: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_issuperset: " + str(e))
+    try:
+        test_set_issuperset_operator()
+        passed += 1
+        print("  PASS test_set_issuperset_operator")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_issuperset_operator: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_issuperset_operator: " + str(e))
+    try:
+        test_set_proper_superset()
+        passed += 1
+        print("  PASS test_set_proper_superset")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_proper_superset: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_proper_superset: " + str(e))
+    try:
+        test_set_disjoint()
+        passed += 1
+        print("  PASS test_set_disjoint")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_disjoint: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_disjoint: " + str(e))
+    try:
+        test_set_disjoint_empty()
+        passed += 1
+        print("  PASS test_set_disjoint_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_disjoint_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_disjoint_empty: " + str(e))
+    try:
+        test_set_iteration()
+        passed += 1
+        print("  PASS test_set_iteration")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_iteration: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_iteration: " + str(e))
+    try:
+        test_set_iteration_empty()
+        passed += 1
+        print("  PASS test_set_iteration_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_iteration_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_iteration_empty: " + str(e))
+    try:
+        test_set_comprehension()
+        passed += 1
+        print("  PASS test_set_comprehension")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_comprehension: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_comprehension: " + str(e))
+    try:
+        test_set_comprehension_condition()
+        passed += 1
+        print("  PASS test_set_comprehension_condition")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_comprehension_condition: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_comprehension_condition: " + str(e))
+    try:
+        test_set_comprehension_dedup()
+        passed += 1
+        print("  PASS test_set_comprehension_dedup")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_comprehension_dedup: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_comprehension_dedup: " + str(e))
+    try:
+        test_set_from_list()
+        passed += 1
+        print("  PASS test_set_from_list")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_from_list: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_from_list: " + str(e))
+    try:
+        test_set_from_string()
+        passed += 1
+        print("  PASS test_set_from_string")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_from_string: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_from_string: " + str(e))
+    try:
+        test_set_from_range()
+        passed += 1
+        print("  PASS test_set_from_range")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_from_range: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_from_range: " + str(e))
+    try:
+        test_set_string_elements()
+        passed += 1
+        print("  PASS test_set_string_elements")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_string_elements: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_string_elements: " + str(e))
+    try:
+        test_set_min_max()
+        passed += 1
+        print("  PASS test_set_min_max")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_min_max: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_min_max: " + str(e))
+    try:
+        test_set_sum()
+        passed += 1
+        print("  PASS test_set_sum")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_sum: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_sum: " + str(e))
+    try:
+        test_set_sorted()
+        passed += 1
+        print("  PASS test_set_sorted")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_sorted: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_sorted: " + str(e))
+    try:
+        test_set_len_after_operations()
+        passed += 1
+        print("  PASS test_set_len_after_operations")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_len_after_operations: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_len_after_operations: " + str(e))
+    try:
+        test_set_update()
+        passed += 1
+        print("  PASS test_set_update")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_update: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_update: " + str(e))
+    try:
+        test_set_intersection_update()
+        passed += 1
+        print("  PASS test_set_intersection_update")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_intersection_update: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_intersection_update: " + str(e))
+    try:
+        test_set_difference_update()
+        passed += 1
+        print("  PASS test_set_difference_update")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_difference_update: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_difference_update: " + str(e))
+    try:
+        test_set_symmetric_difference_update()
+        passed += 1
+        print("  PASS test_set_symmetric_difference_update")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_symmetric_difference_update: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_symmetric_difference_update: " + str(e))
+    try:
+        test_set_identity()
+        passed += 1
+        print("  PASS test_set_identity")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_identity: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_identity: " + str(e))
+    try:
+        test_set_all_any()
+        passed += 1
+        print("  PASS test_set_all_any")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_all_any: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_all_any: " + str(e))
+    try:
+        test_set_all_any_truthy()
+        passed += 1
+        print("  PASS test_set_all_any_truthy")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_all_any_truthy: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_all_any_truthy: " + str(e))
+    try:
+        test_empty_set_literal_gotcha()
+        passed += 1
+        print("  PASS test_empty_set_literal_gotcha")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_empty_set_literal_gotcha: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_empty_set_literal_gotcha: " + str(e))
+    try:
+        test_set_update_method()
+        passed += 1
+        print("  PASS test_set_update_method")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_update_method: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_update_method: " + str(e))
+    try:
+        test_set_update_with_string()
+        passed += 1
+        print("  PASS test_set_update_with_string")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_update_with_string: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_update_with_string: " + str(e))
+    try:
+        test_set_add_vs_update()
+        passed += 1
+        print("  PASS test_set_add_vs_update")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_add_vs_update: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_add_vs_update: " + str(e))
+    try:
+        test_set_subset_with_self()
+        passed += 1
+        print("  PASS test_set_subset_with_self")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_subset_with_self: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_subset_with_self: " + str(e))
+    try:
+        test_set_empty_subset_of_all()
+        passed += 1
+        print("  PASS test_set_empty_subset_of_all")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_empty_subset_of_all: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_empty_subset_of_all: " + str(e))
+    try:
+        test_set_symmetric_difference_self()
+        passed += 1
+        print("  PASS test_set_symmetric_difference_self")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_symmetric_difference_self: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_symmetric_difference_self: " + str(e))
+    try:
+        test_set_difference_multiple()
+        passed += 1
+        print("  PASS test_set_difference_multiple")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_difference_multiple: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_difference_multiple: " + str(e))
+    try:
+        test_set_intersection_multiple()
+        passed += 1
+        print("  PASS test_set_intersection_multiple")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_intersection_multiple: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_intersection_multiple: " + str(e))
+    try:
+        test_set_union_multiple()
+        passed += 1
+        print("  PASS test_set_union_multiple")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_union_multiple: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_union_multiple: " + str(e))
+    try:
+        test_set_pop_arbitrary()
+        passed += 1
+        print("  PASS test_set_pop_arbitrary")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_pop_arbitrary: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_pop_arbitrary: " + str(e))
+    try:
+        test_set_pop_reduces_length()
+        passed += 1
+        print("  PASS test_set_pop_reduces_length")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_pop_reduces_length: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_pop_reduces_length: " + str(e))
+    try:
+        test_set_equal_different_order()
+        passed += 1
+        print("  PASS test_set_equal_different_order")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_equal_different_order: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_equal_different_order: " + str(e))
+    try:
+        test_set_disjoint_with_self()
+        passed += 1
+        print("  PASS test_set_disjoint_with_self")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_disjoint_with_self: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_disjoint_with_self: " + str(e))
+    try:
+        test_set_single_element()
+        passed += 1
+        print("  PASS test_set_single_element")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_single_element: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_single_element: " + str(e))
+    try:
+        test_set_bool_with_zero()
+        passed += 1
+        print("  PASS test_set_bool_with_zero")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_bool_with_zero: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_bool_with_zero: " + str(e))
+    try:
+        test_set_update_with_dict()
+        passed += 1
+        print("  PASS test_set_update_with_dict")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_update_with_dict: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_update_with_dict: " + str(e))
+    try:
+        test_set_remove_vs_discard()
+        passed += 1
+        print("  PASS test_set_remove_vs_discard")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_remove_vs_discard: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_remove_vs_discard: " + str(e))
+    try:
+        test_set_clear_and_reuse()
+        passed += 1
+        print("  PASS test_set_clear_and_reuse")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_clear_and_reuse: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_clear_and_reuse: " + str(e))
+    try:
+        test_set_copy_independent()
+        passed += 1
+        print("  PASS test_set_copy_independent")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_copy_independent: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_copy_independent: " + str(e))
+    try:
+        test_set_generator_expression()
+        passed += 1
+        print("  PASS test_set_generator_expression")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_generator_expression: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_generator_expression: " + str(e))
+    try:
+        test_set_tuple_elements()
+        passed += 1
+        print("  PASS test_set_tuple_elements")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_tuple_elements: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_tuple_elements: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0

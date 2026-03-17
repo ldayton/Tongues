@@ -142,41 +142,217 @@ def test_256_sequential() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_empty", test_empty),
-        ("test_123456789", test_123456789),
-        ("test_single_a", test_single_a),
-        ("test_abc", test_abc),
-        ("test_hello_world", test_hello_world),
-        ("test_single_zero_byte", test_single_zero_byte),
-        ("test_single_ff_byte", test_single_ff_byte),
-        ("test_all_zeros_4", test_all_zeros_4),
-        ("test_sequential_bytes", test_sequential_bytes),
-        ("test_alphabet", test_alphabet),
-        ("test_update_empty_then_data", test_update_empty_then_data),
-        ("test_update_byte_at_a_time", test_update_byte_at_a_time),
-        ("test_update_matches_oneshot", test_update_matches_oneshot),
-        ("test_hex_empty", test_hex_empty),
-        ("test_hex_123456789", test_hex_123456789),
-        ("test_hex_abc", test_hex_abc),
-        ("test_hex_single_a", test_hex_single_a),
-        ("test_hex_length", test_hex_length),
-        ("test_hex_lowercase", test_hex_lowercase),
-        ("test_long_repeated", test_long_repeated),
-        ("test_256_sequential", test_256_sequential),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_empty()
+        passed += 1
+        print("  PASS test_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_empty: " + str(e))
+    try:
+        test_123456789()
+        passed += 1
+        print("  PASS test_123456789")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_123456789: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_123456789: " + str(e))
+    try:
+        test_single_a()
+        passed += 1
+        print("  PASS test_single_a")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_single_a: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_single_a: " + str(e))
+    try:
+        test_abc()
+        passed += 1
+        print("  PASS test_abc")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_abc: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_abc: " + str(e))
+    try:
+        test_hello_world()
+        passed += 1
+        print("  PASS test_hello_world")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_hello_world: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_hello_world: " + str(e))
+    try:
+        test_single_zero_byte()
+        passed += 1
+        print("  PASS test_single_zero_byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_single_zero_byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_single_zero_byte: " + str(e))
+    try:
+        test_single_ff_byte()
+        passed += 1
+        print("  PASS test_single_ff_byte")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_single_ff_byte: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_single_ff_byte: " + str(e))
+    try:
+        test_all_zeros_4()
+        passed += 1
+        print("  PASS test_all_zeros_4")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_all_zeros_4: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_all_zeros_4: " + str(e))
+    try:
+        test_sequential_bytes()
+        passed += 1
+        print("  PASS test_sequential_bytes")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_sequential_bytes: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_sequential_bytes: " + str(e))
+    try:
+        test_alphabet()
+        passed += 1
+        print("  PASS test_alphabet")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_alphabet: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_alphabet: " + str(e))
+    try:
+        test_update_empty_then_data()
+        passed += 1
+        print("  PASS test_update_empty_then_data")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_update_empty_then_data: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_update_empty_then_data: " + str(e))
+    try:
+        test_update_byte_at_a_time()
+        passed += 1
+        print("  PASS test_update_byte_at_a_time")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_update_byte_at_a_time: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_update_byte_at_a_time: " + str(e))
+    try:
+        test_update_matches_oneshot()
+        passed += 1
+        print("  PASS test_update_matches_oneshot")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_update_matches_oneshot: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_update_matches_oneshot: " + str(e))
+    try:
+        test_hex_empty()
+        passed += 1
+        print("  PASS test_hex_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_hex_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_hex_empty: " + str(e))
+    try:
+        test_hex_123456789()
+        passed += 1
+        print("  PASS test_hex_123456789")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_hex_123456789: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_hex_123456789: " + str(e))
+    try:
+        test_hex_abc()
+        passed += 1
+        print("  PASS test_hex_abc")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_hex_abc: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_hex_abc: " + str(e))
+    try:
+        test_hex_single_a()
+        passed += 1
+        print("  PASS test_hex_single_a")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_hex_single_a: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_hex_single_a: " + str(e))
+    try:
+        test_hex_length()
+        passed += 1
+        print("  PASS test_hex_length")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_hex_length: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_hex_length: " + str(e))
+    try:
+        test_hex_lowercase()
+        passed += 1
+        print("  PASS test_hex_lowercase")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_hex_lowercase: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_hex_lowercase: " + str(e))
+    try:
+        test_long_repeated()
+        passed += 1
+        print("  PASS test_long_repeated")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_long_repeated: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_long_repeated: " + str(e))
+    try:
+        test_256_sequential()
+        passed += 1
+        print("  PASS test_256_sequential")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_256_sequential: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_256_sequential: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0

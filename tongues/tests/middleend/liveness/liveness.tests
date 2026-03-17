@@ -953,3 +953,17 @@ fn Main() -> void {
 Main.body.2.tuple_unused_indices = 0,1
 Main.body.3.tuple_unused_indices = 0
 ---
+
+=== tuple target used as while loop control variable
+fn Main() -> void {
+    let pos: int = 0
+    let cp: int = 0
+    let data: list[int] = [1, 2, 3]
+    while pos < Len(data) {
+        cp, pos = DivMod(pos + 1, 10)
+    }
+    WritelnOut(ToString(cp))
+}
+---
+Main.body.3.body.0.tuple_unused_indices =
+---

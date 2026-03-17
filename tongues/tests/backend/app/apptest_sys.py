@@ -16,22 +16,27 @@ def test_exit_zero() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_stderr_write", test_stderr_write),
-        ("test_exit_zero", test_exit_zero),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_stderr_write()
+        passed += 1
+        print("  PASS test_stderr_write")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_stderr_write: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_stderr_write: " + str(e))
+    try:
+        test_exit_zero()
+        passed += 1
+        print("  PASS test_exit_zero")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_exit_zero: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_exit_zero: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0

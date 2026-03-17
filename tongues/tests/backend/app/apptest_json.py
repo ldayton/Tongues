@@ -211,31 +211,117 @@ def test_whitespace_handling() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_parse_primitives", test_parse_primitives),
-        ("test_parse_strings", test_parse_strings),
-        ("test_parse_unicode", test_parse_unicode),
-        ("test_parse_arrays", test_parse_arrays),
-        ("test_parse_objects", test_parse_objects),
-        ("test_stringify", test_stringify),
-        ("test_round_trip", test_round_trip),
-        ("test_accessors", test_accessors),
-        ("test_accessor_errors", test_accessor_errors),
-        ("test_parse_errors", test_parse_errors),
-        ("test_whitespace_handling", test_whitespace_handling),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_parse_primitives()
+        passed += 1
+        print("  PASS test_parse_primitives")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_parse_primitives: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_parse_primitives: " + str(e))
+    try:
+        test_parse_strings()
+        passed += 1
+        print("  PASS test_parse_strings")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_parse_strings: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_parse_strings: " + str(e))
+    try:
+        test_parse_unicode()
+        passed += 1
+        print("  PASS test_parse_unicode")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_parse_unicode: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_parse_unicode: " + str(e))
+    try:
+        test_parse_arrays()
+        passed += 1
+        print("  PASS test_parse_arrays")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_parse_arrays: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_parse_arrays: " + str(e))
+    try:
+        test_parse_objects()
+        passed += 1
+        print("  PASS test_parse_objects")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_parse_objects: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_parse_objects: " + str(e))
+    try:
+        test_stringify()
+        passed += 1
+        print("  PASS test_stringify")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_stringify: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_stringify: " + str(e))
+    try:
+        test_round_trip()
+        passed += 1
+        print("  PASS test_round_trip")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_round_trip: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_round_trip: " + str(e))
+    try:
+        test_accessors()
+        passed += 1
+        print("  PASS test_accessors")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_accessors: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_accessors: " + str(e))
+    try:
+        test_accessor_errors()
+        passed += 1
+        print("  PASS test_accessor_errors")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_accessor_errors: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_accessor_errors: " + str(e))
+    try:
+        test_parse_errors()
+        passed += 1
+        print("  PASS test_parse_errors")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_parse_errors: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_parse_errors: " + str(e))
+    try:
+        test_whitespace_handling()
+        passed += 1
+        print("  PASS test_whitespace_handling")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_whitespace_handling: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_whitespace_handling: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0

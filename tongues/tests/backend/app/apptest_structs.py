@@ -43,24 +43,47 @@ def test_struct_eq_in_list() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_struct_eq_same", test_struct_eq_same),
-        ("test_struct_eq_different", test_struct_eq_different),
-        ("test_struct_ne", test_struct_ne),
-        ("test_struct_eq_in_list", test_struct_eq_in_list),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_struct_eq_same()
+        passed += 1
+        print("  PASS test_struct_eq_same")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_struct_eq_same: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_struct_eq_same: " + str(e))
+    try:
+        test_struct_eq_different()
+        passed += 1
+        print("  PASS test_struct_eq_different")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_struct_eq_different: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_struct_eq_different: " + str(e))
+    try:
+        test_struct_ne()
+        passed += 1
+        print("  PASS test_struct_ne")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_struct_ne: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_struct_ne: " + str(e))
+    try:
+        test_struct_eq_in_list()
+        passed += 1
+        print("  PASS test_struct_eq_in_list")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_struct_eq_in_list: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_struct_eq_in_list: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0

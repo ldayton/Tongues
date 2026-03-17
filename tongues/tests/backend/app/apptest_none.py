@@ -158,35 +158,157 @@ def test_none_not_equal_to_falsy() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_none_equality", test_none_equality),
-        ("test_none_str", test_none_str),
-        ("test_none_bool", test_none_bool),
-        ("test_none_not", test_none_not),
-        ("test_implicit_return", test_implicit_return),
-        ("test_explicit_return_none", test_explicit_return_none),
-        ("test_none_is_singleton", test_none_is_singleton),
-        ("test_none_is_vs_equals", test_none_is_vs_equals),
-        ("test_none_in_list", test_none_in_list),
-        ("test_none_count_in_list", test_none_count_in_list),
-        ("test_none_as_dict_value", test_none_as_dict_value),
-        ("test_none_vs_missing_key", test_none_vs_missing_key),
-        ("test_none_conditional_assignment", test_none_conditional_assignment),
-        ("test_none_ternary", test_none_ternary),
-        ("test_none_not_equal_to_falsy", test_none_not_equal_to_falsy),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_none_equality()
+        passed += 1
+        print("  PASS test_none_equality")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_none_equality: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_none_equality: " + str(e))
+    try:
+        test_none_str()
+        passed += 1
+        print("  PASS test_none_str")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_none_str: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_none_str: " + str(e))
+    try:
+        test_none_bool()
+        passed += 1
+        print("  PASS test_none_bool")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_none_bool: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_none_bool: " + str(e))
+    try:
+        test_none_not()
+        passed += 1
+        print("  PASS test_none_not")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_none_not: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_none_not: " + str(e))
+    try:
+        test_implicit_return()
+        passed += 1
+        print("  PASS test_implicit_return")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_implicit_return: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_implicit_return: " + str(e))
+    try:
+        test_explicit_return_none()
+        passed += 1
+        print("  PASS test_explicit_return_none")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_explicit_return_none: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_explicit_return_none: " + str(e))
+    try:
+        test_none_is_singleton()
+        passed += 1
+        print("  PASS test_none_is_singleton")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_none_is_singleton: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_none_is_singleton: " + str(e))
+    try:
+        test_none_is_vs_equals()
+        passed += 1
+        print("  PASS test_none_is_vs_equals")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_none_is_vs_equals: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_none_is_vs_equals: " + str(e))
+    try:
+        test_none_in_list()
+        passed += 1
+        print("  PASS test_none_in_list")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_none_in_list: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_none_in_list: " + str(e))
+    try:
+        test_none_count_in_list()
+        passed += 1
+        print("  PASS test_none_count_in_list")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_none_count_in_list: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_none_count_in_list: " + str(e))
+    try:
+        test_none_as_dict_value()
+        passed += 1
+        print("  PASS test_none_as_dict_value")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_none_as_dict_value: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_none_as_dict_value: " + str(e))
+    try:
+        test_none_vs_missing_key()
+        passed += 1
+        print("  PASS test_none_vs_missing_key")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_none_vs_missing_key: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_none_vs_missing_key: " + str(e))
+    try:
+        test_none_conditional_assignment()
+        passed += 1
+        print("  PASS test_none_conditional_assignment")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_none_conditional_assignment: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_none_conditional_assignment: " + str(e))
+    try:
+        test_none_ternary()
+        passed += 1
+        print("  PASS test_none_ternary")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_none_ternary: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_none_ternary: " + str(e))
+    try:
+        test_none_not_equal_to_falsy()
+        passed += 1
+        print("  PASS test_none_not_equal_to_falsy")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_none_not_equal_to_falsy: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_none_not_equal_to_falsy: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0

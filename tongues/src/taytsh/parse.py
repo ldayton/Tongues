@@ -418,12 +418,17 @@ class Parser:
         pos = self._pos()
         self.expect("interface")
         name_tok = self.expect_ident()
+        ann: dict[str, str] = {}
+        if self.at(":"):
+            self.advance()
+            parent_tok = self.expect_ident()
+            ann["_parent_interface"] = parent_tok.value
         self.expect("{")
         fields: list[TFieldDecl] = []
         while not self.at("}"):
             fields.append(self.parse_field_decl())
         self.expect("}")
-        return TInterfaceDecl(pos, {}, name_tok.value, fields)
+        return TInterfaceDecl(pos, ann, name_tok.value, fields)
 
     def parse_enum_decl(self) -> TEnumDecl:
         pos = self._pos()

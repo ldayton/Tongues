@@ -405,58 +405,387 @@ def test_float_not_exact() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_float_equality", test_float_equality),
-        ("test_float_ordering", test_float_ordering),
-        ("test_float_arithmetic", test_float_arithmetic),
-        ("test_float_negation", test_float_negation),
-        ("test_float_division", test_float_division),
-        ("test_int_to_float", test_int_to_float),
-        ("test_float_to_int", test_float_to_int),
-        ("test_float_bool", test_float_bool),
-        ("test_float_abs", test_float_abs),
-        ("test_float_int_mixed", test_float_int_mixed),
-        ("test_float_comparison_with_int", test_float_comparison_with_int),
-        ("test_positive_infinity", test_positive_infinity),
-        ("test_negative_infinity", test_negative_infinity),
-        ("test_infinity_comparison", test_infinity_comparison),
-        ("test_nan_basics", test_nan_basics),
-        ("test_nan_comparisons", test_nan_comparisons),
-        ("test_nan_arithmetic", test_nan_arithmetic),
-        ("test_inf_produces_nan", test_inf_produces_nan),
-        ("test_inf_division", test_inf_division),
-        ("test_zero_signs", test_zero_signs),
-        ("test_float_floor_division", test_float_floor_division),
-        ("test_float_modulo", test_float_modulo),
-        ("test_float_divmod", test_float_divmod),
-        ("test_float_divmod_identity", test_float_divmod_identity),
-        ("test_float_pow", test_float_pow),
-        ("test_float_pow_special", test_float_pow_special),
-        ("test_float_round_basic", test_float_round_basic),
-        ("test_float_round_half_even", test_float_round_half_even),
-        ("test_float_round_ndigits", test_float_round_ndigits),
-        ("test_float_round_integers", test_float_round_integers),
-        ("test_float_min_max", test_float_min_max),
-        ("test_float_min_max_special", test_float_min_max_special),
-        ("test_float_from_string", test_float_from_string),
-        ("test_float_from_string_special", test_float_from_string_special),
-        ("test_float_str_repr", test_float_str_repr),
-        ("test_float_exponent_notation", test_float_exponent_notation),
-        ("test_float_str_boundaries", test_float_str_boundaries),
-        ("test_float_not_exact", test_float_not_exact),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_float_equality()
+        passed += 1
+        print("  PASS test_float_equality")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_equality: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_equality: " + str(e))
+    try:
+        test_float_ordering()
+        passed += 1
+        print("  PASS test_float_ordering")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_ordering: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_ordering: " + str(e))
+    try:
+        test_float_arithmetic()
+        passed += 1
+        print("  PASS test_float_arithmetic")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_arithmetic: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_arithmetic: " + str(e))
+    try:
+        test_float_negation()
+        passed += 1
+        print("  PASS test_float_negation")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_negation: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_negation: " + str(e))
+    try:
+        test_float_division()
+        passed += 1
+        print("  PASS test_float_division")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_division: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_division: " + str(e))
+    try:
+        test_int_to_float()
+        passed += 1
+        print("  PASS test_int_to_float")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_to_float: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_to_float: " + str(e))
+    try:
+        test_float_to_int()
+        passed += 1
+        print("  PASS test_float_to_int")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_to_int: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_to_int: " + str(e))
+    try:
+        test_float_bool()
+        passed += 1
+        print("  PASS test_float_bool")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_bool: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_bool: " + str(e))
+    try:
+        test_float_abs()
+        passed += 1
+        print("  PASS test_float_abs")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_abs: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_abs: " + str(e))
+    try:
+        test_float_int_mixed()
+        passed += 1
+        print("  PASS test_float_int_mixed")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_int_mixed: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_int_mixed: " + str(e))
+    try:
+        test_float_comparison_with_int()
+        passed += 1
+        print("  PASS test_float_comparison_with_int")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_comparison_with_int: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_comparison_with_int: " + str(e))
+    try:
+        test_positive_infinity()
+        passed += 1
+        print("  PASS test_positive_infinity")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_positive_infinity: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_positive_infinity: " + str(e))
+    try:
+        test_negative_infinity()
+        passed += 1
+        print("  PASS test_negative_infinity")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_negative_infinity: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_negative_infinity: " + str(e))
+    try:
+        test_infinity_comparison()
+        passed += 1
+        print("  PASS test_infinity_comparison")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_infinity_comparison: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_infinity_comparison: " + str(e))
+    try:
+        test_nan_basics()
+        passed += 1
+        print("  PASS test_nan_basics")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_nan_basics: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_nan_basics: " + str(e))
+    try:
+        test_nan_comparisons()
+        passed += 1
+        print("  PASS test_nan_comparisons")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_nan_comparisons: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_nan_comparisons: " + str(e))
+    try:
+        test_nan_arithmetic()
+        passed += 1
+        print("  PASS test_nan_arithmetic")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_nan_arithmetic: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_nan_arithmetic: " + str(e))
+    try:
+        test_inf_produces_nan()
+        passed += 1
+        print("  PASS test_inf_produces_nan")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_inf_produces_nan: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_inf_produces_nan: " + str(e))
+    try:
+        test_inf_division()
+        passed += 1
+        print("  PASS test_inf_division")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_inf_division: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_inf_division: " + str(e))
+    try:
+        test_zero_signs()
+        passed += 1
+        print("  PASS test_zero_signs")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_zero_signs: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_zero_signs: " + str(e))
+    try:
+        test_float_floor_division()
+        passed += 1
+        print("  PASS test_float_floor_division")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_floor_division: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_floor_division: " + str(e))
+    try:
+        test_float_modulo()
+        passed += 1
+        print("  PASS test_float_modulo")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_modulo: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_modulo: " + str(e))
+    try:
+        test_float_divmod()
+        passed += 1
+        print("  PASS test_float_divmod")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_divmod: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_divmod: " + str(e))
+    try:
+        test_float_divmod_identity()
+        passed += 1
+        print("  PASS test_float_divmod_identity")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_divmod_identity: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_divmod_identity: " + str(e))
+    try:
+        test_float_pow()
+        passed += 1
+        print("  PASS test_float_pow")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_pow: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_pow: " + str(e))
+    try:
+        test_float_pow_special()
+        passed += 1
+        print("  PASS test_float_pow_special")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_pow_special: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_pow_special: " + str(e))
+    try:
+        test_float_round_basic()
+        passed += 1
+        print("  PASS test_float_round_basic")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_round_basic: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_round_basic: " + str(e))
+    try:
+        test_float_round_half_even()
+        passed += 1
+        print("  PASS test_float_round_half_even")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_round_half_even: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_round_half_even: " + str(e))
+    try:
+        test_float_round_ndigits()
+        passed += 1
+        print("  PASS test_float_round_ndigits")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_round_ndigits: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_round_ndigits: " + str(e))
+    try:
+        test_float_round_integers()
+        passed += 1
+        print("  PASS test_float_round_integers")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_round_integers: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_round_integers: " + str(e))
+    try:
+        test_float_min_max()
+        passed += 1
+        print("  PASS test_float_min_max")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_min_max: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_min_max: " + str(e))
+    try:
+        test_float_min_max_special()
+        passed += 1
+        print("  PASS test_float_min_max_special")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_min_max_special: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_min_max_special: " + str(e))
+    try:
+        test_float_from_string()
+        passed += 1
+        print("  PASS test_float_from_string")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_from_string: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_from_string: " + str(e))
+    try:
+        test_float_from_string_special()
+        passed += 1
+        print("  PASS test_float_from_string_special")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_from_string_special: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_from_string_special: " + str(e))
+    try:
+        test_float_str_repr()
+        passed += 1
+        print("  PASS test_float_str_repr")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_str_repr: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_str_repr: " + str(e))
+    try:
+        test_float_exponent_notation()
+        passed += 1
+        print("  PASS test_float_exponent_notation")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_exponent_notation: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_exponent_notation: " + str(e))
+    try:
+        test_float_str_boundaries()
+        passed += 1
+        print("  PASS test_float_str_boundaries")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_str_boundaries: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_str_boundaries: " + str(e))
+    try:
+        test_float_not_exact()
+        passed += 1
+        print("  PASS test_float_not_exact")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_not_exact: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_not_exact: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0

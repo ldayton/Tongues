@@ -1165,6 +1165,26 @@ def _sa_serialize_stmt(stmt: TStmt, pfx: str, plen: int) -> dict[str, JsonValue]
                 _wrap_ann(_sa_strip(c.annotations, pfx, plen)) for c in stmt.catches
             ]
             d["catches"] = JList(catches)
+        case TWhileStmt():
+            body_items: list[JsonValue] = []
+            for s in stmt.body:
+                body_items.append(JDict(_sa_serialize_stmt(s, pfx, plen)))
+            d["body"] = JList(body_items)
+        case TForStmt():
+            body_items2: list[JsonValue] = []
+            for s in stmt.body:
+                body_items2.append(JDict(_sa_serialize_stmt(s, pfx, plen)))
+            d["body"] = JList(body_items2)
+        case TIfStmt():
+            then_items: list[JsonValue] = []
+            for s in stmt.then_body:
+                then_items.append(JDict(_sa_serialize_stmt(s, pfx, plen)))
+            d["then_body"] = JList(then_items)
+            if stmt.else_body is not None:
+                else_items: list[JsonValue] = []
+                for s in stmt.else_body:
+                    else_items.append(JDict(_sa_serialize_stmt(s, pfx, plen)))
+                d["else_body"] = JList(else_items)
     return d
 
 

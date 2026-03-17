@@ -533,69 +533,497 @@ def test_xor_find_unique() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_bitwise_and_basic", test_bitwise_and_basic),
-        ("test_bitwise_and_identity", test_bitwise_and_identity),
-        ("test_bitwise_and_commutative", test_bitwise_and_commutative),
-        ("test_bitwise_or_basic", test_bitwise_or_basic),
-        ("test_bitwise_or_identity", test_bitwise_or_identity),
-        ("test_bitwise_or_commutative", test_bitwise_or_commutative),
-        ("test_bitwise_xor_basic", test_bitwise_xor_basic),
-        ("test_bitwise_xor_identity", test_bitwise_xor_identity),
-        ("test_bitwise_xor_commutative", test_bitwise_xor_commutative),
-        ("test_bitwise_xor_self_inverse", test_bitwise_xor_self_inverse),
-        ("test_bitwise_not_basic", test_bitwise_not_basic),
-        ("test_bitwise_not_double", test_bitwise_not_double),
-        ("test_left_shift_basic", test_left_shift_basic),
-        ("test_left_shift_multiplies", test_left_shift_multiplies),
-        ("test_left_shift_zero", test_left_shift_zero),
-        ("test_right_shift_basic", test_right_shift_basic),
-        ("test_right_shift_divides", test_right_shift_divides),
-        ("test_right_shift_rounds_down", test_right_shift_rounds_down),
-        ("test_right_shift_zero", test_right_shift_zero),
-        ("test_shift_negative_values", test_shift_negative_values),
-        ("test_demorgan_and", test_demorgan_and),
-        ("test_demorgan_or", test_demorgan_or),
-        ("test_bitwise_associative", test_bitwise_associative),
-        ("test_bitwise_distributive", test_bitwise_distributive),
-        ("test_mixed_operations", test_mixed_operations),
-        ("test_bit_extraction", test_bit_extraction),
-        ("test_bit_setting", test_bit_setting),
-        ("test_bit_clearing", test_bit_clearing),
-        ("test_bit_toggling", test_bit_toggling),
-        ("test_power_of_two_check", test_power_of_two_check),
-        ("test_isolate_lowest_set_bit", test_isolate_lowest_set_bit),
-        ("test_clear_lowest_set_bit", test_clear_lowest_set_bit),
-        ("test_xor_swap", test_xor_swap),
-        ("test_xor_with_minus_one", test_xor_with_minus_one),
-        ("test_negative_bitwise_and", test_negative_bitwise_and),
-        ("test_negative_bitwise_or", test_negative_bitwise_or),
-        ("test_negative_bitwise_xor", test_negative_bitwise_xor),
-        ("test_absorption_laws", test_absorption_laws),
-        ("test_complement_laws", test_complement_laws),
-        ("test_shift_large_amounts", test_shift_large_amounts),
-        ("test_shift_equals_multiply_divide", test_shift_equals_multiply_divide),
-        ("test_check_bit_at_position", test_check_bit_at_position),
-        ("test_set_bit_at_position", test_set_bit_at_position),
-        ("test_clear_bit_at_position", test_clear_bit_at_position),
-        ("test_toggle_bit_at_position", test_toggle_bit_at_position),
-        ("test_count_set_bits_kernighan", test_count_set_bits_kernighan),
-        ("test_sign_extension_right_shift", test_sign_extension_right_shift),
-        ("test_idempotent_operations", test_idempotent_operations),
-        ("test_xor_find_unique", test_xor_find_unique),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_bitwise_and_basic()
+        passed += 1
+        print("  PASS test_bitwise_and_basic")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bitwise_and_basic: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bitwise_and_basic: " + str(e))
+    try:
+        test_bitwise_and_identity()
+        passed += 1
+        print("  PASS test_bitwise_and_identity")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bitwise_and_identity: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bitwise_and_identity: " + str(e))
+    try:
+        test_bitwise_and_commutative()
+        passed += 1
+        print("  PASS test_bitwise_and_commutative")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bitwise_and_commutative: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bitwise_and_commutative: " + str(e))
+    try:
+        test_bitwise_or_basic()
+        passed += 1
+        print("  PASS test_bitwise_or_basic")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bitwise_or_basic: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bitwise_or_basic: " + str(e))
+    try:
+        test_bitwise_or_identity()
+        passed += 1
+        print("  PASS test_bitwise_or_identity")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bitwise_or_identity: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bitwise_or_identity: " + str(e))
+    try:
+        test_bitwise_or_commutative()
+        passed += 1
+        print("  PASS test_bitwise_or_commutative")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bitwise_or_commutative: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bitwise_or_commutative: " + str(e))
+    try:
+        test_bitwise_xor_basic()
+        passed += 1
+        print("  PASS test_bitwise_xor_basic")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bitwise_xor_basic: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bitwise_xor_basic: " + str(e))
+    try:
+        test_bitwise_xor_identity()
+        passed += 1
+        print("  PASS test_bitwise_xor_identity")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bitwise_xor_identity: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bitwise_xor_identity: " + str(e))
+    try:
+        test_bitwise_xor_commutative()
+        passed += 1
+        print("  PASS test_bitwise_xor_commutative")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bitwise_xor_commutative: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bitwise_xor_commutative: " + str(e))
+    try:
+        test_bitwise_xor_self_inverse()
+        passed += 1
+        print("  PASS test_bitwise_xor_self_inverse")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bitwise_xor_self_inverse: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bitwise_xor_self_inverse: " + str(e))
+    try:
+        test_bitwise_not_basic()
+        passed += 1
+        print("  PASS test_bitwise_not_basic")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bitwise_not_basic: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bitwise_not_basic: " + str(e))
+    try:
+        test_bitwise_not_double()
+        passed += 1
+        print("  PASS test_bitwise_not_double")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bitwise_not_double: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bitwise_not_double: " + str(e))
+    try:
+        test_left_shift_basic()
+        passed += 1
+        print("  PASS test_left_shift_basic")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_left_shift_basic: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_left_shift_basic: " + str(e))
+    try:
+        test_left_shift_multiplies()
+        passed += 1
+        print("  PASS test_left_shift_multiplies")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_left_shift_multiplies: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_left_shift_multiplies: " + str(e))
+    try:
+        test_left_shift_zero()
+        passed += 1
+        print("  PASS test_left_shift_zero")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_left_shift_zero: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_left_shift_zero: " + str(e))
+    try:
+        test_right_shift_basic()
+        passed += 1
+        print("  PASS test_right_shift_basic")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_right_shift_basic: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_right_shift_basic: " + str(e))
+    try:
+        test_right_shift_divides()
+        passed += 1
+        print("  PASS test_right_shift_divides")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_right_shift_divides: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_right_shift_divides: " + str(e))
+    try:
+        test_right_shift_rounds_down()
+        passed += 1
+        print("  PASS test_right_shift_rounds_down")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_right_shift_rounds_down: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_right_shift_rounds_down: " + str(e))
+    try:
+        test_right_shift_zero()
+        passed += 1
+        print("  PASS test_right_shift_zero")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_right_shift_zero: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_right_shift_zero: " + str(e))
+    try:
+        test_shift_negative_values()
+        passed += 1
+        print("  PASS test_shift_negative_values")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_shift_negative_values: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_shift_negative_values: " + str(e))
+    try:
+        test_demorgan_and()
+        passed += 1
+        print("  PASS test_demorgan_and")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_demorgan_and: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_demorgan_and: " + str(e))
+    try:
+        test_demorgan_or()
+        passed += 1
+        print("  PASS test_demorgan_or")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_demorgan_or: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_demorgan_or: " + str(e))
+    try:
+        test_bitwise_associative()
+        passed += 1
+        print("  PASS test_bitwise_associative")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bitwise_associative: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bitwise_associative: " + str(e))
+    try:
+        test_bitwise_distributive()
+        passed += 1
+        print("  PASS test_bitwise_distributive")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bitwise_distributive: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bitwise_distributive: " + str(e))
+    try:
+        test_mixed_operations()
+        passed += 1
+        print("  PASS test_mixed_operations")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_mixed_operations: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_mixed_operations: " + str(e))
+    try:
+        test_bit_extraction()
+        passed += 1
+        print("  PASS test_bit_extraction")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bit_extraction: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bit_extraction: " + str(e))
+    try:
+        test_bit_setting()
+        passed += 1
+        print("  PASS test_bit_setting")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bit_setting: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bit_setting: " + str(e))
+    try:
+        test_bit_clearing()
+        passed += 1
+        print("  PASS test_bit_clearing")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bit_clearing: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bit_clearing: " + str(e))
+    try:
+        test_bit_toggling()
+        passed += 1
+        print("  PASS test_bit_toggling")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bit_toggling: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bit_toggling: " + str(e))
+    try:
+        test_power_of_two_check()
+        passed += 1
+        print("  PASS test_power_of_two_check")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_power_of_two_check: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_power_of_two_check: " + str(e))
+    try:
+        test_isolate_lowest_set_bit()
+        passed += 1
+        print("  PASS test_isolate_lowest_set_bit")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_isolate_lowest_set_bit: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_isolate_lowest_set_bit: " + str(e))
+    try:
+        test_clear_lowest_set_bit()
+        passed += 1
+        print("  PASS test_clear_lowest_set_bit")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_clear_lowest_set_bit: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_clear_lowest_set_bit: " + str(e))
+    try:
+        test_xor_swap()
+        passed += 1
+        print("  PASS test_xor_swap")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_xor_swap: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_xor_swap: " + str(e))
+    try:
+        test_xor_with_minus_one()
+        passed += 1
+        print("  PASS test_xor_with_minus_one")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_xor_with_minus_one: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_xor_with_minus_one: " + str(e))
+    try:
+        test_negative_bitwise_and()
+        passed += 1
+        print("  PASS test_negative_bitwise_and")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_negative_bitwise_and: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_negative_bitwise_and: " + str(e))
+    try:
+        test_negative_bitwise_or()
+        passed += 1
+        print("  PASS test_negative_bitwise_or")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_negative_bitwise_or: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_negative_bitwise_or: " + str(e))
+    try:
+        test_negative_bitwise_xor()
+        passed += 1
+        print("  PASS test_negative_bitwise_xor")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_negative_bitwise_xor: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_negative_bitwise_xor: " + str(e))
+    try:
+        test_absorption_laws()
+        passed += 1
+        print("  PASS test_absorption_laws")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_absorption_laws: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_absorption_laws: " + str(e))
+    try:
+        test_complement_laws()
+        passed += 1
+        print("  PASS test_complement_laws")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_complement_laws: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_complement_laws: " + str(e))
+    try:
+        test_shift_large_amounts()
+        passed += 1
+        print("  PASS test_shift_large_amounts")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_shift_large_amounts: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_shift_large_amounts: " + str(e))
+    try:
+        test_shift_equals_multiply_divide()
+        passed += 1
+        print("  PASS test_shift_equals_multiply_divide")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_shift_equals_multiply_divide: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_shift_equals_multiply_divide: " + str(e))
+    try:
+        test_check_bit_at_position()
+        passed += 1
+        print("  PASS test_check_bit_at_position")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_check_bit_at_position: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_check_bit_at_position: " + str(e))
+    try:
+        test_set_bit_at_position()
+        passed += 1
+        print("  PASS test_set_bit_at_position")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_bit_at_position: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_bit_at_position: " + str(e))
+    try:
+        test_clear_bit_at_position()
+        passed += 1
+        print("  PASS test_clear_bit_at_position")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_clear_bit_at_position: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_clear_bit_at_position: " + str(e))
+    try:
+        test_toggle_bit_at_position()
+        passed += 1
+        print("  PASS test_toggle_bit_at_position")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_toggle_bit_at_position: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_toggle_bit_at_position: " + str(e))
+    try:
+        test_count_set_bits_kernighan()
+        passed += 1
+        print("  PASS test_count_set_bits_kernighan")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_count_set_bits_kernighan: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_count_set_bits_kernighan: " + str(e))
+    try:
+        test_sign_extension_right_shift()
+        passed += 1
+        print("  PASS test_sign_extension_right_shift")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_sign_extension_right_shift: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_sign_extension_right_shift: " + str(e))
+    try:
+        test_idempotent_operations()
+        passed += 1
+        print("  PASS test_idempotent_operations")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_idempotent_operations: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_idempotent_operations: " + str(e))
+    try:
+        test_xor_find_unique()
+        passed += 1
+        print("  PASS test_xor_find_unique")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_xor_find_unique: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_xor_find_unique: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0

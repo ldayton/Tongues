@@ -117,33 +117,137 @@ def test_optional_intenum() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_strenum_equality", test_strenum_equality),
-        ("test_strenum_tostring", test_strenum_tostring),
-        ("test_strenum_as_parameter", test_strenum_as_parameter),
-        ("test_intenum_equality", test_intenum_equality),
-        ("test_intenum_tostring", test_intenum_tostring),
-        ("test_intenum_as_parameter", test_intenum_as_parameter),
-        ("test_strenum_in_match", test_strenum_in_match),
-        ("test_intenum_in_match", test_intenum_in_match),
-        ("test_strenum_in_list", test_strenum_in_list),
-        ("test_strenum_as_dict_key", test_strenum_as_dict_key),
-        ("test_strenum_in_set", test_strenum_in_set),
-        ("test_optional_strenum", test_optional_strenum),
-        ("test_optional_intenum", test_optional_intenum),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_strenum_equality()
+        passed += 1
+        print("  PASS test_strenum_equality")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_strenum_equality: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_strenum_equality: " + str(e))
+    try:
+        test_strenum_tostring()
+        passed += 1
+        print("  PASS test_strenum_tostring")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_strenum_tostring: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_strenum_tostring: " + str(e))
+    try:
+        test_strenum_as_parameter()
+        passed += 1
+        print("  PASS test_strenum_as_parameter")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_strenum_as_parameter: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_strenum_as_parameter: " + str(e))
+    try:
+        test_intenum_equality()
+        passed += 1
+        print("  PASS test_intenum_equality")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_intenum_equality: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_intenum_equality: " + str(e))
+    try:
+        test_intenum_tostring()
+        passed += 1
+        print("  PASS test_intenum_tostring")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_intenum_tostring: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_intenum_tostring: " + str(e))
+    try:
+        test_intenum_as_parameter()
+        passed += 1
+        print("  PASS test_intenum_as_parameter")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_intenum_as_parameter: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_intenum_as_parameter: " + str(e))
+    try:
+        test_strenum_in_match()
+        passed += 1
+        print("  PASS test_strenum_in_match")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_strenum_in_match: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_strenum_in_match: " + str(e))
+    try:
+        test_intenum_in_match()
+        passed += 1
+        print("  PASS test_intenum_in_match")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_intenum_in_match: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_intenum_in_match: " + str(e))
+    try:
+        test_strenum_in_list()
+        passed += 1
+        print("  PASS test_strenum_in_list")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_strenum_in_list: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_strenum_in_list: " + str(e))
+    try:
+        test_strenum_as_dict_key()
+        passed += 1
+        print("  PASS test_strenum_as_dict_key")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_strenum_as_dict_key: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_strenum_as_dict_key: " + str(e))
+    try:
+        test_strenum_in_set()
+        passed += 1
+        print("  PASS test_strenum_in_set")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_strenum_in_set: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_strenum_in_set: " + str(e))
+    try:
+        test_optional_strenum()
+        passed += 1
+        print("  PASS test_optional_strenum")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_optional_strenum: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_optional_strenum: " + str(e))
+    try:
+        test_optional_intenum()
+        passed += 1
+        print("  PASS test_optional_intenum")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_optional_intenum: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_optional_intenum: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0

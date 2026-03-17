@@ -441,63 +441,437 @@ def test_difference_with_self() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_new_all_zero", test_new_all_zero),
-        ("test_new_size", test_new_size),
-        ("test_set_and_test", test_set_and_test),
-        ("test_set_high_bit", test_set_high_bit),
-        ("test_set_multiple", test_set_multiple),
-        ("test_set_word_boundary", test_set_word_boundary),
-        ("test_clear", test_clear),
-        ("test_clear_already_clear", test_clear_already_clear),
-        ("test_clear_preserves_others", test_clear_preserves_others),
-        ("test_toggle_on", test_toggle_on),
-        ("test_toggle_off", test_toggle_off),
-        ("test_toggle_double", test_toggle_double),
-        ("test_popcount_empty", test_popcount_empty),
-        ("test_popcount_one", test_popcount_one),
-        ("test_popcount_several", test_popcount_several),
-        ("test_popcount_full_word", test_popcount_full_word),
-        ("test_union_basic", test_union_basic),
-        ("test_union_different_sizes", test_union_different_sizes),
-        ("test_intersection_basic", test_intersection_basic),
-        ("test_intersection_disjoint", test_intersection_disjoint),
-        ("test_intersection_different_sizes", test_intersection_different_sizes),
-        ("test_difference_basic", test_difference_basic),
-        ("test_difference_no_overlap", test_difference_no_overlap),
-        ("test_to_list_empty", test_to_list_empty),
-        ("test_to_list_several", test_to_list_several),
-        ("test_to_list_word_boundary", test_to_list_word_boundary),
-        ("test_large_set_all", test_large_set_all),
-        ("test_large_even_bits", test_large_even_bits),
-        ("test_single_bit_bitset", test_single_bit_bitset),
-        ("test_set_idempotent", test_set_idempotent),
-        ("test_union_with_empty", test_union_with_empty),
-        ("test_intersection_with_empty", test_intersection_with_empty),
-        ("test_non_aligned_size", test_non_aligned_size),
-        ("test_non_aligned_size_50", test_non_aligned_size_50),
-        ("test_popcount_after_clear", test_popcount_after_clear),
-        ("test_toggle_word_boundary", test_toggle_word_boundary),
-        ("test_union_via_to_list", test_union_via_to_list),
-        ("test_intersection_via_to_list", test_intersection_via_to_list),
-        ("test_difference_via_to_list", test_difference_via_to_list),
-        ("test_difference_b_extra_bits_ignored", test_difference_b_extra_bits_ignored),
-        ("test_to_list_three_words", test_to_list_three_words),
-        ("test_set_ops_single_bit", test_set_ops_single_bit),
-        ("test_difference_with_self", test_difference_with_self),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_new_all_zero()
+        passed += 1
+        print("  PASS test_new_all_zero")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_new_all_zero: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_new_all_zero: " + str(e))
+    try:
+        test_new_size()
+        passed += 1
+        print("  PASS test_new_size")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_new_size: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_new_size: " + str(e))
+    try:
+        test_set_and_test()
+        passed += 1
+        print("  PASS test_set_and_test")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_and_test: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_and_test: " + str(e))
+    try:
+        test_set_high_bit()
+        passed += 1
+        print("  PASS test_set_high_bit")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_high_bit: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_high_bit: " + str(e))
+    try:
+        test_set_multiple()
+        passed += 1
+        print("  PASS test_set_multiple")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_multiple: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_multiple: " + str(e))
+    try:
+        test_set_word_boundary()
+        passed += 1
+        print("  PASS test_set_word_boundary")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_word_boundary: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_word_boundary: " + str(e))
+    try:
+        test_clear()
+        passed += 1
+        print("  PASS test_clear")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_clear: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_clear: " + str(e))
+    try:
+        test_clear_already_clear()
+        passed += 1
+        print("  PASS test_clear_already_clear")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_clear_already_clear: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_clear_already_clear: " + str(e))
+    try:
+        test_clear_preserves_others()
+        passed += 1
+        print("  PASS test_clear_preserves_others")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_clear_preserves_others: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_clear_preserves_others: " + str(e))
+    try:
+        test_toggle_on()
+        passed += 1
+        print("  PASS test_toggle_on")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_toggle_on: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_toggle_on: " + str(e))
+    try:
+        test_toggle_off()
+        passed += 1
+        print("  PASS test_toggle_off")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_toggle_off: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_toggle_off: " + str(e))
+    try:
+        test_toggle_double()
+        passed += 1
+        print("  PASS test_toggle_double")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_toggle_double: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_toggle_double: " + str(e))
+    try:
+        test_popcount_empty()
+        passed += 1
+        print("  PASS test_popcount_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_popcount_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_popcount_empty: " + str(e))
+    try:
+        test_popcount_one()
+        passed += 1
+        print("  PASS test_popcount_one")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_popcount_one: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_popcount_one: " + str(e))
+    try:
+        test_popcount_several()
+        passed += 1
+        print("  PASS test_popcount_several")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_popcount_several: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_popcount_several: " + str(e))
+    try:
+        test_popcount_full_word()
+        passed += 1
+        print("  PASS test_popcount_full_word")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_popcount_full_word: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_popcount_full_word: " + str(e))
+    try:
+        test_union_basic()
+        passed += 1
+        print("  PASS test_union_basic")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_union_basic: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_union_basic: " + str(e))
+    try:
+        test_union_different_sizes()
+        passed += 1
+        print("  PASS test_union_different_sizes")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_union_different_sizes: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_union_different_sizes: " + str(e))
+    try:
+        test_intersection_basic()
+        passed += 1
+        print("  PASS test_intersection_basic")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_intersection_basic: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_intersection_basic: " + str(e))
+    try:
+        test_intersection_disjoint()
+        passed += 1
+        print("  PASS test_intersection_disjoint")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_intersection_disjoint: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_intersection_disjoint: " + str(e))
+    try:
+        test_intersection_different_sizes()
+        passed += 1
+        print("  PASS test_intersection_different_sizes")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_intersection_different_sizes: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_intersection_different_sizes: " + str(e))
+    try:
+        test_difference_basic()
+        passed += 1
+        print("  PASS test_difference_basic")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_difference_basic: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_difference_basic: " + str(e))
+    try:
+        test_difference_no_overlap()
+        passed += 1
+        print("  PASS test_difference_no_overlap")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_difference_no_overlap: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_difference_no_overlap: " + str(e))
+    try:
+        test_to_list_empty()
+        passed += 1
+        print("  PASS test_to_list_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_to_list_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_to_list_empty: " + str(e))
+    try:
+        test_to_list_several()
+        passed += 1
+        print("  PASS test_to_list_several")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_to_list_several: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_to_list_several: " + str(e))
+    try:
+        test_to_list_word_boundary()
+        passed += 1
+        print("  PASS test_to_list_word_boundary")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_to_list_word_boundary: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_to_list_word_boundary: " + str(e))
+    try:
+        test_large_set_all()
+        passed += 1
+        print("  PASS test_large_set_all")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_large_set_all: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_large_set_all: " + str(e))
+    try:
+        test_large_even_bits()
+        passed += 1
+        print("  PASS test_large_even_bits")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_large_even_bits: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_large_even_bits: " + str(e))
+    try:
+        test_single_bit_bitset()
+        passed += 1
+        print("  PASS test_single_bit_bitset")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_single_bit_bitset: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_single_bit_bitset: " + str(e))
+    try:
+        test_set_idempotent()
+        passed += 1
+        print("  PASS test_set_idempotent")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_idempotent: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_idempotent: " + str(e))
+    try:
+        test_union_with_empty()
+        passed += 1
+        print("  PASS test_union_with_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_union_with_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_union_with_empty: " + str(e))
+    try:
+        test_intersection_with_empty()
+        passed += 1
+        print("  PASS test_intersection_with_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_intersection_with_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_intersection_with_empty: " + str(e))
+    try:
+        test_non_aligned_size()
+        passed += 1
+        print("  PASS test_non_aligned_size")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_non_aligned_size: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_non_aligned_size: " + str(e))
+    try:
+        test_non_aligned_size_50()
+        passed += 1
+        print("  PASS test_non_aligned_size_50")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_non_aligned_size_50: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_non_aligned_size_50: " + str(e))
+    try:
+        test_popcount_after_clear()
+        passed += 1
+        print("  PASS test_popcount_after_clear")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_popcount_after_clear: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_popcount_after_clear: " + str(e))
+    try:
+        test_toggle_word_boundary()
+        passed += 1
+        print("  PASS test_toggle_word_boundary")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_toggle_word_boundary: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_toggle_word_boundary: " + str(e))
+    try:
+        test_union_via_to_list()
+        passed += 1
+        print("  PASS test_union_via_to_list")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_union_via_to_list: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_union_via_to_list: " + str(e))
+    try:
+        test_intersection_via_to_list()
+        passed += 1
+        print("  PASS test_intersection_via_to_list")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_intersection_via_to_list: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_intersection_via_to_list: " + str(e))
+    try:
+        test_difference_via_to_list()
+        passed += 1
+        print("  PASS test_difference_via_to_list")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_difference_via_to_list: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_difference_via_to_list: " + str(e))
+    try:
+        test_difference_b_extra_bits_ignored()
+        passed += 1
+        print("  PASS test_difference_b_extra_bits_ignored")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_difference_b_extra_bits_ignored: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_difference_b_extra_bits_ignored: " + str(e))
+    try:
+        test_to_list_three_words()
+        passed += 1
+        print("  PASS test_to_list_three_words")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_to_list_three_words: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_to_list_three_words: " + str(e))
+    try:
+        test_set_ops_single_bit()
+        passed += 1
+        print("  PASS test_set_ops_single_bit")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_set_ops_single_bit: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_set_ops_single_bit: " + str(e))
+    try:
+        test_difference_with_self()
+        passed += 1
+        print("  PASS test_difference_with_self")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_difference_with_self: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_difference_with_self: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0

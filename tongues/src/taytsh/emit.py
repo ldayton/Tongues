@@ -237,10 +237,12 @@ class _Emitter:
         self._emit_line("}")
 
     def _emit_interface_decl(self, decl: TInterfaceDecl) -> None:
+        parent = decl.annotations.get("_parent_interface", "")
+        suffix = " : " + parent if parent != "" else ""
         if not self._taytsh or not decl.fields:
-            self._emit_line("interface " + decl.name + " {}")
+            self._emit_line("interface " + decl.name + suffix + " {}")
             return
-        self._emit_line("interface " + decl.name + " {")
+        self._emit_line("interface " + decl.name + suffix + " {")
         self._indent_level += 1
         for field in decl.fields:
             self._emit_field(field)

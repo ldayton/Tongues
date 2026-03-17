@@ -271,47 +271,277 @@ def test_bytes_list_comprehension() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_bytes_equality", test_bytes_equality),
-        ("test_bytes_length", test_bytes_length),
-        ("test_bytes_indexing", test_bytes_indexing),
-        ("test_bytes_indexing_special", test_bytes_indexing_special),
-        ("test_bytes_concatenation", test_bytes_concatenation),
-        ("test_bytes_repetition", test_bytes_repetition),
-        ("test_bytes_contains", test_bytes_contains),
-        ("test_bytes_slicing", test_bytes_slicing),
-        ("test_bytes_from_int_list", test_bytes_from_int_list),
-        ("test_bytes_from_int", test_bytes_from_int),
-        ("test_bytes_null_handling", test_bytes_null_handling),
-        ("test_bytes_index_vs_slice", test_bytes_index_vs_slice),
-        ("test_bytes_bool", test_bytes_bool),
-        ("test_bytes_iteration", test_bytes_iteration),
-        ("test_bytes_iteration_arithmetic", test_bytes_iteration_arithmetic),
-        ("test_bytes_iteration_bitwise", test_bytes_iteration_bitwise),
-        ("test_bytes_iteration_comparison", test_bytes_iteration_comparison),
-        ("test_bytes_count", test_bytes_count),
-        ("test_bytes_find", test_bytes_find),
-        ("test_bytes_startswith_endswith", test_bytes_startswith_endswith),
-        ("test_bytes_upper_lower", test_bytes_upper_lower),
-        ("test_bytes_strip", test_bytes_strip),
-        ("test_bytes_split", test_bytes_split),
-        ("test_bytes_join", test_bytes_join),
-        ("test_bytes_replace", test_bytes_replace),
-        ("test_bytes_reversed_iteration", test_bytes_reversed_iteration),
-        ("test_bytes_list_comprehension", test_bytes_list_comprehension),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_bytes_equality()
+        passed += 1
+        print("  PASS test_bytes_equality")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_equality: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_equality: " + str(e))
+    try:
+        test_bytes_length()
+        passed += 1
+        print("  PASS test_bytes_length")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_length: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_length: " + str(e))
+    try:
+        test_bytes_indexing()
+        passed += 1
+        print("  PASS test_bytes_indexing")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_indexing: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_indexing: " + str(e))
+    try:
+        test_bytes_indexing_special()
+        passed += 1
+        print("  PASS test_bytes_indexing_special")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_indexing_special: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_indexing_special: " + str(e))
+    try:
+        test_bytes_concatenation()
+        passed += 1
+        print("  PASS test_bytes_concatenation")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_concatenation: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_concatenation: " + str(e))
+    try:
+        test_bytes_repetition()
+        passed += 1
+        print("  PASS test_bytes_repetition")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_repetition: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_repetition: " + str(e))
+    try:
+        test_bytes_contains()
+        passed += 1
+        print("  PASS test_bytes_contains")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_contains: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_contains: " + str(e))
+    try:
+        test_bytes_slicing()
+        passed += 1
+        print("  PASS test_bytes_slicing")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_slicing: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_slicing: " + str(e))
+    try:
+        test_bytes_from_int_list()
+        passed += 1
+        print("  PASS test_bytes_from_int_list")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_from_int_list: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_from_int_list: " + str(e))
+    try:
+        test_bytes_from_int()
+        passed += 1
+        print("  PASS test_bytes_from_int")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_from_int: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_from_int: " + str(e))
+    try:
+        test_bytes_null_handling()
+        passed += 1
+        print("  PASS test_bytes_null_handling")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_null_handling: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_null_handling: " + str(e))
+    try:
+        test_bytes_index_vs_slice()
+        passed += 1
+        print("  PASS test_bytes_index_vs_slice")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_index_vs_slice: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_index_vs_slice: " + str(e))
+    try:
+        test_bytes_bool()
+        passed += 1
+        print("  PASS test_bytes_bool")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_bool: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_bool: " + str(e))
+    try:
+        test_bytes_iteration()
+        passed += 1
+        print("  PASS test_bytes_iteration")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_iteration: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_iteration: " + str(e))
+    try:
+        test_bytes_iteration_arithmetic()
+        passed += 1
+        print("  PASS test_bytes_iteration_arithmetic")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_iteration_arithmetic: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_iteration_arithmetic: " + str(e))
+    try:
+        test_bytes_iteration_bitwise()
+        passed += 1
+        print("  PASS test_bytes_iteration_bitwise")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_iteration_bitwise: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_iteration_bitwise: " + str(e))
+    try:
+        test_bytes_iteration_comparison()
+        passed += 1
+        print("  PASS test_bytes_iteration_comparison")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_iteration_comparison: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_iteration_comparison: " + str(e))
+    try:
+        test_bytes_count()
+        passed += 1
+        print("  PASS test_bytes_count")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_count: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_count: " + str(e))
+    try:
+        test_bytes_find()
+        passed += 1
+        print("  PASS test_bytes_find")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_find: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_find: " + str(e))
+    try:
+        test_bytes_startswith_endswith()
+        passed += 1
+        print("  PASS test_bytes_startswith_endswith")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_startswith_endswith: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_startswith_endswith: " + str(e))
+    try:
+        test_bytes_upper_lower()
+        passed += 1
+        print("  PASS test_bytes_upper_lower")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_upper_lower: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_upper_lower: " + str(e))
+    try:
+        test_bytes_strip()
+        passed += 1
+        print("  PASS test_bytes_strip")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_strip: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_strip: " + str(e))
+    try:
+        test_bytes_split()
+        passed += 1
+        print("  PASS test_bytes_split")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_split: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_split: " + str(e))
+    try:
+        test_bytes_join()
+        passed += 1
+        print("  PASS test_bytes_join")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_join: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_join: " + str(e))
+    try:
+        test_bytes_replace()
+        passed += 1
+        print("  PASS test_bytes_replace")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_replace: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_replace: " + str(e))
+    try:
+        test_bytes_reversed_iteration()
+        passed += 1
+        print("  PASS test_bytes_reversed_iteration")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_reversed_iteration: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_reversed_iteration: " + str(e))
+    try:
+        test_bytes_list_comprehension()
+        passed += 1
+        print("  PASS test_bytes_list_comprehension")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_list_comprehension: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_list_comprehension: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0

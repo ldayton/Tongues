@@ -345,31 +345,117 @@ def test_string_conversion() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_i64_to_f64", test_i64_to_f64),
-        ("test_bit_decomposition", test_bit_decomposition),
-        ("test_add_sub", test_add_sub),
-        ("test_mul_div", test_mul_div),
-        ("test_unary_ops", test_unary_ops),
-        ("test_fmod", test_fmod),
-        ("test_comparisons", test_comparisons),
-        ("test_nan_behavior", test_nan_behavior),
-        ("test_infinity_and_zero_edge_cases", test_infinity_and_zero_edge_cases),
-        ("test_conversions_and_rounding", test_conversions_and_rounding),
-        ("test_string_conversion", test_string_conversion),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_i64_to_f64()
+        passed += 1
+        print("  PASS test_i64_to_f64")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_i64_to_f64: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_i64_to_f64: " + str(e))
+    try:
+        test_bit_decomposition()
+        passed += 1
+        print("  PASS test_bit_decomposition")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bit_decomposition: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bit_decomposition: " + str(e))
+    try:
+        test_add_sub()
+        passed += 1
+        print("  PASS test_add_sub")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_add_sub: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_add_sub: " + str(e))
+    try:
+        test_mul_div()
+        passed += 1
+        print("  PASS test_mul_div")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_mul_div: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_mul_div: " + str(e))
+    try:
+        test_unary_ops()
+        passed += 1
+        print("  PASS test_unary_ops")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_unary_ops: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_unary_ops: " + str(e))
+    try:
+        test_fmod()
+        passed += 1
+        print("  PASS test_fmod")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_fmod: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_fmod: " + str(e))
+    try:
+        test_comparisons()
+        passed += 1
+        print("  PASS test_comparisons")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_comparisons: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_comparisons: " + str(e))
+    try:
+        test_nan_behavior()
+        passed += 1
+        print("  PASS test_nan_behavior")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_nan_behavior: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_nan_behavior: " + str(e))
+    try:
+        test_infinity_and_zero_edge_cases()
+        passed += 1
+        print("  PASS test_infinity_and_zero_edge_cases")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_infinity_and_zero_edge_cases: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_infinity_and_zero_edge_cases: " + str(e))
+    try:
+        test_conversions_and_rounding()
+        passed += 1
+        print("  PASS test_conversions_and_rounding")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_conversions_and_rounding: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_conversions_and_rounding: " + str(e))
+    try:
+        test_string_conversion()
+        passed += 1
+        print("  PASS test_string_conversion")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_conversion: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_conversion: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0

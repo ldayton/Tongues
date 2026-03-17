@@ -8,7 +8,6 @@ import pytest
 from tests.harness import (
     RUNTIMES,
     TESTS_DIR,
-    _available_targets,
     discover_app_tests,
     transpile_app,
     transpile_code,
@@ -28,13 +27,13 @@ def pytest_generate_tests(metafunc):
         run = cfg["run"]
         if run == "app" and "app_source" in metafunc.fixturenames:
             target_opt = metafunc.config.getoption("--target", default=None)
-            targets = target_opt if target_opt else _available_targets()
+            targets = target_opt if target_opt else sorted(RUNTIMES)
             tests = discover_app_tests(test_dir, targets)
             params = [pytest.param(path, target, id=tid) for tid, path, target in tests]
             metafunc.parametrize("app_source,app_target", params)
         elif run == "ordering" and "ordering_source" in metafunc.fixturenames:
             target_opt = metafunc.config.getoption("--target", default=None)
-            targets = target_opt if target_opt else _available_targets()
+            targets = target_opt if target_opt else sorted(RUNTIMES)
             ty_files = sorted(test_dir.glob("*.ty"))
             params = []
             for ty in ty_files:

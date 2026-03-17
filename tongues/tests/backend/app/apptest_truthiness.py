@@ -226,40 +226,207 @@ def test_whitespace_string_truthy() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_bool_truthiness", test_bool_truthiness),
-        ("test_int_truthiness", test_int_truthiness),
-        ("test_float_truthiness", test_float_truthiness),
-        ("test_nan_is_truthy", test_nan_is_truthy),
-        ("test_infinity_is_truthy", test_infinity_is_truthy),
-        ("test_string_truthiness", test_string_truthiness),
-        ("test_bytes_truthiness", test_bytes_truthiness),
-        ("test_list_truthiness", test_list_truthiness),
-        ("test_none_truthiness", test_none_truthiness),
-        ("test_not_operator", test_not_operator),
-        ("test_double_not", test_double_not),
-        ("test_and_short_circuit", test_and_short_circuit),
-        ("test_or_short_circuit", test_or_short_circuit),
-        ("test_and_or_combination", test_and_or_combination),
-        ("test_if_expression_truthiness", test_if_expression_truthiness),
-        ("test_comparison_chain_bool", test_comparison_chain_bool),
-        ("test_equality_vs_identity_truthiness", test_equality_vs_identity_truthiness),
-        ("test_zero_vs_none_trap", test_zero_vs_none_trap),
-        ("test_empty_vs_none", test_empty_vs_none),
-        ("test_whitespace_string_truthy", test_whitespace_string_truthy),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_bool_truthiness()
+        passed += 1
+        print("  PASS test_bool_truthiness")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bool_truthiness: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bool_truthiness: " + str(e))
+    try:
+        test_int_truthiness()
+        passed += 1
+        print("  PASS test_int_truthiness")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_int_truthiness: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_int_truthiness: " + str(e))
+    try:
+        test_float_truthiness()
+        passed += 1
+        print("  PASS test_float_truthiness")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_float_truthiness: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_float_truthiness: " + str(e))
+    try:
+        test_nan_is_truthy()
+        passed += 1
+        print("  PASS test_nan_is_truthy")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_nan_is_truthy: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_nan_is_truthy: " + str(e))
+    try:
+        test_infinity_is_truthy()
+        passed += 1
+        print("  PASS test_infinity_is_truthy")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_infinity_is_truthy: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_infinity_is_truthy: " + str(e))
+    try:
+        test_string_truthiness()
+        passed += 1
+        print("  PASS test_string_truthiness")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_truthiness: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_truthiness: " + str(e))
+    try:
+        test_bytes_truthiness()
+        passed += 1
+        print("  PASS test_bytes_truthiness")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_truthiness: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_truthiness: " + str(e))
+    try:
+        test_list_truthiness()
+        passed += 1
+        print("  PASS test_list_truthiness")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_truthiness: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_truthiness: " + str(e))
+    try:
+        test_none_truthiness()
+        passed += 1
+        print("  PASS test_none_truthiness")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_none_truthiness: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_none_truthiness: " + str(e))
+    try:
+        test_not_operator()
+        passed += 1
+        print("  PASS test_not_operator")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_not_operator: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_not_operator: " + str(e))
+    try:
+        test_double_not()
+        passed += 1
+        print("  PASS test_double_not")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_double_not: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_double_not: " + str(e))
+    try:
+        test_and_short_circuit()
+        passed += 1
+        print("  PASS test_and_short_circuit")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_and_short_circuit: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_and_short_circuit: " + str(e))
+    try:
+        test_or_short_circuit()
+        passed += 1
+        print("  PASS test_or_short_circuit")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_or_short_circuit: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_or_short_circuit: " + str(e))
+    try:
+        test_and_or_combination()
+        passed += 1
+        print("  PASS test_and_or_combination")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_and_or_combination: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_and_or_combination: " + str(e))
+    try:
+        test_if_expression_truthiness()
+        passed += 1
+        print("  PASS test_if_expression_truthiness")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_if_expression_truthiness: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_if_expression_truthiness: " + str(e))
+    try:
+        test_comparison_chain_bool()
+        passed += 1
+        print("  PASS test_comparison_chain_bool")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_comparison_chain_bool: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_comparison_chain_bool: " + str(e))
+    try:
+        test_equality_vs_identity_truthiness()
+        passed += 1
+        print("  PASS test_equality_vs_identity_truthiness")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_equality_vs_identity_truthiness: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_equality_vs_identity_truthiness: " + str(e))
+    try:
+        test_zero_vs_none_trap()
+        passed += 1
+        print("  PASS test_zero_vs_none_trap")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_zero_vs_none_trap: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_zero_vs_none_trap: " + str(e))
+    try:
+        test_empty_vs_none()
+        passed += 1
+        print("  PASS test_empty_vs_none")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_empty_vs_none: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_empty_vs_none: " + str(e))
+    try:
+        test_whitespace_string_truthy()
+        passed += 1
+        print("  PASS test_whitespace_string_truthy")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_whitespace_string_truthy: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_whitespace_string_truthy: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0

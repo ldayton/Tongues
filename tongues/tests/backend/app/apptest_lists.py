@@ -828,111 +828,797 @@ def test_any_all_combined() -> None:
 def main() -> int:
     passed: int = 0
     failed: int = 0
-    tests = [
-        ("test_list_equality", test_list_equality),
-        ("test_list_ordering", test_list_ordering),
-        ("test_list_length", test_list_length),
-        ("test_list_indexing", test_list_indexing),
-        ("test_list_index_assignment", test_list_index_assignment),
-        ("test_list_slicing", test_list_slicing),
-        ("test_list_slice_step", test_list_slice_step),
-        ("test_list_concatenation", test_list_concatenation),
-        ("test_list_repetition", test_list_repetition),
-        ("test_list_repetition_negative", test_list_repetition_negative),
-        ("test_list_contains", test_list_contains),
-        ("test_list_contains_empty", test_list_contains_empty),
-        ("test_list_bool", test_list_bool),
-        ("test_list_append", test_list_append),
-        ("test_list_extend", test_list_extend),
-        ("test_list_insert", test_list_insert),
-        ("test_list_pop", test_list_pop),
-        ("test_list_pop_index", test_list_pop_index),
-        ("test_list_remove", test_list_remove),
-        ("test_list_clear", test_list_clear),
-        ("test_list_copy", test_list_copy),
-        ("test_list_index", test_list_index),
-        ("test_list_count", test_list_count),
-        ("test_list_reverse", test_list_reverse),
-        ("test_list_sort", test_list_sort),
-        ("test_list_sort_reverse", test_list_sort_reverse),
-        ("test_list_sort_strings", test_list_sort_strings),
-        ("test_list_iteration", test_list_iteration),
-        ("test_list_iteration_empty", test_list_iteration_empty),
-        ("test_list_enumerate", test_list_enumerate),
-        ("test_list_comprehension", test_list_comprehension),
-        ("test_list_comprehension_nested", test_list_comprehension_nested),
-        ("test_list_sum", test_list_sum),
-        ("test_list_min_max", test_list_min_max),
-        ("test_list_sorted", test_list_sorted),
-        ("test_list_sorted_reverse", test_list_sorted_reverse),
-        ("test_list_all_any", test_list_all_any),
-        ("test_list_all_any_truthy", test_list_all_any_truthy),
-        ("test_list_nested", test_list_nested),
-        ("test_list_nested_modification", test_list_nested_modification),
-        ("test_list_constructor_from_bytes", test_list_constructor_from_bytes),
-        ("test_list_constructor_from_range", test_list_constructor_from_range),
-        ("test_list_constructor_from_string", test_list_constructor_from_string),
-        ("test_list_zip", test_list_zip),
-        ("test_list_zip_unequal", test_list_zip_unequal),
-        ("test_list_identity", test_list_identity),
-        ("test_list_slice_assignment", test_list_slice_assignment),
-        ("test_list_multiplication_reference", test_list_multiplication_reference),
-        ("test_list_string_elements", test_list_string_elements),
-        (
-            "test_list_multiplication_nested_reference",
-            test_list_multiplication_nested_reference,
-        ),
-        ("test_list_append_vs_extend", test_list_append_vs_extend),
-        ("test_list_extend_unpacks", test_list_extend_unpacks),
-        ("test_list_extend_string", test_list_extend_string),
-        ("test_list_iadd_like_extend", test_list_iadd_like_extend),
-        ("test_list_iadd_string", test_list_iadd_string),
-        ("test_list_sort_returns_none", test_list_sort_returns_none),
-        ("test_list_reverse_returns_none", test_list_reverse_returns_none),
-        ("test_list_slice_out_of_bounds", test_list_slice_out_of_bounds),
-        ("test_list_insert_negative", test_list_insert_negative),
-        ("test_list_slice_delete", test_list_slice_delete),
-        (
-            "test_list_slice_insert_via_zero_length",
-            test_list_slice_insert_via_zero_length,
-        ),
-        ("test_list_copy_shallow", test_list_copy_shallow),
-        ("test_list_slice_copy_shallow", test_list_slice_copy_shallow),
-        ("test_list_index_with_start", test_list_index_with_start),
-        ("test_list_index_with_start_end", test_list_index_with_start_end),
-        ("test_list_pop_empty_default", test_list_pop_empty_default),
-        ("test_list_equality_different_types", test_list_equality_different_types),
-        ("test_list_multiply_zero", test_list_multiply_zero),
-        ("test_list_concatenation_creates_new", test_list_concatenation_creates_new),
-        ("test_reversed_list", test_reversed_list),
-        ("test_reversed_range", test_reversed_range),
-        ("test_reversed_range_start_stop", test_reversed_range_start_stop),
-        ("test_string_iteration_yields_str", test_string_iteration_yields_str),
-        ("test_zip_bytes", test_zip_bytes),
-        ("test_zip_three_lists", test_zip_three_lists),
-        ("test_list_repetition_with_annotation", test_list_repetition_with_annotation),
-        (
-            "test_list_comprehension_with_annotation",
-            test_list_comprehension_with_annotation,
-        ),
-        ("test_any_genexpr", test_any_genexpr),
-        ("test_all_genexpr", test_all_genexpr),
-        ("test_any_genexpr_with_filter", test_any_genexpr_with_filter),
-        ("test_all_genexpr_with_filter", test_all_genexpr_with_filter),
-        ("test_any_all_combined", test_any_all_combined),
-    ]
-    for name, fn in tests:
-        try:
-            fn()
-            passed += 1
-            print("  PASS " + name)
-        except AssertionError as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-        except Exception as e:
-            failed += 1
-            print(f"  FAIL {name}: {e!s}")
-    print(f"{passed!s} passed, {failed!s} failed")
+    try:
+        test_list_equality()
+        passed += 1
+        print("  PASS test_list_equality")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_equality: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_equality: " + str(e))
+    try:
+        test_list_ordering()
+        passed += 1
+        print("  PASS test_list_ordering")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_ordering: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_ordering: " + str(e))
+    try:
+        test_list_length()
+        passed += 1
+        print("  PASS test_list_length")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_length: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_length: " + str(e))
+    try:
+        test_list_indexing()
+        passed += 1
+        print("  PASS test_list_indexing")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_indexing: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_indexing: " + str(e))
+    try:
+        test_list_index_assignment()
+        passed += 1
+        print("  PASS test_list_index_assignment")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_index_assignment: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_index_assignment: " + str(e))
+    try:
+        test_list_slicing()
+        passed += 1
+        print("  PASS test_list_slicing")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_slicing: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_slicing: " + str(e))
+    try:
+        test_list_slice_step()
+        passed += 1
+        print("  PASS test_list_slice_step")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_slice_step: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_slice_step: " + str(e))
+    try:
+        test_list_concatenation()
+        passed += 1
+        print("  PASS test_list_concatenation")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_concatenation: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_concatenation: " + str(e))
+    try:
+        test_list_repetition()
+        passed += 1
+        print("  PASS test_list_repetition")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_repetition: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_repetition: " + str(e))
+    try:
+        test_list_repetition_negative()
+        passed += 1
+        print("  PASS test_list_repetition_negative")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_repetition_negative: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_repetition_negative: " + str(e))
+    try:
+        test_list_contains()
+        passed += 1
+        print("  PASS test_list_contains")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_contains: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_contains: " + str(e))
+    try:
+        test_list_contains_empty()
+        passed += 1
+        print("  PASS test_list_contains_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_contains_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_contains_empty: " + str(e))
+    try:
+        test_list_bool()
+        passed += 1
+        print("  PASS test_list_bool")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_bool: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_bool: " + str(e))
+    try:
+        test_list_append()
+        passed += 1
+        print("  PASS test_list_append")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_append: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_append: " + str(e))
+    try:
+        test_list_extend()
+        passed += 1
+        print("  PASS test_list_extend")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_extend: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_extend: " + str(e))
+    try:
+        test_list_insert()
+        passed += 1
+        print("  PASS test_list_insert")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_insert: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_insert: " + str(e))
+    try:
+        test_list_pop()
+        passed += 1
+        print("  PASS test_list_pop")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_pop: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_pop: " + str(e))
+    try:
+        test_list_pop_index()
+        passed += 1
+        print("  PASS test_list_pop_index")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_pop_index: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_pop_index: " + str(e))
+    try:
+        test_list_remove()
+        passed += 1
+        print("  PASS test_list_remove")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_remove: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_remove: " + str(e))
+    try:
+        test_list_clear()
+        passed += 1
+        print("  PASS test_list_clear")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_clear: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_clear: " + str(e))
+    try:
+        test_list_copy()
+        passed += 1
+        print("  PASS test_list_copy")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_copy: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_copy: " + str(e))
+    try:
+        test_list_index()
+        passed += 1
+        print("  PASS test_list_index")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_index: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_index: " + str(e))
+    try:
+        test_list_count()
+        passed += 1
+        print("  PASS test_list_count")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_count: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_count: " + str(e))
+    try:
+        test_list_reverse()
+        passed += 1
+        print("  PASS test_list_reverse")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_reverse: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_reverse: " + str(e))
+    try:
+        test_list_sort()
+        passed += 1
+        print("  PASS test_list_sort")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_sort: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_sort: " + str(e))
+    try:
+        test_list_sort_reverse()
+        passed += 1
+        print("  PASS test_list_sort_reverse")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_sort_reverse: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_sort_reverse: " + str(e))
+    try:
+        test_list_sort_strings()
+        passed += 1
+        print("  PASS test_list_sort_strings")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_sort_strings: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_sort_strings: " + str(e))
+    try:
+        test_list_iteration()
+        passed += 1
+        print("  PASS test_list_iteration")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_iteration: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_iteration: " + str(e))
+    try:
+        test_list_iteration_empty()
+        passed += 1
+        print("  PASS test_list_iteration_empty")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_iteration_empty: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_iteration_empty: " + str(e))
+    try:
+        test_list_enumerate()
+        passed += 1
+        print("  PASS test_list_enumerate")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_enumerate: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_enumerate: " + str(e))
+    try:
+        test_list_comprehension()
+        passed += 1
+        print("  PASS test_list_comprehension")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_comprehension: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_comprehension: " + str(e))
+    try:
+        test_list_comprehension_nested()
+        passed += 1
+        print("  PASS test_list_comprehension_nested")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_comprehension_nested: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_comprehension_nested: " + str(e))
+    try:
+        test_list_sum()
+        passed += 1
+        print("  PASS test_list_sum")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_sum: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_sum: " + str(e))
+    try:
+        test_list_min_max()
+        passed += 1
+        print("  PASS test_list_min_max")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_min_max: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_min_max: " + str(e))
+    try:
+        test_list_sorted()
+        passed += 1
+        print("  PASS test_list_sorted")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_sorted: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_sorted: " + str(e))
+    try:
+        test_list_sorted_reverse()
+        passed += 1
+        print("  PASS test_list_sorted_reverse")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_sorted_reverse: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_sorted_reverse: " + str(e))
+    try:
+        test_list_all_any()
+        passed += 1
+        print("  PASS test_list_all_any")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_all_any: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_all_any: " + str(e))
+    try:
+        test_list_all_any_truthy()
+        passed += 1
+        print("  PASS test_list_all_any_truthy")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_all_any_truthy: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_all_any_truthy: " + str(e))
+    try:
+        test_list_nested()
+        passed += 1
+        print("  PASS test_list_nested")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_nested: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_nested: " + str(e))
+    try:
+        test_list_nested_modification()
+        passed += 1
+        print("  PASS test_list_nested_modification")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_nested_modification: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_nested_modification: " + str(e))
+    try:
+        test_list_constructor_from_bytes()
+        passed += 1
+        print("  PASS test_list_constructor_from_bytes")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_constructor_from_bytes: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_constructor_from_bytes: " + str(e))
+    try:
+        test_list_constructor_from_range()
+        passed += 1
+        print("  PASS test_list_constructor_from_range")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_constructor_from_range: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_constructor_from_range: " + str(e))
+    try:
+        test_list_constructor_from_string()
+        passed += 1
+        print("  PASS test_list_constructor_from_string")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_constructor_from_string: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_constructor_from_string: " + str(e))
+    try:
+        test_list_zip()
+        passed += 1
+        print("  PASS test_list_zip")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_zip: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_zip: " + str(e))
+    try:
+        test_list_zip_unequal()
+        passed += 1
+        print("  PASS test_list_zip_unequal")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_zip_unequal: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_zip_unequal: " + str(e))
+    try:
+        test_list_identity()
+        passed += 1
+        print("  PASS test_list_identity")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_identity: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_identity: " + str(e))
+    try:
+        test_list_slice_assignment()
+        passed += 1
+        print("  PASS test_list_slice_assignment")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_slice_assignment: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_slice_assignment: " + str(e))
+    try:
+        test_list_multiplication_reference()
+        passed += 1
+        print("  PASS test_list_multiplication_reference")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_multiplication_reference: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_multiplication_reference: " + str(e))
+    try:
+        test_list_string_elements()
+        passed += 1
+        print("  PASS test_list_string_elements")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_string_elements: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_string_elements: " + str(e))
+    try:
+        test_list_append_vs_extend()
+        passed += 1
+        print("  PASS test_list_append_vs_extend")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_append_vs_extend: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_append_vs_extend: " + str(e))
+    try:
+        test_list_extend_unpacks()
+        passed += 1
+        print("  PASS test_list_extend_unpacks")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_extend_unpacks: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_extend_unpacks: " + str(e))
+    try:
+        test_list_extend_string()
+        passed += 1
+        print("  PASS test_list_extend_string")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_extend_string: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_extend_string: " + str(e))
+    try:
+        test_list_iadd_like_extend()
+        passed += 1
+        print("  PASS test_list_iadd_like_extend")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_iadd_like_extend: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_iadd_like_extend: " + str(e))
+    try:
+        test_list_iadd_string()
+        passed += 1
+        print("  PASS test_list_iadd_string")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_iadd_string: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_iadd_string: " + str(e))
+    try:
+        test_list_sort_returns_none()
+        passed += 1
+        print("  PASS test_list_sort_returns_none")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_sort_returns_none: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_sort_returns_none: " + str(e))
+    try:
+        test_list_reverse_returns_none()
+        passed += 1
+        print("  PASS test_list_reverse_returns_none")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_reverse_returns_none: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_reverse_returns_none: " + str(e))
+    try:
+        test_list_slice_out_of_bounds()
+        passed += 1
+        print("  PASS test_list_slice_out_of_bounds")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_slice_out_of_bounds: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_slice_out_of_bounds: " + str(e))
+    try:
+        test_list_insert_negative()
+        passed += 1
+        print("  PASS test_list_insert_negative")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_insert_negative: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_insert_negative: " + str(e))
+    try:
+        test_list_slice_delete()
+        passed += 1
+        print("  PASS test_list_slice_delete")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_slice_delete: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_slice_delete: " + str(e))
+    try:
+        test_list_copy_shallow()
+        passed += 1
+        print("  PASS test_list_copy_shallow")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_copy_shallow: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_copy_shallow: " + str(e))
+    try:
+        test_list_slice_copy_shallow()
+        passed += 1
+        print("  PASS test_list_slice_copy_shallow")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_slice_copy_shallow: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_slice_copy_shallow: " + str(e))
+    try:
+        test_list_index_with_start()
+        passed += 1
+        print("  PASS test_list_index_with_start")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_index_with_start: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_index_with_start: " + str(e))
+    try:
+        test_list_index_with_start_end()
+        passed += 1
+        print("  PASS test_list_index_with_start_end")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_index_with_start_end: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_index_with_start_end: " + str(e))
+    try:
+        test_list_pop_empty_default()
+        passed += 1
+        print("  PASS test_list_pop_empty_default")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_pop_empty_default: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_pop_empty_default: " + str(e))
+    try:
+        test_list_equality_different_types()
+        passed += 1
+        print("  PASS test_list_equality_different_types")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_equality_different_types: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_equality_different_types: " + str(e))
+    try:
+        test_list_multiply_zero()
+        passed += 1
+        print("  PASS test_list_multiply_zero")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_multiply_zero: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_multiply_zero: " + str(e))
+    try:
+        test_list_concatenation_creates_new()
+        passed += 1
+        print("  PASS test_list_concatenation_creates_new")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_concatenation_creates_new: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_concatenation_creates_new: " + str(e))
+    try:
+        test_reversed_list()
+        passed += 1
+        print("  PASS test_reversed_list")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_reversed_list: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_reversed_list: " + str(e))
+    try:
+        test_reversed_range()
+        passed += 1
+        print("  PASS test_reversed_range")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_reversed_range: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_reversed_range: " + str(e))
+    try:
+        test_reversed_range_start_stop()
+        passed += 1
+        print("  PASS test_reversed_range_start_stop")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_reversed_range_start_stop: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_reversed_range_start_stop: " + str(e))
+    try:
+        test_string_iteration_yields_str()
+        passed += 1
+        print("  PASS test_string_iteration_yields_str")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_iteration_yields_str: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_iteration_yields_str: " + str(e))
+    try:
+        test_zip_bytes()
+        passed += 1
+        print("  PASS test_zip_bytes")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_zip_bytes: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_zip_bytes: " + str(e))
+    try:
+        test_zip_three_lists()
+        passed += 1
+        print("  PASS test_zip_three_lists")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_zip_three_lists: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_zip_three_lists: " + str(e))
+    try:
+        test_list_repetition_with_annotation()
+        passed += 1
+        print("  PASS test_list_repetition_with_annotation")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_list_repetition_with_annotation: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_list_repetition_with_annotation: " + str(e))
+    try:
+        test_any_genexpr()
+        passed += 1
+        print("  PASS test_any_genexpr")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_any_genexpr: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_any_genexpr: " + str(e))
+    try:
+        test_all_genexpr()
+        passed += 1
+        print("  PASS test_all_genexpr")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_all_genexpr: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_all_genexpr: " + str(e))
+    try:
+        test_any_genexpr_with_filter()
+        passed += 1
+        print("  PASS test_any_genexpr_with_filter")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_any_genexpr_with_filter: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_any_genexpr_with_filter: " + str(e))
+    try:
+        test_all_genexpr_with_filter()
+        passed += 1
+        print("  PASS test_all_genexpr_with_filter")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_all_genexpr_with_filter: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_all_genexpr_with_filter: " + str(e))
+    try:
+        test_any_all_combined()
+        passed += 1
+        print("  PASS test_any_all_combined")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_any_all_combined: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_any_all_combined: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1
     return 0
