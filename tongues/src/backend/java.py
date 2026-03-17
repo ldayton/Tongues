@@ -3721,11 +3721,8 @@ class _JavaEmitter(Emitter):
             elems = self._join_exprs(expr.elements, ", ")
             return "new HashSet<>(Set.of(" + elems + "))"
         if isinstance(expr, TTupleLit):
-            tlit2: TTupleLit = expr
-            elems = self._join_exprs(tlit2.elements, ", ")
-            ann = tlit2.annotations.get("type", "")
-            witness = self._tuple_witness_from_ann(ann)
-            return "Arrays." + witness + "asList(" + elems + ")"
+            elems = self._join_exprs(expr.elements, ", ")
+            return "Arrays.asList(" + elems + ")"
         if isinstance(expr, TFnLit):
             return self._fn_lit(expr)
         if isinstance(expr, TCall):
@@ -5185,9 +5182,9 @@ class _JavaEmitter(Emitter):
         if name == "Values":
             return "new ArrayList<>(" + self._a(args, 0) + ".values())"
         if name == "Items":
-            obj = self._a(args, 0)
+            items_obj = self._a(args, 0)
             return (
-                obj
+                items_obj
                 + ".entrySet().stream().map(e -> Arrays.<Object>asList(e.getKey(), e.getValue())).collect(Collectors.toList())"
             )
         if name == "Remove":
