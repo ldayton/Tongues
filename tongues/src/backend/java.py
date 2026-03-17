@@ -183,6 +183,7 @@ _ISTYPE_MAP: dict[str, str] = {
     "float": "Double",
     "bool": "Boolean",
     "AssertError": "AssertionError",
+    "tuple": "List",
 }
 
 _JAVA_RESERVED = frozenset(
@@ -582,6 +583,8 @@ class _JavaEmitter(Emitter):
                 return "Integer"
             if typ.kind == "bytes":
                 return "byte[]"
+            if typ.kind == "nil" or typ.kind == "void":
+                return "Object"
         # Use List<Object> for tuples when used as map keys (List has proper equals/hashCode)
         if isinstance(typ, TTupleType):
             return "List<Object>"
@@ -1244,7 +1247,7 @@ class _JavaEmitter(Emitter):
         if self._needs_pop_item:
             self._line()
             self._line('@SuppressWarnings("unchecked")')
-            self._line("static <K, V> List<Object> _popItem(LinkedHashMap<K, V> m) {")
+            self._line("static <K, V> List<Object> _popItem(HashMap<K, V> m) {")
             self.indent += 1
             self._line("var it = m.entrySet().iterator();")
             self._line("Map.Entry<K, V> last = null;")
@@ -4684,6 +4687,8 @@ class _JavaEmitter(Emitter):
                 )
             return "java.util.Collections.reverse(" + self._a(args, 0) + ")"
         if name == "Sum":
+            if isinstance(args[0].value, TListLit) and not args[0].value.elements:
+                return "0"
             return self._a(args, 0) + ".stream().mapToInt(Integer::intValue).sum()"
         if name == "Map":
             return "new HashMap<>()"
@@ -5012,7 +5017,11 @@ class _JavaEmitter(Emitter):
         if name == "Values":
             return "new ArrayList<>(" + self._a(args, 0) + ".values())"
         if name == "Items":
-            return self._a(args, 0) + ".entrySet()"
+            obj = self._a(args, 0)
+            return (
+                obj
+                + ".entrySet().stream().map(e -> Arrays.asList(e.getKey(), e.getValue())).collect(Collectors.toList())"
+            )
         if name == "Remove":
             return self._a(args, 0) + ".remove(" + self._a(args, 1) + ")"
         if name == "SplitWhitespace":
