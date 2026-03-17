@@ -597,8 +597,15 @@ class _JavaEmitter(Emitter):
         """Return boxed element type if all tuple elements share the same type."""
         if len(typ.elements) == 0:
             return "Object"
-        first = self._boxed_type(typ.elements[0])
-        for e in typ.elements[1:]:
+        non_nil: list[TType] = [
+            e
+            for e in typ.elements
+            if not (isinstance(e, TPrimitive) and e.kind == "nil")
+        ]
+        if len(non_nil) == 0:
+            return "Object"
+        first = self._boxed_type(non_nil[0])
+        for e in non_nil[1:]:
             if self._boxed_type(e) != first:
                 return "Object"
         return first
@@ -2719,10 +2726,12 @@ class _JavaEmitter(Emitter):
             and isinstance(stmt.iterable.func, TVar)
             and stmt.iterable.func.name == "Items"
         )
-        if is_items and len(binding) == 2:
+        if is_items and len(binding) == 2 and isinstance(stmt.iterable, TCall):
+            items_call: TCall = stmt.iterable
+            map_obj = self._expr(items_call.args[0].value)
             entry_var = "__entry" + str(self._tmp_counter)
             self._tmp_counter += 1
-            self._line("for (var " + entry_var + " : " + iterable_expr + ") {")
+            self._line("for (var " + entry_var + " : " + map_obj + ".entrySet()) {")
             self.indent += 1
             self._line("var " + binding[0] + " = " + entry_var + ".getKey();")
             self._line("var " + binding[1] + " = " + entry_var + ".getValue();")
