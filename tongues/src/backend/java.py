@@ -550,7 +550,9 @@ class _JavaEmitter(Emitter):
         if isinstance(typ, TOptionalType):
             return self._boxed_type(typ.inner)
         if isinstance(typ, TTupleType):
-            return "List<Object>"
+            tup: TTupleType = typ
+            elem_type = self._tuple_element_boxed(tup)
+            return "List<" + elem_type + ">"
         if isinstance(typ, TFuncType):
             return "Function"
         if isinstance(typ, TUnionType):
@@ -585,10 +587,21 @@ class _JavaEmitter(Emitter):
                 return "byte[]"
             if typ.kind == "nil" or typ.kind == "void":
                 return "Object"
-        # Use List<Object> for tuples when used as map keys (List has proper equals/hashCode)
         if isinstance(typ, TTupleType):
-            return "List<Object>"
+            tup2: TTupleType = typ
+            elem_type2 = self._tuple_element_boxed(tup2)
+            return "List<" + elem_type2 + ">"
         return self._type(typ)
+
+    def _tuple_element_boxed(self, typ: TTupleType) -> str:
+        """Return boxed element type if all tuple elements share the same type."""
+        if len(typ.elements) == 0:
+            return "Object"
+        first = self._boxed_type(typ.elements[0])
+        for e in typ.elements[1:]:
+            if self._boxed_type(e) != first:
+                return "Object"
+        return first
 
     def _boxed_from_ann(self, ann: str) -> str:
         """Map a type annotation string to a boxed Java type."""
@@ -601,6 +614,66 @@ class _JavaEmitter(Emitter):
             "byte": "Integer",
         }
         return m.get(ann, "")
+
+    def _parse_map_type_ann(self, ann_str: str) -> tuple[str, str] | None:
+        """Parse 'map[K, V]' annotation and return (BoxedK, BoxedV) or None."""
+        if not ann_str.startswith("map[") or not ann_str.endswith("]"):
+            return None
+        inner = ann_str[4:-1]
+        depth = 0
+        comma_pos = -1
+        for i in range(len(inner)):
+            c = inner[i]
+            if c == "[":
+                depth += 1
+            elif c == "]":
+                depth -= 1
+            elif c == "," and depth == 0:
+                comma_pos = i
+                break
+        if comma_pos < 0:
+            return None
+        k = inner[:comma_pos].strip()
+        v = inner[comma_pos + 1 :].strip()
+        bk = self._boxed_from_ann(k)
+        bv = self._boxed_from_ann(v)
+        if not bk or not bv:
+            return None
+        return (bk, bv)
+
+    def _map_lit_coerce(self, expr: TExpr, expected_type: str) -> str:
+        """Emit a map literal key or value, coercing int→double when needed."""
+        if expected_type == "Double":
+            if isinstance(expr, TIntLit):
+                ilit: TIntLit = expr
+                return str(ilit.value) + ".0"
+        return self._expr(expr)
+
+    def _tuple_witness_from_ann(self, ann: str) -> str:
+        """Get type witness for a tuple literal, e.g. '<Integer>' or '' (none)."""
+        inner = ""
+        if ann.startswith("tuple[") and ann.endswith("]"):
+            inner = ann[6:-1]
+        elif ann.startswith("(") and ann.endswith(")"):
+            inner = ann[1:-1]
+        else:
+            return ""
+        if inner.endswith(", ..."):
+            inner = inner[:-5]
+        parts = self._split_ann_top_level(inner, ", ")
+        if not parts or (len(parts) == 1 and parts[0] == ""):
+            return ""
+        non_nil = [p for p in parts if p != "nil"]
+        if len(non_nil) == 0:
+            return ""
+        first_j = self._java_boxed_from_ann(non_nil[0])
+        if first_j is None:
+            return ""
+        for p in non_nil[1:]:
+            pj = self._java_boxed_from_ann(p)
+            if pj != first_j:
+                return ""
+        return "<" + first_j + ">"
 
     def _expr_type_ann(self, expr: TExpr) -> str:
         """Try to determine the type annotation string for an expression."""
@@ -722,6 +795,11 @@ class _JavaEmitter(Emitter):
             if inner_j is not None:
                 return "ArrayList<" + inner_j + ">"
             return "ArrayList"
+        if ann.startswith("tuple[") or (ann.startswith("(") and ann.endswith(")")):
+            j = self._java_type_from_ann(ann)
+            if j is not None:
+                return j
+            return "List<Object>"
         if ann.startswith("map["):
             inner = ann[4:-1]
             comma = self._find_top_level_comma(inner)
@@ -1829,7 +1907,43 @@ class _JavaEmitter(Emitter):
             if len(non_nil) == 1:
                 return self._java_type_from_ann(non_nil[0])
             return None
+        if ann.startswith("tuple[") and ann.endswith("]"):
+            inner = ann[6:-1]
+            if inner.endswith(", ..."):
+                inner = inner[:-5]
+            parts = self._split_ann_top_level(inner, ", ")
+            if not parts or (len(parts) == 1 and parts[0] == ""):
+                return "List<Object>"
+            first_j = self._java_boxed_from_ann(parts[0])
+            if first_j is None:
+                return "List<Object>"
+            all_same = True
+            for p in parts[1:]:
+                pj = self._java_boxed_from_ann(p)
+                if pj != first_j:
+                    all_same = False
+                    break
+            if all_same:
+                return "List<" + first_j + ">"
+            return "List<Object>"
         if ann.startswith("(") and ann.endswith(")"):
+            inner = ann[1:-1]
+            if inner.endswith(", ..."):
+                inner = inner[:-5]
+            parts = self._split_ann_top_level(inner, ", ")
+            if not parts or (len(parts) == 1 and parts[0] == ""):
+                return "List<Object>"
+            first_j = self._java_boxed_from_ann(parts[0])
+            if first_j is None:
+                return "List<Object>"
+            all_same = True
+            for p in parts[1:]:
+                pj = self._java_boxed_from_ann(p)
+                if pj != first_j:
+                    all_same = False
+                    break
+            if all_same:
+                return "List<" + first_j + ">"
             return "List<Object>"
         return None
 
@@ -1846,6 +1960,12 @@ class _JavaEmitter(Emitter):
         b = _BOXED.get(ann)
         if b is not None:
             return b
+        if " | " in ann:
+            parts = self._split_ann_top_level(ann, " | ")
+            non_nil = [p for p in parts if p != "nil"]
+            if len(non_nil) == 1:
+                return self._java_boxed_from_ann(non_nil[0])
+            return None
         j = self._java_type_from_ann(ann)
         return j
 
@@ -2513,6 +2633,14 @@ class _JavaEmitter(Emitter):
     def _emit_for(self, stmt: TForStmt) -> None:
         ann = stmt.annotations
         binding = [_restore_name(b, ann) for b in stmt.binding]
+        if isinstance(stmt.iterable, TListLit):
+            lit: TListLit = stmt.iterable
+            if len(lit.elements) == 0:
+                return
+        if isinstance(stmt.iterable, TTupleLit):
+            tlit: TTupleLit = stmt.iterable
+            if len(tlit.elements) == 0:
+                return
         if isinstance(stmt.iterable, TRange):
             self._emit_for_range(binding[0], stmt.iterable, stmt.body, ann)
             return
@@ -3555,29 +3683,40 @@ class _JavaEmitter(Emitter):
                 return "new ArrayList<>(Collections.singletonList(" + elems + "))"
             return "new ArrayList<>(List.of(" + elems + "))"
         if isinstance(expr, TMapLit):
-            if not expr.entries:
+            mlit: TMapLit = expr
+            if not mlit.entries:
                 return "new HashMap<>()"
-            if len(expr.entries) <= 10:
-                pairs = ", ".join(
-                    self._expr(k) + ", " + self._expr(v) for k, v in expr.entries
-                )
-                return "new HashMap<>(Map.of(" + pairs + "))"
-            # Map.of() only supports up to 10 entries, use Map.ofEntries() for larger maps
-            entries = ", ".join(
-                "Map.entry(" + self._expr(k) + ", " + self._expr(v) + ")"
-                for k, v in expr.entries
-            )
-            return "new HashMap<>(Map.ofEntries(" + entries + "))"
+            map_ann = mlit.annotations.get("type", "")
+            parsed_map = self._parse_map_type_ann(map_ann)
+            key_coerce = ""
+            val_coerce = ""
+            if parsed_map is not None:
+                key_coerce = parsed_map[0]
+                val_coerce = parsed_map[1]
+            if len(mlit.entries) <= 10:
+                pair_strs: list[str] = []
+                for k, v in mlit.entries:
+                    k_s = self._map_lit_coerce(k, key_coerce)
+                    v_s = self._map_lit_coerce(v, val_coerce)
+                    pair_strs.append(k_s + ", " + v_s)
+                return "new HashMap<>(Map.of(" + ", ".join(pair_strs) + "))"
+            entry_strs: list[str] = []
+            for k, v in mlit.entries:
+                k_s = self._map_lit_coerce(k, key_coerce)
+                v_s = self._map_lit_coerce(v, val_coerce)
+                entry_strs.append("Map.entry(" + k_s + ", " + v_s + ")")
+            return "new HashMap<>(Map.ofEntries(" + ", ".join(entry_strs) + "))"
         if isinstance(expr, TSetLit):
             if not expr.elements:
                 return "new HashSet<>()"
             elems = self._join_exprs(expr.elements, ", ")
             return "new HashSet<>(Set.of(" + elems + "))"
         if isinstance(expr, TTupleLit):
-            elems = self._join_exprs(expr.elements, ", ")
-            # Use Arrays.asList() for proper equals/hashCode when used as map keys
-            # (List.of() doesn't accept null values)
-            return "Arrays.asList(" + elems + ")"
+            tlit2: TTupleLit = expr
+            elems = self._join_exprs(tlit2.elements, ", ")
+            ann = tlit2.annotations.get("type", "")
+            witness = self._tuple_witness_from_ann(ann)
+            return "Arrays." + witness + "asList(" + elems + ")"
         if isinstance(expr, TFnLit):
             return self._fn_lit(expr)
         if isinstance(expr, TCall):
@@ -3822,7 +3961,7 @@ class _JavaEmitter(Emitter):
         if isinstance(expr, TTupleLit):
             return True
         ann = expr.annotations.get("type", "")
-        if ann.startswith("tuple["):
+        if ann.startswith("tuple[") or ann.startswith("("):
             return True
         if isinstance(expr, TVar):
             typ = self.var_types.get(expr.name)
@@ -4000,6 +4139,19 @@ class _JavaEmitter(Emitter):
                     + self._expr(expr.right)
                     + ")"
                 )
+        if op in ("<", "<=", ">", ">=") and (
+            self._is_tuple_expr(expr.left) or self._is_list_expr(expr.left)
+        ):
+            self._needs_list_compare = True
+            return (
+                "_listCompare("
+                + self._expr(expr.left)
+                + ", "
+                + self._expr(expr.right)
+                + ") "
+                + op
+                + " 0"
+            )
         if op in ("<", "<=", ">", ">=") and self._is_string_expr(expr.left):
             return (
                 self._expr(expr.left)
@@ -4516,7 +4668,7 @@ class _JavaEmitter(Emitter):
             if self._is_float_expr(args[0].value):
                 left = self._maybe_paren(args[0].value, "/", is_left=True)
                 right = self._maybe_paren(args[1].value, "/", is_left=False)
-                return "(int) Math.floor(" + left + " / " + right + ")"
+                return "Math.floor(" + left + " / " + right + ")"
             return "Math.floorDiv(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "PythonMod":
             if self._is_float_expr(args[0].value):
@@ -4687,6 +4839,11 @@ class _JavaEmitter(Emitter):
                 )
             return "java.util.Collections.reverse(" + self._a(args, 0) + ")"
         if name == "Sum":
+            first = args[0].value
+            if isinstance(first, TListLit):
+                slit: TListLit = first
+                if len(slit.elements) == 0:
+                    return "0"
             return self._a(args, 0) + ".stream().mapToInt(Integer::intValue).sum()"
         if name == "Map":
             return "new HashMap<>()"
@@ -4700,7 +4857,7 @@ class _JavaEmitter(Emitter):
                 + a
                 + ".size(), "
                 + b
-                + ".size())).mapToObj(i -> Arrays.asList("
+                + ".size())).mapToObj(i -> Arrays.<Object>asList("
                 + a
                 + ".get(i), "
                 + b
@@ -5008,7 +5165,11 @@ class _JavaEmitter(Emitter):
         if name == "IsType":
             type_arg = args[1].value
             if isinstance(type_arg, TStringLit):
-                tn = type_arg.value
+                tsl: TStringLit = type_arg
+                tn = tsl.value
+                arg_ann = args[0].value.annotations.get("type", "")
+                if arg_ann == tn and tn in ("int", "float", "bool", "byte", "rune"):
+                    return "true"
                 tn = _ISTYPE_MAP.get(tn, tn)
                 return self._a(args, 0) + " instanceof " + tn
             return self._a(args, 0) + " instanceof " + self._expr(type_arg)
@@ -5018,7 +5179,7 @@ class _JavaEmitter(Emitter):
             obj = self._a(args, 0)
             return (
                 obj
-                + ".entrySet().stream().map(e -> Arrays.asList(e.getKey(), e.getValue())).collect(Collectors.toList())"
+                + ".entrySet().stream().map(e -> Arrays.<Object>asList(e.getKey(), e.getValue())).collect(Collectors.toList())"
             )
         if name == "Remove":
             return self._a(args, 0) + ".remove(" + self._a(args, 1) + ")"
@@ -5063,9 +5224,21 @@ class _JavaEmitter(Emitter):
             )
         if name == "MapFromPairs":
             pairs = self._a(args, 0)
+            key_cast = ""
+            val_cast = ""
+            if ann is not None:
+                map_ann = ann.get("type", "")
+                parsed = self._parse_map_type_ann(map_ann)
+                if parsed is not None:
+                    key_cast = "(" + parsed[0] + ") "
+                    val_cast = "(" + parsed[1] + ") "
             return (
                 pairs
-                + ".stream().collect(Collectors.toMap(p -> p.get(0), p -> p.get(1), (a, b) -> b, LinkedHashMap::new))"
+                + ".stream().collect(Collectors.toMap(p -> "
+                + key_cast
+                + "p.get(0), p -> "
+                + val_cast
+                + "p.get(1), (a, b) -> b, LinkedHashMap::new))"
             )
         raise NotImplementedError("builtin: " + name)
 
