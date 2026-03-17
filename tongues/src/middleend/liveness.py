@@ -463,7 +463,10 @@ def _analyze_tuple_targets_in_stmts(
                 if stmt.else_body is not None:
                     _analyze_tuple_targets_in_stmts(stmt.else_body, outer)
             case TWhileStmt() | TForStmt():
-                _analyze_tuple_targets_in_stmts(stmt.body, [stmt] + outer)
+                loop_cont: list[TStmt] = [stmt]
+                for o in outer:
+                    loop_cont.append(o)
+                _analyze_tuple_targets_in_stmts(stmt.body, loop_cont)
             case TTryStmt():
                 _analyze_tuple_targets_in_stmts(stmt.body, outer)
                 for catch in stmt.catches:
