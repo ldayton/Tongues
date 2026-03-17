@@ -4687,8 +4687,6 @@ class _JavaEmitter(Emitter):
                 )
             return "java.util.Collections.reverse(" + self._a(args, 0) + ")"
         if name == "Sum":
-            if isinstance(args[0].value, TListLit) and not args[0].value.elements:
-                return "0"
             return self._a(args, 0) + ".stream().mapToInt(Integer::intValue).sum()"
         if name == "Map":
             return "new HashMap<>()"
