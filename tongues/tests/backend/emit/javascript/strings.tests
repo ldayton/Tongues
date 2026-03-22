@@ -1,0 +1,20 @@
+=== strip default whitespace
+s.trim()
+
+=== strip custom chars
+.replace(/^[xy]+|[xy]+$/g, "")
+
+=== lstrip default whitespace
+s.trimStart()
+
+=== rstrip default whitespace
+s.trimEnd()
+
+=== fstring repr conversion
+String(x)
+
+=== fstring str conversion
+String(x)
+
+=== strip regex special chars
+/^[\]\-]+|[\]\-]+$/g

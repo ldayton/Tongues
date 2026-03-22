@@ -1,0 +1,17 @@
+=== any with generator expression
+xs.stream().anyMatch(x -> x > 0)
+
+=== all with generator expression
+xs.stream().allMatch(x -> x > 0)
+
+=== any with generator expression and condition
+xs.stream().filter(x -> x % 2 == 0).anyMatch(x -> x > 0)
+
+=== any with equality comparison
+xs.stream().anyMatch(x -> x == target)
+
+=== any assigns to variable
+boolean found = xs.stream().anyMatch(x -> x > 0);
+
+=== any with dict items tuple unpack
+d.entrySet().stream().anyMatch(e -> e.getValue() > 10)

@@ -1,0 +1,5 @@
+=== isinstance check
+a instanceof Dog
+
+=== isinstance with tuple of types
+a instanceof Dog || a instanceof Cat

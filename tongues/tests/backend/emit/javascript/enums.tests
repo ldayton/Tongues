@@ -1,0 +1,7 @@
+=== StrEnum declaration
+const Color = Object.freeze({
+    RED: "red",
+
+=== IntEnum declaration
+const Priority = Object.freeze({
+    LOW: 0,

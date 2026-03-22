@@ -1,0 +1,2 @@
+=== read file binary mode
+Files.readAllBytes(Path.of(path))
