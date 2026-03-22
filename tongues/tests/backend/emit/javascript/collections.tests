@@ -1,17 +1,17 @@
 === set from dict items
-new Set([...d])
+new Set(d.entries())
 
 === list from dict
-let ks = [...m.keys()]
+const ks = [...d.keys()]
 
 === set from dict
-new Set(m.keys())
+new Set(d.keys())
 
 === list from dict keys method
-let ks = [...m.keys()]
+const ks = [...d.keys()]
 
 === set from dict keys method
-new Set(m.keys())
+new Set(d.keys())
 
 === star unpack two lists
 [...a, ...b]
@@ -54,4 +54,4 @@ for (let ch of s) {
 Array(5).fill(0)
 
 === dict get with default
-(m.get("a") ?? 99)
+(d.get("a") ?? 99)

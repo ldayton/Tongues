@@ -11,7 +11,7 @@ s.trimStart()
 s.trimEnd()
 
 === fstring repr conversion
-String(x)
+JSON.stringify(x)
 
 === fstring str conversion
 String(x)

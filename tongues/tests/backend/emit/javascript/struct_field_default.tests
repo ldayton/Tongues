@@ -1,2 +1,2 @@
 === struct field with struct default
-this.inner = new Inner("ok");
+inner = new Inner()

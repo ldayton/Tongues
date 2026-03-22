@@ -5,7 +5,7 @@ xs.some(x => x > 0)
 xs.every(x => x > 0)
 
 === any with generator expression and condition
-xs.filter(x => x % 2 === 0).some(x => x > 0)
+xs.some(x => ((x % 2) + 2) % 2 === 0 && x > 0)
 
 === any with equality comparison
 xs.some(x => x === target)
@@ -14,4 +14,4 @@ xs.some(x => x === target)
 let found = xs.some(x => x > 0);
 
 === any with dict items tuple unpack
-[...d].some(([k, v]) => v > 10)
+d.some(([k, v]) => v > 10)

@@ -8,7 +8,7 @@ if (!xs.includes(2))
 console.log(String(a && b))
 
 === bitwise operators
-let y = x & 15
+const y = x & 15
 
 === compound assignment operators
 x += 5

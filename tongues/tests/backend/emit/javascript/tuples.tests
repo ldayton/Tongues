@@ -1,6 +1,5 @@
 === tuple assign in if-body used after
-a = __tmp[0];
-b = __tmp[1];
+[a, b] = get_pair();
 
 === tuple assign in if-body one target used after
-a = __tmp[0];
+[a, _] = get_pair();

@@ -12,4 +12,4 @@ x = parseInt(input, 10)
 let x = 0
 
 === Unwrap on optional
-let v = x
+const v = x

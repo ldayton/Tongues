@@ -1231,8 +1231,10 @@ class _JavaScriptEmitter(Emitter):
         safe = _restore_name(stmt.name, stmt.annotations)
         self.var_types[stmt.name] = stmt.typ
         unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
+        is_const = stmt.annotations.get("scope.is_const") == "true"
         if stmt.value is not None and not unused:
-            self._line("let " + safe + " = " + self._expr(stmt.value) + ";")
+            kw = "const" if is_const else "let"
+            self._line(kw + " " + safe + " = " + self._expr(stmt.value) + ";")
         else:
             self._line("let " + safe + ";")
 

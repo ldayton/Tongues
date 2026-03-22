@@ -3,5 +3,4 @@ const Color = Object.freeze({
     RED: "red",
 
 === IntEnum declaration
-const Priority = Object.freeze({
-    LOW: 0,
+const Priority = Object.freeze({LOW: 0,
