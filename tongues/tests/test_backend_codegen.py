@@ -72,12 +72,16 @@ def pytest_generate_tests(metafunc):
         run = cfg["run"]
         if run == "codegen" and "codegen_input" in metafunc.fixturenames:
             _collect_snapshot_tests(
-                metafunc, test_dir, "codegen",
+                metafunc,
+                test_dir,
+                "codegen",
                 "codegen_input,codegen_expected,codegen_lang",
             )
         elif run == "emit" and "emit_input" in metafunc.fixturenames:
             _collect_snapshot_tests(
-                metafunc, test_dir, "emit",
+                metafunc,
+                test_dir,
+                "emit",
                 "emit_input,emit_expected,emit_lang",
             )
 
