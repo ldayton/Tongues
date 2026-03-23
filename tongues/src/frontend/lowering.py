@@ -6874,6 +6874,50 @@ def _build_struct(
             else:
                 own_defaulted.append(f)
         fields = required + own_defaulted + inherited_defaulted
+    # Extract default expressions from __init__ body for defaulted fields
+    if cls_info is not None:
+        param_assigned_fields = set(cls_info.param_to_field.values())
+        init_node: ASTNode | None = None
+        for item in get_nodes(node, "body"):
+            if _is_ast(item, "FunctionDef") and get_str(item, "name") == "__init__":
+                init_node = item
+                break
+        if init_node is not None:
+            init_env = _Env()
+            init_defaults: dict[str, TExpr] = {}
+            for stmt in get_nodes(init_node, "body"):
+                fname: str | None = None
+                value_node: ASTNode | None = None
+                if _is_ast(stmt, "AnnAssign"):
+                    target = get_node(stmt, "target")
+                    if _is_ast(target, "Attribute"):
+                        vn = get_node(target, "value")
+                        if _is_ast(vn, "Name") and get_str(vn, "id") == "self":
+                            fname = get_str(target, "attr")
+                            raw = stmt.get("value")
+                            if raw is not None and not isinstance(raw, JNull):
+                                value_node = (
+                                    raw.entries if isinstance(raw, JDict) else raw
+                                )
+                elif _is_ast(stmt, "Assign"):
+                    targets = get_nodes(stmt, "targets")
+                    if len(targets) == 1 and _is_ast(targets[0], "Attribute"):
+                        vn = get_node(targets[0], "value")
+                        if _is_ast(vn, "Name") and get_str(vn, "id") == "self":
+                            fname = get_str(targets[0], "attr")
+                            value_node = get_node(stmt, "value")
+                if (
+                    fname
+                    and value_node is not None
+                    and fname not in param_assigned_fields
+                ):
+                    try:
+                        init_defaults[fname] = _lower_expr(value_node, init_env, ctx)
+                    except Exception:
+                        pass
+            for f in fields:
+                if f.has_default and f.name in init_defaults:
+                    f.default_expr = init_defaults[f.name]
     # Build methods — own + inherited from ancestors
     methods: list[TFnDecl] = []
     own_method_names: set[str] = set()

@@ -893,6 +893,8 @@ class _JavaEmitter(Emitter):
 
     def _field_default(self, fld: TFieldDecl, in_body: bool = False) -> str:
         """Return the Java default value for a field with has_default=True."""
+        if fld.default_expr is not None:
+            return self._expr(fld.default_expr)
         typ = fld.typ
         if isinstance(typ, TListType):
             return "new ArrayList<>()"
