@@ -2,16 +2,16 @@
 new HashSet<>(d.entrySet())
 
 === list from dict
-new ArrayList<>(m.keySet())
+new ArrayList<>(d.keySet())
 
 === set from dict
-new HashSet<>(m.keySet())
+new HashSet<>(d.keySet())
 
 === list from dict keys method
-new ArrayList<>(m.keySet())
+new ArrayList<>(d.keySet())
 
 === set from dict keys method
-new HashSet<>(m.keySet())
+new HashSet<>(d.keySet())
 
 === star unpack two lists
 new ArrayList<>(a);
@@ -61,4 +61,4 @@ for (char ch : s.toCharArray()) {
 new ArrayList<>(Collections.nCopies(5, 0))
 
 === dict get with default
-m.getOrDefault("a", 99)
+d.getOrDefault("a", 99)

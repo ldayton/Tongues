@@ -2282,8 +2282,11 @@ class _JavaEmitter(Emitter):
         if stmt.annotations.get("intwidth.wide") == "true" and jtype == "int":
             jtype = "long"
             self._wide_vars.add(stmt.name)
+        is_const = stmt.annotations.get("scope.is_const") == "true"
+        qual = "static final " if is_const else "static "
         if stmt.value is not None:
-            # Static field initializers can't call exception-throwing functions
+            # Static field initializers can't call exception-throwing functions;
+            # final also can't be used with the try/catch static block pattern
             if self._expr_contains_call(stmt.value):
                 self._line("static " + jtype + " " + safe + ";")
                 self._line("static {")
@@ -2297,16 +2300,10 @@ class _JavaEmitter(Emitter):
                 self._line("}")
             else:
                 self._line(
-                    "static "
-                    + jtype
-                    + " "
-                    + safe
-                    + " = "
-                    + self._expr(stmt.value)
-                    + ";"
+                    qual + jtype + " " + safe + " = " + self._expr(stmt.value) + ";"
                 )
         else:
-            self._line("static " + jtype + " " + safe + ";")
+            self._line(qual + jtype + " " + safe + ";")
 
     def _emit_let(self, stmt: TLetStmt) -> None:
         safe = _restore_name(stmt.name, stmt.annotations)
@@ -5199,10 +5196,9 @@ class _JavaEmitter(Emitter):
             self._needs_to_byte_array = True
             return "toByteArray(" + self._a(args, 0) + ")"
         if name == "ToRepr":
-            # Float repr doesn't wrap in quotes - just converts to string
-            if self._is_float_expr(args[0].value):
-                return "String.valueOf(" + self._a(args, 0) + ")"
-            return '"\\"" + ' + self._a(args, 0) + ' + "\\""'
+            if self._is_string_expr(args[0].value):
+                return '"\\"" + ' + self._a(args, 0) + ' + "\\""'
+            return "String.valueOf(" + self._a(args, 0) + ")"
         if name == "ReplaceSlice":
             self._needs_replace_slice = True
             return (
@@ -5446,6 +5442,12 @@ class _JavaEmitter(Emitter):
                 return s + ".stripLeading()"
             return s + ".stripTrailing()"
         chars_expr = args[1].value
+        if isinstance(chars_expr, TStringLit) and chars_expr.value == " \t\n\r\x0b\x0c":
+            if mode == "both":
+                return s + ".strip()"
+            if mode == "start":
+                return s + ".stripLeading()"
+            return s + ".stripTrailing()"
         if isinstance(chars_expr, TStringLit) and len(chars_expr.value) == 1:
             ch = chars_expr.value
             esc = (
