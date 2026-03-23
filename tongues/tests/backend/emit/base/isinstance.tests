@@ -28,3 +28,40 @@ def main() -> None:
         print("yes")
 if __name__ == "__main__":
     main()
+
+=== isinstance with str
+def main() -> None:
+    x: str = "hello"
+    if isinstance(x, str):
+        print("yes")
+if __name__ == "__main__":
+    main()
+
+=== isinstance with int
+def main() -> None:
+    x: int = 42
+    if isinstance(x, int):
+        print("yes")
+if __name__ == "__main__":
+    main()
+
+=== isinstance user class shadows builtin name
+import sys
+class List:
+    items: str
+def check(x: List) -> bool:
+    return isinstance(x, List)
+def main() -> None:
+    v: List = List(items="a,b,c")
+    if check(v):
+        print("yes")
+if __name__ == "__main__":
+    main()
+
+=== isinstance tuple of primitives
+def check(x: int) -> bool:
+    return isinstance(x, (str, int))
+def main() -> None:
+    print(str(check(42)))
+if __name__ == "__main__":
+    main()

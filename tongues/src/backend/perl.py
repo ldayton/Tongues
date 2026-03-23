@@ -1866,12 +1866,18 @@ class _PerlEmitter(Emitter):
 
     def _type_match_cond(self, typ: TType, expr: str, is_optional: bool = False) -> str:
         if isinstance(typ, TIdentType):
+            if typ.name in ("str", "string"):
+                return "(!ref(" + expr + ") && !looks_like_number(" + expr + "))"
+            if typ.name in ("int", "float"):
+                return "looks_like_number(" + expr + ")"
+            if typ.name == "bool":
+                return "!ref(" + expr + ")"
+            if typ.name in self.struct_names:
+                return "UNIVERSAL::isa(" + expr + ", '" + typ.name + "')"
             if typ.name in ("dict", "Dict"):
                 return "(ref(" + expr + ") eq 'HASH')"
             if typ.name in ("list", "List"):
                 return "(ref(" + expr + ") eq 'ARRAY')"
-            if typ.name in self.struct_names:
-                return "UNIVERSAL::isa(" + expr + ", '" + typ.name + "')"
             return (
                 "defined("
                 + expr
@@ -3333,16 +3339,18 @@ class _PerlEmitter(Emitter):
             else:
                 type_name = self._expr(type_arg)
             a0 = self._a(args, 0)
-            if type_name in ("dict", "Dict"):
-                return "(ref(" + a0 + ") eq 'HASH')"
-            if type_name in ("list", "List"):
-                return "(ref(" + a0 + ") eq 'ARRAY')"
-            if type_name in ("str", "Str"):
+            if type_name in ("str", "string"):
                 return "(!ref(" + a0 + ") && !looks_like_number(" + a0 + "))"
-            if type_name in ("int", "Int", "float", "Float"):
+            if type_name in ("int", "float"):
                 return "looks_like_number(" + a0 + ")"
-            if type_name in ("bool", "Bool"):
+            if type_name == "bool":
                 return "!ref(" + a0 + ")"
+            if type_name in self.struct_names:
+                return "(UNIVERSAL::isa(" + a0 + ", '" + type_name + "'))"
+            if type_name == "dict":
+                return "(ref(" + a0 + ") eq 'HASH')"
+            if type_name == "list":
+                return "(ref(" + a0 + ") eq 'ARRAY')"
             return "(UNIVERSAL::isa(" + a0 + ", '" + type_name + "'))"
         if name == "Assert":
             cond = self._a(args, 0)

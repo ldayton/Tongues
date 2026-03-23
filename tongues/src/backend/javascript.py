@@ -1976,13 +1976,13 @@ class _JavaScriptEmitter(Emitter):
             if prim is not None:
                 self._line(keyword + " (typeof " + expr_str + ' === "' + prim + '") {')
             else:
+                inst_type = (
+                    type_name
+                    if type_name in self.struct_names
+                    else self._js_instance_type(type_name)
+                )
                 self._line(
-                    keyword
-                    + " ("
-                    + expr_str
-                    + " instanceof "
-                    + self._js_instance_type(type_name)
-                    + ") {"
+                    keyword + " (" + expr_str + " instanceof " + inst_type + ") {"
                 )
             self.indent += 1
             unused = pat.annotations.get("liveness.match_var_unused") == "true"
@@ -2013,7 +2013,7 @@ class _JavaScriptEmitter(Emitter):
     def _js_typeof(self, type_name: str) -> str | None:
         if type_name == "int" or type_name == "float":
             return "number"
-        if type_name == "string":
+        if type_name in ("string", "str"):
             return "string"
         if type_name == "bool":
             return "boolean"
@@ -2281,9 +2281,15 @@ class _JavaScriptEmitter(Emitter):
             types: list[str] = []
             obj = self._flatten_isinstance_tuple(expr, types)
             if obj is not None:
-                parts = [
-                    obj + " instanceof " + self._js_instance_type(t) for t in types
-                ]
+                parts: list[str] = []
+                for t in types:
+                    prim = self._js_typeof(t)
+                    if prim is not None:
+                        parts.append("typeof " + obj + ' === "' + prim + '"')
+                    elif t in self.struct_names:
+                        parts.append(obj + " instanceof " + t)
+                    else:
+                        parts.append(obj + " instanceof " + self._js_instance_type(t))
                 return " || ".join(parts)
         # chained comparison: keep desugared form for JS
         if op == "&&" and expr.annotations.get("provenance") == "chained_comparison":
@@ -3192,6 +3198,8 @@ class _JavaScriptEmitter(Emitter):
             prim = self._js_typeof(type_name)
             if prim is not None:
                 return "typeof " + self._a(args, 0) + ' === "' + prim + '"'
+            if type_name in self.struct_names:
+                return self._a(args, 0) + " instanceof " + type_name
             return self._a(args, 0) + " instanceof " + self._js_instance_type(type_name)
         if name in ("Bytes", "BytesFrom"):
             return "Buffer.from(" + self._a(args, 0) + ")"

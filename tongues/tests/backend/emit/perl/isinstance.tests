@@ -3,3 +3,15 @@
 
 === isinstance with tuple of types
 (UNIVERSAL::isa($a, 'Dog')) || (UNIVERSAL::isa($a, 'Cat'))
+
+=== isinstance with str
+(!ref($x) && !looks_like_number($x))
+
+=== isinstance with int
+looks_like_number($x)
+
+=== isinstance user class shadows builtin name
+(UNIVERSAL::isa($x, 'List'))
+
+=== isinstance tuple of primitives
+(!ref($x) && !looks_like_number($x)) || looks_like_number($x)
