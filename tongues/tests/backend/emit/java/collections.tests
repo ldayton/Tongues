@@ -1,5 +1,5 @@
 === set from dict items
-new HashSet<>(d.entrySet())
+d.entrySet().stream().map(e -> Arrays.<Object>asList(e.getKey(), e.getValue()))
 
 === list from dict
 new ArrayList<>(d.keySet())
