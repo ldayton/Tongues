@@ -2429,15 +2429,72 @@ class _RubyEmitter(Emitter):
         if name == "Join":
             return self._a(args, 1) + ".join(" + self._a(args, 0) + ")"
         if name == "Find":
+            if len(args) == 4:
+                s = (
+                    self._a(args, 0)
+                    + "["
+                    + self._a(args, 2)
+                    + "..."
+                    + self._a(args, 3)
+                    + "]"
+                )
+                return (
+                    "((i = "
+                    + s
+                    + ".index("
+                    + self._a(args, 1)
+                    + ")).nil? ? -1 : i + "
+                    + self._a(args, 2)
+                    + ")"
+                )
+            if len(args) == 3:
+                return (
+                    self._a(args, 0)
+                    + ".index("
+                    + self._a(args, 1)
+                    + ", "
+                    + self._a(args, 2)
+                    + ") || -1"
+                )
             return self._a(args, 0) + ".index(" + self._a(args, 1) + ") || -1"
         if name == "RFind":
+            if len(args) >= 3:
+                pos = self._a(args, 2)
+                s = self._a(args, 0) + "[" + pos + ".."
+                if len(args) == 4:
+                    s = self._a(args, 0) + "[" + pos + "..." + self._a(args, 3) + "]"
+                else:
+                    s += "]"
+                return (
+                    "((i = "
+                    + s
+                    + ".rindex("
+                    + self._a(args, 1)
+                    + ")).nil? ? -1 : i + "
+                    + pos
+                    + ")"
+                )
             return self._a(args, 0) + ".rindex(" + self._a(args, 1) + ") || -1"
         if name == "Count":
+            subj = self._a(args, 0)
+            if len(args) >= 3:
+                subj = subj + "[" + self._a(args, 2) + ".."
+                if len(args) == 4:
+                    subj = (
+                        self._a(args, 0)
+                        + "["
+                        + self._a(args, 2)
+                        + "..."
+                        + self._a(args, 3)
+                        + "]"
+                    )
+                else:
+                    subj += "]"
             if self._is_string_type(args[0].value) or isinstance(
                 args[1].value, TStringLit
             ):
-                return self._a(args, 0) + ".scan(" + self._a(args, 1) + ").length"
-            return self._a(args, 0) + ".count(" + self._a(args, 1) + ")"
+                return subj + ".scan(" + self._a(args, 1) + ").length"
+            return subj + ".count(" + self._a(args, 1) + ")"
         if name == "Replace":
             return (
                 self._a(args, 0)
@@ -2457,8 +2514,36 @@ class _RubyEmitter(Emitter):
                 + ")"
             )
         if name == "StartsWith":
+            if len(args) >= 3:
+                s = self._a(args, 0) + "[" + self._a(args, 2) + ".."
+                if len(args) == 4:
+                    s = (
+                        self._a(args, 0)
+                        + "["
+                        + self._a(args, 2)
+                        + "..."
+                        + self._a(args, 3)
+                        + "]"
+                    )
+                else:
+                    s += "]"
+                return s + ".start_with?(" + self._a(args, 1) + ")"
             return self._a(args, 0) + ".start_with?(" + self._a(args, 1) + ")"
         if name == "EndsWith":
+            if len(args) >= 3:
+                s = self._a(args, 0) + "[" + self._a(args, 2) + ".."
+                if len(args) == 4:
+                    s = (
+                        self._a(args, 0)
+                        + "["
+                        + self._a(args, 2)
+                        + "..."
+                        + self._a(args, 3)
+                        + "]"
+                    )
+                else:
+                    s += "]"
+                return s + ".end_with?(" + self._a(args, 1) + ")"
             return self._a(args, 0) + ".end_with?(" + self._a(args, 1) + ")"
         if name == "IsDigit":
             return self._a(args, 0) + r".match?(/^\d+$/)"

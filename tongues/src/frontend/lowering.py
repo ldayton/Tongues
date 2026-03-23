@@ -3384,9 +3384,9 @@ def _lower_startswith_endswith(
             for part in parts[1:]:
                 result = TBinaryOp(pos, {}, "||", result, part)
             return result
-        # Single argument
-        lowered_arg = _lower_expr(arg, env, ctx)
-        return _make_call(pos, func_name, [obj, lowered_arg])
+        # Single argument, plus optional start/end positional args
+        lowered_all = [_lower_expr(a, env, ctx) for a in args]
+        return _make_call(pos, func_name, [obj] + lowered_all)
     return _make_call(pos, func_name, [obj])
 
 

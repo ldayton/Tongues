@@ -16,5 +16,17 @@ String.valueOf(x)
 === fstring str conversion
 String.valueOf(x)
 
+=== find with start position
+s.indexOf("o", 5)
+
+=== rfind with start position
+_rfindFrom(s, "o", 5)
+
+=== count with start position
+s.substring(2).split("a", -1).length - 1
+
+=== startswith with start position
+s.startsWith("world", 6)
+
 === strip regex special chars
 replaceAll("^[\\]\\-]+|[\\]\\-]+$", "")

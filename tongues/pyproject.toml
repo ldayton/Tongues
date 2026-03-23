@@ -23,6 +23,8 @@ timeout_method = "thread"
 ignore = [
     # E402: Import not at top of file. Backends define helper functions before bulk imports.
     "E402",
+    # E712: Comparison to True/False. App tests are transpiled Python where `== True` is intentional.
+    "E712",
     # E741: Ambiguous variable name (l/O/I). Intentional: `l, r = left, right` in backends.
     "E741",
     # F841: Unused variable. Pattern matching extracts unused bindings: `case Foo(x=x):`

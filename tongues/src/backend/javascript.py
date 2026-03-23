@@ -2715,10 +2715,56 @@ class _JavaScriptEmitter(Emitter):
         if name == "Join":
             return self._a(args, 1) + ".join(" + self._a(args, 0) + ")"
         if name == "Find":
+            if len(args) == 4:
+                return (
+                    "((i) => i === -1 ? -1 : i + "
+                    + self._a(args, 2)
+                    + ")("
+                    + self._a(args, 0)
+                    + ".slice("
+                    + self._a(args, 2)
+                    + ", "
+                    + self._a(args, 3)
+                    + ").indexOf("
+                    + self._a(args, 1)
+                    + "))"
+                )
+            if len(args) == 3:
+                return (
+                    self._a(args, 0)
+                    + ".indexOf("
+                    + self._a(args, 1)
+                    + ", "
+                    + self._a(args, 2)
+                    + ")"
+                )
             return self._a(args, 0) + ".indexOf(" + self._a(args, 1) + ")"
         if name == "RFind":
+            if len(args) >= 3:
+                rfind_s = self._a(args, 0)
+                rfind_sub = self._a(args, 1)
+                rfind_pos = self._a(args, 2)
+                sliced = rfind_s + ".slice(" + rfind_pos
+                if len(args) == 4:
+                    sliced += ", " + self._a(args, 3)
+                sliced += ")"
+                return (
+                    "((i) => i === -1 ? -1 : i + "
+                    + rfind_pos
+                    + ")("
+                    + sliced
+                    + ".lastIndexOf("
+                    + rfind_sub
+                    + "))"
+                )
             return self._a(args, 0) + ".lastIndexOf(" + self._a(args, 1) + ")"
         if name == "Count":
+            if len(args) >= 3:
+                s = self._a(args, 0) + ".slice(" + self._a(args, 2)
+                if len(args) == 4:
+                    s += ", " + self._a(args, 3)
+                s += ")"
+                return s + ".split(" + self._a(args, 1) + ").length - 1"
             return self._a(args, 0) + ".split(" + self._a(args, 1) + ").length - 1"
         if name == "Replace":
             return (
@@ -2739,8 +2785,34 @@ class _JavaScriptEmitter(Emitter):
                 + ")"
             )
         if name == "StartsWith":
+            if len(args) == 4:
+                return (
+                    self._a(args, 0)
+                    + ".slice("
+                    + self._a(args, 2)
+                    + ", "
+                    + self._a(args, 3)
+                    + ").startsWith("
+                    + self._a(args, 1)
+                    + ")"
+                )
+            if len(args) == 3:
+                return (
+                    self._a(args, 0)
+                    + ".startsWith("
+                    + self._a(args, 1)
+                    + ", "
+                    + self._a(args, 2)
+                    + ")"
+                )
             return self._a(args, 0) + ".startsWith(" + self._a(args, 1) + ")"
         if name == "EndsWith":
+            if len(args) >= 3:
+                s = self._a(args, 0) + ".slice(" + self._a(args, 2)
+                if len(args) == 4:
+                    s += ", " + self._a(args, 3)
+                s += ")"
+                return s + ".endsWith(" + self._a(args, 1) + ")"
             return self._a(args, 0) + ".endsWith(" + self._a(args, 1) + ")"
         if name == "IsDigit":
             return "/^\\d+$/.test(" + self._a(args, 0) + ")"

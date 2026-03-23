@@ -2797,19 +2797,66 @@ class _PerlEmitter(Emitter):
         if name == "Join":
             return "join(" + self._a(args, 0) + ", @{" + self._a(args, 1) + "})"
         if name == "Find":
+            if len(args) == 4:
+                return (
+                    "do { my $__i = index(substr("
+                    + self._a(args, 0)
+                    + ", "
+                    + self._a(args, 2)
+                    + ", "
+                    + self._a(args, 3)
+                    + " - "
+                    + self._a(args, 2)
+                    + "), "
+                    + self._a(args, 1)
+                    + "); $__i == -1 ? -1 : $__i + "
+                    + self._a(args, 2)
+                    + " }"
+                )
+            if len(args) == 3:
+                return (
+                    "index("
+                    + self._a(args, 0)
+                    + ", "
+                    + self._a(args, 1)
+                    + ", "
+                    + self._a(args, 2)
+                    + ")"
+                )
             return "index(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "RFind":
+            if len(args) >= 3:
+                start = self._a(args, 2)
+                sliced = "substr(" + self._a(args, 0) + ", " + start
+                if len(args) == 4:
+                    sliced += ", " + self._a(args, 3) + " - " + start
+                sliced += ")"
+                return (
+                    "do { my $__i = rindex("
+                    + sliced
+                    + ", "
+                    + self._a(args, 1)
+                    + "); $__i == -1 ? -1 : $__i + "
+                    + start
+                    + " }"
+                )
             return "rindex(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Count":
             count_arg0: TExpr = args[0].value
             count_arg1: TExpr = args[1].value
+            a0 = self._a(args, 0)
+            if len(args) >= 3:
+                a0 = "substr(" + a0 + ", " + self._a(args, 2)
+                if len(args) == 4:
+                    a0 += ", " + self._a(args, 3) + " - " + self._a(args, 2)
+                a0 += ")"
             if self._is_string_expr(count_arg0) or self._is_bytes_expr(count_arg0):
                 if isinstance(count_arg1, TStringLit):
                     pat = _escape_perl_regex(count_arg1.value)
-                    return "() = " + self._a(args, 0) + " =~ /" + pat + "/g"
+                    return "() = " + a0 + " =~ /" + pat + "/g"
                 return (
                     "do { my $__s = "
-                    + self._a(args, 0)
+                    + a0
                     + "; my $__n = "
                     + self._a(args, 1)
                     + "; my $__c = () = $__s =~ /\\Q$__n\\E/g; $__c }"
@@ -2900,6 +2947,11 @@ class _PerlEmitter(Emitter):
             return "scalar(reverse(" + self._a(args, 0) + "))"
         if name == "StartsWith":
             s = self._a(args, 0)
+            if len(args) >= 3:
+                s = "substr(" + s + ", " + self._a(args, 2)
+                if len(args) == 4:
+                    s += ", " + self._a(args, 3) + " - " + self._a(args, 2)
+                s += ")"
             pfx: TExpr = args[1].value
             if isinstance(pfx, TStringLit):
                 pat = _escape_perl_regex(pfx.value)
@@ -2907,6 +2959,11 @@ class _PerlEmitter(Emitter):
             return "((" + s + " =~ /^\\Q${\\ " + self._a(args, 1) + "}\\E/) ? 1 : 0)"
         if name == "EndsWith":
             s = self._a(args, 0)
+            if len(args) >= 3:
+                s = "substr(" + s + ", " + self._a(args, 2)
+                if len(args) == 4:
+                    s += ", " + self._a(args, 3) + " - " + self._a(args, 2)
+                s += ")"
             sfx: TExpr = args[1].value
             if isinstance(sfx, TStringLit):
                 pat = _escape_perl_regex(sfx.value)

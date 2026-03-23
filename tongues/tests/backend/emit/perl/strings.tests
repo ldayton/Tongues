@@ -16,5 +16,17 @@ sprintf("%s", ("" . $x))
 === fstring str conversion
 sprintf("%s", ("" . $x))
 
+=== find with start position
+index($s, "o", 5)
+
+=== rfind with start position
+rindex(substr($s, 5), "o")
+
+=== count with start position
+substr($s, 2)
+
+=== startswith with start position
+substr($s, 6)
+
 === strip regex special chars
 \]\-

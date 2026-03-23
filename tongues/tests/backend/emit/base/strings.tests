@@ -44,6 +44,34 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== find with start position
+def main() -> None:
+    s: str = "hello world"
+    print(s.find("o", 5))
+if __name__ == "__main__":
+    main()
+
+=== rfind with start position
+def main() -> None:
+    s: str = "hello world"
+    print(s.rfind("o", 5))
+if __name__ == "__main__":
+    main()
+
+=== count with start position
+def main() -> None:
+    s: str = "abcabc"
+    print(s.count("a", 2))
+if __name__ == "__main__":
+    main()
+
+=== startswith with start position
+def main() -> None:
+    s: str = "hello world"
+    print(s.startswith("world", 6))
+if __name__ == "__main__":
+    main()
+
 === strip regex special chars
 def main() -> None:
     s: str = "]-hello-]"

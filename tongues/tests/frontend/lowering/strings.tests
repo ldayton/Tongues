@@ -61,11 +61,32 @@ def f(s: str, sub: str) -> int:
 Find(s, sub)
 ---
 
+=== string find with start position
+def f(s: str, sub: str) -> int:
+    return s.find(sub, 3)
+---
+Find(s, sub, 3)
+---
+
+=== string find with start and end positions
+def f(s: str, sub: str) -> int:
+    return s.find(sub, 3, 7)
+---
+Find(s, sub, 3, 7)
+---
+
 === string rfind
 def f(s: str, sub: str) -> int:
     return s.rfind(sub)
 ---
 RFind(s, sub)
+---
+
+=== string rfind with start position
+def f(s: str, sub: str) -> int:
+    return s.rfind(sub, 3)
+---
+RFind(s, sub, 3)
 ---
 
 === string split on separator
@@ -94,6 +115,27 @@ def f(s: str, sub: str) -> int:
     return s.count(sub)
 ---
 Count(s, sub)
+---
+
+=== string count with start position
+def f(s: str, sub: str) -> int:
+    return s.count(sub, 3)
+---
+Count(s, sub, 3)
+---
+
+=== string count with start and end positions
+def f(s: str, sub: str) -> int:
+    return s.count(sub, 3, 7)
+---
+Count(s, sub, 3, 7)
+---
+
+=== string index with start position
+def f(s: str, sub: str) -> int:
+    return s.index(sub, 3)
+---
+Find(s, sub, 3)
 ---
 
 === string startswith
@@ -199,6 +241,27 @@ def f(s: str) -> bytes:
     return s.encode("utf-8")
 ---
 Encode(s)
+---
+
+=== string startswith with start position
+def f(s: str) -> bool:
+    return s.startswith("pre", 2)
+---
+StartsWith(s, "pre", 2)
+---
+
+=== string endswith with start position
+def f(s: str) -> bool:
+    return s.endswith("suf", 1)
+---
+EndsWith(s, "suf", 1)
+---
+
+=== string startswith with start and end positions
+def f(s: str) -> bool:
+    return s.startswith("pre", 2, 5)
+---
+StartsWith(s, "pre", 2, 5)
 ---
 
 === string startswith tuple

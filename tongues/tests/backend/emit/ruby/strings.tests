@@ -16,5 +16,17 @@
 === fstring str conversion
 "%s" % x.to_s
 
+=== find with start position
+s.index("o", 5)
+
+=== rfind with start position
+s[5..].rindex("o")
+
+=== count with start position
+s[2..].scan("a").length
+
+=== startswith with start position
+s[6..].start_with?("world")
+
 === strip regex special chars
 \]\-
