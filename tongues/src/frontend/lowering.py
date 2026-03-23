@@ -6896,9 +6896,7 @@ def _build_struct(
                             fname = get_str(target, "attr")
                             raw = stmt.get("value")
                             if raw is not None and not isinstance(raw, JNull):
-                                value_node = (
-                                    raw.entries if isinstance(raw, JDict) else raw
-                                )
+                                value_node = get_node(stmt, "value")
                 elif _is_ast(stmt, "Assign"):
                     targets = get_nodes(stmt, "targets")
                     if len(targets) == 1 and _is_ast(targets[0], "Attribute"):
@@ -6907,7 +6905,7 @@ def _build_struct(
                             fname = get_str(targets[0], "attr")
                             value_node = get_node(stmt, "value")
                 if (
-                    fname
+                    fname is not None
                     and value_node is not None
                     and fname not in param_assigned_fields
                 ):

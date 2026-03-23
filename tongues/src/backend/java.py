@@ -2899,9 +2899,12 @@ class _JavaEmitter(Emitter):
     ) -> tuple[str, str] | None:
         """Emit any/all over dict items as entrySet().stream() with entry accessors."""
         body = for_stmt.body
-        if len(body) != 1 or not isinstance(body[0], TIfStmt):
+        if len(body) != 1:
             return None
-        outer_if = body[0]
+        first = body[0]
+        if not isinstance(first, TIfStmt):
+            return None
+        outer_if = first
         if not (
             len(outer_if.then_body) == 2
             and isinstance(outer_if.then_body[0], TAssignStmt)
