@@ -16,6 +16,15 @@ f"{repr(x)}"
 === fstring str conversion
 f"{str(x)}"
 
+=== find with start position
+s.find("o", 5)
+
+=== rfind with start position
+s.rfind("o", 5)
+
+=== count with start position
+s.count("a", 2)
+
 === startswith with start position
 s.startswith("world", 6)
 

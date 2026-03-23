@@ -153,6 +153,15 @@ def test_string_find() -> None:
     assert "hello".find("hello world") == -1
 
 
+def test_string_find_pos() -> None:
+    """find() with start and end positional arguments."""
+    assert "hello world".find("o", 5) == 7
+    assert "hello world".find("o", 5, 7) == -1
+    assert "hello world".find("o", 5, 8) == 7
+    assert "abcabc".find("abc", 1) == 3
+    assert "abcabc".find("abc", 4) == -1
+
+
 def test_string_rfind() -> None:
     """rfind() finds last occurrence."""
     assert "hello".rfind("l") == 3
@@ -160,6 +169,13 @@ def test_string_rfind() -> None:
     assert "hello".rfind("x") == -1
     assert "abcabc".rfind("abc") == 3
     assert "abcabc".rfind("") == 6
+
+
+def test_string_rfind_pos() -> None:
+    """rfind() with start positional argument."""
+    assert "abcabc".rfind("abc", 1) == 3
+    assert "abcabc".rfind("abc", 4) == -1
+    assert "hello world".rfind("o", 5) == 7
 
 
 def test_string_count() -> None:
@@ -171,6 +187,20 @@ def test_string_count() -> None:
     assert "aaa".count("aa") == 1  # non-overlapping
     assert "".count("a") == 0
     assert "hello".count("") == 6  # between each char + ends
+
+
+def test_string_count_pos() -> None:
+    """count() with start and end positional arguments."""
+    assert "abcabc".count("a", 2) == 1
+    assert "abcabc".count("a", 2, 5) == 1
+    assert "abcabc".count("abc", 1) == 1
+    assert "abcabc".count("abc", 1, 5) == 0
+
+
+def test_string_index_pos() -> None:
+    """index() with start positional argument."""
+    assert "hello world".index("o", 5) == 7
+    assert "abcabc".index("abc", 1) == 3
 
 
 def test_string_startswith_endswith() -> None:
@@ -548,6 +578,16 @@ def main() -> int:
         failed += 1
         print("  FAIL test_string_find: " + str(e))
     try:
+        test_string_find_pos()
+        passed += 1
+        print("  PASS test_string_find_pos")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_find_pos: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_find_pos: " + str(e))
+    try:
         test_string_rfind()
         passed += 1
         print("  PASS test_string_rfind")
@@ -558,6 +598,16 @@ def main() -> int:
         failed += 1
         print("  FAIL test_string_rfind: " + str(e))
     try:
+        test_string_rfind_pos()
+        passed += 1
+        print("  PASS test_string_rfind_pos")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_rfind_pos: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_rfind_pos: " + str(e))
+    try:
         test_string_count()
         passed += 1
         print("  PASS test_string_count")
@@ -567,6 +617,26 @@ def main() -> int:
     except Exception as e:
         failed += 1
         print("  FAIL test_string_count: " + str(e))
+    try:
+        test_string_count_pos()
+        passed += 1
+        print("  PASS test_string_count_pos")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_count_pos: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_count_pos: " + str(e))
+    try:
+        test_string_index_pos()
+        passed += 1
+        print("  PASS test_string_index_pos")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_index_pos: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_index_pos: " + str(e))
     try:
         test_string_startswith_endswith()
         passed += 1
