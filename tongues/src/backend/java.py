@@ -3205,13 +3205,14 @@ class _JavaEmitter(Emitter):
             elif step_val == -1:
                 prov = ann.get("provenance", "")
                 if prov == "reversed_range":
+                    low_val = self._static_int(iterable.args[0])
                     high_val = self._static_int(iterable.args[1])
-                    if high_val is not None:
+                    if low_val is not None and high_val is not None:
                         self._line(
                             "for ("
                             + decl
                             + " = "
-                            + low
+                            + str(low_val)
                             + "; "
                             + var_name
                             + " >= "
@@ -5410,6 +5411,13 @@ class _JavaEmitter(Emitter):
             and isinstance(expr.operand, TIntLit)
         ):
             return -expr.operand.value
+        if (
+            isinstance(expr, TBinaryOp)
+            and expr.op == "-"
+            and isinstance(expr.left, TIntLit)
+            and isinstance(expr.right, TIntLit)
+        ):
+            return expr.left.value - expr.right.value
         return None
 
     def _flatten_isinstance_tuple(self, expr: TExpr, types: list[str]) -> str | None:
@@ -5448,14 +5456,16 @@ class _JavaEmitter(Emitter):
             if mode == "start":
                 return s + ".stripLeading()"
             return s + ".stripTrailing()"
-        if isinstance(chars_expr, TStringLit) and len(chars_expr.value) == 1:
-            ch = chars_expr.value
-            esc = (
-                ch.replace("\\", "\\\\")
-                .replace("[", "\\[")
-                .replace("]", "\\]")
-                .replace('"', '\\"')
-            )
+        if isinstance(chars_expr, TStringLit):
+            parts: list[str] = []
+            for ch in chars_expr.value:
+                if ch in ("\\", "[", "]", "^", "-"):
+                    parts.append("\\\\" + ch)
+                elif ch == '"':
+                    parts.append('\\"')
+                else:
+                    parts.append(ch)
+            esc = "".join(parts)
             if mode == "both":
                 return s + '.replaceAll("^[' + esc + "]+|[" + esc + ']+$", "")'
             if mode == "start":
