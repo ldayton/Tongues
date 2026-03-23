@@ -1,5 +1,5 @@
 === isinstance check
-a instanceof Dog
+case Dog dog ->
 
 === isinstance with tuple of types
 a instanceof Dog || a instanceof Cat
