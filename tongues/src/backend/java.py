@@ -1324,7 +1324,9 @@ class _JavaEmitter(Emitter):
             self._emit_bytes_helpers()
         if self._needs_string_pos_helpers:
             self._line()
-            self._line("static int _findInRange(String s, String sub, int start, int end) {")
+            self._line(
+                "static int _findInRange(String s, String sub, int start, int end) {"
+            )
             self.indent += 1
             self._line("int i = s.substring(start, end).indexOf(sub);")
             self._line("return i == -1 ? -1 : i + start;")
@@ -1338,7 +1340,9 @@ class _JavaEmitter(Emitter):
             self.indent -= 1
             self._line("}")
             self._line()
-            self._line("static int _rfindInRange(String s, String sub, int start, int end) {")
+            self._line(
+                "static int _rfindInRange(String s, String sub, int start, int end) {"
+            )
             self.indent += 1
             self._line("int i = s.substring(start, end).lastIndexOf(sub);")
             self._line("return i == -1 ? -1 : i + start;")
@@ -5334,10 +5338,7 @@ class _JavaEmitter(Emitter):
             ):
                 return subj + ".split(" + self._a(args, 1) + ", -1).length - 1"
             return (
-                subj
-                + ".split(Pattern.quote("
-                + self._a(args, 1)
-                + "), -1).length - 1"
+                subj + ".split(Pattern.quote(" + self._a(args, 1) + "), -1).length - 1"
             )
         if name == "FormatInt":
             return (

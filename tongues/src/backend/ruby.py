@@ -2428,9 +2428,22 @@ class _RubyEmitter(Emitter):
             return self._a(args, 1) + ".join(" + self._a(args, 0) + ")"
         if name == "Find":
             if len(args) == 4:
-                s = self._a(args, 0) + "[" + self._a(args, 2) + "..." + self._a(args, 3) + "]"
+                s = (
+                    self._a(args, 0)
+                    + "["
+                    + self._a(args, 2)
+                    + "..."
+                    + self._a(args, 3)
+                    + "]"
+                )
                 return (
-                    "((i = " + s + ".index(" + self._a(args, 1) + ")).nil? ? -1 : i + " + self._a(args, 2) + ")"
+                    "((i = "
+                    + s
+                    + ".index("
+                    + self._a(args, 1)
+                    + ")).nil? ? -1 : i + "
+                    + self._a(args, 2)
+                    + ")"
                 )
             if len(args) == 3:
                 return (
@@ -2451,7 +2464,13 @@ class _RubyEmitter(Emitter):
                 else:
                     s += "]"
                 return (
-                    "((i = " + s + ".rindex(" + self._a(args, 1) + ")).nil? ? -1 : i + " + pos + ")"
+                    "((i = "
+                    + s
+                    + ".rindex("
+                    + self._a(args, 1)
+                    + ")).nil? ? -1 : i + "
+                    + pos
+                    + ")"
                 )
             return self._a(args, 0) + ".rindex(" + self._a(args, 1) + ") || -1"
         if name == "Count":
@@ -2459,7 +2478,14 @@ class _RubyEmitter(Emitter):
             if len(args) >= 3:
                 subj = subj + "[" + self._a(args, 2) + ".."
                 if len(args) == 4:
-                    subj = self._a(args, 0) + "[" + self._a(args, 2) + "..." + self._a(args, 3) + "]"
+                    subj = (
+                        self._a(args, 0)
+                        + "["
+                        + self._a(args, 2)
+                        + "..."
+                        + self._a(args, 3)
+                        + "]"
+                    )
                 else:
                     subj += "]"
             if self._is_string_type(args[0].value) or isinstance(
@@ -2489,7 +2515,14 @@ class _RubyEmitter(Emitter):
             if len(args) >= 3:
                 s = self._a(args, 0) + "[" + self._a(args, 2) + ".."
                 if len(args) == 4:
-                    s = self._a(args, 0) + "[" + self._a(args, 2) + "..." + self._a(args, 3) + "]"
+                    s = (
+                        self._a(args, 0)
+                        + "["
+                        + self._a(args, 2)
+                        + "..."
+                        + self._a(args, 3)
+                        + "]"
+                    )
                 else:
                     s += "]"
                 return s + ".start_with?(" + self._a(args, 1) + ")"
@@ -2498,7 +2531,14 @@ class _RubyEmitter(Emitter):
             if len(args) >= 3:
                 s = self._a(args, 0) + "[" + self._a(args, 2) + ".."
                 if len(args) == 4:
-                    s = self._a(args, 0) + "[" + self._a(args, 2) + "..." + self._a(args, 3) + "]"
+                    s = (
+                        self._a(args, 0)
+                        + "["
+                        + self._a(args, 2)
+                        + "..."
+                        + self._a(args, 3)
+                        + "]"
+                    )
                 else:
                     s += "]"
                 return s + ".end_with?(" + self._a(args, 1) + ")"
