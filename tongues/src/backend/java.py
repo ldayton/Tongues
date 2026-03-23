@@ -2390,7 +2390,7 @@ class _JavaEmitter(Emitter):
         if self._is_divmod_call(stmt.value):
             self._emit_divmod_assign(stmt, unused_indices)
             return
-        tmp = "__tmp" + str(self._tmp_counter)
+        tmp = "__tmp"
         self._tmp_counter += 1
         self._line("var " + tmp + " = " + self._expr(stmt.value) + ";")
         for i, t in enumerate(stmt.targets):
@@ -2405,19 +2405,19 @@ class _JavaEmitter(Emitter):
             if type_ann:
                 cast = self._tuple_cast_type(type_ann)
                 if cast is not None:
-                    rhs = "((" + cast + ") " + rhs + ")"
+                    rhs = "(" + cast + ") " + rhs
                 elif isinstance(t, TVar):
                     vtype2 = self.var_types.get(t.name)
                     if vtype2 is not None:
                         jtype = self._type(vtype2)
                         if jtype != "Object" and jtype != "var":
-                            rhs = "((" + jtype + ") " + rhs + ")"
+                            rhs = "(" + jtype + ") " + rhs
             elif isinstance(t, TVar):
                 vtype = self.var_types.get(t.name)
                 if vtype is not None:
                     jtype = self._type(vtype)
                     if jtype != "Object" and jtype != "var":
-                        rhs = "((" + jtype + ") " + rhs + ")"
+                        rhs = "(" + jtype + ") " + rhs
             self._line(self._expr(t) + " = " + rhs + ";")
 
     def _emit_expr_stmt(self, stmt: TExprStmt) -> None:
