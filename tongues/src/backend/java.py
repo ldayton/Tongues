@@ -5323,6 +5323,9 @@ class _JavaEmitter(Emitter):
             type_arg = args[1].value
             if isinstance(type_arg, TStringLit):
                 tn = type_arg.value
+                arg_ann = args[0].value.annotations.get("type", "")
+                if arg_ann == tn and tn in ("int", "float", "bool", "byte", "rune"):
+                    return "true"
                 tn = _ISTYPE_MAP.get(tn, tn)
                 return self._a(args, 0) + " instanceof " + tn
             return self._a(args, 0) + " instanceof " + self._expr(type_arg)

@@ -14,4 +14,4 @@ x instanceof Integer
 x instanceof List
 
 === isinstance tuple of primitives
-x instanceof String || x instanceof Integer
+x instanceof String || true
