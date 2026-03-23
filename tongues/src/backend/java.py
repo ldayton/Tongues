@@ -893,7 +893,7 @@ class _JavaEmitter(Emitter):
 
     def _field_default(self, fld: TFieldDecl, in_body: bool = False) -> str:
         """Return the Java default value for a field with has_default=True."""
-        if fld.default_expr is not None:
+        if fld.default_expr is not None and not fld.self_ref:
             return self._expr(fld.default_expr)
         typ = fld.typ
         if isinstance(typ, TListType):
@@ -2399,6 +2399,8 @@ class _JavaEmitter(Emitter):
             return
         tmp = "__tmp"
         self._tmp_counter += 1
+        self._line("{")
+        self.indent += 1
         self._line("var " + tmp + " = " + self._expr(stmt.value) + ";")
         for i, t in enumerate(stmt.targets):
             if i in unused_indices:
@@ -2426,6 +2428,8 @@ class _JavaEmitter(Emitter):
                     if jtype != "Object" and jtype != "var":
                         rhs = "(" + jtype + ") " + rhs
             self._line(self._expr(t) + " = " + rhs + ";")
+        self.indent -= 1
+        self._line("}")
 
     def _emit_expr_stmt(self, stmt: TExprStmt) -> None:
         expr = stmt.expr
