@@ -1,5 +1,5 @@
 === struct construction and field access
-let p = new Point(1, 2);
+const p = new Point(1, 2);
 
 === struct method call
 c.inc();

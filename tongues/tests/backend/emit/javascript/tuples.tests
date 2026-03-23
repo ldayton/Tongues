@@ -1,0 +1,5 @@
+=== tuple assign in if-body used after
+[a, b] = get_pair();
+
+=== tuple assign in if-body one target used after
+[a, _] = get_pair();

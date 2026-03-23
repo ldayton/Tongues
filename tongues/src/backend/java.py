@@ -491,6 +491,7 @@ class _JavaEmitter(Emitter):
         self._interface_methods: dict[str, list[TFnDecl]] = {}
         self._interface_fields: dict[str, list[TFieldDecl]] = {}
         self._tmp_counter: int = 0
+        self._mutable_vars: set[str] = set()
 
     def _line(self, text: str = "") -> None:
         _emit_line(self.lines, self.indent, text)
@@ -893,6 +894,8 @@ class _JavaEmitter(Emitter):
 
     def _field_default(self, fld: TFieldDecl, in_body: bool = False) -> str:
         """Return the Java default value for a field with has_default=True."""
+        if fld.default_expr is not None and not fld.self_ref:
+            return self._expr(fld.default_expr)
         typ = fld.typ
         if isinstance(typ, TListType):
             return "new ArrayList<>()"
@@ -1721,6 +1724,7 @@ class _JavaEmitter(Emitter):
         old_ret = self._ret_is_void
         old_ret_type = self._ret_type
         self._tmp_counter = 0
+        self._mutable_vars = set()
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
@@ -1818,6 +1822,7 @@ class _JavaEmitter(Emitter):
         old_ret = self._ret_is_void
         old_ret_type = self._ret_type
         self._tmp_counter = 0
+        self._mutable_vars = set()
         self.self_name = decl.params[0].name if decl.params else None
         method_params = decl.params[1:]
         for p in method_params:
@@ -2027,6 +2032,11 @@ class _JavaEmitter(Emitter):
                     result = self._try_any_all(stmt, next_stmt, prov)
                     if result is not None:
                         lhs, rhs = result
+                        folded = self._fold_any_all(stmts, i, stmt.name, rhs)
+                        if folded is not None:
+                            self._line(folded)
+                            i += 3
+                            continue
                         self._line(lhs + " = " + rhs + ";")
                         i += 2
                         continue
@@ -2282,8 +2292,11 @@ class _JavaEmitter(Emitter):
         if stmt.annotations.get("intwidth.wide") == "true" and jtype == "int":
             jtype = "long"
             self._wide_vars.add(stmt.name)
+        is_const = stmt.annotations.get("scope.is_const") == "true"
+        qual = "static final " if is_const else "static "
         if stmt.value is not None:
-            # Static field initializers can't call exception-throwing functions
+            # Static field initializers can't call exception-throwing functions;
+            # final also can't be used with the try/catch static block pattern
             if self._expr_contains_call(stmt.value):
                 self._line("static " + jtype + " " + safe + ";")
                 self._line("static {")
@@ -2297,20 +2310,16 @@ class _JavaEmitter(Emitter):
                 self._line("}")
             else:
                 self._line(
-                    "static "
-                    + jtype
-                    + " "
-                    + safe
-                    + " = "
-                    + self._expr(stmt.value)
-                    + ";"
+                    qual + jtype + " " + safe + " = " + self._expr(stmt.value) + ";"
                 )
         else:
-            self._line("static " + jtype + " " + safe + ";")
+            self._line(qual + jtype + " " + safe + ";")
 
     def _emit_let(self, stmt: TLetStmt) -> None:
         safe = _restore_name(stmt.name, stmt.annotations)
         self.var_types[stmt.name] = stmt.typ
+        if stmt.annotations.get("scope.is_const") != "true":
+            self._mutable_vars.add(stmt.name)
         unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
         jtype = self._type(stmt.typ)
         if jtype == "void":
@@ -2393,8 +2402,10 @@ class _JavaEmitter(Emitter):
         if self._is_divmod_call(stmt.value):
             self._emit_divmod_assign(stmt, unused_indices)
             return
-        tmp = "__tmp" + str(self._tmp_counter)
+        tmp = "__tmp"
         self._tmp_counter += 1
+        self._line("{")
+        self.indent += 1
         self._line("var " + tmp + " = " + self._expr(stmt.value) + ";")
         for i, t in enumerate(stmt.targets):
             if i in unused_indices:
@@ -2408,20 +2419,22 @@ class _JavaEmitter(Emitter):
             if type_ann:
                 cast = self._tuple_cast_type(type_ann)
                 if cast is not None:
-                    rhs = "((" + cast + ") " + rhs + ")"
+                    rhs = "(" + cast + ") " + rhs
                 elif isinstance(t, TVar):
                     vtype2 = self.var_types.get(t.name)
                     if vtype2 is not None:
                         jtype = self._type(vtype2)
                         if jtype != "Object" and jtype != "var":
-                            rhs = "((" + jtype + ") " + rhs + ")"
+                            rhs = "(" + jtype + ") " + rhs
             elif isinstance(t, TVar):
                 vtype = self.var_types.get(t.name)
                 if vtype is not None:
                     jtype = self._type(vtype)
                     if jtype != "Object" and jtype != "var":
-                        rhs = "((" + jtype + ") " + rhs + ")"
+                        rhs = "(" + jtype + ") " + rhs
             self._line(self._expr(t) + " = " + rhs + ";")
+        self.indent -= 1
+        self._line("}")
 
     def _emit_expr_stmt(self, stmt: TExprStmt) -> None:
         expr = stmt.expr
@@ -2805,10 +2818,17 @@ class _JavaEmitter(Emitter):
         self._line("}")
 
     def _try_any_all(
-        self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
+        self,
+        let_stmt: TLetStmt,
+        for_stmt: TForStmt,
+        prov: str,
     ) -> tuple[str, str] | None:
         """Try to emit any/all as stream expression. Returns (lhs, rhs) or None."""
-        # Tuple bindings require the loop form for proper unpacking
+        # Dict items with 2 bindings: rewrite as entrySet().stream() with entry accessors
+        is_items = self._is_items_call(for_stmt.iterable)
+        is_map = self._is_map_type(for_stmt.iterable)
+        if len(for_stmt.binding) == 2 and (is_items or is_map):
+            return self._try_any_all_items(let_stmt, for_stmt, prov)
         if len(for_stmt.binding) > 1:
             return None
         acc = _safe_name(let_stmt.name)
@@ -2825,6 +2845,7 @@ class _JavaEmitter(Emitter):
         if iter_ann == "string":
             return None
         stream_src = iterable + ".stream()"
+        mutable_vars = self._mutable_vars
         if (
             len(outer_if.then_body) == 2
             and isinstance(outer_if.then_body[0], TAssignStmt)
@@ -2835,6 +2856,8 @@ class _JavaEmitter(Emitter):
             )
             # Lambdas can't throw checked exceptions, so fall back to loop form
             if self._expr_contains_call(cond):
+                return None
+            if self._expr_captures_mutable(cond, binder, mutable_vars):
                 return None
             cond_s = self._expr(cond)
             lhs = "boolean " + acc
@@ -2859,22 +2882,107 @@ class _JavaEmitter(Emitter):
                     cond
                 ):
                     return None
+                if self._expr_captures_mutable(
+                    outer_if.cond, binder, mutable_vars
+                ) or self._expr_captures_mutable(cond, binder, mutable_vars):
+                    return None
                 filter_s = self._expr(outer_if.cond)
                 cond_s = self._expr(cond)
                 lhs = "boolean " + acc
                 rhs = (
                     stream_src
-                    + "."
+                    + ".filter("
+                    + binder
+                    + " -> "
+                    + filter_s
+                    + ")."
                     + func
                     + "("
                     + binder
                     + " -> "
-                    + filter_s
-                    + " && "
                     + cond_s
                     + ")"
                 )
                 return (lhs, rhs)
+        return None
+
+    def _is_items_call(self, expr: TExpr) -> bool:
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "Items"
+        )
+
+    def _try_any_all_items(
+        self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
+    ) -> tuple[str, str] | None:
+        """Emit any/all over dict items as entrySet().stream() with entry accessors."""
+        body = for_stmt.body
+        if len(body) != 1:
+            return None
+        first = body[0]
+        if not isinstance(first, TIfStmt):
+            return None
+        outer_if = first
+        if not (
+            len(outer_if.then_body) == 2
+            and isinstance(outer_if.then_body[0], TAssignStmt)
+            and isinstance(outer_if.then_body[1], TBreakStmt)
+        ):
+            return None
+        cond = self._strip_not(outer_if.cond) if prov == "all_call" else outer_if.cond
+        if self._expr_contains_call(cond):
+            return None
+        if (
+            isinstance(for_stmt.iterable, TCall)
+            and isinstance(for_stmt.iterable.func, TVar)
+            and for_stmt.iterable.func.name == "Items"
+        ):
+            map_obj = self._expr(for_stmt.iterable.args[0].value)
+        else:
+            map_obj = self._expr(for_stmt.iterable)
+        acc = _safe_name(let_stmt.name)
+        key_name = _safe_name(for_stmt.binding[0])
+        val_name = _safe_name(for_stmt.binding[1])
+        entry = "e"
+        old_aliases = self._var_aliases.copy()
+        self._var_aliases[key_name] = entry + ".getKey()"
+        self._var_aliases[val_name] = entry + ".getValue()"
+        cond_s = self._expr(cond)
+        self._var_aliases = old_aliases
+        func = "anyMatch" if prov == "any_call" else "allMatch"
+        lhs = "boolean " + acc
+        rhs = (
+            map_obj
+            + ".entrySet().stream()."
+            + func
+            + "("
+            + entry
+            + " -> "
+            + cond_s
+            + ")"
+        )
+        return (lhs, rhs)
+
+    def _fold_any_all(
+        self, stmts: list[TStmt], i: int, temp_name: str, rhs: str
+    ) -> str | None:
+        """Fold temp variable into the final assignment or return."""
+        if i + 2 >= len(stmts):
+            return None
+        third = stmts[i + 2]
+        if isinstance(third, TLetStmt) and isinstance(third.value, TVar):
+            if third.value.name == temp_name:
+                real = _safe_name(third.name)
+                jtype = self._type(third.typ)
+                return jtype + " " + real + " = " + rhs + ";"
+        if isinstance(third, TReturnStmt) and isinstance(third.value, TVar):
+            if third.value.name == temp_name:
+                return "return " + rhs + ";"
+        if isinstance(third, TAssignStmt) and isinstance(third.value, TVar):
+            if third.value.name == temp_name and isinstance(third.target, TVar):
+                real = _safe_name(third.target.name)
+                return real + " = " + rhs + ";"
         return None
 
     def _try_comprehension_stream(
@@ -3208,13 +3316,14 @@ class _JavaEmitter(Emitter):
             elif step_val == -1:
                 prov = ann.get("provenance", "")
                 if prov == "reversed_range":
+                    low_val = self._static_int(iterable.args[0])
                     high_val = self._static_int(iterable.args[1])
-                    if high_val is not None:
+                    if low_val is not None and high_val is not None:
                         self._line(
                             "for ("
                             + decl
                             + " = "
-                            + low
+                            + str(low_val)
                             + "; "
                             + var_name
                             + " >= "
@@ -3989,9 +4098,51 @@ class _JavaEmitter(Emitter):
                 return True
         return False
 
-    def _expr_contains_call(self, expr: TExpr) -> bool:
-        """Check if an expression contains a function call (recursively)."""
+    def _expr_captures_mutable(
+        self, expr: TExpr, binder: str, mutable_vars: set[str]
+    ) -> bool:
+        """Check if expr references any mutable variable other than the binder."""
+        if isinstance(expr, TVar):
+            return expr.name != binder and expr.name in mutable_vars
         if isinstance(expr, TCall):
+            if any(
+                self._expr_captures_mutable(a.value, binder, mutable_vars)
+                for a in expr.args
+            ):
+                return True
+            if isinstance(expr.func, TFieldAccess):
+                return self._expr_captures_mutable(expr.func.obj, binder, mutable_vars)
+            return False
+        if isinstance(expr, TBinaryOp):
+            return self._expr_captures_mutable(
+                expr.left, binder, mutable_vars
+            ) or self._expr_captures_mutable(expr.right, binder, mutable_vars)
+        if isinstance(expr, TUnaryOp):
+            return self._expr_captures_mutable(expr.operand, binder, mutable_vars)
+        if isinstance(expr, TIndex):
+            return self._expr_captures_mutable(
+                expr.obj, binder, mutable_vars
+            ) or self._expr_captures_mutable(expr.index, binder, mutable_vars)
+        if isinstance(expr, TFieldAccess):
+            return self._expr_captures_mutable(expr.obj, binder, mutable_vars)
+        if isinstance(expr, TTernary):
+            return (
+                self._expr_captures_mutable(expr.cond, binder, mutable_vars)
+                or self._expr_captures_mutable(expr.then_expr, binder, mutable_vars)
+                or self._expr_captures_mutable(expr.else_expr, binder, mutable_vars)
+            )
+        return False
+
+    def _expr_contains_call(self, expr: TExpr) -> bool:
+        """Check if an expression contains a user-defined function call (recursively).
+
+        Builtin calls (not in fn_names) are safe in Java lambdas since they
+        don't throw checked exceptions. Only user-defined functions and method
+        calls are flagged.
+        """
+        if isinstance(expr, TCall):
+            if isinstance(expr.func, TVar) and expr.func.name not in self.fn_names:
+                return any(self._expr_contains_call(a.value) for a in expr.args)
             return True
         if isinstance(expr, TBinaryOp):
             return self._expr_contains_call(expr.left) or self._expr_contains_call(
@@ -5199,10 +5350,9 @@ class _JavaEmitter(Emitter):
             self._needs_to_byte_array = True
             return "toByteArray(" + self._a(args, 0) + ")"
         if name == "ToRepr":
-            # Float repr doesn't wrap in quotes - just converts to string
-            if self._is_float_expr(args[0].value):
-                return "String.valueOf(" + self._a(args, 0) + ")"
-            return '"\\"" + ' + self._a(args, 0) + ' + "\\""'
+            if self._is_string_expr(args[0].value):
+                return '"\\"" + ' + self._a(args, 0) + ' + "\\""'
+            return "String.valueOf(" + self._a(args, 0) + ")"
         if name == "ReplaceSlice":
             self._needs_replace_slice = True
             return (
@@ -5414,6 +5564,13 @@ class _JavaEmitter(Emitter):
             and isinstance(expr.operand, TIntLit)
         ):
             return -expr.operand.value
+        if (
+            isinstance(expr, TBinaryOp)
+            and expr.op == "-"
+            and isinstance(expr.left, TIntLit)
+            and isinstance(expr.right, TIntLit)
+        ):
+            return expr.left.value - expr.right.value
         return None
 
     def _flatten_isinstance_tuple(self, expr: TExpr, types: list[str]) -> str | None:
@@ -5446,14 +5603,24 @@ class _JavaEmitter(Emitter):
                 return s + ".stripLeading()"
             return s + ".stripTrailing()"
         chars_expr = args[1].value
-        if isinstance(chars_expr, TStringLit) and len(chars_expr.value) == 1:
-            ch = chars_expr.value
-            esc = (
-                ch.replace("\\", "\\\\")
-                .replace("[", "\\[")
-                .replace("]", "\\]")
-                .replace('"', '\\"')
-            )
+        if isinstance(chars_expr, TStringLit) and chars_expr.value == " \t\n\r\x0b\x0c":
+            if mode == "both":
+                return s + ".strip()"
+            if mode == "start":
+                return s + ".stripLeading()"
+            return s + ".stripTrailing()"
+        if isinstance(chars_expr, TStringLit):
+            parts: list[str] = []
+            for ch in chars_expr.value:
+                if ch == "\\":
+                    parts.append("\\\\\\\\")
+                elif ch in ("[", "]", "^", "-"):
+                    parts.append("\\\\" + ch)
+                elif ch == '"':
+                    parts.append('\\"')
+                else:
+                    parts.append(ch)
+            esc = "".join(parts)
             if mode == "both":
                 return s + '.replaceAll("^[' + esc + "]+|[" + esc + ']+$", "")'
             if mode == "start":

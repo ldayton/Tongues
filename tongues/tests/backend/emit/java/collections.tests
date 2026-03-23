@@ -1,0 +1,64 @@
+=== set from dict items
+d.entrySet().stream().map(e -> Arrays.<Object>asList(e.getKey(), e.getValue()))
+
+=== list from dict
+new ArrayList<>(d.keySet())
+
+=== set from dict
+new HashSet<>(d.keySet())
+
+=== list from dict keys method
+new ArrayList<>(d.keySet())
+
+=== set from dict keys method
+new HashSet<>(d.keySet())
+
+=== star unpack two lists
+new ArrayList<>(a);
+addAll(b);
+
+=== star unpack element then starred
+new ArrayList<>();
+add(x);
+addAll(rest);
+
+=== star unpack starred then element
+new ArrayList<>(xs);
+add(y);
+
+=== star unpack element starred element
+new ArrayList<>();
+add(x);
+addAll(middle);
+add(y);
+
+=== reversed list for loop
+for (var x : xs.reversed()) {
+
+=== reversed range for loop
+for (int i = 4; i >= 0; i--) {
+
+=== zip two lists for loop
+for (int __i = 0; __i < Math.min(a.size(), b.size()); __i++) {
+    int x = a.get(__i);
+    String y = b.get(__i);
+
+=== zip three lists for loop
+for (int __i = 0; __i < Math.min(a.size(), Math.min(b.size(), c.size())); __i++) {
+    int x = a.get(__i);
+    String y = b.get(__i);
+    double z = c.get(__i);
+
+=== zip bytes for loop
+for (int __i = 0; __i < Math.min(a.length, b.length); __i++) {
+    int x = a[__i];
+    int y = b[__i];
+
+=== string iteration for loop
+for (char ch : s.toCharArray()) {
+
+=== list repetition with annotation
+new ArrayList<>(Collections.nCopies(5, 0))
+
+=== dict get with default
+d.getOrDefault("a", 99)

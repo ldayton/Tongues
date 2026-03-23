@@ -1,0 +1,12 @@
+=== module-level constant
+const GREETING = "hello";
+
+=== module-level frozenset constant
+const WORDS = new Set(["hello", "world"]);
+
+=== module-level struct instance (hierarchy root)
+const DEFAULT_KIND = new SubKind("base", 0);
+
+=== underscore-prefixed constant distinct from non-prefixed
+const ITEMS = new Set(["a", "b"]);
+const _ITEMS = new Set(["c", "d"]);

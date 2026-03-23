@@ -68,12 +68,13 @@ def test_construct_nested() -> None:
     assert isinstance(p.left, Word)
 
 
-def main() -> None:
+def main() -> int:
     test_construct_kind_omitted()
     test_construct_zero_args()
     test_construct_nested()
     print("ok")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

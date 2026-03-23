@@ -1,0 +1,11 @@
+=== module-level constant
+static final String GREETING = "hello";
+
+=== module-level frozenset constant
+Set.of("hello", "world")
+
+=== module-level struct instance (hierarchy root)
+DEFAULT_KIND = new SubKind("base", 0);
+
+=== underscore-prefixed constant distinct from non-prefixed
+Set.of("c", "d")

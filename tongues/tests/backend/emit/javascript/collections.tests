@@ -1,0 +1,57 @@
+=== set from dict items
+new Set(d.entries())
+
+=== list from dict
+const ks = [...d.keys()]
+
+=== set from dict
+new Set(d.keys())
+
+=== list from dict keys method
+const ks = [...d.keys()]
+
+=== set from dict keys method
+new Set(d.keys())
+
+=== star unpack two lists
+[...a, ...b]
+
+=== star unpack element then starred
+[x, ...rest]
+
+=== star unpack starred then element
+[...xs, y]
+
+=== star unpack element starred element
+[x, ...middle, y]
+
+=== reversed list for loop
+for (let x of [...xs].reverse()) {
+
+=== reversed range for loop
+for (let i = 4; i >= 0; i--) {
+
+=== zip two lists for loop
+for (let __i = 0; __i < Math.min(a.length, b.length); __i++) {
+    const x = a[__i];
+    const y = b[__i];
+
+=== zip three lists for loop
+for (let __i = 0; __i < Math.min(a.length, b.length, c.length); __i++) {
+    const x = a[__i];
+    const y = b[__i];
+    const z = c[__i];
+
+=== zip bytes for loop
+for (let __i = 0; __i < Math.min(a.length, b.length); __i++) {
+    const x = a[__i];
+    const y = b[__i];
+
+=== string iteration for loop
+for (let ch of s) {
+
+=== list repetition with annotation
+Array(5).fill(0)
+
+=== dict get with default
+(d.get("a") ?? 99)

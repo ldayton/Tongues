@@ -1,0 +1,6 @@
+=== tuple assign in if-body used after
+a = (String) __tmp.get(0);
+b = (Integer) __tmp.get(1);
+
+=== tuple assign in if-body one target used after
+a = (String) __tmp.get(0);

@@ -158,6 +158,7 @@ class TFieldDecl:
     typ: TType
     has_default: bool = False
     self_ref: bool = False
+    default_expr: "TExpr | None" = None
 
 
 @dataclass

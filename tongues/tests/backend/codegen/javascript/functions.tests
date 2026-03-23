@@ -2,7 +2,7 @@
 return f(x);
 
 === function literal expression body
-let result = apply((x) => x * 2, 10);
+const result = apply((x) => x * 2, 10);
 
 === Main emits as lowercase main
 function main(

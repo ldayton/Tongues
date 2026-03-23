@@ -1,0 +1,11 @@
+=== user-defined exception class
+class ParseError extends Exception {
+
+=== raise bare Exception
+throw new RuntimeException("something went wrong");
+
+=== raise ValueError
+throw new ValueError("bad input");
+
+=== catch bare Exception
+catch (Exception

@@ -1,0 +1,5 @@
+=== StrEnum declaration
+enum Color { RED, GREEN, BLUE }
+
+=== IntEnum declaration
+enum Priority { LOW, MEDIUM, HIGH }

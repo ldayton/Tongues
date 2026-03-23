@@ -2,26 +2,26 @@
 console.log(String(Math.abs(-5)));
 
 === float math functions
-let r = Math.round(3.7);
+const r = Math.round(3.7);
 
 === conversion functions
-let f = 42;
-let n = Math.trunc(3.14);
+const f = 42;
+const n = Math.trunc(3.14);
 
 === ParseInt and ParseFloat
-let n = parseInt("42", 10);
+const n = parseInt("42", 10);
 
 === FormatInt
-let hex = (255).toString(16);
+const hex = (255).toString(16);
 
 === FormatInt octal
-let oct = (255).toString(8);
+const oct = (255).toString(8);
 
 === FormatInt binary
-let bin = (255).toString(2);
+const bin = (255).toString(2);
 
 === RuneToInt and RuneFromInt
-let n = "A".codePointAt(0);
+const n = "A".codePointAt(0);
 
 === IsNaN and IsInf
 console.log(String(Number.isNaN(x)));
@@ -38,28 +38,28 @@ q = Math.trunc(-7 / 2);
 r = -7 - q * 2;
 
 === Sqrt function
-let x = Math.sqrt(2.0);
+const x = Math.sqrt(2.0);
 
 === Floor function
-let n = Math.floor(3.7);
+const n = Math.floor(3.7);
 
 === Ceil function
-let n = Math.ceil(3.2);
+const n = Math.ceil(3.2);
 
 === FloorDiv negative operands
-let q = Math.floor(-7 / 2);
+const q = Math.floor(-7 / 2);
 
 === PythonMod negative dividend
-let r = ((-7 % 2) + 2) % 2;
+const r = ((-7 % 2) + 2) % 2;
 
 === RangeList
-let xs = Array.from({length: 5}, (_, i) => i);
+const xs = Array.from({length: 5}, (_, i) => i);
 
 === RangeList with step
-let xs = Array.from({length: 5}, (_, i) => i * 2);
+const xs = Array.from({length: 5}, (_, i) => i * 2);
 
 === ListFrom bytes
-let xs = [...data];
+const xs = [...data];
 
 === IsNil check
 x === null
