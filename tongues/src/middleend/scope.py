@@ -828,9 +828,16 @@ def analyze_scope(module: TModule, checker: Checker) -> None:
 
     for decl in module.decls:
         match decl:
+            case TLetStmt():
+                base_ctx.bindings[decl.name] = _BindingInfo(
+                    annotations=decl.annotations,
+                    declared_type=checker.resolve_type(decl.typ),
+                    is_param=False,
+                )
             case TFnDecl():
                 _analyze_fn(decl, base_ctx)
             case TStructDecl():
                 st = checker.types.get(decl.name)
                 for method in decl.methods:
                     _analyze_fn(method, base_ctx, self_type=st)
+    _stamp_bindings(base_ctx)

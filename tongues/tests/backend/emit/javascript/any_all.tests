@@ -11,7 +11,7 @@ xs.some(x => ((x % 2) + 2) % 2 === 0 && x > 0)
 xs.some(x => x === target)
 
 === any assigns to variable
-let found = xs.some(x => x > 0);
+const found = xs.some(x => x > 0);
 
 === any with dict items tuple unpack
 d.some(([k, v]) => v > 10)
