@@ -2444,29 +2444,29 @@ class _RubyEmitter(Emitter):
             return self._a(args, 0) + ".index(" + self._a(args, 1) + ") || -1"
         if name == "RFind":
             if len(args) >= 3:
-                start = self._a(args, 2)
-                s = self._a(args, 0) + "[" + start + ".."
+                pos = self._a(args, 2)
+                s = self._a(args, 0) + "[" + pos + ".."
                 if len(args) == 4:
-                    s = self._a(args, 0) + "[" + start + "..." + self._a(args, 3) + "]"
+                    s = self._a(args, 0) + "[" + pos + "..." + self._a(args, 3) + "]"
                 else:
                     s += "]"
                 return (
-                    "((i = " + s + ".rindex(" + self._a(args, 1) + ")).nil? ? -1 : i + " + start + ")"
+                    "((i = " + s + ".rindex(" + self._a(args, 1) + ")).nil? ? -1 : i + " + pos + ")"
                 )
             return self._a(args, 0) + ".rindex(" + self._a(args, 1) + ") || -1"
         if name == "Count":
-            obj = self._a(args, 0)
+            subj = self._a(args, 0)
             if len(args) >= 3:
-                obj = obj + "[" + self._a(args, 2) + ".."
+                subj = subj + "[" + self._a(args, 2) + ".."
                 if len(args) == 4:
-                    obj = self._a(args, 0) + "[" + self._a(args, 2) + "..." + self._a(args, 3) + "]"
+                    subj = self._a(args, 0) + "[" + self._a(args, 2) + "..." + self._a(args, 3) + "]"
                 else:
-                    obj += "]"
+                    subj += "]"
             if self._is_string_type(args[0].value) or isinstance(
                 args[1].value, TStringLit
             ):
-                return obj + ".scan(" + self._a(args, 1) + ").length"
-            return obj + ".count(" + self._a(args, 1) + ")"
+                return subj + ".scan(" + self._a(args, 1) + ").length"
+            return subj + ".count(" + self._a(args, 1) + ")"
         if name == "Replace":
             return (
                 self._a(args, 0)

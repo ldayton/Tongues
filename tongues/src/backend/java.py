@@ -5321,20 +5321,20 @@ class _JavaEmitter(Emitter):
                     + self._a(args, 1)
                     + ")"
                 )
-            obj = self._a(args, 0)
+            subj = self._a(args, 0)
             if len(args) >= 3:
-                obj = obj + ".substring(" + self._a(args, 2)
+                subj = subj + ".substring(" + self._a(args, 2)
                 if len(args) == 4:
-                    obj += ", " + self._a(args, 3)
-                obj += ")"
+                    subj += ", " + self._a(args, 3)
+                subj += ")"
             # Skip Pattern.quote for simple literals without regex metacharacters
             sep_arg = args[1].value
             if isinstance(sep_arg, TStringLit) and not any(
                 c in sep_arg.value for c in r"\.[]{}()*+-?^$|"
             ):
-                return obj + ".split(" + self._a(args, 1) + ", -1).length - 1"
+                return subj + ".split(" + self._a(args, 1) + ", -1).length - 1"
             return (
-                obj
+                subj
                 + ".split(Pattern.quote("
                 + self._a(args, 1)
                 + "), -1).length - 1"

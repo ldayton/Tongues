@@ -2735,20 +2735,20 @@ class _JavaScriptEmitter(Emitter):
             return self._a(args, 0) + ".indexOf(" + self._a(args, 1) + ")"
         if name == "RFind":
             if len(args) >= 3:
-                s = self._a(args, 0)
-                sub = self._a(args, 1)
-                start = self._a(args, 2)
-                sliced = s + ".slice(" + start
+                rfind_s = self._a(args, 0)
+                rfind_sub = self._a(args, 1)
+                rfind_pos = self._a(args, 2)
+                sliced = rfind_s + ".slice(" + rfind_pos
                 if len(args) == 4:
                     sliced += ", " + self._a(args, 3)
                 sliced += ")"
                 return (
                     "((i) => i === -1 ? -1 : i + "
-                    + start
+                    + rfind_pos
                     + ")("
                     + sliced
                     + ".lastIndexOf("
-                    + sub
+                    + rfind_sub
                     + "))"
                 )
             return self._a(args, 0) + ".lastIndexOf(" + self._a(args, 1) + ")"
