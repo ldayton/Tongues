@@ -57,3 +57,11 @@ def main() -> None:
         print("yes")
 if __name__ == "__main__":
     main()
+
+=== isinstance tuple of primitives
+def check(x: int) -> bool:
+    return isinstance(x, (str, int))
+def main() -> None:
+    print(str(check(42)))
+if __name__ == "__main__":
+    main()

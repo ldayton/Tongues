@@ -12,3 +12,6 @@ x.is_a?(Integer)
 
 === isinstance user class shadows builtin name
 x.is_a?(List)
+
+=== isinstance tuple of primitives
+x.is_a?(String) || x.is_a?(Integer)

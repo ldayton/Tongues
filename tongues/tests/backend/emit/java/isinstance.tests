@@ -12,3 +12,6 @@ x instanceof Integer
 
 === isinstance user class shadows builtin name
 x instanceof List
+
+=== isinstance tuple of primitives
+x instanceof String || x instanceof Integer

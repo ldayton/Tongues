@@ -12,3 +12,6 @@ looks_like_number($x)
 
 === isinstance user class shadows builtin name
 (UNIVERSAL::isa($x, 'List'))
+
+=== isinstance tuple of primitives
+(!ref($x) && !looks_like_number($x)) || looks_like_number($x)

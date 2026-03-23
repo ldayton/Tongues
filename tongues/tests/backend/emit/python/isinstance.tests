@@ -12,3 +12,6 @@ isinstance(x, int)
 
 === isinstance user class shadows builtin name
 isinstance(x, List)
+
+=== isinstance tuple of primitives
+isinstance(x, (str, int))

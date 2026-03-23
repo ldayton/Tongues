@@ -12,3 +12,6 @@ typeof x === "number"
 
 === isinstance user class shadows builtin name
 x instanceof List
+
+=== isinstance tuple of primitives
+typeof x === "string" || typeof x === "number"
