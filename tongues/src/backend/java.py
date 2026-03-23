@@ -5612,7 +5612,9 @@ class _JavaEmitter(Emitter):
         if isinstance(chars_expr, TStringLit):
             parts: list[str] = []
             for ch in chars_expr.value:
-                if ch in ("\\", "[", "]", "^", "-"):
+                if ch == "\\":
+                    parts.append("\\\\\\\\")
+                elif ch in ("[", "]", "^", "-"):
                     parts.append("\\\\" + ch)
                 elif ch == '"':
                     parts.append('\\"')
