@@ -2281,9 +2281,15 @@ class _JavaScriptEmitter(Emitter):
             types: list[str] = []
             obj = self._flatten_isinstance_tuple(expr, types)
             if obj is not None:
-                parts = [
-                    obj + " instanceof " + self._js_instance_type(t) for t in types
-                ]
+                parts: list[str] = []
+                for t in types:
+                    prim = self._js_typeof(t)
+                    if prim is not None:
+                        parts.append("typeof " + obj + ' === "' + prim + '"')
+                    elif t in self.struct_names:
+                        parts.append(obj + " instanceof " + t)
+                    else:
+                        parts.append(obj + " instanceof " + self._js_instance_type(t))
                 return " || ".join(parts)
         # chained comparison: keep desugared form for JS
         if op == "&&" and expr.annotations.get("provenance") == "chained_comparison":
