@@ -134,4 +134,4 @@ boolean result = xs.stream().anyMatch(x -> x > 0);
 boolean result = xs.stream().allMatch(x -> x > 0);
 
 === any call with filter (raised)
-boolean result = xs.stream().anyMatch(x -> x % 2 == 0 && x > 0);
+boolean result = xs.stream().filter(x -> x % 2 == 0).anyMatch(x -> x > 0);

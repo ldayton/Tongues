@@ -5,7 +5,7 @@ xs.stream().anyMatch(x -> x > 0)
 xs.stream().allMatch(x -> x > 0)
 
 === any with generator expression and condition
-xs.stream().filter(x -> x % 2 == 0).anyMatch(x -> x > 0)
+xs.stream().filter(x -> Math.floorMod(x, 2) == 0).anyMatch(x -> x > 0)
 
 === any with equality comparison
 xs.stream().anyMatch(x -> x == target)

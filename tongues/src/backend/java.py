@@ -2029,6 +2029,11 @@ class _JavaEmitter(Emitter):
                     result = self._try_any_all(stmt, next_stmt, prov)
                     if result is not None:
                         lhs, rhs = result
+                        folded = self._fold_any_all(stmts, i, stmt.name, rhs)
+                        if folded is not None:
+                            self._line(folded)
+                            i += 3
+                            continue
                         self._line(lhs + " = " + rhs + ";")
                         i += 2
                         continue
@@ -2807,7 +2812,11 @@ class _JavaEmitter(Emitter):
         self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
     ) -> tuple[str, str] | None:
         """Try to emit any/all as stream expression. Returns (lhs, rhs) or None."""
-        # Tuple bindings require the loop form for proper unpacking
+        # Dict items with 2 bindings: rewrite as entrySet().stream() with entry accessors
+        is_items = self._is_items_call(for_stmt.iterable)
+        is_map = self._is_map_type(for_stmt.iterable)
+        if len(for_stmt.binding) == 2 and (is_items or is_map):
+            return self._try_any_all_items(let_stmt, for_stmt, prov)
         if len(for_stmt.binding) > 1:
             return None
         acc = _safe_name(let_stmt.name)
@@ -2863,17 +2872,92 @@ class _JavaEmitter(Emitter):
                 lhs = "boolean " + acc
                 rhs = (
                     stream_src
-                    + "."
+                    + ".filter("
+                    + binder
+                    + " -> "
+                    + filter_s
+                    + ")."
                     + func
                     + "("
                     + binder
                     + " -> "
-                    + filter_s
-                    + " && "
                     + cond_s
                     + ")"
                 )
                 return (lhs, rhs)
+        return None
+
+    def _is_items_call(self, expr: TExpr) -> bool:
+        return (
+            isinstance(expr, TCall)
+            and isinstance(expr.func, TVar)
+            and expr.func.name == "Items"
+        )
+
+    def _try_any_all_items(
+        self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
+    ) -> tuple[str, str] | None:
+        """Emit any/all over dict items as entrySet().stream() with entry accessors."""
+        body = for_stmt.body
+        if len(body) != 1 or not isinstance(body[0], TIfStmt):
+            return None
+        outer_if = body[0]
+        if not (
+            len(outer_if.then_body) == 2
+            and isinstance(outer_if.then_body[0], TAssignStmt)
+            and isinstance(outer_if.then_body[1], TBreakStmt)
+        ):
+            return None
+        cond = self._strip_not(outer_if.cond) if prov == "all_call" else outer_if.cond
+        if self._expr_contains_call(cond):
+            return None
+        if self._is_items_call(for_stmt.iterable):
+            items_call: TCall = for_stmt.iterable  # type: ignore[assignment]
+            map_obj = self._expr(items_call.args[0].value)
+        else:
+            map_obj = self._expr(for_stmt.iterable)
+        acc = _safe_name(let_stmt.name)
+        key_name = _safe_name(for_stmt.binding[0])
+        val_name = _safe_name(for_stmt.binding[1])
+        entry = "e"
+        old_aliases = self._var_aliases.copy()
+        self._var_aliases[key_name] = entry + ".getKey()"
+        self._var_aliases[val_name] = entry + ".getValue()"
+        cond_s = self._expr(cond)
+        self._var_aliases = old_aliases
+        func = "anyMatch" if prov == "any_call" else "allMatch"
+        lhs = "boolean " + acc
+        rhs = (
+            map_obj
+            + ".entrySet().stream()."
+            + func
+            + "("
+            + entry
+            + " -> "
+            + cond_s
+            + ")"
+        )
+        return (lhs, rhs)
+
+    def _fold_any_all(
+        self, stmts: list[TStmt], i: int, temp_name: str, rhs: str
+    ) -> str | None:
+        """Fold temp variable into the final assignment or return."""
+        if i + 2 >= len(stmts):
+            return None
+        third = stmts[i + 2]
+        if isinstance(third, TLetStmt) and isinstance(third.value, TVar):
+            if third.value.name == temp_name:
+                real = _safe_name(third.name)
+                jtype = self._type(third.typ)
+                return jtype + " " + real + " = " + rhs + ";"
+        if isinstance(third, TReturnStmt) and isinstance(third.value, TVar):
+            if third.value.name == temp_name:
+                return "return " + rhs + ";"
+        if isinstance(third, TAssignStmt) and isinstance(third.value, TVar):
+            if third.value.name == temp_name and isinstance(third.target, TVar):
+                real = _safe_name(third.target.name)
+                return real + " = " + rhs + ";"
         return None
 
     def _try_comprehension_stream(
@@ -3990,8 +4074,15 @@ class _JavaEmitter(Emitter):
         return False
 
     def _expr_contains_call(self, expr: TExpr) -> bool:
-        """Check if an expression contains a function call (recursively)."""
+        """Check if an expression contains a user-defined function call (recursively).
+
+        Builtin calls (not in fn_names) are safe in Java lambdas since they
+        don't throw checked exceptions. Only user-defined functions and method
+        calls are flagged.
+        """
         if isinstance(expr, TCall):
+            if isinstance(expr.func, TVar) and expr.func.name not in self.fn_names:
+                return any(self._expr_contains_call(a.value) for a in expr.args)
             return True
         if isinstance(expr, TBinaryOp):
             return self._expr_contains_call(expr.left) or self._expr_contains_call(
