@@ -481,6 +481,7 @@ class _JavaEmitter(Emitter):
         self._needs_pop_item: bool = False
         self._needs_set_pop: bool = False
         self._needs_hex_helper: bool = False
+        self._needs_string_pos_helpers: bool = False
         self._needs_argv: bool = False
         self._needs_throwing_runnable: bool = False
         self._ret_is_void: bool = True
@@ -1321,6 +1322,28 @@ class _JavaEmitter(Emitter):
             self._line("}")
         if self._needs_bytes_helpers:
             self._emit_bytes_helpers()
+        if self._needs_string_pos_helpers:
+            self._line()
+            self._line("static int _findInRange(String s, String sub, int start, int end) {")
+            self.indent += 1
+            self._line("int i = s.substring(start, end).indexOf(sub);")
+            self._line("return i == -1 ? -1 : i + start;")
+            self.indent -= 1
+            self._line("}")
+            self._line()
+            self._line("static int _rfindFrom(String s, String sub, int start) {")
+            self.indent += 1
+            self._line("int i = s.substring(start).lastIndexOf(sub);")
+            self._line("return i == -1 ? -1 : i + start;")
+            self.indent -= 1
+            self._line("}")
+            self._line()
+            self._line("static int _rfindInRange(String s, String sub, int start, int end) {")
+            self.indent += 1
+            self._line("int i = s.substring(start, end).lastIndexOf(sub);")
+            self._line("return i == -1 ? -1 : i + start;")
+            self.indent -= 1
+            self._line("}")
         if self._needs_hex_helper:
             self._line()
             self._line("static String _bytesHex(byte[] data) {")
@@ -5173,6 +5196,26 @@ class _JavaEmitter(Emitter):
                     + self._a(args, 1)
                     + ")"
                 )
+            if len(args) == 4:
+                return (
+                    self._a(args, 0)
+                    + ".substring("
+                    + self._a(args, 2)
+                    + ", "
+                    + self._a(args, 3)
+                    + ").startsWith("
+                    + self._a(args, 1)
+                    + ")"
+                )
+            if len(args) == 3:
+                return (
+                    self._a(args, 0)
+                    + ".startsWith("
+                    + self._a(args, 1)
+                    + ", "
+                    + self._a(args, 2)
+                    + ")"
+                )
             return self._a(args, 0) + ".startsWith(" + self._a(args, 1) + ")"
         if name == "EndsWith":
             if self._is_bytes_expr(args[0].value):
@@ -5180,6 +5223,12 @@ class _JavaEmitter(Emitter):
                 return (
                     "_bytesEndsWith(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
                 )
+            if len(args) >= 3:
+                s = self._a(args, 0) + ".substring(" + self._a(args, 2)
+                if len(args) == 4:
+                    s += ", " + self._a(args, 3)
+                s += ")"
+                return s + ".endsWith(" + self._a(args, 1) + ")"
             return self._a(args, 0) + ".endsWith(" + self._a(args, 1) + ")"
         if name == "Trim":
             if self._is_bytes_expr(args[0].value):
@@ -5202,6 +5251,28 @@ class _JavaEmitter(Emitter):
                 return (
                     "_bytesIndexOf(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
                 )
+            if len(args) == 4:
+                self._needs_string_pos_helpers = True
+                return (
+                    "_findInRange("
+                    + self._a(args, 0)
+                    + ", "
+                    + self._a(args, 1)
+                    + ", "
+                    + self._a(args, 2)
+                    + ", "
+                    + self._a(args, 3)
+                    + ")"
+                )
+            if len(args) == 3:
+                return (
+                    self._a(args, 0)
+                    + ".indexOf("
+                    + self._a(args, 1)
+                    + ", "
+                    + self._a(args, 2)
+                    + ")"
+                )
             return self._a(args, 0) + ".indexOf(" + self._a(args, 1) + ")"
         if name == "RFind":
             if self._is_bytes_expr(args[0].value):
@@ -5211,6 +5282,30 @@ class _JavaEmitter(Emitter):
                     + self._a(args, 0)
                     + ", "
                     + self._a(args, 1)
+                    + ")"
+                )
+            if len(args) == 4:
+                self._needs_string_pos_helpers = True
+                return (
+                    "_rfindInRange("
+                    + self._a(args, 0)
+                    + ", "
+                    + self._a(args, 1)
+                    + ", "
+                    + self._a(args, 2)
+                    + ", "
+                    + self._a(args, 3)
+                    + ")"
+                )
+            if len(args) == 3:
+                self._needs_string_pos_helpers = True
+                return (
+                    "_rfindFrom("
+                    + self._a(args, 0)
+                    + ", "
+                    + self._a(args, 1)
+                    + ", "
+                    + self._a(args, 2)
                     + ")"
                 )
             return self._a(args, 0) + ".lastIndexOf(" + self._a(args, 1) + ")"
@@ -5226,16 +5321,20 @@ class _JavaEmitter(Emitter):
                     + self._a(args, 1)
                     + ")"
                 )
+            obj = self._a(args, 0)
+            if len(args) >= 3:
+                obj = obj + ".substring(" + self._a(args, 2)
+                if len(args) == 4:
+                    obj += ", " + self._a(args, 3)
+                obj += ")"
             # Skip Pattern.quote for simple literals without regex metacharacters
             sep_arg = args[1].value
             if isinstance(sep_arg, TStringLit) and not any(
                 c in sep_arg.value for c in r"\.[]{}()*+-?^$|"
             ):
-                return (
-                    self._a(args, 0) + ".split(" + self._a(args, 1) + ", -1).length - 1"
-                )
+                return obj + ".split(" + self._a(args, 1) + ", -1).length - 1"
             return (
-                self._a(args, 0)
+                obj
                 + ".split(Pattern.quote("
                 + self._a(args, 1)
                 + "), -1).length - 1"

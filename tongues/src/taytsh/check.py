@@ -4516,7 +4516,7 @@ class Checker:
                 return BYTES_T
             return STRING_T
         if name in ("Find", "RFind"):
-            if not _bctx_require(ctx, 2):
+            if not _bctx_require_range(ctx, 2, 4):
                 return None
             t = _bctx_arg(ctx, 0)
             if (
@@ -4528,7 +4528,7 @@ class Checker:
                 self.error(name + " requires string or bytes as first argument", pos)
             return INT_T
         if name == "Count":
-            if not _bctx_require(ctx, 2):
+            if not _bctx_require_range(ctx, 2, 4):
                 return None
             t = _bctx_arg(ctx, 0)
             if t is not None and t.kind != TY_ERROR:
@@ -4573,7 +4573,7 @@ class Checker:
                 return BYTES_T
             return STRING_T
         if name in ("StartsWith", "EndsWith"):
-            if not _bctx_require(ctx, 2):
+            if not _bctx_require_range(ctx, 2, 4):
                 return None
             t = _bctx_arg(ctx, 0)
             if (

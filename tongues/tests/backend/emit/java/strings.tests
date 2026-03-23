@@ -20,7 +20,7 @@ String.valueOf(x)
 s.indexOf("o", 5)
 
 === rfind with start position
-s.substring(5).lastIndexOf("o")
+_rfindFrom(s, "o", 5)
 
 === count with start position
 s.substring(2).split("a", -1).length - 1

@@ -1845,11 +1845,14 @@ class _PythonEmitter(Emitter):
         if name == "Join":
             return self._a(args, 0) + ".join(" + self._a(args, 1) + ")"
         if name == "Find":
-            return self._a(args, 0) + ".find(" + self._a(args, 1) + ")"
+            extra = "".join(", " + self._a(args, i) for i in range(2, len(args)))
+            return self._a(args, 0) + ".find(" + self._a(args, 1) + extra + ")"
         if name == "RFind":
-            return self._a(args, 0) + ".rfind(" + self._a(args, 1) + ")"
+            extra = "".join(", " + self._a(args, i) for i in range(2, len(args)))
+            return self._a(args, 0) + ".rfind(" + self._a(args, 1) + extra + ")"
         if name == "Count":
-            return self._a(args, 0) + ".count(" + self._a(args, 1) + ")"
+            extra = "".join(", " + self._a(args, i) for i in range(2, len(args)))
+            return self._a(args, 0) + ".count(" + self._a(args, 1) + extra + ")"
         if name == "Replace":
             return (
                 self._a(args, 0)
@@ -1871,9 +1874,11 @@ class _PythonEmitter(Emitter):
                 + ")"
             )
         if name == "StartsWith":
-            return self._a(args, 0) + ".startswith(" + self._a(args, 1) + ")"
+            extra = "".join(", " + self._a(args, i) for i in range(2, len(args)))
+            return self._a(args, 0) + ".startswith(" + self._a(args, 1) + extra + ")"
         if name == "EndsWith":
-            return self._a(args, 0) + ".endswith(" + self._a(args, 1) + ")"
+            extra = "".join(", " + self._a(args, i) for i in range(2, len(args)))
+            return self._a(args, 0) + ".endswith(" + self._a(args, 1) + extra + ")"
         if name == "IsDigit":
             return self._a(args, 0) + ".isdigit()"
         if name == "IsAlpha":
