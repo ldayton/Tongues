@@ -2911,9 +2911,12 @@ class _JavaEmitter(Emitter):
         cond = self._strip_not(outer_if.cond) if prov == "all_call" else outer_if.cond
         if self._expr_contains_call(cond):
             return None
-        if self._is_items_call(for_stmt.iterable):
-            items_call: TCall = for_stmt.iterable  # type: ignore[assignment]
-            map_obj = self._expr(items_call.args[0].value)
+        if (
+            isinstance(for_stmt.iterable, TCall)
+            and isinstance(for_stmt.iterable.func, TVar)
+            and for_stmt.iterable.func.name == "Items"
+        ):
+            map_obj = self._expr(for_stmt.iterable.args[0].value)
         else:
             map_obj = self._expr(for_stmt.iterable)
         acc = _safe_name(let_stmt.name)
