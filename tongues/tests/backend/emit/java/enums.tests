@@ -1,6 +1,6 @@
 === StrEnum declaration
 enum Color {
-    RED("red"),
+    RED(0),
 
 === IntEnum declaration
 enum Priority {
