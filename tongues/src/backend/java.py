@@ -491,6 +491,7 @@ class _JavaEmitter(Emitter):
         self._interface_methods: dict[str, list[TFnDecl]] = {}
         self._interface_fields: dict[str, list[TFieldDecl]] = {}
         self._tmp_counter: int = 0
+        self._mutable_vars: set[str] = set()
 
     def _line(self, text: str = "") -> None:
         _emit_line(self.lines, self.indent, text)
@@ -1723,6 +1724,7 @@ class _JavaEmitter(Emitter):
         old_ret = self._ret_is_void
         old_ret_type = self._ret_type
         self._tmp_counter = 0
+        self._mutable_vars = set()
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
@@ -1820,6 +1822,7 @@ class _JavaEmitter(Emitter):
         old_ret = self._ret_is_void
         old_ret_type = self._ret_type
         self._tmp_counter = 0
+        self._mutable_vars = set()
         self.self_name = decl.params[0].name if decl.params else None
         method_params = decl.params[1:]
         for p in method_params:
@@ -2315,6 +2318,8 @@ class _JavaEmitter(Emitter):
     def _emit_let(self, stmt: TLetStmt) -> None:
         safe = _restore_name(stmt.name, stmt.annotations)
         self.var_types[stmt.name] = stmt.typ
+        if stmt.annotations.get("scope.is_const") != "true":
+            self._mutable_vars.add(stmt.name)
         unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
         jtype = self._type(stmt.typ)
         if jtype == "void":
@@ -2813,7 +2818,10 @@ class _JavaEmitter(Emitter):
         self._line("}")
 
     def _try_any_all(
-        self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
+        self,
+        let_stmt: TLetStmt,
+        for_stmt: TForStmt,
+        prov: str,
     ) -> tuple[str, str] | None:
         """Try to emit any/all as stream expression. Returns (lhs, rhs) or None."""
         # Dict items with 2 bindings: rewrite as entrySet().stream() with entry accessors
@@ -2837,6 +2845,7 @@ class _JavaEmitter(Emitter):
         if iter_ann == "string":
             return None
         stream_src = iterable + ".stream()"
+        mutable_vars = self._mutable_vars
         if (
             len(outer_if.then_body) == 2
             and isinstance(outer_if.then_body[0], TAssignStmt)
@@ -2847,6 +2856,8 @@ class _JavaEmitter(Emitter):
             )
             # Lambdas can't throw checked exceptions, so fall back to loop form
             if self._expr_contains_call(cond):
+                return None
+            if self._expr_captures_mutable(cond, binder, mutable_vars):
                 return None
             cond_s = self._expr(cond)
             lhs = "boolean " + acc
@@ -2870,6 +2881,10 @@ class _JavaEmitter(Emitter):
                 if self._expr_contains_call(outer_if.cond) or self._expr_contains_call(
                     cond
                 ):
+                    return None
+                if self._expr_captures_mutable(
+                    outer_if.cond, binder, mutable_vars
+                ) or self._expr_captures_mutable(cond, binder, mutable_vars):
                     return None
                 filter_s = self._expr(outer_if.cond)
                 cond_s = self._expr(cond)
@@ -4081,6 +4096,41 @@ class _JavaEmitter(Emitter):
                 return True
             if isinstance(typ, TOptionalType) and isinstance(typ.inner, TTupleType):
                 return True
+        return False
+
+    def _expr_captures_mutable(
+        self, expr: TExpr, binder: str, mutable_vars: set[str]
+    ) -> bool:
+        """Check if expr references any mutable variable other than the binder."""
+        if isinstance(expr, TVar):
+            return expr.name != binder and expr.name in mutable_vars
+        if isinstance(expr, TCall):
+            if any(
+                self._expr_captures_mutable(a.value, binder, mutable_vars)
+                for a in expr.args
+            ):
+                return True
+            if isinstance(expr.func, TFieldAccess):
+                return self._expr_captures_mutable(expr.func.obj, binder, mutable_vars)
+            return False
+        if isinstance(expr, TBinaryOp):
+            return self._expr_captures_mutable(
+                expr.left, binder, mutable_vars
+            ) or self._expr_captures_mutable(expr.right, binder, mutable_vars)
+        if isinstance(expr, TUnaryOp):
+            return self._expr_captures_mutable(expr.operand, binder, mutable_vars)
+        if isinstance(expr, TIndex):
+            return self._expr_captures_mutable(
+                expr.obj, binder, mutable_vars
+            ) or self._expr_captures_mutable(expr.index, binder, mutable_vars)
+        if isinstance(expr, TFieldAccess):
+            return self._expr_captures_mutable(expr.obj, binder, mutable_vars)
+        if isinstance(expr, TTernary):
+            return (
+                self._expr_captures_mutable(expr.cond, binder, mutable_vars)
+                or self._expr_captures_mutable(expr.then_expr, binder, mutable_vars)
+                or self._expr_captures_mutable(expr.else_expr, binder, mutable_vars)
+            )
         return False
 
     def _expr_contains_call(self, expr: TExpr) -> bool:
