@@ -16,5 +16,8 @@ sprintf("%s", ("" . $x))
 === fstring str conversion
 sprintf("%s", ("" . $x))
 
+=== startswith with start position
+substr($s, 6)
+
 === strip regex special chars
 \]\-

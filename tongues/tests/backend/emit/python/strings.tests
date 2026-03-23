@@ -16,5 +16,8 @@ f"{repr(x)}"
 === fstring str conversion
 f"{str(x)}"
 
+=== startswith with start position
+s.startswith("world", 6)
+
 === strip regex special chars
 s.strip("]-")

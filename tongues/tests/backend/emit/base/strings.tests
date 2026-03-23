@@ -44,6 +44,13 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== startswith with start position
+def main() -> None:
+    s: str = "hello world"
+    print(s.startswith("world", 6))
+if __name__ == "__main__":
+    main()
+
 === strip regex special chars
 def main() -> None:
     s: str = "]-hello-]"

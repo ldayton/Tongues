@@ -201,6 +201,27 @@ def f(s: str) -> bytes:
 Encode(s)
 ---
 
+=== string startswith with start position
+def f(s: str) -> bool:
+    return s.startswith("pre", 2)
+---
+StartsWith(s, "pre", 2)
+---
+
+=== string endswith with start position
+def f(s: str) -> bool:
+    return s.endswith("suf", 1)
+---
+EndsWith(s, "suf", 1)
+---
+
+=== string startswith with start and end positions
+def f(s: str) -> bool:
+    return s.startswith("pre", 2, 5)
+---
+StartsWith(s, "pre", 2, 5)
+---
+
 === string startswith tuple
 def f(s: str) -> bool:
     return s.startswith(("a", "b"))

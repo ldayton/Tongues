@@ -16,5 +16,8 @@ JSON.stringify(x)
 === fstring str conversion
 String(x)
 
+=== startswith with start position
+s.startsWith("world", 6)
+
 === strip regex special chars
 /^[\]\-]+|[\]\-]+$/g

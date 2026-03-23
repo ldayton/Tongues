@@ -16,5 +16,8 @@
 === fstring str conversion
 "%s" % x.to_s
 
+=== startswith with start position
+s[6..].start_with?("world")
+
 === strip regex special chars
 \]\-

@@ -185,6 +185,18 @@ def test_string_startswith_endswith() -> None:
     assert not "hello".endswith("he")
 
 
+def test_string_startswith_endswith_pos() -> None:
+    """startswith() and endswith() with positional arguments."""
+    assert "hello world".startswith("world", 6)
+    assert not "hello world".startswith("world", 5)
+    assert not "hello world".startswith("hello", 1)
+    assert "hello world".startswith("ello", 1)
+    assert "hello world".endswith("hello", 0, 5)
+    assert not "hello world".endswith("hello", 0, 4)
+    assert "hello world".startswith("lo w", 3, 7)
+    assert not "hello world".startswith("lo w", 3, 6)
+
+
 def test_string_isalpha() -> None:
     """isalpha() for alphabetic strings."""
     assert "hello".isalpha()
@@ -565,6 +577,16 @@ def main() -> int:
     except Exception as e:
         failed += 1
         print("  FAIL test_string_startswith_endswith: " + str(e))
+    try:
+        test_string_startswith_endswith_pos()
+        passed += 1
+        print("  PASS test_string_startswith_endswith_pos")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_string_startswith_endswith_pos: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_string_startswith_endswith_pos: " + str(e))
     try:
         test_string_isalpha()
         passed += 1
