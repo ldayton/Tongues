@@ -3,3 +3,12 @@ case Dog dog ->
 
 === isinstance with tuple of types
 a instanceof Dog || a instanceof Cat
+
+=== isinstance with str
+x instanceof String
+
+=== isinstance with int
+x instanceof Integer
+
+=== isinstance user class shadows builtin name
+x instanceof List

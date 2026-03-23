@@ -3,3 +3,12 @@ isinstance(a, Dog)
 
 === isinstance with tuple of types
 isinstance(a, (Dog, Cat))
+
+=== isinstance with str
+isinstance(x, str)
+
+=== isinstance with int
+isinstance(x, int)
+
+=== isinstance user class shadows builtin name
+isinstance(x, List)

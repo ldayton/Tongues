@@ -3,3 +3,12 @@ a instanceof Dog
 
 === isinstance with tuple of types
 a instanceof Dog || a instanceof Cat
+
+=== isinstance with str
+typeof x === "string"
+
+=== isinstance with int
+typeof x === "number"
+
+=== isinstance user class shadows builtin name
+x instanceof List

@@ -3,3 +3,12 @@ a.is_a?(Dog)
 
 === isinstance with tuple of types
 a.is_a?(Dog) || a.is_a?(Cat)
+
+=== isinstance with str
+x.is_a?(String)
+
+=== isinstance with int
+x.is_a?(Integer)
+
+=== isinstance user class shadows builtin name
+x.is_a?(List)
