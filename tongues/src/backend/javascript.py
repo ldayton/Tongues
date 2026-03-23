@@ -787,10 +787,22 @@ class _JavaScriptEmitter(Emitter):
             self._emit_stmt(stmt)
             i += 1
 
+    def _let_kw(self, stmt: TLetStmt, *, raised: bool = False) -> str:
+        """Return 'const' or 'let' based on scope analysis.
+
+        When raised=True, the variable is being collapsed from a multi-statement
+        pattern into a single assignment, so it's always const regardless of the
+        pre-raising scope analysis.
+        """
+        if raised or stmt.annotations.get("scope.is_const") == "true":
+            return "const"
+        return "let"
+
     def _try_comprehension(
         self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
     ) -> str | None:
         acc = _restore_name(let_stmt.name, let_stmt.annotations)
+        kw = self._let_kw(let_stmt, raised=True)
         binding = for_stmt.binding
         binder_parts: list[str] = []
         for b in binding:
@@ -812,7 +824,8 @@ class _JavaScriptEmitter(Emitter):
                     val = self._expr(call.args[1].value)
                     if is_enumerate:
                         return (
-                            "let "
+                            kw
+                            + " "
                             + acc
                             + " = "
                             + iterable
@@ -825,7 +838,8 @@ class _JavaScriptEmitter(Emitter):
                             + ");"
                         )
                     return (
-                        "let "
+                        kw
+                        + " "
                         + acc
                         + " = "
                         + iterable
@@ -849,7 +863,8 @@ class _JavaScriptEmitter(Emitter):
                             val = self._expr(call.args[1].value)
                             guard = self._expr(if_stmt.cond)
                             return (
-                                "let "
+                                kw
+                                + " "
                                 + acc
                                 + " = "
                                 + iterable
@@ -867,7 +882,8 @@ class _JavaScriptEmitter(Emitter):
                     val = self._expr(body[0].value)
                     if is_enumerate:
                         return (
-                            "let "
+                            kw
+                            + " "
                             + acc
                             + " = new Map("
                             + iterable
@@ -882,7 +898,8 @@ class _JavaScriptEmitter(Emitter):
                             + "]));"
                         )
                     return (
-                        "let "
+                        kw
+                        + " "
                         + acc
                         + " = new Map("
                         + iterable
@@ -900,9 +917,10 @@ class _JavaScriptEmitter(Emitter):
                 if isinstance(call, TCall) and self._is_add_to(call, let_stmt.name):
                     val = self._expr(call.args[1].value)
                     if val == binders:
-                        return "let " + acc + " = new Set(" + iterable + ");"
+                        return kw + " " + acc + " = new Set(" + iterable + ");"
                     return (
-                        "let "
+                        kw
+                        + " "
                         + acc
                         + " = new Set("
                         + iterable
@@ -928,6 +946,7 @@ class _JavaScriptEmitter(Emitter):
             return None
         src = self._expr(src_obj)
         acc = _restore_name(let_stmt.name, let_stmt.annotations)
+        kw = self._let_kw(let_stmt, raised=True)
         start_expr = range_args[0]
         step_expr = range_args[2]
         start_val = self._static_int(start_expr)
@@ -937,7 +956,8 @@ class _JavaScriptEmitter(Emitter):
         if start_val is not None and step_val is not None:
             if start_val == 0:
                 return (
-                    "let "
+                    kw
+                    + " "
                     + acc
                     + " = "
                     + spread
@@ -949,7 +969,8 @@ class _JavaScriptEmitter(Emitter):
                 )
             elif start_val < step_val:
                 return (
-                    "let "
+                    kw
+                    + " "
                     + acc
                     + " = "
                     + spread
@@ -963,7 +984,8 @@ class _JavaScriptEmitter(Emitter):
                 )
             else:
                 return (
-                    "let "
+                    kw
+                    + " "
                     + acc
                     + " = "
                     + spread
@@ -1046,6 +1068,7 @@ class _JavaScriptEmitter(Emitter):
         self, let_stmt: TLetStmt, for_stmt: TForStmt, prov: str
     ) -> tuple[str, str] | None:
         acc = _restore_name(let_stmt.name, let_stmt.annotations)
+        kw = self._let_kw(let_stmt, raised=True)
         binding = for_stmt.binding
         binder_parts: list[str] = []
         for b in binding:
@@ -1076,7 +1099,7 @@ class _JavaScriptEmitter(Emitter):
             )
             cond_s = self._expr(cond)
             return (
-                "let " + acc,
+                kw + " " + acc,
                 iterable + "." + func + "(" + binders + " => " + cond_s + ")",
             )
         if len(outer_if.then_body) == 1:
@@ -1095,7 +1118,7 @@ class _JavaScriptEmitter(Emitter):
                 )
                 cond_s = self._expr(cond)
                 return (
-                    "let " + acc,
+                    kw + " " + acc,
                     iterable
                     + "."
                     + func
@@ -1123,7 +1146,8 @@ class _JavaScriptEmitter(Emitter):
         if isinstance(third, TLetStmt) and isinstance(third.value, TVar):
             if third.value.name == temp_name:
                 real = _restore_name(third.name, third.annotations)
-                return "let " + real + " = " + rhs + ";"
+                kw = self._let_kw(third, raised=True)
+                return kw + " " + real + " = " + rhs + ";"
         if isinstance(third, TAssignStmt) and isinstance(third.value, TVar):
             if third.value.name == temp_name and isinstance(third.target, TVar):
                 real = _restore_name(third.target.name, third.target.annotations)
@@ -1284,7 +1308,7 @@ class _JavaScriptEmitter(Emitter):
             obj_s = self._expr(call.args[0].value)
             sep_s = self._expr(call.args[1].value)
             method = "indexOf" if prov == "partition" else "lastIndexOf"
-            self._line("let __idx = " + obj_s + "." + method + "(" + sep_s + ");")
+            self._line("const __idx = " + obj_s + "." + method + "(" + sep_s + ");")
             self._line("if (__idx >= 0) {")
             self.indent += 1
             self._line(
