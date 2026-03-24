@@ -10,7 +10,7 @@ constructor(value = 0) {
 === computed field references renamed param
 constructor(_prefix = "") {
 this._prefix = _prefix;
-this._label = _prefix.toUpperCase();
+this._label = _prefix.upper();
 }
 
 === error class with const kind field

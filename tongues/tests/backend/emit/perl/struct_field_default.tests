@@ -11,7 +11,7 @@ $self->{kind} = "my-node";
 my ($class, $_prefix) = @_;
 my $self = bless {}, $class;
 $self->{_prefix} = defined $_prefix ? $_prefix : "";
-$self->{_label} = uc($_prefix);
+$self->{_label} = $_prefix->upper();
 
 === error class with const kind field
 my ($class, $msg) = @_;
