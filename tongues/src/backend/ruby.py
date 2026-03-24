@@ -800,7 +800,7 @@ class _RubyEmitter(Emitter):
             attrs = ", ".join(":" + _safe_name(f.name) for f in decl.fields)
             self._line("attr_accessor " + attrs)
             self._line()
-            self._emit_initialize(decl.fields, True)
+            self._emit_initialize(decl.fields, True, decl.init_stmts)
         for i, method in enumerate(decl.methods):
             if i > 0 or decl.fields:
                 self._line()
@@ -825,7 +825,7 @@ class _RubyEmitter(Emitter):
             attrs = ", ".join(":" + _safe_name(f.name) for f in decl.fields)
             self._line("attr_accessor " + attrs)
             self._line()
-            self._emit_initialize(decl.fields, False)
+            self._emit_initialize(decl.fields, False, decl.init_stmts)
         for i, method in enumerate(decl.methods):
             if i > 0 or decl.fields:
                 self._line()
@@ -833,7 +833,12 @@ class _RubyEmitter(Emitter):
         self.indent -= 1
         self._line("end")
 
-    def _emit_initialize(self, fields: list[TFieldDecl], is_error: bool) -> None:
+    def _emit_initialize(
+        self,
+        fields: list[TFieldDecl],
+        is_error: bool,
+        init_stmts: list[TStmt] | None = None,
+    ) -> None:
         param_fields = [f for f in fields if not f.body_computed]
         body_fields = [f for f in fields if f.body_computed]
         params: list[str] = []
@@ -880,6 +885,8 @@ class _RubyEmitter(Emitter):
             name = _safe_name(f.name)
             if f.default_expr is not None:
                 self._line("@" + name + " = " + self._expr(f.default_expr))
+        if init_stmts is not None:
+            self._emit_stmts(init_stmts)
         self.local_names = old_locals
         self.self_name = old_self
         self.indent -= 1

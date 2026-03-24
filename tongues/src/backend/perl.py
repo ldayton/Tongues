@@ -801,12 +801,14 @@ class _PerlEmitter(Emitter):
             self._emit_method(method, decl.name)
 
     def _emit_constructor(self, decl: TStructDecl) -> None:
-        self._emit_constructor_fields(decl.fields)
+        self._emit_constructor_fields(decl.fields, decl.init_stmts)
 
     def _emit_interface_constructor(self, decl: TInterfaceDecl) -> None:
-        self._emit_constructor_fields(decl.fields)
+        self._emit_constructor_fields(decl.fields, None)
 
-    def _emit_constructor_fields(self, fields: list[TFieldDecl]) -> None:
+    def _emit_constructor_fields(
+        self, fields: list[TFieldDecl], init_stmts: list[TStmt] | None
+    ) -> None:
         param_fields = [f for f in fields if not f.body_computed]
         body_fields = [f for f in fields if f.body_computed]
         self._line("sub new {")
@@ -841,6 +843,8 @@ class _PerlEmitter(Emitter):
                 self._line(
                     "$self->{" + safe + "} = " + self._expr(fld.default_expr) + ";"
                 )
+        if init_stmts is not None:
+            self._emit_stmts(init_stmts)
         self.self_name = old_self
         self._line("return $self;")
         self.indent -= 1

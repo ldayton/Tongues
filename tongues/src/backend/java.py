@@ -1592,6 +1592,8 @@ class _JavaEmitter(Emitter):
                     self._line(
                         "this." + safe + " = " + self._expr(f.default_expr) + ";"
                     )
+            if decl.init_stmts is not None:
+                self._emit_stmts(decl.init_stmts)
             self.indent -= 1
             self._line("}")
             required = [f for f in param_fields if not f.has_default]
@@ -1632,6 +1634,8 @@ class _JavaEmitter(Emitter):
                                 + self._expr(f.default_expr)
                                 + ";"
                             )
+                    if decl.init_stmts is not None:
+                        self._emit_stmts(decl.init_stmts)
                     self.indent -= 1
                     self._line("}")
             self.self_name = old_self

@@ -13,6 +13,10 @@ my $self = bless {}, $class;
 $self->{_prefix} = defined $_prefix ? $_prefix : "";
 $self->{_label} = $_prefix->upper();
 
+=== post-assignment nested field set in init
+$self->{child} = Child->new("ok", undef);
+$self->{child}->{_parent} = $name;
+
 === error class with const kind field
 my ($class, $msg) = @_;
 my $self = bless {}, $class;
