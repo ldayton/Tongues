@@ -1275,7 +1275,7 @@ class _JavaScriptEmitter(Emitter):
         parts: list[str] = []
         for i, t in enumerate(stmt.targets):
             if i in unused_indices:
-                parts.append("_")
+                parts.append("")
             else:
                 parts.append(self._expr(t))
         self._line("[" + ", ".join(parts) + "] = " + self._expr(stmt.value) + ";")
