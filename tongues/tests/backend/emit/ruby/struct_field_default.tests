@@ -14,8 +14,8 @@ def initialize(_prefix: "")
 end
 
 === post-assignment nested field set in init
-@child = Child.new("ok")
-@child._parent = name
+@child = Child.new(value: "ok")
+self.child._parent = name
 
 === error class with const kind field
 def initialize(msg: "")

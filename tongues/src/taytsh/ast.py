@@ -170,6 +170,7 @@ class TStructDecl(TDecl):
     parent: str | None
     fields: list[TFieldDecl]
     methods: list[TFnDecl]
+    init_stmts: "list[TStmt] | None" = None
 
 
 @dataclass

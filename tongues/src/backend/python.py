@@ -495,6 +495,8 @@ class _PythonEmitter(Emitter):
                         + " = "
                         + self._expr(fld.default_expr)
                     )
+            if decl.init_stmts is not None:
+                self._emit_stmts(decl.init_stmts)
             self.self_name = old_self
         else:
             self._line("pass")
@@ -529,7 +531,8 @@ class _PythonEmitter(Emitter):
         body_fields = [
             f for f in decl.fields if f.body_computed and f.default_expr is not None
         ]
-        if body_fields:
+        has_init_stmts = decl.init_stmts is not None and len(decl.init_stmts) > 0
+        if body_fields or has_init_stmts:
             self._line()
             self._line("def __post_init__(self) -> None:")
             self.indent += 1
@@ -543,6 +546,8 @@ class _PythonEmitter(Emitter):
                         + " = "
                         + self._expr(fld.default_expr)
                     )
+            if decl.init_stmts is not None:
+                self._emit_stmts(decl.init_stmts)
             self.self_name = old_self
             self.indent -= 1
         first_method = True

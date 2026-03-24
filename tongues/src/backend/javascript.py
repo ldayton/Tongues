@@ -633,6 +633,8 @@ class _JavaScriptEmitter(Emitter):
                     self._line(
                         "this." + safe + " = " + self._expr(fld.default_expr) + ";"
                     )
+            if decl.init_stmts is not None:
+                self._emit_stmts(decl.init_stmts)
             self.self_name = old_self
             self.indent -= 1
             self._line("}")

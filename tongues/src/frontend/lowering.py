@@ -6818,6 +6818,17 @@ def _rename_vars(expr: TExpr, subs: dict[str, str]) -> TExpr:
     return expr
 
 
+def _is_nested_self_attr(node: ASTNode) -> bool:
+    """Check if node is self.field.subfield (nested attribute on self)."""
+    if not _is_ast(node, "Attribute"):
+        return False
+    obj = get_node(node, "value")
+    if not _is_ast(obj, "Attribute"):
+        return False
+    inner = get_node(obj, "value")
+    return _is_ast(inner, "Name") and get_str(inner, "id") == "self"
+
+
 def _build_struct(
     node: ASTNode,
     ctx: _LowerCtx,
@@ -6927,6 +6938,7 @@ def _build_struct(
                 own_defaulted.append(f)
         fields = required + own_defaulted + inherited_defaulted
     # Extract default expressions from __init__ body for defaulted fields
+    extra_init_stmts: list[TStmt] = []
     if cls_info is not None:
         param_assigned_fields = set(cls_info.param_to_field.values())
         init_node: ASTNode | None = None
@@ -6937,15 +6949,18 @@ def _build_struct(
         if init_node is not None:
             init_env = _Env()
             init_defaults: dict[str, TExpr] = {}
+            extra_init_stmts: list[TStmt] = []
             for stmt in get_nodes(init_node, "body"):
                 fname: str | None = None
                 value_node: ASTNode | None = None
+                is_self_field_assign = False
                 if _is_ast(stmt, "AnnAssign"):
                     target = get_node(stmt, "target")
                     if _is_ast(target, "Attribute"):
                         vn = get_node(target, "value")
                         if _is_ast(vn, "Name") and get_str(vn, "id") == "self":
                             fname = get_str(target, "attr")
+                            is_self_field_assign = True
                             raw = stmt.get("value")
                             if raw is not None and not isinstance(raw, JNull):
                                 value_node = get_node(stmt, "value")
@@ -6955,9 +6970,11 @@ def _build_struct(
                         vn = get_node(targets[0], "value")
                         if _is_ast(vn, "Name") and get_str(vn, "id") == "self":
                             fname = get_str(targets[0], "attr")
+                            is_self_field_assign = True
                             value_node = get_node(stmt, "value")
                 if (
-                    fname is not None
+                    is_self_field_assign
+                    and fname is not None
                     and value_node is not None
                     and fname not in param_assigned_fields
                 ):
@@ -6965,6 +6982,14 @@ def _build_struct(
                         init_defaults[fname] = _lower_expr(value_node, init_env, ctx)
                     except Exception:
                         pass
+                elif not is_self_field_assign and _is_ast(stmt, "Assign"):
+                    targets = get_nodes(stmt, "targets")
+                    if len(targets) == 1 and _is_nested_self_attr(targets[0]):
+                        try:
+                            lowered = _lower_stmt(stmt, init_env, ctx)
+                            extra_init_stmts.extend(lowered)
+                        except Exception:
+                            pass
             param_subs: dict[str, str] = {}
             for pname, fname2 in cls_info.param_to_field.items():
                 if pname != fname2:
@@ -7003,7 +7028,10 @@ def _build_struct(
     ann: Ann = {}
     if is_exception:
         ann["_is_exception"] = "true"
-    return TStructDecl(pos, ann, name, parent, fields, methods)
+    result = TStructDecl(pos, ann, name, parent, fields, methods)
+    if extra_init_stmts:
+        result.init_stmts = extra_init_stmts
+    return result
 
 
 def _is_struct_ttype(typ: TType | None) -> bool:
