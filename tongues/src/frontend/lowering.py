@@ -6766,6 +6766,58 @@ def _collect_field_keys(cls_info: ClassInfo, inherited: set[str]) -> list[str]:
     return fkeys
 
 
+def _rename_vars(expr: TExpr, subs: dict[str, str]) -> TExpr:
+    """Replace TVar names in an expression tree per subs mapping."""
+    if isinstance(expr, TVar):
+        new_name = subs.get(expr.name)
+        if new_name is not None:
+            return TVar(expr.pos, expr.annotations, new_name)
+        return expr
+    if isinstance(expr, TCall):
+        new_args: list[TArg] = []
+        for a in expr.args:
+            new_args.append(TArg(a.pos, a.name, _rename_vars(a.value, subs)))
+        return TCall(
+            expr.pos, expr.annotations, _rename_vars(expr.func, subs), new_args
+        )
+    if isinstance(expr, TBinaryOp):
+        return TBinaryOp(
+            expr.pos,
+            expr.annotations,
+            expr.op,
+            _rename_vars(expr.left, subs),
+            _rename_vars(expr.right, subs),
+        )
+    if isinstance(expr, TUnaryOp):
+        return TUnaryOp(
+            expr.pos, expr.annotations, expr.op, _rename_vars(expr.operand, subs)
+        )
+    if isinstance(expr, TFieldAccess):
+        return TFieldAccess(
+            expr.pos, expr.annotations, _rename_vars(expr.obj, subs), expr.field
+        )
+    if isinstance(expr, TIndex):
+        return TIndex(
+            expr.pos,
+            expr.annotations,
+            _rename_vars(expr.obj, subs),
+            _rename_vars(expr.index, subs),
+        )
+    if isinstance(expr, TTernary):
+        return TTernary(
+            expr.pos,
+            expr.annotations,
+            _rename_vars(expr.cond, subs),
+            _rename_vars(expr.then_expr, subs),
+            _rename_vars(expr.else_expr, subs),
+        )
+    if isinstance(expr, TListLit):
+        return TListLit(
+            expr.pos, expr.annotations, [_rename_vars(e, subs) for e in expr.elements]
+        )
+    return expr
+
+
 def _build_struct(
     node: ASTNode,
     ctx: _LowerCtx,
@@ -6913,12 +6965,19 @@ def _build_struct(
                         init_defaults[fname] = _lower_expr(value_node, init_env, ctx)
                     except Exception:
                         pass
+            param_subs: dict[str, str] = {}
+            for pname, fname2 in cls_info.param_to_field.items():
+                if pname != fname2:
+                    param_subs[pname] = fname2
             init_param_fields = set(cls_info.param_to_field.values()) | set(
                 cls_info.init_params
             )
             for f in fields:
                 if f.has_default and f.name in init_defaults:
-                    f.default_expr = init_defaults[f.name]
+                    expr = init_defaults[f.name]
+                    if param_subs:
+                        expr = _rename_vars(expr, param_subs)
+                    f.default_expr = expr
                     if f.name not in init_param_fields:
                         f.body_computed = True
     # Build methods — own + inherited from ancestors

@@ -7,6 +7,12 @@ attr_accessor :name, :inner
 === const kind field uses correct value
 @kind = "my-node"
 
+=== computed field references renamed param
+def initialize(_prefix: "")
+@_prefix = _prefix
+@_label = _prefix.upper
+end
+
 === error class with const kind field
 def initialize(msg: "")
 super(msg)

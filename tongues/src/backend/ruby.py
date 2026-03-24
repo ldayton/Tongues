@@ -872,10 +872,15 @@ class _RubyEmitter(Emitter):
                 self._line("@" + name + " = " + name)
         old_self = self.self_name
         self.self_name = "this"
+        old_locals = self.local_names.copy()
+        for f in param_fields:
+            safe = _safe_name(f.name)
+            self.local_names[f.name] = safe
         for f in body_fields:
             name = _safe_name(f.name)
             if f.default_expr is not None:
                 self._line("@" + name + " = " + self._expr(f.default_expr))
+        self.local_names = old_locals
         self.self_name = old_self
         self.indent -= 1
         self._line("end")

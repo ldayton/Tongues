@@ -37,6 +37,18 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== computed field references renamed param
+import sys
+class Builder:
+    def __init__(self, prefix: str) -> None:
+        self._prefix = prefix
+        self._label: str = prefix.upper()
+def main() -> None:
+    b: Builder = Builder("test")
+    print(b._label)
+if __name__ == "__main__":
+    main()
+
 === error class with const kind field
 import sys
 class CompileError(Exception):
