@@ -2050,7 +2050,10 @@ class _JavaScriptEmitter(Emitter):
             elif c == "\r":
                 out.append("\\r")
             elif ord(c) < 32 or ord(c) > 126:
-                out.append("\\x" + format(ord(c), "02x"))
+                h = hex(ord(c))[2:]
+                if len(h) == 1:
+                    h = "0" + h
+                out.append("\\x" + h)
             else:
                 out.append(c)
             i += 1

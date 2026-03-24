@@ -5724,7 +5724,10 @@ class _JavaEmitter(Emitter):
                 elif ch == "\r":
                     parts.append("\\r")
                 elif ord(ch) < 32 or ord(ch) > 126:
-                    parts.append("\\\\u" + format(ord(ch), "04x"))
+                    h = hex(ord(ch))[2:]
+                    while len(h) < 4:
+                        h = "0" + h
+                    parts.append("\\\\u" + h)
                 else:
                     parts.append(ch)
             esc = "".join(parts)
