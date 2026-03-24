@@ -1624,7 +1624,11 @@ class _JavaEmitter(Emitter):
                         safe = _safe_name(f.name)
                         if f.default_expr is not None:
                             self._line(
-                                "this." + safe + " = " + self._expr(f.default_expr) + ";"
+                                "this."
+                                + safe
+                                + " = "
+                                + self._expr(f.default_expr)
+                                + ";"
                             )
                     self.indent -= 1
                     self._line("}")
