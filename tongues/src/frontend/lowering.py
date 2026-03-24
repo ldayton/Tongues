@@ -6913,10 +6913,14 @@ def _build_struct(
                         init_defaults[fname] = _lower_expr(value_node, init_env, ctx)
                     except Exception:
                         pass
+            init_param_fields = set(cls_info.param_to_field.values()) | set(
+                cls_info.init_params
+            )
             for f in fields:
                 if f.has_default and f.name in init_defaults:
                     f.default_expr = init_defaults[f.name]
-                    f.body_computed = True
+                    if f.name not in init_param_fields:
+                        f.body_computed = True
     # Build methods — own + inherited from ancestors
     methods: list[TFnDecl] = []
     own_method_names: set[str] = set()

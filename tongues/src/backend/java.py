@@ -1576,6 +1576,8 @@ class _JavaEmitter(Emitter):
         if decl.fields:
             param_fields = [f for f in decl.fields if not f.body_computed]
             body_fields = [f for f in decl.fields if f.body_computed]
+            old_self = self.self_name
+            self.self_name = "this"
             params = ", ".join(
                 self._type(f.typ) + " " + _safe_name(f.name) for f in param_fields
             )
@@ -1632,6 +1634,7 @@ class _JavaEmitter(Emitter):
                             )
                     self.indent -= 1
                     self._line("}")
+            self.self_name = old_self
         if decl.fields:
             self._line()
             self._emit_struct_equals(name, decl.fields)

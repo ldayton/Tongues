@@ -833,12 +833,15 @@ class _PerlEmitter(Emitter):
                 + default
                 + ";"
             )
+        old_self = self.self_name
+        self.self_name = "this"
         for fld in body_fields:
             safe = _safe_name(fld.name)
             if fld.default_expr is not None:
                 self._line(
                     "$self->{" + safe + "} = " + self._expr(fld.default_expr) + ";"
                 )
+        self.self_name = old_self
         self._line("return $self;")
         self.indent -= 1
         self._line("}")
