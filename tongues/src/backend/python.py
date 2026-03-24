@@ -411,10 +411,13 @@ class _PythonEmitter(Emitter):
                     self._emit_field(fld)
                 self._current_struct = ""
                 self.indent -= 1
-                own_fields = {f.name for f in decl.fields}
+                own_fields: set[str] = set()
+                for f in decl.fields:
+                    own_fields.add(f.name)
                 iface_parent = decl.annotations.get("_parent_interface", "")
-                if iface_parent:
-                    own_fields |= self._parent_field_names.get(iface_parent, set())
+                if iface_parent and iface_parent in self._parent_field_names:
+                    for pn in self._parent_field_names[iface_parent]:
+                        own_fields.add(pn)
                 self._parent_field_names[decl.name] = own_fields
                 need_blank = True
                 continue
@@ -482,15 +485,17 @@ class _PythonEmitter(Emitter):
             for fld in param_fields:
                 safe = _safe_name(fld.name)
                 self._line("self." + safe + " = " + safe)
-            with self._with_self("this"):
-                for fld in body_fields:
-                    if fld.default_expr is not None:
-                        self._line(
-                            "self."
-                            + _safe_name(fld.name)
-                            + " = "
-                            + self._expr(fld.default_expr)
-                        )
+            old_self = self.self_name
+            self.self_name = "this"
+            for fld in body_fields:
+                if fld.default_expr is not None:
+                    self._line(
+                        "self."
+                        + _safe_name(fld.name)
+                        + " = "
+                        + self._expr(fld.default_expr)
+                    )
+            self.self_name = old_self
         else:
             self._line("pass")
         self.indent -= 1
@@ -514,8 +519,8 @@ class _PythonEmitter(Emitter):
             self._line("pass")
         self._current_struct = decl.name
         parent_field_names: set[str] = set()
-        if decl.parent is not None:
-            parent_field_names = self._parent_field_names.get(decl.parent, set())
+        if decl.parent is not None and decl.parent in self._parent_field_names:
+            parent_field_names = self._parent_field_names[decl.parent]
         for fld in decl.fields:
             if fld.body_computed and fld.name in parent_field_names:
                 continue
@@ -527,15 +532,17 @@ class _PythonEmitter(Emitter):
             self._line()
             self._line("def __post_init__(self) -> None:")
             self.indent += 1
-            with self._with_self("this"):
-                for fld in body_fields:
-                    if fld.default_expr is not None:
-                        self._line(
-                            "self."
-                            + _safe_name(fld.name)
-                            + " = "
-                            + self._expr(fld.default_expr)
-                        )
+            old_self = self.self_name
+            self.self_name = "this"
+            for fld in body_fields:
+                if fld.default_expr is not None:
+                    self._line(
+                        "self."
+                        + _safe_name(fld.name)
+                        + " = "
+                        + self._expr(fld.default_expr)
+                    )
+            self.self_name = old_self
             self.indent -= 1
         first_method = True
         for method in decl.methods:
@@ -546,7 +553,10 @@ class _PythonEmitter(Emitter):
             first_method = False
             self._emit_method(method)
         self.indent -= 1
-        self._parent_field_names[decl.name] = {f.name for f in decl.fields}
+        pf: set[str] = set()
+        for f in decl.fields:
+            pf.add(f.name)
+        self._parent_field_names[decl.name] = pf
 
     def _emit_field(self, fld: TFieldDecl) -> None:
         typ_str = self._type(fld.typ)

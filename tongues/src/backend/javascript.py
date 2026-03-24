@@ -587,13 +587,13 @@ class _JavaScriptEmitter(Emitter):
         for fld in param_fields:
             safe = _safe_name(fld.name)
             self._emit_field_assign(fld, safe)
-        with self._with_self("this"):
-            for fld in body_fields:
-                safe = _safe_name(fld.name)
-                if fld.default_expr is not None:
-                    self._line(
-                        "this." + safe + " = " + self._expr(fld.default_expr) + ";"
-                    )
+        old_self = self.self_name
+        self.self_name = "this"
+        for fld in body_fields:
+            safe = _safe_name(fld.name)
+            if fld.default_expr is not None:
+                self._line("this." + safe + " = " + self._expr(fld.default_expr) + ";")
+        self.self_name = old_self
         self.indent -= 1
         self._line("}")
         for method in decl.methods:
@@ -625,13 +625,15 @@ class _JavaScriptEmitter(Emitter):
             for fld in param_fields:
                 safe = _safe_name(fld.name)
                 self._emit_field_assign(fld, safe)
-            with self._with_self("this"):
-                for fld in body_fields:
-                    safe = _safe_name(fld.name)
-                    if fld.default_expr is not None:
-                        self._line(
-                            "this." + safe + " = " + self._expr(fld.default_expr) + ";"
-                        )
+            old_self = self.self_name
+            self.self_name = "this"
+            for fld in body_fields:
+                safe = _safe_name(fld.name)
+                if fld.default_expr is not None:
+                    self._line(
+                        "this." + safe + " = " + self._expr(fld.default_expr) + ";"
+                    )
+            self.self_name = old_self
             self.indent -= 1
             self._line("}")
         for i, method in enumerate(decl.methods):
