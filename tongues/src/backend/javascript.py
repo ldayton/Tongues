@@ -209,26 +209,26 @@ def _restore_name(name: str, annotations: Ann) -> str:
 _PRECEDENCE: dict[str, int] = {
     "||": 1,
     "&&": 2,
-    "===": 3,
-    "!==": 3,
-    "==": 3,
-    "!=": 3,
-    "<": 3,
-    ">": 3,
-    "<=": 3,
-    ">=": 3,
-    "|": 4,
-    "^": 5,
-    "&": 6,
-    "<<": 7,
-    ">>": 7,
-    ">>>": 7,
-    "+": 8,
-    "-": 8,
-    "*": 9,
-    "/": 9,
-    "%": 9,
-    "**": 11,
+    "|": 3,
+    "^": 4,
+    "&": 5,
+    "===": 6,
+    "!==": 6,
+    "==": 6,
+    "!=": 6,
+    "<": 7,
+    ">": 7,
+    "<=": 7,
+    ">=": 7,
+    "<<": 8,
+    ">>": 8,
+    ">>>": 8,
+    "+": 9,
+    "-": 9,
+    "*": 10,
+    "/": 10,
+    "%": 10,
+    "**": 12,
 }
 
 _CMP_OPS = frozenset(["===", "!==", "==", "!=", "<", ">", "<=", ">="])
@@ -1275,7 +1275,7 @@ class _JavaScriptEmitter(Emitter):
         parts: list[str] = []
         for i, t in enumerate(stmt.targets):
             if i in unused_indices:
-                parts.append("_")
+                parts.append("")
             else:
                 parts.append(self._expr(t))
         self._line("[" + ", ".join(parts) + "] = " + self._expr(stmt.value) + ";")
@@ -2043,6 +2043,17 @@ class _JavaScriptEmitter(Emitter):
             c = s[i]
             if c in ("\\", "]", "^", "-"):
                 out.append("\\" + c)
+            elif c == "\n":
+                out.append("\\n")
+            elif c == "\t":
+                out.append("\\t")
+            elif c == "\r":
+                out.append("\\r")
+            elif ord(c) < 32 or ord(c) > 126:
+                h = hex(ord(c))[2:]
+                if len(h) == 1:
+                    h = "0" + h
+                out.append("\\x" + h)
             else:
                 out.append(c)
             i += 1
@@ -3376,6 +3387,7 @@ class _JavaScriptEmitter(Emitter):
             marker = "\x00PH" + str(i) + "\x00"
             markers[marker] = i
             result = result.replace("{}", marker, 1)
+        result = result.replace("`", "\\`")
         for mk, idx in markers.items():
             result = result.replace(mk, "${" + self._expr(fmt_args[idx].value) + "}")
         return "`" + result + "`"

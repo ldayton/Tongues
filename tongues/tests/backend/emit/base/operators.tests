@@ -1,0 +1,7 @@
+=== bitwise and with comparison
+def main() -> None:
+    flags: int = 6
+    flag: int = 2
+    print(flags & flag != 0)
+if __name__ == "__main__":
+    main()

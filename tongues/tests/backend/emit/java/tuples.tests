@@ -2,5 +2,8 @@
 a = (String) __tmp.get(0);
 b = (Integer) __tmp.get(1);
 
+=== tuple unpack with discard
+x = (String) __tmp.get(0);
+
 === tuple assign in if-body one target used after
 a = (String) __tmp.get(0);

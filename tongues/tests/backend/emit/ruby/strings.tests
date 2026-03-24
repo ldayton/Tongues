@@ -13,6 +13,9 @@
 === fstring repr conversion
 "%s" % x.to_s
 
+=== fstring with backtick
+matching `%s'" % c
+
 === fstring str conversion
 "%s" % x.to_s
 
@@ -27,6 +30,9 @@ s[2..].scan("a").length
 
 === startswith with start position
 s[6..].start_with?("world")
+
+=== rstrip newline
+/[\n]+\z/
 
 === strip regex special chars
 \]\-

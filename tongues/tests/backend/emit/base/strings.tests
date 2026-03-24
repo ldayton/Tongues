@@ -37,6 +37,13 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== fstring with backtick
+def main() -> None:
+    c: str = "x"
+    print(f"matching `{c}'")
+if __name__ == "__main__":
+    main()
+
 === fstring str conversion
 def main() -> None:
     x: int = 42
@@ -69,6 +76,14 @@ if __name__ == "__main__":
 def main() -> None:
     s: str = "hello world"
     print(s.startswith("world", 6))
+if __name__ == "__main__":
+    main()
+
+=== rstrip newline
+def main() -> None:
+    s: str = "hello\n"
+    x: str = s.rstrip("\n")
+    print(x)
 if __name__ == "__main__":
     main()
 

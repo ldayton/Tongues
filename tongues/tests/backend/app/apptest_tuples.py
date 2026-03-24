@@ -671,6 +671,14 @@ def test_tuple_unpack_ignore() -> None:
     assert last == 4
 
 
+def test_tuple_unpack_discard() -> None:
+    """Unpacking with _ discard variable."""
+    x, _ = make_pair_for_ignore()
+    assert x == 1
+    _, y = make_pair_for_ignore()
+    assert y == 4
+
+
 def main() -> int:
     passed: int = 0
     failed: int = 0
@@ -1344,6 +1352,16 @@ def main() -> int:
     except Exception as e:
         failed += 1
         print("  FAIL test_tuple_unpack_ignore: " + str(e))
+    try:
+        test_tuple_unpack_discard()
+        passed += 1
+        print("  PASS test_tuple_unpack_discard")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_unpack_discard: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_unpack_discard: " + str(e))
     print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1

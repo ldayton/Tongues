@@ -11,6 +11,15 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== tuple unpack with discard
+def get_pair() -> tuple[str, int]:
+    return ("hello", 42)
+def main() -> None:
+    x, _ = get_pair()
+    print(x)
+if __name__ == "__main__":
+    main()
+
 === tuple assign in if-body one target used after
 def get_pair() -> tuple[str, int]:
     return ("hello", 0)
