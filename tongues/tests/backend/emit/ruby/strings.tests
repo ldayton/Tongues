@@ -31,5 +31,8 @@ s[2..].scan("a").length
 === startswith with start position
 s[6..].start_with?("world")
 
+=== rstrip newline
+/[\n]+\z/
+
 === strip regex special chars
 \]\-

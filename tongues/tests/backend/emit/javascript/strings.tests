@@ -31,5 +31,8 @@ s.slice(2).split("a").length - 1
 === startswith with start position
 s.startsWith("world", 6)
 
+=== rstrip newline
+.replace(/[\n]+$/, "")
+
 === strip regex special chars
 /^[\]\-]+|[\]\-]+$/g

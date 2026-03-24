@@ -2043,6 +2043,14 @@ class _JavaScriptEmitter(Emitter):
             c = s[i]
             if c in ("\\", "]", "^", "-"):
                 out.append("\\" + c)
+            elif c == "\n":
+                out.append("\\n")
+            elif c == "\t":
+                out.append("\\t")
+            elif c == "\r":
+                out.append("\\r")
+            elif ord(c) < 32 or ord(c) > 126:
+                out.append("\\x" + format(ord(c), "02x"))
             else:
                 out.append(c)
             i += 1

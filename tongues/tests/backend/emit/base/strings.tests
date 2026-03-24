@@ -79,6 +79,14 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== rstrip newline
+def main() -> None:
+    s: str = "hello\n"
+    x: str = s.rstrip("\n")
+    print(x)
+if __name__ == "__main__":
+    main()
+
 === strip regex special chars
 def main() -> None:
     s: str = "]-hello-]"

@@ -5717,6 +5717,14 @@ class _JavaEmitter(Emitter):
                     parts.append("\\\\" + ch)
                 elif ch == '"':
                     parts.append('\\"')
+                elif ch == "\n":
+                    parts.append("\\n")
+                elif ch == "\t":
+                    parts.append("\\t")
+                elif ch == "\r":
+                    parts.append("\\r")
+                elif ord(ch) < 32 or ord(ch) > 126:
+                    parts.append("\\\\u" + format(ord(ch), "04x"))
                 else:
                     parts.append(ch)
             esc = "".join(parts)

@@ -31,5 +31,8 @@ substr($s, 2)
 === startswith with start position
 substr($s, 6)
 
+=== rstrip newline
+s/[\n]+$//
+
 === strip regex special chars
 \]\-

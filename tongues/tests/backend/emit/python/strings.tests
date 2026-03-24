@@ -31,5 +31,8 @@ s.count("a", 2)
 === startswith with start position
 s.startswith("world", 6)
 
+=== rstrip newline
+s.rstrip("\n")
+
 === strip regex special chars
 s.strip("]-")
