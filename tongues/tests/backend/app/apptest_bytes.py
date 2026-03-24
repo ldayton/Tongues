@@ -258,6 +258,23 @@ def test_bytes_reversed_iteration() -> None:
     assert len(result) == 2
 
 
+def test_bytes_decode_valid() -> None:
+    """decode() on valid UTF-8 produces correct string."""
+    assert b"hello".decode("utf-8") == "hello"
+    assert b"".decode("utf-8") == ""
+    assert b"\xc3\xa9".decode("utf-8") == "\u00e9"
+
+
+def test_bytes_decode_error_caught() -> None:
+    """UnicodeDecodeError from invalid UTF-8 is catchable."""
+    caught: bool = False
+    try:
+        b"\xff\xfe".decode("utf-8")
+    except UnicodeDecodeError:
+        caught = True
+    assert caught
+
+
 def test_bytes_list_comprehension() -> None:
     """List comprehension over bytes yields ints."""
     data: bytes = b"\x01\x02\x03"
@@ -531,6 +548,26 @@ def main() -> int:
     except Exception as e:
         failed += 1
         print("  FAIL test_bytes_reversed_iteration: " + str(e))
+    try:
+        test_bytes_decode_valid()
+        passed += 1
+        print("  PASS test_bytes_decode_valid")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_decode_valid: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_decode_valid: " + str(e))
+    try:
+        test_bytes_decode_error_caught()
+        passed += 1
+        print("  PASS test_bytes_decode_error_caught")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_bytes_decode_error_caught: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_bytes_decode_error_caught: " + str(e))
     try:
         test_bytes_list_comprehension()
         passed += 1
