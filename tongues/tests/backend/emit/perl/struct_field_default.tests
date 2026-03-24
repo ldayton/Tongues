@@ -2,7 +2,7 @@
 sub new {
 
 === computed field not in constructor params
-$self->{length} =
+$self->{length} = (ref($text) eq 'ARRAY' ? scalar(@{$text}) : ref($text) eq 'HASH' ? scalar(keys %{$text}) : length($text));
 
 === const kind field uses correct value
 $self->{kind} = "my-node";
