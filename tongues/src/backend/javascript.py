@@ -567,14 +567,16 @@ class _JavaScriptEmitter(Emitter):
             parent = decl.parent
         self._line("class " + decl.name + " extends " + parent + " {")
         self.indent += 1
+        param_fields = [f for f in decl.fields if not f.body_computed]
+        body_fields = [f for f in decl.fields if f.body_computed]
         params: list[str] = []
-        for fld in decl.fields:
+        for fld in param_fields:
             safe = _safe_name(fld.name)
             params.append(safe + " = " + self._field_default(fld))
         self._line("constructor(" + ", ".join(params) + ") {")
         self.indent += 1
         msg_field: TFieldDecl | None = None
-        for fld in decl.fields:
+        for fld in param_fields:
             if fld.name in ("message", "msg"):
                 msg_field = fld
                 break
@@ -582,9 +584,16 @@ class _JavaScriptEmitter(Emitter):
             self._line("super(" + _safe_name(msg_field.name) + ");")
         else:
             self._line("super();")
-        for fld in decl.fields:
+        for fld in param_fields:
             safe = _safe_name(fld.name)
             self._emit_field_assign(fld, safe)
+        old_self = self.self_name
+        self.self_name = "this"
+        for fld in body_fields:
+            safe = _safe_name(fld.name)
+            if fld.default_expr is not None:
+                self._line("this." + safe + " = " + self._expr(fld.default_expr) + ";")
+        self.self_name = old_self
         self.indent -= 1
         self._line("}")
         for method in decl.methods:
@@ -602,8 +611,10 @@ class _JavaScriptEmitter(Emitter):
         else:
             self._line("class " + decl.name + " {")
         self.indent += 1
+        param_fields = [f for f in decl.fields if not f.body_computed]
+        body_fields = [f for f in decl.fields if f.body_computed]
         params: list[str] = []
-        for fld in decl.fields:
+        for fld in param_fields:
             safe = _safe_name(fld.name)
             params.append(safe + " = " + self._field_default(fld))
         if decl.fields or decl.parent is not None:
@@ -611,9 +622,18 @@ class _JavaScriptEmitter(Emitter):
             self.indent += 1
             if decl.parent is not None:
                 self._line("super();")
-            for fld in decl.fields:
+            for fld in param_fields:
                 safe = _safe_name(fld.name)
                 self._emit_field_assign(fld, safe)
+            old_self = self.self_name
+            self.self_name = "this"
+            for fld in body_fields:
+                safe = _safe_name(fld.name)
+                if fld.default_expr is not None:
+                    self._line(
+                        "this." + safe + " = " + self._expr(fld.default_expr) + ";"
+                    )
+            self.self_name = old_self
             self.indent -= 1
             self._line("}")
         for i, method in enumerate(decl.methods):

@@ -408,11 +408,12 @@ class Parser:
         self.expect(":")
         typ = self.parse_type()
         has_default = False
+        default_expr: TExpr | None = None
         if self.at("="):
             self.advance()
-            self.parse_expr()  # consume and discard default value
+            default_expr = self.parse_expr()
             has_default = True
-        return TFieldDecl(pos, name_tok.value, typ, has_default)
+        return TFieldDecl(pos, name_tok.value, typ, has_default, False, default_expr)
 
     def parse_interface_decl(self) -> TInterfaceDecl:
         pos = self._pos()

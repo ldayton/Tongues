@@ -807,14 +807,16 @@ class _PerlEmitter(Emitter):
         self._emit_constructor_fields(decl.fields)
 
     def _emit_constructor_fields(self, fields: list[TFieldDecl]) -> None:
+        param_fields = [f for f in fields if not f.body_computed]
+        body_fields = [f for f in fields if f.body_computed]
         self._line("sub new {")
         self.indent += 1
         args: list[str] = ["$class"]
-        for f in fields:
+        for f in param_fields:
             args.append("$" + _safe_name(f.name))
         self._line("my (" + ", ".join(args) + ") = @_;")
         self._line("my $self = bless {}, $class;")
-        for fld in fields:
+        for fld in param_fields:
             safe = _safe_name(fld.name)
             if fld.self_ref and isinstance(fld.typ, TIdentType):
                 default = fld.typ.name + "->new($self)"
@@ -831,6 +833,15 @@ class _PerlEmitter(Emitter):
                 + default
                 + ";"
             )
+        old_self = self.self_name
+        self.self_name = "this"
+        for fld in body_fields:
+            safe = _safe_name(fld.name)
+            if fld.default_expr is not None:
+                self._line(
+                    "$self->{" + safe + "} = " + self._expr(fld.default_expr) + ";"
+                )
+        self.self_name = old_self
         self._line("return $self;")
         self.indent -= 1
         self._line("}")

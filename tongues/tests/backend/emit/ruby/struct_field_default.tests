@@ -1,2 +1,15 @@
 === struct field with struct default
 attr_accessor :name, :inner
+
+=== computed field not in constructor params
+@length = text.length
+
+=== const kind field uses correct value
+@kind = "my-node"
+
+=== error class with const kind field
+def initialize(msg: "")
+super(msg)
+@msg = msg
+@kind = "compile"
+end

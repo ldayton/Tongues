@@ -1,2 +1,14 @@
 === struct field with struct default
-inner: Inner = field(default_factory=Inner)
+self.inner = Inner("ok")
+
+=== computed field not in constructor params
+length: int = field(init=False)
+
+=== const kind field uses correct value
+self.kind = "my-node"
+
+=== error class with const kind field
+def __init__(self, msg: str) -> None:
+super().__init__(msg)
+self.msg = msg
+self.kind = "compile"

@@ -749,3 +749,22 @@ class Word(Node):
 ---
 classes.Word.fields.parts.has_default = true
 ---
+
+=== computed field from param call
+class Parser:
+    def __init__(self, source: str) -> None:
+        self.source = source
+        self.size: int = len(source)
+---
+classes.Parser.fields.source.typ.kind = string
+classes.Parser.fields.size.typ.kind = int
+classes.Parser.fields.size.has_default = true
+---
+
+=== const kind field value preserved
+class PipeBoth:
+    def __init__(self) -> None:
+        self.kind = "pipe-both"
+---
+classes.PipeBoth.const_fields.kind = pipe-both
+---

@@ -347,6 +347,7 @@ class _PythonEmitter(Emitter):
         self.var_types: dict[str, TType] = {}
         self.module_let_names: set[str] = set()
         self._current_struct: str = ""
+        self._parent_field_names: dict[str, set[str]] = {}
 
     def _line(self, text: str = "") -> None:
         _emit_line(self.lines, self.indent, text)
@@ -410,6 +411,14 @@ class _PythonEmitter(Emitter):
                     self._emit_field(fld)
                 self._current_struct = ""
                 self.indent -= 1
+                own_fields: set[str] = set()
+                for f in decl.fields:
+                    own_fields.add(f.name)
+                iface_parent = decl.annotations.get("_parent_interface", "")
+                if iface_parent and iface_parent in self._parent_field_names:
+                    for pn in self._parent_field_names[iface_parent]:
+                        own_fields.add(pn)
+                self._parent_field_names[decl.name] = own_fields
                 need_blank = True
                 continue
             if need_blank:
@@ -454,14 +463,18 @@ class _PythonEmitter(Emitter):
     def _emit_error_struct(self, decl: TStructDecl) -> None:
         self._line("class " + decl.name + "(Exception):")
         self.indent += 1
+        param_fields = [f for f in decl.fields if not f.body_computed]
+        body_fields = [
+            f for f in decl.fields if f.body_computed and f.default_expr is not None
+        ]
         params = ["self"]
-        for fld in decl.fields:
+        for fld in param_fields:
             params.append(_safe_name(fld.name) + ": " + self._type(fld.typ))
         self._line("def __init__(" + ", ".join(params) + ") -> None:")
         self.indent += 1
-        if decl.fields:
+        if param_fields or body_fields:
             msg_field: TFieldDecl | None = None
-            for fld in decl.fields:
+            for fld in param_fields:
                 if fld.name in ("message", "msg"):
                     msg_field = fld
                     break
@@ -469,9 +482,20 @@ class _PythonEmitter(Emitter):
                 self._line("super().__init__(" + _safe_name(msg_field.name) + ")")
             else:
                 self._line("super().__init__()")
-            for fld in decl.fields:
+            for fld in param_fields:
                 safe = _safe_name(fld.name)
                 self._line("self." + safe + " = " + safe)
+            old_self = self.self_name
+            self.self_name = "this"
+            for fld in body_fields:
+                if fld.default_expr is not None:
+                    self._line(
+                        "self."
+                        + _safe_name(fld.name)
+                        + " = "
+                        + self._expr(fld.default_expr)
+                    )
+            self.self_name = old_self
         else:
             self._line("pass")
         self.indent -= 1
@@ -494,9 +518,33 @@ class _PythonEmitter(Emitter):
         if not decl.fields and not has_non_eq:
             self._line("pass")
         self._current_struct = decl.name
+        parent_field_names: set[str] = set()
+        if decl.parent is not None and decl.parent in self._parent_field_names:
+            parent_field_names = self._parent_field_names[decl.parent]
         for fld in decl.fields:
+            if fld.body_computed and fld.name in parent_field_names:
+                continue
             self._emit_field(fld)
         self._current_struct = ""
+        body_fields = [
+            f for f in decl.fields if f.body_computed and f.default_expr is not None
+        ]
+        if body_fields:
+            self._line()
+            self._line("def __post_init__(self) -> None:")
+            self.indent += 1
+            old_self = self.self_name
+            self.self_name = "this"
+            for fld in body_fields:
+                if fld.default_expr is not None:
+                    self._line(
+                        "self."
+                        + _safe_name(fld.name)
+                        + " = "
+                        + self._expr(fld.default_expr)
+                    )
+            self.self_name = old_self
+            self.indent -= 1
         first_method = True
         for method in decl.methods:
             if method.name == "__eq__":
@@ -506,11 +554,18 @@ class _PythonEmitter(Emitter):
             first_method = False
             self._emit_method(method)
         self.indent -= 1
+        pf: set[str] = set()
+        for f in decl.fields:
+            pf.add(f.name)
+        self._parent_field_names[decl.name] = pf
 
     def _emit_field(self, fld: TFieldDecl) -> None:
         typ_str = self._type(fld.typ)
-        default = self._field_default(fld.name, fld.typ, fld.has_default)
-        self._line(_safe_name(fld.name) + ": " + typ_str + " = " + default)
+        if fld.body_computed:
+            self._line(_safe_name(fld.name) + ": " + typ_str + " = field(init=False)")
+        else:
+            default = self._field_default(fld.name, fld.typ, fld.has_default)
+            self._line(_safe_name(fld.name) + ": " + typ_str + " = " + default)
 
     def _field_default(self, name: str, typ: TType, has_default: bool = False) -> str:
         if name == name.upper() and len(name) > 1 and self._current_struct:

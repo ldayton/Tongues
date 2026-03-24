@@ -325,7 +325,43 @@ def f() -> Word:
 struct Word : Node {
     value: string
     parts: list[Node] = []
-    kind: string = ""
+    kind: string = "word"
+---
+
+=== struct with computed field from param
+class Parser:
+    def __init__(self, source: str) -> None:
+        self.source = source
+        self.length: int = len(source)
+def f() -> None:
+    p = Parser("hello")
+---
+source: string
+length: int = Len(source)
+---
+
+=== struct with const kind field
+class PipeBoth:
+    def __init__(self) -> None:
+        self.kind = "pipe-both"
+def f() -> None:
+    p = PipeBoth()
+---
+kind: string = "pipe-both"
+---
+
+=== struct with mixed param and computed fields
+class Foo:
+    def __init__(self, name: str) -> None:
+        self.kind = "foo"
+        self.name = name
+        self.upper: str = name.upper()
+def f() -> None:
+    x = Foo("hi")
+---
+name: string
+kind: string = "foo"
+upper: string = name.upper()
 ---
 
 === ok mixed positional and keyword args in constructor
