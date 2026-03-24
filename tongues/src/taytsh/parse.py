@@ -413,9 +413,7 @@ class Parser:
             self.advance()
             default_expr = self.parse_expr()
             has_default = True
-        return TFieldDecl(
-            pos, name_tok.value, typ, has_default, default_expr=default_expr
-        )
+        return TFieldDecl(pos, name_tok.value, typ, has_default, False, default_expr)
 
     def parse_interface_decl(self) -> TInterfaceDecl:
         pos = self._pos()
