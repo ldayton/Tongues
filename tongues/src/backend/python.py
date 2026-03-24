@@ -525,6 +525,7 @@ class _PythonEmitter(Emitter):
             if fld.body_computed and fld.name in parent_field_names:
                 continue
             self._emit_field(fld)
+        self._current_struct = ""
         body_fields = [
             f for f in decl.fields if f.body_computed and f.default_expr is not None
         ]
