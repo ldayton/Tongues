@@ -7,6 +7,12 @@ $self->{length} = (ref($text) eq 'ARRAY' ? scalar(@{$text}) : ref($text) eq 'HAS
 === const kind field uses correct value
 $self->{kind} = "my-node";
 
+=== computed field references renamed param
+my ($class, $_prefix) = @_;
+my $self = bless {}, $class;
+$self->{_prefix} = defined $_prefix ? $_prefix : "";
+$self->{_label} = uc($_prefix);
+
 === error class with const kind field
 my ($class, $msg) = @_;
 my $self = bless {}, $class;
