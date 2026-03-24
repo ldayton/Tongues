@@ -347,6 +347,7 @@ class _PythonEmitter(Emitter):
         self.var_types: dict[str, TType] = {}
         self.module_let_names: set[str] = set()
         self._current_struct: str = ""
+        self._parent_field_names: dict[str, set[str]] = {}
 
     def _line(self, text: str = "") -> None:
         _emit_line(self.lines, self.indent, text)
@@ -410,6 +411,11 @@ class _PythonEmitter(Emitter):
                     self._emit_field(fld)
                 self._current_struct = ""
                 self.indent -= 1
+                own_fields = {f.name for f in decl.fields}
+                iface_parent = decl.annotations.get("_parent_interface", "")
+                if iface_parent:
+                    own_fields |= self._parent_field_names.get(iface_parent, set())
+                self._parent_field_names[decl.name] = own_fields
                 need_blank = True
                 continue
             if need_blank:
@@ -509,9 +515,13 @@ class _PythonEmitter(Emitter):
         if not decl.fields and not has_non_eq:
             self._line("pass")
         self._current_struct = decl.name
+        parent_field_names: set[str] = set()
+        if decl.parent is not None:
+            parent_field_names = self._parent_field_names.get(decl.parent, set())
         for fld in decl.fields:
+            if fld.body_computed and fld.name in parent_field_names:
+                continue
             self._emit_field(fld)
-        self._current_struct = ""
         body_fields = [
             f for f in decl.fields if f.body_computed and f.default_expr is not None
         ]
@@ -540,6 +550,7 @@ class _PythonEmitter(Emitter):
             first_method = False
             self._emit_method(method)
         self.indent -= 1
+        self._parent_field_names[decl.name] = {f.name for f in decl.fields}
 
     def _emit_field(self, fld: TFieldDecl) -> None:
         typ_str = self._type(fld.typ)
