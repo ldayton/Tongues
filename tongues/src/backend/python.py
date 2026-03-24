@@ -507,12 +507,13 @@ class _PythonEmitter(Emitter):
             old_self = self.self_name
             self.self_name = "this"
             for fld in body_fields:
-                self._line(
-                    "self."
-                    + _safe_name(fld.name)
-                    + " = "
-                    + self._expr(fld.default_expr)
-                )
+                if fld.default_expr is not None:
+                    self._line(
+                        "self."
+                        + _safe_name(fld.name)
+                        + " = "
+                        + self._expr(fld.default_expr)
+                    )
             self.self_name = old_self
             self.indent -= 1
         first_method = True
