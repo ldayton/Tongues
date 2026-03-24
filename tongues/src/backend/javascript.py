@@ -602,8 +602,10 @@ class _JavaScriptEmitter(Emitter):
         else:
             self._line("class " + decl.name + " {")
         self.indent += 1
+        param_fields = [f for f in decl.fields if not f.body_computed]
+        body_fields = [f for f in decl.fields if f.body_computed]
         params: list[str] = []
-        for fld in decl.fields:
+        for fld in param_fields:
             safe = _safe_name(fld.name)
             params.append(safe + " = " + self._field_default(fld))
         if decl.fields or decl.parent is not None:
@@ -611,9 +613,15 @@ class _JavaScriptEmitter(Emitter):
             self.indent += 1
             if decl.parent is not None:
                 self._line("super();")
-            for fld in decl.fields:
+            for fld in param_fields:
                 safe = _safe_name(fld.name)
                 self._emit_field_assign(fld, safe)
+            for fld in body_fields:
+                safe = _safe_name(fld.name)
+                if fld.default_expr is not None:
+                    self._line(
+                        "this." + safe + " = " + self._expr(fld.default_expr) + ";"
+                    )
             self.indent -= 1
             self._line("}")
         for i, method in enumerate(decl.methods):

@@ -12,3 +12,27 @@ def main() -> None:
     print(o.inner.value)
 if __name__ == "__main__":
     main()
+
+=== computed field not in constructor params
+import sys
+class Wrapper:
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.length: int = len(text)
+def main() -> None:
+    w: Wrapper = Wrapper(text="hello")
+    print(w.length)
+if __name__ == "__main__":
+    main()
+
+=== const kind field uses correct value
+import sys
+class MyNode:
+    def __init__(self, value: int) -> None:
+        self.kind = "my-node"
+        self.value = value
+def main() -> None:
+    n: MyNode = MyNode(value=42)
+    print(n.kind)
+if __name__ == "__main__":
+    main()

@@ -1574,18 +1574,26 @@ class _JavaEmitter(Emitter):
                     "public " + self._type(f.typ) + " " + _safe_name(f.name) + ";"
                 )
         if decl.fields:
+            param_fields = [f for f in decl.fields if not f.body_computed]
+            body_fields = [f for f in decl.fields if f.body_computed]
             params = ", ".join(
-                self._type(f.typ) + " " + _safe_name(f.name) for f in decl.fields
+                self._type(f.typ) + " " + _safe_name(f.name) for f in param_fields
             )
             self._line("public " + name + "(" + params + ") {")
             self.indent += 1
-            for f in decl.fields:
+            for f in param_fields:
                 safe = _safe_name(f.name)
                 self._line("this." + safe + " = " + safe + ";")
+            for f in body_fields:
+                safe = _safe_name(f.name)
+                if f.default_expr is not None:
+                    self._line(
+                        "this." + safe + " = " + self._expr(f.default_expr) + ";"
+                    )
             self.indent -= 1
             self._line("}")
-            required = [f for f in decl.fields if not f.has_default]
-            defaulted = [f for f in decl.fields if f.has_default]
+            required = [f for f in param_fields if not f.has_default]
+            defaulted = [f for f in param_fields if f.has_default]
             if defaulted:
                 for i in range(len(defaulted)):
                     used = required + defaulted[:i]
@@ -1600,7 +1608,7 @@ class _JavaEmitter(Emitter):
                     else:
                         self._line("public " + name + "() {")
                     self.indent += 1
-                    for f in decl.fields:
+                    for f in param_fields:
                         safe = _safe_name(f.name)
                         if f.name in used_names:
                             self._line("this." + safe + " = " + safe + ";")
@@ -1611,6 +1619,12 @@ class _JavaEmitter(Emitter):
                                 + " = "
                                 + self._field_default(f, in_body=True)
                                 + ";"
+                            )
+                    for f in body_fields:
+                        safe = _safe_name(f.name)
+                        if f.default_expr is not None:
+                            self._line(
+                                "this." + safe + " = " + self._expr(f.default_expr) + ";"
                             )
                     self.indent -= 1
                     self._line("}")

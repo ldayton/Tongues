@@ -159,6 +159,7 @@ class TFieldDecl:
     has_default: bool = False
     self_ref: bool = False
     default_expr: "TExpr | None" = None
+    body_computed: bool = False
 
 
 @dataclass

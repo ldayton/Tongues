@@ -1,2 +1,8 @@
 === struct field with struct default
-inner = new Inner()
+this.inner = new Inner("ok");
+
+=== computed field not in constructor params
+this.length = text.length;
+
+=== const kind field uses correct value
+constructor(value = 0) {

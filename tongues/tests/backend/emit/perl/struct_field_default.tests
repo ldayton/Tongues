@@ -1,2 +1,8 @@
 === struct field with struct default
 sub new {
+
+=== computed field not in constructor params
+$self->{length} =
+
+=== const kind field uses correct value
+$self->{kind} = "my-node";

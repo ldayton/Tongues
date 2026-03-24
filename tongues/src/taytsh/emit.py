@@ -266,7 +266,9 @@ class _Emitter:
 
     def _emit_field(self, field: TFieldDecl) -> None:
         line = field.name + ": " + self._render_type(field.typ)
-        if field.has_default:
+        if field.default_expr is not None:
+            line += " = " + self._render_expr(field.default_expr, 0)
+        elif field.has_default:
             line += " = " + _zero_value(field.typ)
         self._emit_line(line)
 

@@ -834,8 +834,10 @@ class _RubyEmitter(Emitter):
         self._line("end")
 
     def _emit_initialize(self, fields: list[TFieldDecl], is_error: bool) -> None:
+        param_fields = [f for f in fields if not f.body_computed]
+        body_fields = [f for f in fields if f.body_computed]
         params: list[str] = []
-        for f in fields:
+        for f in param_fields:
             name = _safe_name(f.name)
             if f.self_ref:
                 params.append(name + ": nil")
@@ -846,7 +848,7 @@ class _RubyEmitter(Emitter):
         self.indent += 1
         if is_error:
             msg_field: TFieldDecl | None = None
-            for f in fields:
+            for f in param_fields:
                 if f.name in ("message", "msg"):
                     msg_field = f
                     break
@@ -854,7 +856,7 @@ class _RubyEmitter(Emitter):
                 self._line("super(" + _safe_name(msg_field.name) + ")")
             else:
                 self._line("super()")
-        for f in fields:
+        for f in param_fields:
             name = _safe_name(f.name)
             if f.self_ref and isinstance(f.typ, TIdentType):
                 self._line(
@@ -868,6 +870,10 @@ class _RubyEmitter(Emitter):
                 )
             else:
                 self._line("@" + name + " = " + name)
+        for f in body_fields:
+            name = _safe_name(f.name)
+            if f.default_expr is not None:
+                self._line("@" + name + " = " + self._expr(f.default_expr))
         self.indent -= 1
         self._line("end")
 

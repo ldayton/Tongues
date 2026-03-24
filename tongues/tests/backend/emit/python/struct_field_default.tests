@@ -1,2 +1,8 @@
 === struct field with struct default
 inner: Inner = field(default_factory=Inner)
+
+=== computed field not in constructor params
+length: int = 0
+
+=== const kind field uses correct value
+kind: str = ""
