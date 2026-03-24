@@ -194,6 +194,22 @@ def _check_float_list(expr: TExpr, var_types: dict[str, TType]) -> bool:
     return False
 
 
+class _SelfNameCtx:
+    """Context manager that temporarily sets self_name on an emitter."""
+
+    def __init__(self, emitter: "Emitter", name: str) -> None:
+        self._emitter = emitter
+        self._name = name
+        self._old: str | None = None
+
+    def __enter__(self) -> None:
+        self._old = self._emitter.self_name
+        self._emitter.self_name = self._name
+
+    def __exit__(self, exc_type: object, exc_val: object, exc_tb: object) -> None:
+        self._emitter.self_name = self._old
+
+
 class Emitter:
     """Base class for code emitters with indentation tracking."""
 
@@ -205,6 +221,10 @@ class Emitter:
 
     def _expr(self, expr: TExpr) -> str:
         raise NotImplementedError
+
+    def _with_self(self, name: str) -> "_SelfNameCtx":
+        """Context manager to temporarily set self_name for expression emission."""
+        return _SelfNameCtx(self, name)
 
     def _a(self, args: list[TArg], i: int) -> str:
         return self._expr(args[i].value)

@@ -482,17 +482,15 @@ class _PythonEmitter(Emitter):
             for fld in param_fields:
                 safe = _safe_name(fld.name)
                 self._line("self." + safe + " = " + safe)
-            old_self = self.self_name
-            self.self_name = "this"
-            for fld in body_fields:
-                if fld.default_expr is not None:
-                    self._line(
-                        "self."
-                        + _safe_name(fld.name)
-                        + " = "
-                        + self._expr(fld.default_expr)
-                    )
-            self.self_name = old_self
+            with self._with_self("this"):
+                for fld in body_fields:
+                    if fld.default_expr is not None:
+                        self._line(
+                            "self."
+                            + _safe_name(fld.name)
+                            + " = "
+                            + self._expr(fld.default_expr)
+                        )
         else:
             self._line("pass")
         self.indent -= 1
@@ -529,17 +527,15 @@ class _PythonEmitter(Emitter):
             self._line()
             self._line("def __post_init__(self) -> None:")
             self.indent += 1
-            old_self = self.self_name
-            self.self_name = "this"
-            for fld in body_fields:
-                if fld.default_expr is not None:
-                    self._line(
-                        "self."
-                        + _safe_name(fld.name)
-                        + " = "
-                        + self._expr(fld.default_expr)
-                    )
-            self.self_name = old_self
+            with self._with_self("this"):
+                for fld in body_fields:
+                    if fld.default_expr is not None:
+                        self._line(
+                            "self."
+                            + _safe_name(fld.name)
+                            + " = "
+                            + self._expr(fld.default_expr)
+                        )
             self.indent -= 1
         first_method = True
         for method in decl.methods:
