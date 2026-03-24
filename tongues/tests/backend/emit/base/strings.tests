@@ -37,6 +37,13 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== fstring with backtick
+def main() -> None:
+    c: str = "x"
+    print(f"matching `{c}'")
+if __name__ == "__main__":
+    main()
+
 === fstring str conversion
 def main() -> None:
     x: int = 42

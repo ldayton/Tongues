@@ -13,6 +13,9 @@ s.rstrip(
 === fstring repr conversion
 f"{repr(x)}"
 
+=== fstring with backtick
+matching `{c}'
+
 === fstring str conversion
 f"{str(x)}"
 

@@ -3376,6 +3376,7 @@ class _JavaScriptEmitter(Emitter):
             marker = "\x00PH" + str(i) + "\x00"
             markers[marker] = i
             result = result.replace("{}", marker, 1)
+        result = result.replace("`", "\\`")
         for mk, idx in markers.items():
             result = result.replace(mk, "${" + self._expr(fmt_args[idx].value) + "}")
         return "`" + result + "`"

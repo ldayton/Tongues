@@ -13,6 +13,9 @@ s/^[
 === fstring repr conversion
 sprintf("%s", ("" . $x))
 
+=== fstring with backtick
+matching `%s'", $c
+
 === fstring str conversion
 sprintf("%s", ("" . $x))
 

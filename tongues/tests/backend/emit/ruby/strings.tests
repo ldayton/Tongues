@@ -13,6 +13,9 @@
 === fstring repr conversion
 "%s" % x.to_s
 
+=== fstring with backtick
+matching `%s'" % c
+
 === fstring str conversion
 "%s" % x.to_s
 

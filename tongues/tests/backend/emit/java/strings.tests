@@ -13,6 +13,9 @@ s.stripTrailing()
 === fstring repr conversion
 String.valueOf(x)
 
+=== fstring with backtick
+matching `" + c + "'"
+
 === fstring str conversion
 String.valueOf(x)
 

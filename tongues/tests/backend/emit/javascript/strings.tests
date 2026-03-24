@@ -13,6 +13,9 @@ s.trimEnd()
 === fstring repr conversion
 JSON.stringify(x)
 
+=== fstring with backtick
+matching \`${c}'
+
 === fstring str conversion
 String(x)
 
