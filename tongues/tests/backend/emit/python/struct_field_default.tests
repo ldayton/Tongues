@@ -11,6 +11,10 @@ self.kind = "my-node"
 def __post_init__(self) -> None:
 self._label = _prefix.upper()
 
+=== post-assignment nested field set in init
+self.child = Child("ok")
+self.child._parent = self.name
+
 === error class with const kind field
 def __init__(self, msg: str) -> None:
 super().__init__(msg)

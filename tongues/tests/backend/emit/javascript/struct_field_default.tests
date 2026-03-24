@@ -13,6 +13,10 @@ this._prefix = _prefix;
 this._label = _prefix.upper();
 }
 
+=== post-assignment nested field set in init
+this.child = new Child("ok");
+this.child._parent = name;
+
 === error class with const kind field
 constructor(msg = "") {
 super(msg);
