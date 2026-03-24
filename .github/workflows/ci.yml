@@ -30,7 +30,7 @@ jobs:
       - run: |
           docker run --rm -v $PWD:/workspace tongues-python just -f justfile _transpile-tongues python
           docker run --rm -v $PWD:/workspace tongues-python just -f justfile _transpile-harness python
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: transpiled-python
           path: |
@@ -46,7 +46,7 @@ jobs:
       - run: |
           docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile _transpile-tongues ruby
           docker run --rm -v $PWD:/workspace tongues-ruby just -f justfile _transpile-harness ruby
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: transpiled-ruby
           path: |
@@ -62,7 +62,7 @@ jobs:
       - run: |
           docker run --rm -v $PWD:/workspace tongues-perl just -f justfile _transpile-tongues perl
           docker run --rm -v $PWD:/workspace tongues-perl just -f justfile _transpile-harness perl
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: transpiled-perl
           path: |
@@ -78,7 +78,7 @@ jobs:
       - run: |
           docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile _transpile-tongues javascript
           docker run --rm -v $PWD:/workspace tongues-javascript just -f justfile _transpile-harness javascript
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: transpiled-javascript
           path: |
@@ -93,7 +93,7 @@ jobs:
       - run: docker build -t tongues-java docker/java
       - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile _transpile-tongues java
       - run: docker run --rm -v $PWD:/workspace tongues-java just -f justfile _compile-java
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: transpiled-java
           path: |
@@ -110,7 +110,7 @@ jobs:
     needs: transpile-tongues-python
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: transpiled-python
           path: tongues/.out
@@ -124,7 +124,7 @@ jobs:
     needs: transpile-tongues-python
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: transpiled-python
           path: tongues/.out
@@ -137,7 +137,7 @@ jobs:
     needs: transpile-tongues-python
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: transpiled-python
           path: tongues/.out
@@ -154,7 +154,7 @@ jobs:
     needs: transpile-tongues-ruby
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: transpiled-ruby
           path: tongues/.out
@@ -168,7 +168,7 @@ jobs:
     needs: transpile-tongues-ruby
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: transpiled-ruby
           path: tongues/.out
@@ -185,7 +185,7 @@ jobs:
     needs: transpile-tongues-perl
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: transpiled-perl
           path: tongues/.out
@@ -199,7 +199,7 @@ jobs:
     needs: transpile-tongues-perl
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: transpiled-perl
           path: tongues/.out
@@ -216,7 +216,7 @@ jobs:
     needs: transpile-tongues-javascript
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: transpiled-javascript
           path: tongues/.out
@@ -230,7 +230,7 @@ jobs:
     needs: transpile-tongues-javascript
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: transpiled-javascript
           path: tongues/.out
@@ -247,7 +247,7 @@ jobs:
     needs: transpile-tongues-java
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: transpiled-java
           path: tongues/.out
@@ -260,7 +260,7 @@ jobs:
     needs: transpile-tongues-java
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: transpiled-java
           path: tongues/.out
@@ -277,7 +277,7 @@ jobs:
     needs: transpile-tongues-javascript
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: transpiled-javascript
           path: tongues/.out
@@ -291,7 +291,7 @@ jobs:
     needs: transpile-tongues-perl
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: transpiled-perl
           path: tongues/.out
@@ -305,7 +305,7 @@ jobs:
     needs: transpile-tongues-ruby
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: transpiled-ruby
           path: tongues/.out
@@ -319,7 +319,7 @@ jobs:
     needs: transpile-tongues-python
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: transpiled-python
           path: tongues/.out
@@ -333,7 +333,7 @@ jobs:
     needs: transpile-tongues-java
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: transpiled-java
           path: tongues/.out
