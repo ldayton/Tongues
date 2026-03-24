@@ -6,3 +6,10 @@ attr_accessor :name, :inner
 
 === const kind field uses correct value
 @kind = "my-node"
+
+=== error class with const kind field
+def initialize(msg: "")
+super(msg)
+@msg = msg
+@kind = "compile"
+end

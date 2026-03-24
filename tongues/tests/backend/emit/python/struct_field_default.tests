@@ -6,3 +6,9 @@ length: int = field(init=False)
 
 === const kind field uses correct value
 self.kind = "my-node"
+
+=== error class with const kind field
+def __init__(self, msg: str) -> None:
+super().__init__(msg)
+self.msg = msg
+self.kind = "compile"

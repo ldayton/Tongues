@@ -6,3 +6,9 @@ this.length = text.size();
 
 === const kind field uses correct value
 this.kind = "my-node";
+
+=== error class with const kind field
+public CompileError(String msg) {
+this.msg = msg;
+this.kind = "compile";
+}

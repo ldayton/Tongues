@@ -36,3 +36,17 @@ def main() -> None:
     print(n.kind)
 if __name__ == "__main__":
     main()
+
+=== error class with const kind field
+import sys
+class CompileError(Exception):
+    def __init__(self, msg: str) -> None:
+        self.kind = "compile"
+        self.msg = msg
+def main() -> None:
+    try:
+        raise CompileError("bad syntax")
+    except CompileError as e:
+        print(e.kind)
+if __name__ == "__main__":
+    main()

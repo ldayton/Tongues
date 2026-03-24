@@ -454,14 +454,18 @@ class _PythonEmitter(Emitter):
     def _emit_error_struct(self, decl: TStructDecl) -> None:
         self._line("class " + decl.name + "(Exception):")
         self.indent += 1
+        param_fields = [f for f in decl.fields if not f.body_computed]
+        body_fields = [
+            f for f in decl.fields if f.body_computed and f.default_expr is not None
+        ]
         params = ["self"]
-        for fld in decl.fields:
+        for fld in param_fields:
             params.append(_safe_name(fld.name) + ": " + self._type(fld.typ))
         self._line("def __init__(" + ", ".join(params) + ") -> None:")
         self.indent += 1
-        if decl.fields:
+        if param_fields or body_fields:
             msg_field: TFieldDecl | None = None
-            for fld in decl.fields:
+            for fld in param_fields:
                 if fld.name in ("message", "msg"):
                     msg_field = fld
                     break
@@ -469,9 +473,20 @@ class _PythonEmitter(Emitter):
                 self._line("super().__init__(" + _safe_name(msg_field.name) + ")")
             else:
                 self._line("super().__init__()")
-            for fld in decl.fields:
+            for fld in param_fields:
                 safe = _safe_name(fld.name)
                 self._line("self." + safe + " = " + safe)
+            old_self = self.self_name
+            self.self_name = "this"
+            for fld in body_fields:
+                if fld.default_expr is not None:
+                    self._line(
+                        "self."
+                        + _safe_name(fld.name)
+                        + " = "
+                        + self._expr(fld.default_expr)
+                    )
+            self.self_name = old_self
         else:
             self._line("pass")
         self.indent -= 1
