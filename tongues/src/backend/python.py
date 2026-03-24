@@ -497,6 +497,24 @@ class _PythonEmitter(Emitter):
         for fld in decl.fields:
             self._emit_field(fld)
         self._current_struct = ""
+        body_fields = [
+            f for f in decl.fields if f.body_computed and f.default_expr is not None
+        ]
+        if body_fields:
+            self._line()
+            self._line("def __post_init__(self) -> None:")
+            self.indent += 1
+            old_self = self.self_name
+            self.self_name = "this"
+            for fld in body_fields:
+                self._line(
+                    "self."
+                    + _safe_name(fld.name)
+                    + " = "
+                    + self._expr(fld.default_expr)
+                )
+            self.self_name = old_self
+            self.indent -= 1
         first_method = True
         for method in decl.methods:
             if method.name == "__eq__":
@@ -509,8 +527,11 @@ class _PythonEmitter(Emitter):
 
     def _emit_field(self, fld: TFieldDecl) -> None:
         typ_str = self._type(fld.typ)
-        default = self._field_default(fld.name, fld.typ, fld.has_default)
-        self._line(_safe_name(fld.name) + ": " + typ_str + " = " + default)
+        if fld.body_computed:
+            self._line(_safe_name(fld.name) + ": " + typ_str + " = field(init=False)")
+        else:
+            default = self._field_default(fld.name, fld.typ, fld.has_default)
+            self._line(_safe_name(fld.name) + ": " + typ_str + " = " + default)
 
     def _field_default(self, name: str, typ: TType, has_default: bool = False) -> str:
         if name == name.upper() and len(name) > 1 and self._current_struct:

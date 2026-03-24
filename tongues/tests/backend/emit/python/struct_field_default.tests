@@ -1,8 +1,8 @@
 === struct field with struct default
-inner: Inner = field(default_factory=Inner)
+self.inner = Inner("ok")
 
 === computed field not in constructor params
-length: int = 0
+length: int = field(init=False)
 
 === const kind field uses correct value
-kind: str = ""
+self.kind = "my-node"
