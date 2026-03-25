@@ -558,6 +558,18 @@ def _string_literal(value: str) -> str:
     return '"' + _escape_perl_string(value) + '"'
 
 
+_ANN_PRIMITIVE_TYPES = frozenset(
+    ["string", "int", "float", "bool", "bytes", "rune", "byte", "object"]
+)
+
+
+def _ann_elem_type(pos: Pos, name: str) -> TType:
+    """Convert an annotation element name to a TType."""
+    if name in _ANN_PRIMITIVE_TYPES:
+        return TPrimitive(pos, name)
+    return TIdentType(pos, name)
+
+
 _PRECEDENCE: dict[str, int] = {
     "or": 1,
     "xor": 1,
@@ -1612,11 +1624,11 @@ class _PerlEmitter(Emitter):
         safe = self._deref_safe(it)
         if len(binding) == 1:
             name = "$" + _restore_name(binding[0], ann)
-            iter_type: TType | None = (
-                self.var_types.get(iterable.name)
-                if isinstance(iterable, TVar)
-                else None
-            )
+            iter_type: TType | None = None
+            if isinstance(iterable, TVar):
+                iter_type = self.var_types.get(iterable.name)
+            if iter_type is None:
+                iter_type = self._type_from_ann(iterable)
             if self._is_map_expr(iterable):
                 if isinstance(iter_type, TMapType) and isinstance(
                     iter_type.key, TTupleType
@@ -1656,11 +1668,14 @@ class _PerlEmitter(Emitter):
             if self._is_map_expr(iterable) or ann.get("for.items") == "true":
                 self._line("for my " + key_var + " (sort keys %{" + safe + "}) {")
                 self.indent += 1
-                if isinstance(iterable, TVar):
-                    iter_type2: TType | None = self.var_types.get(iterable.name)
-                    if isinstance(iter_type2, TMapType):
-                        self.var_types[binding[0]] = iter_type2.key
-                        self.var_types[binding[1]] = iter_type2.value
+                iter_type2: TType | None = (
+                    self.var_types.get(iterable.name)
+                    if isinstance(iterable, TVar)
+                    else self._type_from_ann(iterable)
+                )
+                if isinstance(iter_type2, TMapType):
+                    self.var_types[binding[0]] = iter_type2.key
+                    self.var_types[binding[1]] = iter_type2.value
                 self._line("my " + val_var + " = " + it + "->{" + key_var + "};")
                 self._emit_stmts(body)
                 self.indent -= 1
@@ -2644,6 +2659,20 @@ class _PerlEmitter(Emitter):
         arg_strs = ", ".join(self._expr(a.value) for a in args)
         return obj + "->" + safe_method + "(" + arg_strs + ")"
 
+    def _type_from_ann(self, expr: TExpr) -> TType | None:
+        """Resolve a TType from an expression's type annotation string."""
+        ann = expr.annotations.get("type", "")
+        if not ann:
+            return None
+        p = expr.pos
+        if ann.startswith("list[") and ann.endswith("]"):
+            inner = ann[5:-1]
+            return TListType(p, _ann_elem_type(p, inner))
+        if ann.startswith("set[") and ann.endswith("]"):
+            inner = ann[4:-1]
+            return TSetType(p, _ann_elem_type(p, inner))
+        return None
+
     def _is_known_struct_method(self, obj: TExpr, method: str) -> bool:
         if isinstance(obj, TVar):
             typ = self.var_types.get(obj.name)
@@ -2651,6 +2680,13 @@ class _PerlEmitter(Emitter):
                 return True
             if isinstance(typ, TOptionalType) and isinstance(typ.inner, TIdentType):
                 return True
+        ann = obj.annotations.get("type", "")
+        if (
+            ann
+            and ann not in _ANN_PRIMITIVE_TYPES
+            and not ann.startswith(("list[", "dict[", "map[", "set[", "("))
+        ):
+            return True
         return False
 
     def _builtin_call(self, name: str, args: list[TArg], ann: Ann | None = None) -> str:
