@@ -4,5 +4,9 @@
 === tuple unpack with discard
 [x, ] = get_pair();
 
+=== tuple element with optional type
+const node = result[0];
+const idx = result[1];
+
 === tuple assign in if-body one target used after
 [a, ] = get_pair();
