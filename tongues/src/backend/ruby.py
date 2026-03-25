@@ -309,6 +309,8 @@ def _safe_name(name: str) -> str:
     if name.startswith("_"):
         prefix = "_"
     name = to_snake(name)
+    if name.isupper():
+        name = name.lower()
     if not name:
         return "_"
     result = prefix + name
