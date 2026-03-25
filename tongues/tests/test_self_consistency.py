@@ -340,13 +340,13 @@ def test_taytsh_unicode_escape_round_trip():
     from src.taytsh.tokens import tokenize
 
     source = (
-        'fn Main() -> void {\n'
+        "fn Main() -> void {\n"
         '    let bmp: string = "caf\\u00e9"\n'
         '    let astral: string = "\\U0001f600"\n'
         '    let mixed: string = "\\u03b1 \\U0001f601 \\u03b2"\n'
-        '    let r: rune = \'\\u00e9\'\n'
-        '    WritelnOut(bmp)\n'
-        '}\n'
+        "    let r: rune = '\\u00e9'\n"
+        "    WritelnOut(bmp)\n"
+        "}\n"
     )
     tokens1 = tokenize(source)
     module1 = Parser(tokens1).parse_program()
