@@ -826,6 +826,11 @@ class _JavaEmitter(Emitter):
             if inner_j is not None:
                 return "HashSet<" + inner_j + ">"
             return "HashSet"
+        if " | " in ann:
+            parts = ann.split(" | ")
+            non_nil = [p.strip() for p in parts if p.strip() != "nil"]
+            if len(non_nil) == 1:
+                return self._tuple_cast_type(non_nil[0])
         result = self._java_type_for_ann(ann)
         if result is not None:
             return result

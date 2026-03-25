@@ -20,6 +20,22 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== tuple element with optional type
+import sys
+class Node:
+    value: int
+def find(xs: list[Node], key: int) -> tuple[Node | None, int]:
+    return (None, -1)
+def main() -> None:
+    result: tuple[Node | None, int] = find([], 0)
+    node: Node | None = result[0]
+    idx: int = result[1]
+    print(str(idx))
+    if node is not None:
+        print(str(node.value))
+if __name__ == "__main__":
+    main()
+
 === tuple assign in if-body one target used after
 def get_pair() -> tuple[str, int]:
     return ("hello", 0)

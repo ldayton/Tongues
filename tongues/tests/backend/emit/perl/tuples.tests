@@ -4,5 +4,9 @@
 === tuple unpack with discard
 ($x, undef) = @{get_pair()};
 
+=== tuple element with optional type
+my $node = (ref($result) ? $result->[0] : (split("\0", $result))[0]);
+my $idx = (ref($result) ? $result->[1] : (split("\0", $result))[1]);
+
 === tuple assign in if-body one target used after
 ($a, undef) = @{get_pair()};
