@@ -2342,8 +2342,10 @@ class _RubyEmitter(Emitter):
             if isinstance(typ, TOptionalType) and isinstance(typ.inner, TIdentType):
                 return True
         ann = obj.annotations.get("type", "")
-        if ann and ann not in _ANN_PRIMITIVE_TYPES and not ann.startswith(
-            ("list[", "dict[", "set[", "(")
+        if (
+            ann
+            and ann not in _ANN_PRIMITIVE_TYPES
+            and not ann.startswith(("list[", "dict[", "map[", "set[", "("))
         ):
             return True
         return False
@@ -2367,8 +2369,10 @@ class _RubyEmitter(Emitter):
         if func.field == "copy" and not args:
             if not self._is_known_struct_method(func.obj, func.field):
                 return obj_str + ".dup"
-        if func.field == "count" and len(args) == 1 and not self._is_known_struct_method(
-            func.obj, func.field
+        if (
+            func.field == "count"
+            and len(args) == 1
+            and not self._is_known_struct_method(func.obj, func.field)
         ):
             return obj_str + ".scan(" + self._expr(args[0].value) + ").length"
         if func.field == "replace" and not self._is_known_struct_method(

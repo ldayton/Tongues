@@ -4746,8 +4746,10 @@ class _JavaEmitter(Emitter):
             if isinstance(typ, TOptionalType) and isinstance(typ.inner, TIdentType):
                 return True
         ann = obj.annotations.get("type", "")
-        if ann and ann not in _ANN_PRIMITIVE_TYPES and not ann.startswith(
-            ("list[", "dict[", "set[", "(")
+        if (
+            ann
+            and ann not in _ANN_PRIMITIVE_TYPES
+            and not ann.startswith(("list[", "dict[", "map[", "set[", "("))
         ):
             return True
         return False
@@ -4778,8 +4780,10 @@ class _JavaEmitter(Emitter):
         if method == "hex" and self._is_bytes_expr(func.obj):
             self._needs_hex_helper = True
             return "_bytesHex(" + obj + ")"
-        if method == "get" and len(args) == 2 and not self._is_known_struct_method(
-            func.obj, method
+        if (
+            method == "get"
+            and len(args) == 2
+            and not self._is_known_struct_method(func.obj, method)
         ):
             return obj + ".getOrDefault(" + self._join_args(args, ", ") + ")"
         if method == "startswith":

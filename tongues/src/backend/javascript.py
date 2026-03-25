@@ -2676,8 +2676,10 @@ class _JavaScriptEmitter(Emitter):
             if isinstance(typ, TOptionalType) and isinstance(typ.inner, TIdentType):
                 return True
         ann = obj.annotations.get("type", "")
-        if ann and ann not in _ANN_PRIMITIVE_TYPES and not ann.startswith(
-            ("list[", "dict[", "set[", "(")
+        if (
+            ann
+            and ann not in _ANN_PRIMITIVE_TYPES
+            and not ann.startswith(("list[", "dict[", "map[", "set[", "("))
         ):
             return True
         return False
