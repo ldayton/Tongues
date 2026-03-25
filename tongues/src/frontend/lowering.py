@@ -3219,13 +3219,14 @@ def _lower_method_call(
     if isinstance(actual_type, ByteArrayType):
         if method_name == "decode":
             bytes_obj = _make_call(pos, "BytesFrom", [obj])
-            return _make_call_ann(pos, "Decode", [bytes_obj], {"type": "string"})
+            builtin = "DecodeReplace" if _has_errors_replace(keywords) else "Decode"
+            return _make_call_ann(pos, builtin, [bytes_obj], {"type": "string"})
         return _lower_list_method(
             pos, obj, obj_node, method_name, args, env, ctx, type_name="bytearray"
         )
     # Bytes methods
     if _is_type_dict(actual_type, ["bytes"]) or _is_bytes_slice(actual_type):
-        return _lower_bytes_method(pos, obj, method_name, args, env, ctx)
+        return _lower_bytes_method(pos, obj, method_name, args, keywords, env, ctx)
     # List methods
     if _is_type_dict(actual_type, ["Slice"]):
         return _lower_list_method(
@@ -3617,12 +3618,31 @@ def _lower_set_method(
     return TNilLit(pos, {})
 
 
+def _has_errors_replace(keywords: list[ASTNode]) -> bool:
+    """Check if keyword args contain errors='replace'."""
+    for kw in keywords:
+        if get_str(kw, "arg") == "errors":
+            val = get_node(kw, "value")
+            if _is_ast(val, "Constant"):
+                v = val.get("value")
+                if isinstance(v, JStr) and v.value == "replace":
+                    return True
+    return False
+
+
 def _lower_bytes_method(
-    pos: Pos, obj: TExpr, method: str, args: list[ASTNode], env: _Env, ctx: _LowerCtx
+    pos: Pos,
+    obj: TExpr,
+    method: str,
+    args: list[ASTNode],
+    keywords: list[ASTNode],
+    env: _Env,
+    ctx: _LowerCtx,
 ) -> TExpr:
     """Lower bytes method calls."""
     if method == "decode":
-        return _make_call_ann(pos, "Decode", [obj], {"type": "string"})
+        builtin = "DecodeReplace" if _has_errors_replace(keywords) else "Decode"
+        return _make_call_ann(pos, builtin, [obj], {"type": "string"})
     if method == "upper":
         return _make_call(pos, "Upper", [obj])
     if method == "lower":

@@ -199,6 +199,7 @@ BUILTIN_TABLE: list[str] = [
     "Contains",
     "Count",
     "Decode",
+    "DecodeReplace",
     "Delete",
     "Difference",
     "DivMod",

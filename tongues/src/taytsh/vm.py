@@ -718,6 +718,8 @@ class _BuiltinDispatch:
             return self._encode(args)
         if name == "Decode":
             return self._decode(args)
+        if name == "DecodeReplace":
+            return self._decode_replace(args)
         if name == "ReadLine":
             return self._read_line(args)
         if name == "ReadAll":
@@ -1823,6 +1825,11 @@ class _BuiltinDispatch:
                 return VStr(args[0].value.decode("utf-8"))
             except UnicodeDecodeError:
                 raise _VMThrow(_make_error_struct("ValueError", "invalid utf-8"))
+        return VStr("")
+
+    def _decode_replace(self, args: list[Val]) -> Val:
+        if isinstance(args[0], VBytes):
+            return VStr(args[0].value.decode("utf-8", errors="replace"))
         return VStr("")
 
     def _read_line(self, args: list[Val]) -> Val:

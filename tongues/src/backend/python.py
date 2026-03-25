@@ -1957,6 +1957,8 @@ class _PythonEmitter(Emitter):
             return self._a(args, 0) + '.encode("utf-8")'
         if name == "Decode":
             return self._a(args, 0) + '.decode("utf-8")'
+        if name == "DecodeReplace":
+            return self._a(args, 0) + '.decode("utf-8", errors="replace")'
         if name == "Add":
             return self._a(args, 0) + ".add(" + self._a(args, 1) + ")"
         if name == "Remove":

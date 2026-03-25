@@ -3019,6 +3019,8 @@ class _PerlEmitter(Emitter):
                 + a
                 + ", Encode::FB_CROAK) }; if ($@) { die bless({message => \"$@\"}, 'UnicodeDecodeError') } $__d }"
             )
+        if name == "DecodeReplace":
+            return "Encode::decode('UTF-8', " + self._a(args, 0) + ")"
         if name == "Bytes":
             return '("\\0" x ' + self._a(args, 0) + ")"
         if name == "BytesFrom":

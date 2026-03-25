@@ -5439,6 +5439,8 @@ class _JavaEmitter(Emitter):
         if name == "Decode":
             self._needs_decode_utf8 = True
             return "_decodeUtf8(" + self._a(args, 0) + ")"
+        if name == "DecodeReplace":
+            return "new String(" + self._a(args, 0) + ", StandardCharsets.UTF_8)"
         if name == "Bytes":
             return "new byte[" + self._a(args, 0) + "]"
         if name == "IsDigit":
