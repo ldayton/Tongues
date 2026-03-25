@@ -190,6 +190,24 @@ def _process_escape(src: str, pos: int, line: int, col: int) -> tuple[str, int]:
             raise TokenizeError("invalid hex escape", line, col)
         val = _hex_val(h1) * 16 + _hex_val(h2)
         return chr(val), pos + 3
+    if c == "u":
+        if pos + 4 >= len(src):
+            raise TokenizeError("incomplete \\u escape", line, col)
+        digits = src[pos + 1 : pos + 5]
+        for d in digits:
+            if not _is_hex(d):
+                raise TokenizeError("invalid \\u escape", line, col)
+        val = int(digits, 16)
+        return chr(val), pos + 5
+    if c == "U":
+        if pos + 8 >= len(src):
+            raise TokenizeError("incomplete \\U escape", line, col)
+        digits = src[pos + 1 : pos + 9]
+        for d in digits:
+            if not _is_hex(d):
+                raise TokenizeError("invalid \\U escape", line, col)
+        val = int(digits, 16)
+        return chr(val), pos + 9
     raise TokenizeError("invalid escape: \\" + c, line, col)
 
 

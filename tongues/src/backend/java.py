@@ -17,7 +17,7 @@ from .util import (
 
 def _escape_java_string(value: str) -> str:
     """Escape a string for Java, converting non-Java escape sequences."""
-    s = escape_string(value)
+    s = escape_string(value, "surrogates")
     out: list[str] = []
     i = 0
     while i < len(s):

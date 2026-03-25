@@ -2157,7 +2157,7 @@ class _JavaScriptEmitter(Emitter):
         if isinstance(expr, TFloatLit):
             return expr.raw
         if isinstance(expr, TStringLit):
-            return '"' + escape_string(expr.value) + '"'
+            return '"' + escape_string(expr.value, "js") + '"'
         if isinstance(expr, TBoolLit):
             return "true" if expr.value else "false"
         if isinstance(expr, TNilLit):
@@ -2167,7 +2167,7 @@ class _JavaScriptEmitter(Emitter):
         if isinstance(expr, TBytesLit):
             return self._bytes_lit(expr)
         if isinstance(expr, TRuneLit):
-            return '"' + escape_string(expr.value) + '"'
+            return '"' + escape_string(expr.value, "js") + '"'
         if isinstance(expr, TVar):
             if expr.name == self.self_name:
                 return "this"

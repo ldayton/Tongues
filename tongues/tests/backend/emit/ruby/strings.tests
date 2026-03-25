@@ -35,7 +35,7 @@ s[6..].start_with?("world")
 /[\n]+\z/
 
 === astral string literal
-"\u{1F600}"
+"\u{1f600}"
 
 === strip regex special chars
 \]\-

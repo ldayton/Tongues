@@ -830,13 +830,18 @@ class _Emitter:
                     out += ch
                 else:
                     hx2 = hex(code)[2:]
-                    if len(hx2) == 1:
-                        hx2 = "0" + hx2
-                    if len(hx2) == 2:
+                    if code <= 0xFF:
+                        if len(hx2) == 1:
+                            hx2 = "0" + hx2
                         out += "\\x" + hx2
+                    elif code <= 0xFFFF:
+                        while len(hx2) < 4:
+                            hx2 = "0" + hx2
+                        out += "\\u" + hx2
                     else:
-                        # Taytsh only specifies \xHH escapes; emit a literal unicode char.
-                        out += ch
+                        while len(hx2) < 8:
+                            hx2 = "0" + hx2
+                        out += "\\U" + hx2
         return out
 
 
