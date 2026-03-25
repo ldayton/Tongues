@@ -34,5 +34,8 @@ s[6..].start_with?("world")
 === rstrip newline
 /[\n]+\z/
 
+=== astral string literal
+"\u{1F600}"
+
 === strip regex special chars
 \]\-

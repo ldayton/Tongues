@@ -84,7 +84,7 @@
       "patterns": [{ "include": "#escapes" }]
     },
     "escapes": {
-      "match": "\\\\(x[0-9a-fA-F]{2}|[nrt\\\\\"'0])",
+      "match": "\\\\(U[0-9a-fA-F]{8}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|[nrt\\\\\"'0])",
       "name": "constant.character.escape.taytsh"
     },
     "numbers": {

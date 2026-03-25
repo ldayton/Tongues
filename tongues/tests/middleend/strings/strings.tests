@@ -22,6 +22,29 @@ Main.lets.s.iterated = false
 Main.lets.s.len_called = false
 ---
 
+=== unknown astral literal
+fn Main() -> void {
+    let s: string = "😀"
+    WritelnOut(s)
+}
+---
+Main.lets.s.content = unknown
+Main.lets.s.indexed = false
+Main.lets.s.iterated = false
+Main.lets.s.len_called = false
+---
+
+=== unknown from concat ascii and astral
+fn Main() -> void {
+    let a: string = "hello"
+    let b: string = Concat(a, "😀")
+    WritelnOut(b)
+}
+---
+Main.lets.a.content = ascii
+Main.lets.b.content = unknown
+---
+
 === unknown from ReadAll
 fn Main() -> void {
     let s: string = ReadAll()

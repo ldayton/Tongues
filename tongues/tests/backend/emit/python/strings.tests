@@ -34,5 +34,8 @@ s.startswith("world", 6)
 === rstrip newline
 s.rstrip("\n")
 
+=== astral string literal
+"\U0001f600"
+
 === strip regex special chars
 s.strip("]-")

@@ -331,6 +331,36 @@ def test_taytsh_emit_round_trip():
     assert ty_text == ty_text_2, "Taytsh emit round-trip is not idempotent"
 
 
+def test_taytsh_unicode_escape_round_trip():
+    """Unicode escape sequences in taytsh text survive tokenize-parse-emit-retokenize."""
+    if _current_lang() not in ("python", None):
+        pytest.skip("python-only test (uses src.taytsh imports)")
+    from src.taytsh.emit import to_source
+    from src.taytsh.parse import Parser
+    from src.taytsh.tokens import tokenize
+
+    source = (
+        'fn Main() -> void {\n'
+        '    let bmp: string = "caf\\u00e9"\n'
+        '    let astral: string = "\\U0001f600"\n'
+        '    let mixed: string = "\\u03b1 \\U0001f601 \\u03b2"\n'
+        '    let r: rune = \'\\u00e9\'\n'
+        '    WritelnOut(bmp)\n'
+        '}\n'
+    )
+    tokens1 = tokenize(source)
+    module1 = Parser(tokens1).parse_program()
+    emitted = to_source(module1)
+    tokens2 = tokenize(emitted)
+    module2 = Parser(tokens2).parse_program()
+    emitted2 = to_source(module2)
+    assert emitted == emitted2, (
+        f"Unicode escape round-trip not idempotent:\n"
+        f"--- first emit ---\n{emitted}\n"
+        f"--- second emit ---\n{emitted2}"
+    )
+
+
 def test_reference_emit():
     """Transpiled binary emits Python output; save to .out/ for cross-language comparison."""
     path = _binary_path()

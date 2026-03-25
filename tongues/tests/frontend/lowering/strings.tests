@@ -381,3 +381,17 @@ def f(s: str, p: str) -> str:
 ---
 EndsWith(s, p) ? s[0:Len(s) - Len(p)] : s
 ---
+
+=== astral string literal preserved
+def f() -> str:
+    return "\U0001f600"
+---
+"\U0001f600"
+---
+
+=== bmp string literal preserved
+def f() -> str:
+    return "\u03b1"
+---
+"\u03b1"
+---
