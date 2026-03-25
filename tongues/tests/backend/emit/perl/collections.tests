@@ -48,3 +48,9 @@ for my $ch (split(//, $s)) {
 
 === dict get with default
 exists $d->{"a"} ? $d->{"a"} : 99
+
+=== list pop at index
+my $first = splice(@{$xs}, 0, 1);
+
+=== tuple unpack into existing locals
+($name, $val) = @{splice(@{$items}, 0, 1)};

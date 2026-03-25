@@ -48,3 +48,9 @@ for ch in s:
 
 === dict get with default
 d.get("a", 99)
+
+=== list pop at index
+first = xs.pop(0)
+
+=== tuple unpack into existing locals
+name, val = items.pop(0)

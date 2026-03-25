@@ -21,6 +21,13 @@ def f(xs: list[int]) -> int:
 Pop(xs)
 ---
 
+=== list pop at index
+def f(xs: list[int]) -> int:
+    return xs.pop(0)
+---
+PopAt(xs, 0)
+---
+
 === list index
 def f(xs: list[int]) -> int:
     return xs[0]
