@@ -811,7 +811,9 @@ class _Emitter:
 
     def _escape_text(self, s: str, quote: str) -> str:
         out = ""
-        for ch in s:
+        i = 0
+        while i < len(s):
+            ch = s[i : i + 1]
             if ch == "\n":
                 out += "\\n"
             elif ch == "\r":
@@ -826,6 +828,11 @@ class _Emitter:
                 out += "\\" + quote
             else:
                 code = ord(ch)
+                if 0xD800 <= code <= 0xDBFF and i + 1 < len(s):
+                    lo = ord(s[i + 1 : i + 2])
+                    if 0xDC00 <= lo <= 0xDFFF:
+                        code = 0x10000 + (code - 0xD800) * 0x400 + (lo - 0xDC00)
+                        i += 1
                 if 32 <= code <= 126:
                     out += ch
                 else:
@@ -842,6 +849,7 @@ class _Emitter:
                         while len(hx2) < 8:
                             hx2 = "0" + hx2
                         out += "\\U" + hx2
+            i += 1
         return out
 
 
