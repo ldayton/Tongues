@@ -2288,8 +2288,8 @@ class _JavaScriptEmitter(Emitter):
             low = "0"
         if self._is_string_expr(expr.obj) and self._needs_codepoint_ops(expr.obj):
             if high == "":
-                return "[..." + obj + "].slice(" + low + ").join(\"\")"
-            return "[..." + obj + "].slice(" + low + ", " + high + ").join(\"\")"
+                return "[..." + obj + "].slice(" + low + ').join("")'
+            return "[..." + obj + "].slice(" + low + ", " + high + ').join("")'
         if high == "":
             return obj + ".slice(" + low + ")"
         return obj + ".slice(" + low + ", " + high + ")"
@@ -2846,7 +2846,9 @@ class _JavaScriptEmitter(Emitter):
                     + self._a(args, 2)
                     + ")"
                 )
-            if self._is_string_expr(args[0].value) and self._needs_codepoint_ops(args[0].value):
+            if self._is_string_expr(args[0].value) and self._needs_codepoint_ops(
+                args[0].value
+            ):
                 self._needs_cp_index_of = True
                 return "_cpIndexOf(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             return self._a(args, 0) + ".indexOf(" + self._a(args, 1) + ")"
@@ -2868,9 +2870,13 @@ class _JavaScriptEmitter(Emitter):
                     + rfind_sub
                     + "))"
                 )
-            if self._is_string_expr(args[0].value) and self._needs_codepoint_ops(args[0].value):
+            if self._is_string_expr(args[0].value) and self._needs_codepoint_ops(
+                args[0].value
+            ):
                 self._needs_cp_index_of = True
-                return "_cpLastIndexOf(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                return (
+                    "_cpLastIndexOf(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+                )
             return self._a(args, 0) + ".lastIndexOf(" + self._a(args, 1) + ")"
         if name == "Count":
             if len(args) >= 3:
