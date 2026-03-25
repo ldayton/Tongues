@@ -542,6 +542,8 @@ class _BuiltinDispatch:
             return self._insert(args)
         if name == "Pop":
             return self._pop(args)
+        if name == "PopAt":
+            return self._pop_at(args)
         if name == "RemoveAt":
             return self._remove_at(args)
         if name == "IndexOf":
@@ -1331,6 +1333,14 @@ class _BuiltinDispatch:
             if not args[0].items:
                 raise _VMThrow(_make_error_struct("IndexError", "pop from empty list"))
             return args[0].items.pop()
+        return _NONE_VAL
+
+    def _pop_at(self, args: list[Val]) -> Val:
+        if isinstance(args[0], VList) and isinstance(args[1], VInt):
+            idx = args[1].value
+            if idx < 0 or idx >= len(args[0].items):
+                raise _VMThrow(_make_error_struct("IndexError", "index out of range"))
+            return args[0].items.pop(idx)
         return _NONE_VAL
 
     def _remove_at(self, args: list[Val]) -> Val:
