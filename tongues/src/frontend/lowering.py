@@ -6691,7 +6691,7 @@ def _build_method(
 
 def _collect_ancestor_fields(
     pos: Pos, name: str, ctx: _LowerCtx
-) -> list[tuple[str, TType, bool, bool]]:
+) -> list[tuple[str, TType, bool, bool, str]]:
     """Walk ancestors root-to-child, collecting fields from non-root ancestors."""
     chain: list[str] = []
     cur = name
@@ -6703,7 +6703,7 @@ def _collect_ancestor_fields(
         cur = ancs[0]
     # Reverse so we go root→child
     chain.reverse()
-    result: list[tuple[str, TType, bool, bool]] = []
+    result: list[tuple[str, TType, bool, bool, str]] = []
     seen: set[str] = set()
     for anc in chain:
         anc_info = ctx.tc_result.classes.get(anc)
@@ -6726,6 +6726,7 @@ def _collect_ancestor_fields(
                             _typenode_to_ttype(pos, finfo.typ),
                             finfo.has_default,
                             finfo.self_ref,
+                            anc,
                         )
                     )
                     seen.add(fname)
@@ -6882,9 +6883,9 @@ def _build_struct(
                             )
                         )
                     ftype = _typenode_to_ttype(pos, finfo.typ)
-                    iface_fields.append(
-                        TFieldDecl(pos, fname, ftype, finfo.has_default)
-                    )
+                    ifld = TFieldDecl(pos, fname, ftype, finfo.has_default)
+                    ifld.declaring_class = name
+                    iface_fields.append(ifld)
         return TInterfaceDecl(pos, ann, name, iface_fields)
     # Get bases
     bases = get_nodes(node, "bases")
@@ -6912,14 +6913,21 @@ def _build_struct(
             # Collect inherited fields from ancestors
             ancestor_fields = _collect_ancestor_fields(pos, name, ctx)
             inherited_field_names: set[str] = set()
-            for af_name, af_type, af_has_default, af_self_ref in ancestor_fields:
+            for af_tuple in ancestor_fields:
+                af_name = af_tuple[0]
+                af_type = af_tuple[1]
+                af_has_default = af_tuple[2]
+                af_self_ref = af_tuple[3]
+                af_decl_class = af_tuple[4]
                 has_def = af_has_default
                 if not has_def and af_name in cls_info.const_fields:
                     has_def = True
                 child_finfo = cls_info.fields.get(af_name)
                 if not has_def and child_finfo is not None and child_finfo.has_default:
                     has_def = True
-                fields.append(TFieldDecl(pos, af_name, af_type, has_def, af_self_ref))
+                fld = TFieldDecl(pos, af_name, af_type, has_def, af_self_ref)
+                fld.declaring_class = af_decl_class
+                fields.append(fld)
                 inherited_field_names.add(af_name)
             fkeys = _collect_field_keys(cls_info, inherited_field_names)
             for fname in fkeys:
@@ -6936,9 +6944,11 @@ def _build_struct(
                             )
                         )
                     ftype = _typenode_to_ttype(pos, finfo.typ)
-                    fields.append(
-                        TFieldDecl(pos, fname, ftype, finfo.has_default, finfo.self_ref)
+                    fld = TFieldDecl(
+                        pos, fname, ftype, finfo.has_default, finfo.self_ref
                     )
+                    fld.declaring_class = name
+                    fields.append(fld)
         # Reorder: required first, then own-class defaulted, then inherited defaulted.
         required: list[TFieldDecl] = []
         own_defaulted: list[TFieldDecl] = []

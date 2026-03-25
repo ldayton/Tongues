@@ -853,7 +853,8 @@ class _RubyEmitter(Emitter):
             if f.self_ref:
                 params.append(name + ": nil")
             elif f.name == f.name.upper() and len(f.name) > 1:
-                const = struct_name + "_" + f.name
+                cls = f.declaring_class or struct_name
+                const = cls + "_" + f.name
                 if const in self.module_let_names:
                     params.append(name + ": " + const)
                 else:

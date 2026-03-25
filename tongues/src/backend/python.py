@@ -569,12 +569,23 @@ class _PythonEmitter(Emitter):
         if fld.body_computed:
             self._line(_safe_name(fld.name) + ": " + typ_str + " = field(init=False)")
         else:
-            default = self._field_default(fld.name, fld.typ, fld.has_default)
+            default = self._field_default(
+                fld.name, fld.typ, fld.has_default, fld.declaring_class
+            )
             self._line(_safe_name(fld.name) + ": " + typ_str + " = " + default)
 
-    def _field_default(self, name: str, typ: TType, has_default: bool = False) -> str:
-        if name == name.upper() and len(name) > 1 and self._current_struct:
-            const = self._current_struct + "_" + name
+    def _field_default(
+        self,
+        name: str,
+        typ: TType,
+        has_default: bool = False,
+        declaring_class: str | None = None,
+    ) -> str:
+        if name == name.upper() and len(name) > 1:
+            cls = declaring_class or self._current_struct
+            if not cls:
+                cls = self._current_struct
+            const = cls + "_" + name
             if const in self.module_let_names:
                 if isinstance(typ, TListType):
                     return "field(default_factory=lambda: list(" + const + "))"

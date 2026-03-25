@@ -907,10 +907,12 @@ class _JavaEmitter(Emitter):
         if fld.default_expr is not None and not fld.self_ref:
             return self._expr(fld.default_expr)
         typ = fld.typ
-        if self._current_struct and fld.name == fld.name.upper() and len(fld.name) > 1:
-            const = self._current_struct + "_" + fld.name
-            if const in self.module_let_names:
-                return const
+        if fld.name == fld.name.upper() and len(fld.name) > 1:
+            cls = fld.declaring_class or self._current_struct
+            if cls:
+                const = cls + "_" + fld.name
+                if const in self.module_let_names:
+                    return const
         if isinstance(typ, TListType):
             return "new ArrayList<>()"
         if isinstance(typ, TMapType):

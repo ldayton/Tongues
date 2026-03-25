@@ -740,10 +740,12 @@ class _JavaScriptEmitter(Emitter):
 
     def _field_default(self, fld: TFieldDecl, in_body: bool = False) -> str:
         typ = fld.typ
-        if self._current_struct and fld.name == fld.name.upper() and len(fld.name) > 1:
-            const = self._current_struct + "_" + fld.name
-            if const in self.module_let_names:
-                return const
+        if fld.name == fld.name.upper() and len(fld.name) > 1:
+            cls = fld.declaring_class or self._current_struct
+            if cls:
+                const = cls + "_" + fld.name
+                if const in self.module_let_names:
+                    return const
         if isinstance(typ, TListType):
             return "[]"
         if isinstance(typ, TMapType):

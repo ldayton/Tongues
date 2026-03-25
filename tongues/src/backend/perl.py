@@ -838,7 +838,8 @@ class _PerlEmitter(Emitter):
             if fld.self_ref and isinstance(fld.typ, TIdentType):
                 default = fld.typ.name + "->new($self)"
             elif fld.name == fld.name.upper() and len(fld.name) > 1:
-                const_ir = struct_name + "_" + fld.name
+                cls = fld.declaring_class or struct_name
+                const_ir = cls + "_" + fld.name
                 if const_ir in self.module_var_names:
                     default = "$" + to_snake(const_ir)
                 else:
