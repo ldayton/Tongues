@@ -3017,7 +3017,15 @@ class _JavaScriptEmitter(Emitter):
         if name == "Len":
             inner = args[0].value
             inner_str = self._a(args, 0)
-            if isinstance(inner, (TBinaryOp, TTernary)):
+            needs_parens = isinstance(inner, (TBinaryOp, TTernary))
+            if (
+                not needs_parens
+                and isinstance(inner, TCall)
+                and isinstance(inner.func, TVar)
+            ):
+                if inner.func.name == "Concat":
+                    needs_parens = True
+            if needs_parens:
                 inner_str = "(" + inner_str + ")"
             if self._is_map_type(inner) or self._is_set_type(inner):
                 base = inner_str + ".size"
