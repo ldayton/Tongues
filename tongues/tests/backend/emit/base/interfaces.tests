@@ -14,11 +14,16 @@ if __name__ == "__main__":
 === class named Array does not collide with builtin
 class Node:
     kind: str
+class List(Node):
+    def __init__(self) -> None:
+        self.kind = "list"
 class Array(Node):
     def __init__(self) -> None:
         self.kind = "array"
 def main() -> None:
     a: Node = Array()
+    b: Node = List()
     print(a.kind)
+    print(b.kind)
 if __name__ == "__main__":
     main()

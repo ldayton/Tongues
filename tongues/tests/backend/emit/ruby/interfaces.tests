@@ -3,5 +3,5 @@ class Dog < Animal
   attr_accessor :name, :legs, :breed
 
 === class named Array does not collide with builtin
-if !other.is_a?(Array_)
-return false
+a = Array_.new()
+b = List.new()

@@ -2,4 +2,5 @@
 class Dog extends Animal {
 
 === class named Array does not collide with builtin
-class Array extends Node {
+Node a = new Array();
+Node b = new List_();

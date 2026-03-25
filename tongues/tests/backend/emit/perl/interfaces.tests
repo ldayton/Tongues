@@ -8,4 +8,5 @@ use overload '==' => \&__eq__, 'eq' => \&__eq__, '!=' => sub { !__eq__(@_) }, 'n
 sub new {
 
 === class named Array does not collide with builtin
-package Array;
+my $a = Array->new();
+my $b = List->new();
