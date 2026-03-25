@@ -2680,6 +2680,11 @@ class _PerlEmitter(Emitter):
                 return True
             if isinstance(typ, TOptionalType) and isinstance(typ.inner, TIdentType):
                 return True
+        ann = obj.annotations.get("type", "")
+        if ann and ann not in _ANN_PRIMITIVE_TYPES and not ann.startswith(
+            ("list[", "dict[", "set[", "(")
+        ):
+            return True
         return False
 
     def _builtin_call(self, name: str, args: list[TArg], ann: Ann | None = None) -> str:

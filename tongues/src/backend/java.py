@@ -355,6 +355,10 @@ _PRECEDENCE: dict[str, int] = {
 
 _CMP_OPS = frozenset(["==", "!=", "<", ">", "<=", ">="])
 
+_ANN_PRIMITIVE_TYPES = frozenset(
+    ["string", "int", "float", "bool", "bytes", "rune", "byte", "object"]
+)
+
 
 def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
     child_prec = _PRECEDENCE.get(child_op, 0)
@@ -4734,6 +4738,20 @@ class _JavaEmitter(Emitter):
                 result.append(named[fname])
         return result
 
+    def _is_known_struct_method(self, obj: TExpr, method: str) -> bool:
+        if isinstance(obj, TVar):
+            typ = self.var_types.get(obj.name)
+            if isinstance(typ, TIdentType):
+                return True
+            if isinstance(typ, TOptionalType) and isinstance(typ.inner, TIdentType):
+                return True
+        ann = obj.annotations.get("type", "")
+        if ann and ann not in _ANN_PRIMITIVE_TYPES and not ann.startswith(
+            ("list[", "dict[", "set[", "(")
+        ):
+            return True
+        return False
+
     def _method_call(self, func: TFieldAccess, args: list[TArg]) -> str:
         obj = self._expr(func.obj)
         method = _safe_name(func.field).lower()
@@ -4745,7 +4763,7 @@ class _JavaEmitter(Emitter):
         if method == "zfill":
             self._needs_zfill = True
             return "_zfill(" + obj + ", " + self._a(args, 0) + ")"
-        if method == "keys":
+        if method == "keys" and not self._is_known_struct_method(func.obj, method):
             if isinstance(func.obj, TVar) and self._is_raw_binding_var(func.obj):
                 typ = self.var_types.get(func.obj.name)
                 if isinstance(typ, TMapType):
@@ -4760,7 +4778,9 @@ class _JavaEmitter(Emitter):
         if method == "hex" and self._is_bytes_expr(func.obj):
             self._needs_hex_helper = True
             return "_bytesHex(" + obj + ")"
-        if method == "get" and len(args) == 2:
+        if method == "get" and len(args) == 2 and not self._is_known_struct_method(
+            func.obj, method
+        ):
             return obj + ".getOrDefault(" + self._join_args(args, ", ") + ")"
         if method == "startswith":
             method = "startsWith"

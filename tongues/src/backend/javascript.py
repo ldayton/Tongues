@@ -233,6 +233,10 @@ _PRECEDENCE: dict[str, int] = {
 
 _CMP_OPS = frozenset(["===", "!==", "==", "!=", "<", ">", "<=", ">="])
 
+_ANN_PRIMITIVE_TYPES = frozenset(
+    ["string", "int", "float", "bool", "bytes", "rune", "byte", "object"]
+)
+
 
 def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
     child_prec = _PRECEDENCE.get(child_op, 0)
@@ -2671,6 +2675,11 @@ class _JavaScriptEmitter(Emitter):
                 return True
             if isinstance(typ, TOptionalType) and isinstance(typ.inner, TIdentType):
                 return True
+        ann = obj.annotations.get("type", "")
+        if ann and ann not in _ANN_PRIMITIVE_TYPES and not ann.startswith(
+            ("list[", "dict[", "set[", "(")
+        ):
+            return True
         return False
 
     def _method_call(self, func: TFieldAccess, args: list[TArg]) -> str:

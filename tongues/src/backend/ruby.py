@@ -479,6 +479,10 @@ _PRECEDENCE: dict[str, int] = {
 
 _CMP_OPS = frozenset(["==", "!=", "<", ">", "<=", ">="])
 
+_ANN_PRIMITIVE_TYPES = frozenset(
+    ["string", "int", "float", "bool", "bytes", "rune", "byte", "object"]
+)
+
 
 def _needs_parens(child_op: str, parent_op: str, is_left: bool) -> bool:
     child_prec = _PRECEDENCE.get(child_op, 0)
@@ -2330,24 +2334,46 @@ class _RubyEmitter(Emitter):
         rname = _EXCEPTION_MAP.get(name, _safe_type_name(name))
         return rname + ".new(" + ", ".join(parts) + ")"
 
+    def _is_known_struct_method(self, obj: TExpr, method: str) -> bool:
+        if isinstance(obj, TVar):
+            typ = self.var_types.get(obj.name)
+            if isinstance(typ, TIdentType):
+                return True
+            if isinstance(typ, TOptionalType) and isinstance(typ.inner, TIdentType):
+                return True
+        ann = obj.annotations.get("type", "")
+        if ann and ann not in _ANN_PRIMITIVE_TYPES and not ann.startswith(
+            ("list[", "dict[", "set[", "(")
+        ):
+            return True
+        return False
+
     def _method_call(self, func: TFieldAccess, args: list[TArg]) -> str:
         obj_str = self._expr(func.obj)
         if isinstance(func.obj, (TBinaryOp, TUnaryOp, TTernary)):
             obj_str = "(" + obj_str + ")"
-        if func.field == "decode":
+        if func.field == "decode" and not self._is_known_struct_method(
+            func.obj, func.field
+        ):
             return (
                 obj_str
                 + ".pack('C*').force_encoding('UTF-8')"
                 + ".tap { |s| raise ArgumentError unless s.valid_encoding? }"
             )
-        if func.field == "encode":
+        if func.field == "encode" and not self._is_known_struct_method(
+            func.obj, func.field
+        ):
             return obj_str + '.encode("utf-8").bytes'
         if func.field == "copy" and not args:
-            if not isinstance(func.obj, TVar) or self._is_map_type(func.obj):
+            if not self._is_known_struct_method(func.obj, func.field):
                 return obj_str + ".dup"
-        if func.field == "count" and len(args) == 1:
+        if func.field == "count" and len(args) == 1 and not self._is_known_struct_method(
+            func.obj, func.field
+        ):
             return obj_str + ".scan(" + self._expr(args[0].value) + ").length"
-        if func.field == "replace":
+        if func.field == "replace" and not self._is_known_struct_method(
+            func.obj, func.field
+        ):
             if len(args) == 3:
                 return (
                     obj_str
@@ -2366,7 +2392,9 @@ class _RubyEmitter(Emitter):
                     + self._expr(args[1].value)
                     + ")"
                 )
-        if func.field == "get":
+        if func.field == "get" and not self._is_known_struct_method(
+            func.obj, func.field
+        ):
             if len(args) == 1:
                 return obj_str + "[" + self._expr(args[0].value) + "]"
             if len(args) == 2:
