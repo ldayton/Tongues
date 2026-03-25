@@ -1,2 +1,11 @@
 === method with default bool param
 parse(strict = false) {
+
+=== class-level dict field default preserved
+constructor(source = "", KEYWORDS = Lexer_KEYWORDS) {
+
+=== lowercase dict field default preserved
+constructor(source = "", keywords = Lexer_keywords) {
+
+=== inherited dict field default preserved from interface
+constructor(name = "", SOUNDS = Animal_SOUNDS) {

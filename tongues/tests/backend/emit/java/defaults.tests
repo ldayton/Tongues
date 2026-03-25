@@ -1,2 +1,11 @@
 === method with default bool param
 String parse(boolean strict)
+
+=== class-level dict field default preserved
+this.KEYWORDS = Lexer_KEYWORDS;
+
+=== lowercase dict field default preserved
+this.keywords = Lexer_keywords;
+
+=== inherited dict field default preserved from interface
+this.SOUNDS = Animal_SOUNDS;

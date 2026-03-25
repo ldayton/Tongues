@@ -1,2 +1,11 @@
 === method with default bool param
 def parse(strict = false)
+
+=== class-level dict field default preserved
+def initialize(source: "", keywords: Lexer_KEYWORDS)
+
+=== lowercase dict field default preserved
+def initialize(source: "", keywords: Lexer_keywords)
+
+=== inherited dict field default preserved from interface
+def initialize(name: "", sounds: Animal_SOUNDS)

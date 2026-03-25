@@ -907,6 +907,11 @@ class _JavaEmitter(Emitter):
         if fld.default_expr is not None and not fld.self_ref:
             return self._expr(fld.default_expr)
         typ = fld.typ
+        cls = fld.declaring_class or self._current_struct
+        if cls:
+            const = cls + "_" + fld.name
+            if const in self.module_let_names:
+                return const
         if isinstance(typ, TListType):
             return "new ArrayList<>()"
         if isinstance(typ, TMapType):
@@ -1556,6 +1561,8 @@ class _JavaEmitter(Emitter):
         self._line("enum " + name + " { " + variants + " }")
 
     def _emit_struct(self, decl: TStructDecl) -> None:
+        old_struct = self._current_struct
+        self._current_struct = decl.name
         name = _safe_name(decl.name)
         parent = decl.parent
         if parent == "Error" or decl.name in self._error_struct_names:
@@ -1653,8 +1660,6 @@ class _JavaEmitter(Emitter):
             self._emit_struct_equals(name, decl.fields)
             self._line()
             self._emit_struct_hashCode(name, decl.fields)
-        old_struct = self._current_struct
-        self._current_struct = decl.name
         for m in decl.methods:
             self._line()
             self._emit_method(m)

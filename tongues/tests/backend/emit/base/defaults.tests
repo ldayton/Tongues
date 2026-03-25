@@ -14,3 +14,58 @@ def main() -> None:
     print(result)
 if __name__ == "__main__":
     main()
+
+=== class-level dict field default preserved
+import sys
+class TokenType:
+    IF: int = 0
+    THEN: int = 1
+    ELSE: int = 2
+class Lexer:
+    source: str
+    KEYWORDS: dict[str, int] = {
+        "if": TokenType.IF,
+        "then": TokenType.THEN,
+        "else": TokenType.ELSE,
+    }
+    def __init__(self, source: str) -> None:
+        self.source = source
+    def is_keyword(self, word: str) -> bool:
+        return word in self.KEYWORDS
+def main() -> None:
+    lex: Lexer = Lexer(source="if then else")
+    print(str(lex.is_keyword("if")))
+    print(str(lex.is_keyword("foo")))
+if __name__ == "__main__":
+    main()
+
+=== lowercase dict field default preserved
+import sys
+class Lexer:
+    source: str
+    keywords: dict[str, int] = {"if": 0, "then": 1}
+    def __init__(self, source: str) -> None:
+        self.source = source
+    def is_keyword(self, word: str) -> bool:
+        return word in self.keywords
+def main() -> None:
+    lex: Lexer = Lexer(source="test")
+    print(str(lex.is_keyword("if")))
+if __name__ == "__main__":
+    main()
+
+=== inherited dict field default preserved from interface
+import sys
+class Animal:
+    SOUNDS: dict[str, str] = {"cat": "meow", "dog": "woof"}
+class Dog(Animal):
+    name: str
+    def __init__(self, name: str) -> None:
+        self.name = name
+    def speak(self) -> str:
+        return self.SOUNDS.get("dog", "")
+def main() -> None:
+    d: Dog = Dog(name="Rex")
+    print(d.speak())
+if __name__ == "__main__":
+    main()

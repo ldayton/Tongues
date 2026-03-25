@@ -629,6 +629,7 @@ class _RubyEmitter(Emitter):
         self.lines: list[str] = []
         self.self_name: str | None = None
         self.var_types: dict[str, TType] = {}
+        self.module_let_names: set[str] = set()
         self.var_annotations: dict[str, dict[str, str]] = {}
         self._needs_set: bool = False
         self.in_fn: bool = False
@@ -681,6 +682,7 @@ class _RubyEmitter(Emitter):
         for decl in module.decls:
             if isinstance(decl, TLetStmt) and decl.typ is not None:
                 self.var_types[decl.name] = decl.typ
+                self.module_let_names.add(decl.name)
         # Collect builtins and emit error classes as needed
         all_builtins: set[str] = set()
         for decl in module.decls:
@@ -710,7 +712,7 @@ class _RubyEmitter(Emitter):
                     attrs = ", ".join(":" + _safe_name(f.name) for f in decl.fields)
                     self._line("attr_accessor " + attrs)
                     self._line()
-                    self._emit_initialize(decl.fields, False)
+                    self._emit_initialize(decl.name, decl.fields, False)
                     self.indent -= 1
                 self._line("end")
                 need_blank = True
@@ -803,7 +805,7 @@ class _RubyEmitter(Emitter):
             attrs = ", ".join(":" + _safe_name(f.name) for f in decl.fields)
             self._line("attr_accessor " + attrs)
             self._line()
-            self._emit_initialize(decl.fields, True, decl.init_stmts)
+            self._emit_initialize(decl.name, decl.fields, True, decl.init_stmts)
         for i, method in enumerate(decl.methods):
             if i > 0 or decl.fields:
                 self._line()
@@ -828,7 +830,7 @@ class _RubyEmitter(Emitter):
             attrs = ", ".join(":" + _safe_name(f.name) for f in decl.fields)
             self._line("attr_accessor " + attrs)
             self._line()
-            self._emit_initialize(decl.fields, False, decl.init_stmts)
+            self._emit_initialize(decl.name, decl.fields, False, decl.init_stmts)
         for i, method in enumerate(decl.methods):
             if i > 0 or decl.fields:
                 self._line()
@@ -838,6 +840,7 @@ class _RubyEmitter(Emitter):
 
     def _emit_initialize(
         self,
+        struct_name: str,
         fields: list[TFieldDecl],
         is_error: bool,
         init_stmts: list[TStmt] | None = None,
@@ -850,8 +853,12 @@ class _RubyEmitter(Emitter):
             if f.self_ref:
                 params.append(name + ": nil")
             else:
-                default = self._zero_value(f.typ)
-                params.append(name + ": " + default)
+                cls = f.declaring_class or struct_name
+                const = cls + "_" + f.name
+                if const in self.module_let_names:
+                    params.append(name + ": " + const)
+                else:
+                    params.append(name + ": " + self._zero_value(f.typ))
         self._line("def initialize(" + ", ".join(params) + ")")
         self.indent += 1
         if is_error:

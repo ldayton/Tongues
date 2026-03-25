@@ -813,13 +813,16 @@ class _PerlEmitter(Emitter):
             self._emit_method(method, decl.name)
 
     def _emit_constructor(self, decl: TStructDecl) -> None:
-        self._emit_constructor_fields(decl.fields, decl.init_stmts)
+        self._emit_constructor_fields(decl.name, decl.fields, decl.init_stmts)
 
     def _emit_interface_constructor(self, decl: TInterfaceDecl) -> None:
-        self._emit_constructor_fields(decl.fields, None)
+        self._emit_constructor_fields(decl.name, decl.fields, None)
 
     def _emit_constructor_fields(
-        self, fields: list[TFieldDecl], init_stmts: list[TStmt] | None
+        self,
+        struct_name: str,
+        fields: list[TFieldDecl],
+        init_stmts: list[TStmt] | None,
     ) -> None:
         param_fields = [f for f in fields if not f.body_computed]
         body_fields = [f for f in fields if f.body_computed]
@@ -835,7 +838,12 @@ class _PerlEmitter(Emitter):
             if fld.self_ref and isinstance(fld.typ, TIdentType):
                 default = fld.typ.name + "->new($self)"
             else:
-                default = self._zero_value(fld.typ)
+                cls = fld.declaring_class or struct_name
+                const_ir = cls + "_" + fld.name
+                if const_ir in self.module_var_names:
+                    default = "$" + to_snake(const_ir)
+                else:
+                    default = self._zero_value(fld.typ)
             self._line(
                 "$self->{"
                 + safe

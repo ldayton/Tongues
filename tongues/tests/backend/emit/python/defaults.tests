@@ -1,2 +1,12 @@
 === method with default bool param
 def parse(self, strict: bool = False) -> str:
+
+=== class-level dict field default preserved
+KEYWORDS: dict[str, int] = field(default_factory=lambda: dict(Lexer_KEYWORDS))
+
+=== lowercase dict field default preserved
+keywords: dict[str, int] = field(default_factory=lambda: dict(Lexer_keywords))
+
+=== inherited dict field default preserved from interface
+SOUNDS: dict[str, str] = field(default_factory=lambda: dict(Animal_SOUNDS))
+def speak(self) -> str:

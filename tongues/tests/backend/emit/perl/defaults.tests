@@ -1,2 +1,14 @@
 === method with default bool param
 sub parse {
+
+=== class-level dict field default preserved
+$self->{KEYWORDS} = defined $KEYWORDS ? $KEYWORDS : $lexer_keywords;
+
+=== lowercase dict field default preserved
+$self->{keywords} = defined $keywords ? $keywords : $lexer_keywords;
+
+=== inherited dict field default preserved from interface
+my ($class, $name, $SOUNDS) = @_;
+my $self = bless {}, $class;
+$self->{name} = defined $name ? $name : "";
+$self->{SOUNDS} = defined $SOUNDS ? $SOUNDS : $animal_sounds;
