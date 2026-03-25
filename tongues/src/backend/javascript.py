@@ -547,6 +547,13 @@ class _JavaScriptEmitter(Emitter):
             self._line("return i === -1 ? -1 : [...s.slice(0, i)].length;")
             self.indent -= 1
             self._line("}")
+            self._line()
+            self._line("function _cpLastIndexOf(s, sub) {")
+            self.indent += 1
+            self._line("const i = s.lastIndexOf(sub);")
+            self._line("return i === -1 ? -1 : [...s.slice(0, i)].length;")
+            self.indent -= 1
+            self._line("}")
 
     # ── Enum ──────────────────────────────────────────────────
 
@@ -2729,12 +2736,14 @@ class _JavaScriptEmitter(Emitter):
         if isinstance(expr, TVar):
             ann = self.var_annotations.get(expr.name, {})
             content = ann.get("strings.content", "")
-            if content == "unknown":
-                return True
+            return content == "unknown"
         if isinstance(expr, TStringLit):
             for ch in expr.value:
                 if ord(ch) > 0xFFFF:
                     return True
+            return False
+        if self._is_string_expr(expr):
+            return True
         return False
 
     def _method_call(self, func: TFieldAccess, args: list[TArg]) -> str:
@@ -2859,6 +2868,9 @@ class _JavaScriptEmitter(Emitter):
                     + rfind_sub
                     + "))"
                 )
+            if self._is_string_expr(args[0].value) and self._needs_codepoint_ops(args[0].value):
+                self._needs_cp_index_of = True
+                return "_cpLastIndexOf(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             return self._a(args, 0) + ".lastIndexOf(" + self._a(args, 1) + ")"
         if name == "Count":
             if len(args) >= 3:
@@ -2998,12 +3010,15 @@ class _JavaScriptEmitter(Emitter):
             return "[..." + self._a(args, 0) + ".entries()]"
         if name == "Len":
             inner = args[0].value
+            inner_str = self._a(args, 0)
+            if isinstance(inner, (TBinaryOp, TTernary)):
+                inner_str = "(" + inner_str + ")"
             if self._is_map_type(inner) or self._is_set_type(inner):
-                base = self._a(args, 0) + ".size"
+                base = inner_str + ".size"
             elif self._is_string_expr(inner) and self._needs_codepoint_ops(inner):
-                base = "[..." + self._a(args, 0) + "].length"
+                base = "[..." + inner_str + "].length"
             else:
-                base = self._a(args, 0) + ".length"
+                base = inner_str + ".length"
             if self.strict_math:
                 return "BigInt(" + base + ")"
             return base
