@@ -902,6 +902,7 @@ BUILTIN_NAMES: set[str] = {
     "Append",
     "Insert",
     "Pop",
+    "PopAt",
     "RemoveAt",
     "IndexOf",
     "Reversed",
@@ -3957,6 +3958,20 @@ class Checker:
                 return t.element
             if t is not None:
                 self.error("Pop requires list or set", pos)
+            return None
+
+        # ── PopAt ──
+        if name == "PopAt":
+            if not _bctx_require(ctx, 2):
+                return None
+            t1 = _bctx_arg(ctx, 0)
+            if t1 is not None and not isinstance(t1, ListT):
+                self.error("PopAt requires list", pos)
+            t2 = _bctx_arg(ctx, 1)
+            if t2 is not None and not type_eq(t2, INT_T):
+                self.error("PopAt index must be int", pos)
+            if t1 is not None and isinstance(t1, ListT):
+                return t1.element
             return None
 
         # ── RemoveAt ──

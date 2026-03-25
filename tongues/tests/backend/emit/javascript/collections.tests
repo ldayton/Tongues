@@ -55,3 +55,6 @@ Array(5).fill(0)
 
 === dict get with default
 (d.get("a") ?? 99)
+
+=== list pop at index
+const first = xs.splice(0, 1)[0];

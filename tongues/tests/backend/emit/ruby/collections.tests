@@ -48,3 +48,6 @@ s.each_char do |ch|
 
 === dict get with default
 d.fetch("a", 99)
+
+=== list pop at index
+first = xs.delete_at(0)

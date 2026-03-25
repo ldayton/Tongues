@@ -48,3 +48,6 @@ for ch in s:
 
 === dict get with default
 d.get("a", 99)
+
+=== list pop at index
+first: str = xs.pop(0)

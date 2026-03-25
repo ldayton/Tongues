@@ -4917,6 +4917,11 @@ class _JavaEmitter(Emitter):
         if name == "PopItem":
             self._needs_pop_item = True
             return "_popItem(" + self._a(args, 0) + ")"
+        if name == "PopAt":
+            idx_val = self._static_int(args[1].value)
+            if idx_val == 0:
+                return self._a(args, 0) + ".removeFirst()"
+            return self._a(args, 0) + ".remove(" + self._a(args, 1) + ")"
         if name == "RemoveAt":
             idx_val = self._static_int(args[1].value)
             if idx_val == 0:

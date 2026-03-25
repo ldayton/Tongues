@@ -142,3 +142,12 @@ def main() -> None:
     print(str(x))
 if __name__ == "__main__":
     main()
+
+=== list pop at index
+def main() -> None:
+    xs: list[str] = ["a", "b", "c"]
+    first: str = xs.pop(0)
+    print(first)
+    print(str(len(xs)))
+if __name__ == "__main__":
+    main()

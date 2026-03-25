@@ -2688,6 +2688,8 @@ class _PerlEmitter(Emitter):
             )
         if name == "Pop":
             return "pop(@{" + self._a(args, 0) + "})"
+        if name == "PopAt":
+            return "splice(@{" + self._a(args, 0) + "}, " + self._a(args, 1) + ", 1)"
         if name == "RemoveAt":
             return "splice(@{" + self._a(args, 0) + "}, " + self._a(args, 1) + ", 1)"
         if name == "ReplaceSlice":

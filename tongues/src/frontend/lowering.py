@@ -3420,7 +3420,7 @@ def _lower_list_method(
     if method == "pop":
         if not lowered:
             return _make_call(pos, "Pop", [obj])
-        return TIndex(pos, {}, obj, lowered[0])
+        return _make_call(pos, "PopAt", [obj, lowered[0]])
     if method == "index":
         if len(lowered) >= 2:
             val = lowered[0]
@@ -3530,12 +3530,6 @@ def _method_side_effects(value_node: ASTNode, env: _Env, ctx: _LowerCtx) -> list
             cond = TUnaryOp(pos, {}, "!", _make_call(pos, "Contains", [obj, key]))
             assign = TAssignStmt(pos, {}, TIndex(pos, {}, obj, key), default)
             return [TIfStmt(pos, {}, cond, [assign], None)]
-    # list.pop(i) → RemoveAt(xs, i)
-    if _is_type_dict(actual, ["Slice"]) and method == "pop":
-        if vargs and isinstance(vargs[0], dict):
-            obj = _lower_expr(obj_node, env, ctx)
-            idx = _lower_expr(vargs[0], env, ctx)
-            return [TExprStmt(pos, {}, _make_call(pos, "RemoveAt", [obj, idx]))]
     # list.sort() → xs = Sorted(xs)
     if _is_type_dict(actual, ["Slice"]) and method == "sort":
         obj = _lower_expr(obj_node, env, ctx)
@@ -6398,7 +6392,7 @@ def _lower_expr_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                     obj = _lower_expr(obj_node, env, ctx)
                     key = _lower_expr(vargs[0], env, ctx)
                     return [TExprStmt(pos, {}, _make_call(pos, "Delete", [obj, key]))]
-            # list.pop() → Pop(xs); list.pop(i) → RemoveAt(xs, i)
+            # list.pop() → Pop(xs); list.pop(i) → PopAt(xs, i)
             if _is_type_dict(obj_type, ["Slice"]) and method == "pop":
                 vargs = get_nodes(value, "args")
                 obj = _lower_expr(obj_node, env, ctx)
@@ -6408,7 +6402,7 @@ def _lower_expr_stmt(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
                         TExprStmt(
                             pos,
                             {},
-                            _make_call(pos, "RemoveAt", [obj, idx]),
+                            _make_call(pos, "PopAt", [obj, idx]),
                         )
                     ]
                 return [TExprStmt(pos, {}, _make_call(pos, "Pop", [obj]))]

@@ -62,3 +62,6 @@ new ArrayList<>(Collections.nCopies(5, 0))
 
 === dict get with default
 d.getOrDefault("a", 99)
+
+=== list pop at index
+String first = xs.removeFirst();

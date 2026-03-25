@@ -281,6 +281,16 @@ class State:
 this.x, this.y = Pop(this._stack)
 ---
 
+=== tuple unpack into existing locals
+def f(items: list[tuple[str, bool]]) -> str:
+    name: str = ""
+    flag: bool = False
+    name, flag = items.pop(0)
+    return name
+---
+name, flag = PopAt(items, 0)
+---
+
 === optional annotated declaration
 def f() -> None:
     x: str | None = None
