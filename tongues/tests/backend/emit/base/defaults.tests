@@ -39,6 +39,21 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== lowercase dict field default preserved
+import sys
+class Lexer:
+    source: str
+    keywords: dict[str, int] = {"if": 0, "then": 1}
+    def __init__(self, source: str) -> None:
+        self.source = source
+    def is_keyword(self, word: str) -> bool:
+        return word in self.keywords
+def main() -> None:
+    lex: Lexer = Lexer(source="test")
+    print(str(lex.is_keyword("if")))
+if __name__ == "__main__":
+    main()
+
 === inherited dict field default preserved from interface
 import sys
 class Animal:

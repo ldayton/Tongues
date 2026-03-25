@@ -4,5 +4,8 @@ parse(strict = false) {
 === class-level dict field default preserved
 constructor(source = "", KEYWORDS = Lexer_KEYWORDS) {
 
+=== lowercase dict field default preserved
+constructor(source = "", keywords = new Map([["if", 0], ["then", 1]])) {
+
 === inherited dict field default preserved from interface
 constructor(name = "", SOUNDS = Animal_SOUNDS) {
