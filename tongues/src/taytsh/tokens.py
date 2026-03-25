@@ -211,7 +211,11 @@ def _process_escape(src: str, pos: int, line: int, col: int) -> tuple[str, int]:
                 raise TokenizeError("invalid \\U escape", line, col)
             i += 1
         val = int(digits, 16)
-        return chr(val), pos + 9
+        if val <= 0xFFFF:
+            return chr(val), pos + 9
+        hi = 0xD800 + (val - 0x10000) // 0x400
+        lo = 0xDC00 + (val - 0x10000) % 0x400
+        return chr(hi) + chr(lo), pos + 9
     raise TokenizeError("invalid escape: \\" + c, line, col)
 
 

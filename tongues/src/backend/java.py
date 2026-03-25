@@ -4828,7 +4828,7 @@ class _JavaEmitter(Emitter):
                 return "(int) " + self._a(args, 0)
             return "(int) (" + self._a(args, 0) + ")"
         if name == "RuneFromInt":
-            return "new String(Character.toChars(" + self._a(args, 0) + "))"
+            return "(char) (" + self._a(args, 0) + ")"
         if name == "Len":
             return self._len_expr(args[0].value)
         if name == "Abs":
