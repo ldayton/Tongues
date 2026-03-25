@@ -10,3 +10,15 @@ def main() -> None:
     print(x)
 if __name__ == "__main__":
     main()
+
+=== class named Array does not collide with builtin
+class Node:
+    kind: str
+class Array(Node):
+    def __init__(self) -> None:
+        self.kind = "array"
+def main() -> None:
+    a: Node = Array()
+    print(a.kind)
+if __name__ == "__main__":
+    main()

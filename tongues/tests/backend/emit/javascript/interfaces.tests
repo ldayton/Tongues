@@ -1,2 +1,5 @@
 === interface with fields
 class Dog extends Animal {
+
+=== class named Array does not collide with builtin
+class Array extends Node {
