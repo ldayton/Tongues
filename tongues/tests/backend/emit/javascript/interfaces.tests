@@ -1,2 +1,6 @@
 === interface with fields
 class Dog extends Animal {
+
+=== class named Array does not collide with builtin
+const a = new Array();
+const b = new List();

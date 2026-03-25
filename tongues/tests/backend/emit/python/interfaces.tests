@@ -7,3 +7,7 @@ class Dog(Animal):
 
 
 BUDDY: Animal = Dog("Buddy", 4, "Mutt")
+
+=== class named Array does not collide with builtin
+a: Node = Array()
+b: Node = List()

@@ -309,6 +309,8 @@ def _safe_name(name: str) -> str:
     if name.startswith("_"):
         prefix = "_"
     name = to_snake(name)
+    if name.isupper():
+        name = name.lower()
     if not name:
         return "_"
     result = prefix + name
@@ -326,7 +328,11 @@ def _safe_fn_name(name: str) -> str:
 
 
 def _safe_module_name(name: str) -> str:
-    """Like _safe_name but strips leading underscores for module-level vars."""
+    """Like _safe_name but preserves uppercase for Ruby constants."""
+    if name and name[0].isupper():
+        if name in _RUBY_RESERVED:
+            return name + "_"
+        return name
     name = to_snake(name)
     if not name:
         return "_"
@@ -377,19 +383,12 @@ def _restore_fn_name(name: str, annotations: Ann) -> str:
 
 _TYPE_NAME_MAP: dict[str, str] = {
     "dict": "Hash",
-    "Dict": "Hash",
     "list": "Array",
-    "List": "Array",
     "str": "String",
-    "Str": "String",
     "int": "Integer",
-    "Int": "Integer",
     "bool": "TrueClass",
-    "Bool": "TrueClass",
     "tuple": "Array",
-    "Tuple": "Array",
     "set": "Set",
-    "Set": "Set",
     "bytes": "Array",
 }
 
@@ -1908,6 +1907,8 @@ class _RubyEmitter(Emitter):
     def _type_name_for_check(self, typ: TType) -> str:
         if isinstance(typ, TIdentType):
             if typ.name in self.struct_names:
+                if typ.name in _RUBY_BUILTINS:
+                    return typ.name + "_"
                 return typ.name
             return _safe_type_name(typ.name)
         if isinstance(typ, TPrimitive):
@@ -2894,8 +2895,10 @@ class _RubyEmitter(Emitter):
             else:
                 type_name = self._expr(type_arg)
             if type_name in self.struct_names:
-                return self._a(args, 0) + ".is_a?(" + type_name + ")"
-            return self._a(args, 0) + ".is_a?(" + _safe_type_name(type_name) + ")"
+                safe = type_name + "_" if type_name in _RUBY_BUILTINS else type_name
+            else:
+                safe = _safe_type_name(type_name)
+            return self._a(args, 0) + ".is_a?(" + safe + ")"
         if name == "Assert":
             cond = self._a(args, 0)
             if len(args) > 1:

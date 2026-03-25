@@ -35,3 +35,13 @@ def main() -> None:
     print(str(x) + str(y))
 if __name__ == "__main__":
     main()
+
+=== enum constant stays uppercase at module level
+class TokenType:
+    EOF: int = 0
+    WORD: int = 1
+def main() -> None:
+    t: int = TokenType.EOF
+    print(str(t))
+if __name__ == "__main__":
+    main()

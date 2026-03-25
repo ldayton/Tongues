@@ -10,3 +10,7 @@ DEFAULT_KIND = SubKind.new(tag: "base", value: 0)
 === underscore-prefixed constant distinct from non-prefixed
 ITEMS = Set["a", "b"]
 P_ITEMS = Set["c", "d"]
+
+=== enum constant stays uppercase at module level
+TokenType_EOF = 0
+TokenType_WORD = 1

@@ -9,3 +9,7 @@ DEFAULT_KIND = new SubKind("base", 0);
 
 === underscore-prefixed constant distinct from non-prefixed
 Set.of("c", "d")
+
+=== enum constant stays uppercase at module level
+static final int TokenType_EOF = 0;
+static final int TokenType_WORD = 1;

@@ -17,6 +17,9 @@ this._label = _prefix.upper();
 this.child = new Child("ok");
 this.child._parent = name;
 
+=== uppercase field name lowered for target language
+public Config(int MAX_SIZE, String name) {
+
 === error class with const kind field
 public CompileError(String msg) {
 this.msg = msg;

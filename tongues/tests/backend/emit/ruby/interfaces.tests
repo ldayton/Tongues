@@ -1,3 +1,7 @@
 === interface with fields
 class Dog < Animal
   attr_accessor :name, :legs, :breed
+
+=== class named Array does not collide with builtin
+a = Array_.new()
+b = List.new()

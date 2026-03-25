@@ -10,3 +10,7 @@ $DEFAULT_KIND = SubKind->new("base", 0);
 === underscore-prefixed constant distinct from non-prefixed
 my $ITEMS = do { my $__s = {}; $__s->{$_} = 1 for ("a", "b"); $__s };
 my $P_ITEMS = do { my $__s = {}; $__s->{$_} = 1 for ("c", "d"); $__s };
+
+=== enum constant stays uppercase at module level
+$tokentype_eof = 0;
+$tokentype_word = 1;

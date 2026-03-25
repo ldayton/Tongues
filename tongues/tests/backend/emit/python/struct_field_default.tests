@@ -15,6 +15,9 @@ self._label = _prefix.upper()
 self.child = Child(value="ok")
 self.child._parent = name
 
+=== uppercase field name lowered for target language
+MAX_SIZE: int = 0
+
 === error class with const kind field
 def __init__(self, msg: str) -> None:
 super().__init__(msg)

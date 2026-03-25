@@ -65,6 +65,19 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== uppercase field name lowered for target language
+import sys
+from dataclasses import dataclass
+@dataclass
+class Config:
+    MAX_SIZE: int = 100
+    name: str = ""
+def main() -> None:
+    c: Config = Config(MAX_SIZE=200, name="test")
+    print(str(c.MAX_SIZE))
+if __name__ == "__main__":
+    main()
+
 === error class with const kind field
 import sys
 class CompileError(Exception):

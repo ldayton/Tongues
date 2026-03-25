@@ -6,3 +6,7 @@ use parent -norequire, 'Animal';
 use overload '==' => \&__eq__, 'eq' => \&__eq__, '!=' => sub { !__eq__(@_) }, 'ne' => sub { !__eq__(@_) }, fallback => 1;
 
 sub new {
+
+=== class named Array does not collide with builtin
+my $a = Array->new();
+my $b = List->new();

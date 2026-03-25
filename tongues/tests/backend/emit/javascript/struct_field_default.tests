@@ -17,6 +17,9 @@ this._label = _prefix.upper();
 this.child = new Child("ok", null);
 this.child._parent = name;
 
+=== uppercase field name lowered for target language
+constructor(MAX_SIZE = 0, name = "") {
+
 === error class with const kind field
 constructor(msg = "") {
 super(msg);
