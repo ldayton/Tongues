@@ -3,3 +3,6 @@ parse(strict = false) {
 
 === class-level dict field default preserved
 constructor(source = "", KEYWORDS = Lexer_KEYWORDS) {
+
+=== inherited dict field default preserved from interface
+constructor(name = "", SOUNDS = Animal_SOUNDS) {

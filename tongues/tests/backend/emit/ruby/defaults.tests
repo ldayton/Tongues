@@ -3,3 +3,6 @@ def parse(strict = false)
 
 === class-level dict field default preserved
 def initialize(source: "", keywords: Lexer_KEYWORDS)
+
+=== inherited dict field default preserved from interface
+def initialize(name: "", sounds: Animal_SOUNDS)

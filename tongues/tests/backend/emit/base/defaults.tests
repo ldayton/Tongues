@@ -38,3 +38,19 @@ def main() -> None:
     print(str(lex.is_keyword("foo")))
 if __name__ == "__main__":
     main()
+
+=== inherited dict field default preserved from interface
+import sys
+class Animal:
+    SOUNDS: dict[str, str] = {"cat": "meow", "dog": "woof"}
+class Dog(Animal):
+    name: str
+    def __init__(self, name: str) -> None:
+        self.name = name
+    def speak(self) -> str:
+        return self.SOUNDS.get("dog", "")
+def main() -> None:
+    d: Dog = Dog(name="Rex")
+    print(d.speak())
+if __name__ == "__main__":
+    main()
