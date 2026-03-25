@@ -7121,8 +7121,17 @@ def _synthesize_eq_method(
     return TFnDecl(pos, {}, "__eq__", params, TPrimitive(pos, "bool"), body)
 
 
+def _should_hoist_class_field(fname: str, type_dict: TypeNode) -> bool:
+    """Check if a class-level field should be hoisted as a module constant."""
+    if fname == fname.upper() and len(fname) > 1:
+        return True
+    if _is_type_dict(type_dict, ["Slice", "Map", "Set"]):
+        return True
+    return False
+
+
 def _build_class_constants(class_node: ASTNode, ctx: _LowerCtx) -> list[TModuleItem]:
-    """Extract class-level ALL_CAPS constants from a class body."""
+    """Extract class-level constants from a class body."""
     result: list[TModuleItem] = []
     class_name = get_str(class_node, "name")
     if class_name in ctx.enum_classes:
@@ -7135,12 +7144,12 @@ def _build_class_constants(class_node: ASTNode, ctx: _LowerCtx) -> list[TModuleI
                 t = targets[0]
                 if _is_ast(t, "Name"):
                     fname = get_str(t, "id")
-                    if fname == fname.upper() and len(fname) > 1:
-                        pos = _node_pos(item)
-                        value_node = get_node(item, "value")
-                        val_type: TypeNode = _infer_expr_type(value_node, _Env(), ctx)
-                        if _is_type_dict(val_type, ["void"]):
-                            val_type = PrimitiveType("error")
+                    pos = _node_pos(item)
+                    value_node = get_node(item, "value")
+                    val_type: TypeNode = _infer_expr_type(value_node, _Env(), ctx)
+                    if _is_type_dict(val_type, ["void"]):
+                        val_type = PrimitiveType("error")
+                    if _should_hoist_class_field(fname, val_type):
                         ttype = _typenode_to_ttype(pos, val_type)
                         value = _lower_expr(value_node, _Env(), ctx)
                         const_name = class_name + "_" + fname
@@ -7149,22 +7158,24 @@ def _build_class_constants(class_node: ASTNode, ctx: _LowerCtx) -> list[TModuleI
             target = get_node(item, "target")
             if _is_ast(target, "Name"):
                 fname = get_str(target, "id")
-                if fname == fname.upper() and len(fname) > 1:
-                    pos = _node_pos(item)
-                    ann_jv = item.get("annotation")
-                    ann_str = ""
-                    if isinstance(ann_jv, JDict):
-                        ann_str = annotation_to_str(ann_jv.entries)
-                    c_type_dict: TypeNode = VOID_TYPE
-                    if ann_str:
-                        c_type_dict = py_type_to_type_dict(
-                            ann_str, ctx.known_classes, [], 0, 0
-                        )
-                    if _is_type_dict(c_type_dict, ["void"]):
-                        value_node = get_node(item, "value")
-                        c_type_dict = _infer_expr_type(value_node, _Env(), ctx)
-                    if _is_type_dict(c_type_dict, ["void"]):
-                        c_type_dict = PrimitiveType("error")
+                pos = _node_pos(item)
+                ann_jv = item.get("annotation")
+                ann_str = ""
+                if isinstance(ann_jv, JDict):
+                    ann_str = annotation_to_str(ann_jv.entries)
+                c_type_dict: TypeNode = VOID_TYPE
+                if ann_str:
+                    c_type_dict = py_type_to_type_dict(
+                        ann_str, ctx.known_classes, [], 0, 0
+                    )
+                if _is_type_dict(c_type_dict, ["void"]):
+                    value_node = get_node(item, "value")
+                    c_type_dict = _infer_expr_type(value_node, _Env(), ctx)
+                if _is_type_dict(c_type_dict, ["void"]):
+                    c_type_dict = PrimitiveType("error")
+                val_jv = item.get("value")
+                has_value = val_jv is not None and not isinstance(val_jv, JNull)
+                if has_value and _should_hoist_class_field(fname, c_type_dict):
                     ttype = _typenode_to_ttype(pos, c_type_dict)
                     value_node = get_node(item, "value")
                     value = _lower_expr(value_node, _Env(), ctx)

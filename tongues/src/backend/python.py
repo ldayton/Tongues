@@ -581,10 +581,8 @@ class _PythonEmitter(Emitter):
         has_default: bool = False,
         declaring_class: str | None = None,
     ) -> str:
-        if name == name.upper() and len(name) > 1:
-            cls = declaring_class or self._current_struct
-            if not cls:
-                cls = self._current_struct
+        cls = declaring_class or self._current_struct
+        if cls:
             const = cls + "_" + name
             if const in self.module_let_names:
                 if isinstance(typ, TListType):

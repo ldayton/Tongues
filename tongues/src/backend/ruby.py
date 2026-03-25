@@ -852,16 +852,13 @@ class _RubyEmitter(Emitter):
             name = _safe_name(f.name)
             if f.self_ref:
                 params.append(name + ": nil")
-            elif f.name == f.name.upper() and len(f.name) > 1:
+            else:
                 cls = f.declaring_class or struct_name
                 const = cls + "_" + f.name
                 if const in self.module_let_names:
                     params.append(name + ": " + const)
                 else:
                     params.append(name + ": " + self._zero_value(f.typ))
-            else:
-                default = self._zero_value(f.typ)
-                params.append(name + ": " + default)
         self._line("def initialize(" + ", ".join(params) + ")")
         self.indent += 1
         if is_error:

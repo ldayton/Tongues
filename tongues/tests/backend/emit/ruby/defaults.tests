@@ -5,7 +5,7 @@ def parse(strict = false)
 def initialize(source: "", keywords: Lexer_KEYWORDS)
 
 === lowercase dict field default preserved
-def initialize(source: "", keywords: {"if" => 0, "then" => 1})
+def initialize(source: "", keywords: Lexer_keywords)
 
 === inherited dict field default preserved from interface
 def initialize(name: "", sounds: Animal_SOUNDS)

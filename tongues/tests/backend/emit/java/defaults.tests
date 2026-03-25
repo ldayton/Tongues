@@ -5,8 +5,7 @@ String parse(boolean strict)
 this.KEYWORDS = Lexer_KEYWORDS;
 
 === lowercase dict field default preserved
-public Lexer(String source, HashMap<String, Integer> keywords) {
-this.keywords = keywords;
+this.keywords = Lexer_keywords;
 
 === inherited dict field default preserved from interface
 this.SOUNDS = Animal_SOUNDS;
