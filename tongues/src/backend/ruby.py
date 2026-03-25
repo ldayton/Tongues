@@ -328,7 +328,11 @@ def _safe_fn_name(name: str) -> str:
 
 
 def _safe_module_name(name: str) -> str:
-    """Like _safe_name but strips leading underscores for module-level vars."""
+    """Like _safe_name but preserves uppercase for Ruby constants."""
+    if name and name[0].isupper():
+        if name in _RUBY_RESERVED:
+            return name + "_"
+        return name
     name = to_snake(name)
     if not name:
         return "_"
