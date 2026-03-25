@@ -1576,6 +1576,8 @@ def taytsh_pipeline(argv: list[str]) -> int:
         analyze_liveness(module, checker)
         analyze_int_width(module, checker)
         result = ""
+        if emit_target in ("ruby", "javascript", "java"):
+            analyze_strings(module, checker)
         if emit_target == "java":
             result = emit_java(module)
         elif emit_target == "javascript":
@@ -1585,7 +1587,6 @@ def taytsh_pipeline(argv: list[str]) -> int:
         elif emit_target == "perl":
             result = emit_perl(module)
         elif emit_target == "ruby":
-            analyze_strings(module, checker)
             result = emit_ruby(module)
         elif emit_target == "taytsh":
             result = emit_taytsh(module)

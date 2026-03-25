@@ -439,7 +439,9 @@ class _JavaScriptEmitter(Emitter):
         self._current_struct: str = ""
         self._struct_field_decls: dict[str, list[TFieldDecl]] = {}
         self._needs_read_all: bool = False
+        self._needs_cp_index_of: bool = False
         self.fn_names: set[str] = set()
+        self.var_annotations: dict[str, dict[str, str]] = {}
 
     def _line(self, text: str = "") -> None:
         _emit_line(self.lines, self.indent, text)
@@ -537,6 +539,14 @@ class _JavaScriptEmitter(Emitter):
                 case TFnDecl():
                     self._emit_fn(decl)
             need_blank = True
+        if self._needs_cp_index_of:
+            self._line()
+            self._line("function _cpIndexOf(s, sub) {")
+            self.indent += 1
+            self._line("const i = s.indexOf(sub);")
+            self._line("return i === -1 ? -1 : [...s.slice(0, i)].length;")
+            self.indent -= 1
+            self._line("}")
 
     # ── Enum ──────────────────────────────────────────────────
 
@@ -673,9 +683,11 @@ class _JavaScriptEmitter(Emitter):
 
     def _emit_fn(self, decl: TFnDecl) -> None:
         old_var_types = self.var_types.copy()
+        old_var_annotations = self.var_annotations.copy()
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
+            self._capture_var_annotations(p.name, p.annotations)
         params = self._params(decl.params)
         fname = (
             "main" if decl.name == "Main" else _safe_name(_to_lower_camel(decl.name))
@@ -686,9 +698,11 @@ class _JavaScriptEmitter(Emitter):
         self.indent -= 1
         self._line("}")
         self.var_types = old_var_types
+        self.var_annotations = old_var_annotations
 
     def _emit_method(self, decl: TFnDecl) -> None:
         old_var_types = self.var_types.copy()
+        old_var_annotations = self.var_annotations.copy()
         for p in decl.params:
             if p.typ is not None:
                 self.var_types[p.name] = p.typ
@@ -712,6 +726,7 @@ class _JavaScriptEmitter(Emitter):
         self.indent -= 1
         self._line("}")
         self.var_types = old_var_types
+        self.var_annotations = old_var_annotations
 
     def _params(self, params: list[TParam]) -> str:
         parts: list[str] = []
@@ -1280,6 +1295,7 @@ class _JavaScriptEmitter(Emitter):
     def _emit_let(self, stmt: TLetStmt) -> None:
         safe = _restore_name(stmt.name, stmt.annotations)
         self.var_types[stmt.name] = stmt.typ
+        self._capture_var_annotations(stmt.name, stmt.annotations)
         unused = stmt.annotations.get("liveness.initial_value_unused") == "true"
         is_const = stmt.annotations.get("scope.is_const") == "true"
         if stmt.value is not None and not unused:
@@ -2199,6 +2215,8 @@ class _JavaScriptEmitter(Emitter):
             idx = self._expr(expr.index)
             if self.strict_math and self._is_int_expr(expr.index):
                 idx = "Number(" + idx + ")"
+            if self._is_string_expr(expr.obj) and self._needs_codepoint_ops(expr.obj):
+                return "[..." + self._expr(expr.obj) + "][" + idx + "]"
             return self._expr(expr.obj) + "[" + idx + "]"
         if isinstance(expr, TSlice):
             return self._slice(expr)
@@ -2261,6 +2279,10 @@ class _JavaScriptEmitter(Emitter):
             high = ""
         if prov == "open_start" and self._is_zero(expr.low):
             low = "0"
+        if self._is_string_expr(expr.obj) and self._needs_codepoint_ops(expr.obj):
+            if high == "":
+                return "[..." + obj + "].slice(" + low + ").join(\"\")"
+            return "[..." + obj + "].slice(" + low + ", " + high + ").join(\"\")"
         if high == "":
             return obj + ".slice(" + low + ")"
         return obj + ".slice(" + low + ", " + high + ")"
@@ -2684,6 +2706,37 @@ class _JavaScriptEmitter(Emitter):
             return True
         return False
 
+    def _is_string_expr(self, expr: TExpr) -> bool:
+        ann = expr.annotations.get("type", "")
+        if ann == "string":
+            return True
+        if isinstance(expr, TStringLit):
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TPrimitive) and typ.kind == "string"
+        return False
+
+    def _capture_var_annotations(self, name: str, annotations: Ann) -> None:
+        strings_ann: dict[str, str] = {}
+        for key, val in annotations.items():
+            if key.startswith("strings."):
+                strings_ann[key] = val
+        if strings_ann:
+            self.var_annotations[name] = strings_ann
+
+    def _needs_codepoint_ops(self, expr: TExpr) -> bool:
+        if isinstance(expr, TVar):
+            ann = self.var_annotations.get(expr.name, {})
+            content = ann.get("strings.content", "")
+            if content == "unknown":
+                return True
+        if isinstance(expr, TStringLit):
+            for ch in expr.value:
+                if ord(ch) > 0xFFFF:
+                    return True
+        return False
+
     def _method_call(self, func: TFieldAccess, args: list[TArg]) -> str:
         method = func.field
         obj_str = self._expr(func.obj)
@@ -2784,6 +2837,9 @@ class _JavaScriptEmitter(Emitter):
                     + self._a(args, 2)
                     + ")"
                 )
+            if self._is_string_expr(args[0].value) and self._needs_codepoint_ops(args[0].value):
+                self._needs_cp_index_of = True
+                return "_cpIndexOf(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             return self._a(args, 0) + ".indexOf(" + self._a(args, 1) + ")"
         if name == "RFind":
             if len(args) >= 3:
@@ -2944,6 +3000,8 @@ class _JavaScriptEmitter(Emitter):
             inner = args[0].value
             if self._is_map_type(inner) or self._is_set_type(inner):
                 base = self._a(args, 0) + ".size"
+            elif self._is_string_expr(inner) and self._needs_codepoint_ops(inner):
+                base = "[..." + self._a(args, 0) + "].length"
             else:
                 base = self._a(args, 0) + ".length"
             if self.strict_math:
