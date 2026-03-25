@@ -18,7 +18,7 @@ end
 self.child._parent = name
 
 === uppercase field name lowered for target language
-def initialize(max_size: 0, name: "")
+def initialize(max_size: Config_MAX_SIZE, name: "")
 @max_size = max_size
 
 === error class with const kind field
