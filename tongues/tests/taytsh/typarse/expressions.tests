@@ -48,6 +48,46 @@ fn Main() -> void {
 ok
 ---
 
+=== string with unicode escape bmp
+fn Main() -> void {
+    let s: string = "\u00e9"
+}
+---
+ok
+---
+
+=== string with unicode escape astral
+fn Main() -> void {
+    let s: string = "\U0001f600"
+}
+---
+ok
+---
+
+=== string with mixed unicode escapes
+fn Main() -> void {
+    let s: string = "caf\u00e9 \U0001f600"
+}
+---
+ok
+---
+
+=== rune with unicode escape bmp
+fn Main() -> void {
+    let r: rune = '\u00e9'
+}
+---
+ok
+---
+
+=== rune with unicode escape astral
+fn Main() -> void {
+    let r: rune = '\U0001f600'
+}
+---
+ok
+---
+
 === rune literal
 fn Main() -> void {
     let ch: rune = 'x'

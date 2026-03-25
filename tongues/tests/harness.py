@@ -1110,7 +1110,7 @@ def _transpile_with_emitter(
         analyze_returns(module, checker)
         analyze_scope(module, checker)
         analyze_liveness(module, checker)
-        if lang == "ruby":
+        if lang in ("ruby", "javascript", "java"):
             analyze_strings(module, checker)
         return (emitter(module), None)
     except Exception as e:
@@ -1332,7 +1332,7 @@ def transpile_app(source: str, target: str) -> tuple[str | None, str | None]:
             analyze_returns(merged, checker)
             analyze_scope(merged, checker)
             analyze_liveness(merged, checker)
-            if target == "ruby":
+            if target in ("ruby", "javascript", "java"):
                 analyze_strings(merged, checker)
             return (emitter(merged), None)
         except Exception as e:

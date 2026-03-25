@@ -82,13 +82,20 @@ _STRING_ESCAPE_MAP: dict[str, str] = {
 }
 
 
-def escape_string(value: str) -> str:
-    """Escape a string for use in a string literal (without quotes).
+def _escape_string_astral(cp: int, astral: str) -> str:
+    """Emit an astral plane codepoint in the target's escape format."""
+    if astral == "surrogates":
+        hi = 0xD800 + (cp - 0x10000) // 0x400
+        lo = 0xDC00 + (cp - 0x10000) % 0x400
+        return "\\u" + hex(hi)[2:] + "\\u" + hex(lo)[2:]
+    if astral == "js" or astral == "ruby":
+        return "\\u{" + hex(cp)[2:] + "}"
+    h = hex(cp)[2:]
+    return "\\U" + "0" * (8 - len(h)) + h
 
-    Non-ASCII characters are emitted as \\uXXXX (BMP) or \\UXXXXXXXX (supplementary).
-    On JS targets, strings are UTF-16 so characters above U+FFFF appear as surrogate
-    pairs; this function detects and recombines them into full code points.
-    """
+
+def escape_string(value: str, astral: str) -> str:
+    """Escape a string for use in a string literal (without quotes)."""
     out: list[str] = []
     i: int = 0
     while i < len(value):
@@ -107,8 +114,7 @@ def escape_string(value: str) -> str:
                 h = hex(cp)[2:]
                 out.append("\\u" + "0" * (4 - len(h)) + h)
             else:
-                h = hex(cp)[2:]
-                out.append("\\U" + "0" * (8 - len(h)) + h)
+                out.append(_escape_string_astral(cp, astral))
         else:
             out.append(c)
         i += 1

@@ -87,6 +87,13 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== astral string literal
+def main() -> None:
+    s: str = "\U0001f600"
+    print(s)
+if __name__ == "__main__":
+    main()
+
 === strip regex special chars
 def main() -> None:
     s: str = "]-hello-]"

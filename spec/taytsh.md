@@ -1538,7 +1538,9 @@ RUNE       = "'" ( escape | [^'\] ) "'"
 BYTES      = 'b"' ( escape | [^"\] )* '"'
 IDENT      = [a-zA-Z_] [a-zA-Z0-9_]*
 escape     = '\' ( 'n' | 'r' | 't' | '\' | '"' | "'" | '0'
-           | 'x' hex hex )
+           | 'x' hex hex
+           | 'u' hex hex hex hex
+           | 'U' hex hex hex hex hex hex hex hex )
 hex        = [0-9a-fA-F]
 ```
 

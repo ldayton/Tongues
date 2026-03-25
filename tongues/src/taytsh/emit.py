@@ -811,7 +811,9 @@ class _Emitter:
 
     def _escape_text(self, s: str, quote: str) -> str:
         out = ""
-        for ch in s:
+        i = 0
+        while i < len(s):
+            ch = s[i : i + 1]
             if ch == "\n":
                 out += "\\n"
             elif ch == "\r":
@@ -826,17 +828,28 @@ class _Emitter:
                 out += "\\" + quote
             else:
                 code = ord(ch)
+                if 0xD800 <= code <= 0xDBFF and i + 1 < len(s):
+                    lo = ord(s[i + 1 : i + 2])
+                    if 0xDC00 <= lo <= 0xDFFF:
+                        code = 0x10000 + (code - 0xD800) * 0x400 + (lo - 0xDC00)
+                        i += 1
                 if 32 <= code <= 126:
                     out += ch
                 else:
                     hx2 = hex(code)[2:]
-                    if len(hx2) == 1:
-                        hx2 = "0" + hx2
-                    if len(hx2) == 2:
+                    if code <= 0xFF:
+                        if len(hx2) == 1:
+                            hx2 = "0" + hx2
                         out += "\\x" + hx2
+                    elif code <= 0xFFFF:
+                        while len(hx2) < 4:
+                            hx2 = "0" + hx2
+                        out += "\\u" + hx2
                     else:
-                        # Taytsh only specifies \xHH escapes; emit a literal unicode char.
-                        out += ch
+                        while len(hx2) < 8:
+                            hx2 = "0" + hx2
+                        out += "\\U" + hx2
+            i += 1
         return out
 
 

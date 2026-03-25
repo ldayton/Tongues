@@ -203,6 +203,16 @@ def test_string_index_pos() -> None:
     assert "abcabc".index("abc", 1) == 3
 
 
+def test_len_of_concat() -> None:
+    """len() on a concatenation expression."""
+    a: str = "hello"
+    b: str = " world"
+    assert len(a + b) == 11
+    assert len("foo" + "bar") == 6
+    c: str = ""
+    assert len(c + a) == 5
+
+
 def test_string_startswith_endswith() -> None:
     """startswith() and endswith() methods."""
     assert "hello".startswith("he")
@@ -637,6 +647,16 @@ def main() -> int:
     except Exception as e:
         failed += 1
         print("  FAIL test_string_index_pos: " + str(e))
+    try:
+        test_len_of_concat()
+        passed += 1
+        print("  PASS test_len_of_concat")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_len_of_concat: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_len_of_concat: " + str(e))
     try:
         test_string_startswith_endswith()
         passed += 1

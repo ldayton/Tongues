@@ -17,7 +17,7 @@ from .util import (
 
 def _escape_java_string(value: str) -> str:
     """Escape a string for Java, converting non-Java escape sequences."""
-    s = escape_string(value)
+    s = escape_string(value, "surrogates")
     out: list[str] = []
     i = 0
     while i < len(s):
@@ -4816,6 +4816,15 @@ class _JavaEmitter(Emitter):
         if name == "WriteErr":
             return "System.err.print(" + self._a(args, 0) + ")"
         if name == "ToString":
+            inner = args[0].value
+            if isinstance(inner, TCall):
+                assert isinstance(inner, TCall)
+                if isinstance(inner.func, TVar) and inner.func.name == "RuneFromInt":
+                    return (
+                        "new String(Character.toChars("
+                        + self._expr(inner.args[0].value)
+                        + "))"
+                    )
             return "String.valueOf(" + self._a(args, 0) + ")"
         if name == "ParseInt":
             return "parseIntAuto(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
@@ -5614,6 +5623,13 @@ class _JavaEmitter(Emitter):
     def _len_expr(self, expr: TExpr) -> str:
         """Emit .size() / .length() / .length as appropriate."""
         e = self._expr(expr)
+        needs_parens = isinstance(expr, (TBinaryOp, TTernary))
+        if not needs_parens and isinstance(expr, TCall):
+            assert isinstance(expr, TCall)
+            if isinstance(expr.func, TVar) and expr.func.name == "Concat":
+                needs_parens = True
+        if needs_parens:
+            e = "(" + e + ")"
         ann = expr.annotations.get("type", "")
         if ann == "string":
             return e + ".length()"

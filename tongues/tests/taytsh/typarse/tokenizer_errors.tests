@@ -144,6 +144,38 @@ fn Main() -> void { let b: bytes = b"\
 error:
 ---
 
+=== incomplete unicode escape u in string
+fn Main() -> void {
+    let s: string = "\u00e"
+}
+---
+error:
+---
+
+=== incomplete unicode escape U in string
+fn Main() -> void {
+    let s: string = "\U0001f60"
+}
+---
+error:
+---
+
+=== invalid hex in unicode escape u
+fn Main() -> void {
+    let s: string = "\u00ZZ"
+}
+---
+error:
+---
+
+=== invalid hex in unicode escape U
+fn Main() -> void {
+    let s: string = "\U0001ZZZZ"
+}
+---
+error:
+---
+
 === hex escape string at eof
 fn Main() -> void { let s: string = "\x
 ---

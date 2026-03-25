@@ -433,7 +433,7 @@ def _escape_regex_charclass(value: str) -> str:
 
 
 def _escape_ruby_string(value: str) -> str:
-    result = escape_string(value)
+    result = escape_string(value, "ruby")
     out: list[str] = []
     i = 0
     while i < len(result):

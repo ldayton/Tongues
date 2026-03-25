@@ -34,5 +34,8 @@ s.startsWith("world", 6)
 === rstrip newline
 replaceAll("[\n]+$", "")
 
+=== astral string literal
+"\ud83d\ude00"
+
 === strip regex special chars
 replaceAll("^[\\]\\-]+|[\\]\\-]+$", "")
