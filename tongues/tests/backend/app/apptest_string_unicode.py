@@ -108,6 +108,50 @@ def test_concat_preserves_unicode() -> None:
     assert len(c) == 4
 
 
+class StringHolder:
+    def __init__(self, value: str) -> None:
+        self.value: str = value
+
+    def first_codepoint(self) -> str:
+        return self.value[0]
+
+    def codepoint_len(self) -> int:
+        return len(self.value)
+
+    def find_in(self, sub: str) -> int:
+        return self.value.find(sub)
+
+
+def test_struct_method_astral() -> None:
+    """Struct methods with astral string params use codepoint-safe ops."""
+    h = StringHolder("a\U0001f600b")
+    assert h.codepoint_len() == 3
+    assert h.first_codepoint() == "a"
+    assert h.find_in("b") == 2
+
+
+def test_rfind_astral() -> None:
+    """rfind() returns codepoint index with astral characters."""
+    s: str = "a\U0001f600b\U0001f600c"
+    assert s.rfind("\U0001f600") == 3
+    assert s.rfind("c") == 4
+    assert s.rfind("a") == 0
+
+
+def test_count_astral() -> None:
+    """count() with astral characters."""
+    s: str = "a\U0001f600b\U0001f600c"
+    assert s.count("\U0001f600") == 2
+    assert s.count("a") == 1
+
+
+def test_inline_len_astral() -> None:
+    """len() on concatenation result, not a named variable."""
+    a: str = "\U0001f600"
+    b: str = "\U0001f601"
+    assert len(a + b) == 2
+
+
 def test_builder_bmp() -> None:
     """String building in a loop with BMP characters."""
     parts: list[str] = ["\u03b1", "\u03b2", "\u03b3"]
@@ -251,6 +295,46 @@ def main() -> int:
     except Exception as e:
         failed += 1
         print("  FAIL test_concat_preserves_unicode: " + str(e))
+    try:
+        test_struct_method_astral()
+        passed += 1
+        print("  PASS test_struct_method_astral")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_struct_method_astral: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_struct_method_astral: " + str(e))
+    try:
+        test_rfind_astral()
+        passed += 1
+        print("  PASS test_rfind_astral")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_rfind_astral: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_rfind_astral: " + str(e))
+    try:
+        test_count_astral()
+        passed += 1
+        print("  PASS test_count_astral")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_count_astral: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_count_astral: " + str(e))
+    try:
+        test_inline_len_astral()
+        passed += 1
+        print("  PASS test_inline_len_astral")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_inline_len_astral: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_inline_len_astral: " + str(e))
     try:
         test_builder_bmp()
         passed += 1
