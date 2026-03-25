@@ -50,7 +50,7 @@ for ch in s:
 d.get("a", 99)
 
 === list pop at index
-first = xs.pop(0)
+first: str = xs.pop(0)
 
 === tuple unpack into existing locals
 name, val = items.pop(0)

@@ -57,7 +57,7 @@ Array(5).fill(0)
 (d.get("a") ?? 99)
 
 === list pop at index
-xs.splice(0, 1)[0]
+const first = xs.splice(0, 1)[0];
 
 
 === tuple unpack into existing locals

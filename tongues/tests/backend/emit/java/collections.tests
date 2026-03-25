@@ -64,7 +64,7 @@ new ArrayList<>(Collections.nCopies(5, 0))
 d.getOrDefault("a", 99)
 
 === list pop at index
-xs.remove(0)
+String first = xs.removeFirst();
 
 === tuple unpack into existing locals
 var __tmp = items.remove(0);

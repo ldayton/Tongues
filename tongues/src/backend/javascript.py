@@ -2720,6 +2720,8 @@ class _JavaScriptEmitter(Emitter):
             )
         if name == "Pop":
             return self._a(args, 0) + ".pop()"
+        if name == "PopAt":
+            return self._a(args, 0) + ".splice(" + self._a(args, 1) + ", 1)[0]"
         if name == "RemoveAt":
             return self._a(args, 0) + ".splice(" + self._a(args, 1) + ", 1)"
         if name == "IndexOf":

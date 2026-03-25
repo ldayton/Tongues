@@ -1865,6 +1865,8 @@ class _PythonEmitter(Emitter):
             )
         if name == "Pop":
             return self._a(args, 0) + ".pop()"
+        if name == "PopAt":
+            return self._a(args, 0) + ".pop(" + self._a(args, 1) + ")"
         if name == "RemoveAt":
             return self._a(args, 0) + ".pop(" + self._a(args, 1) + ")"
         if name == "ReplaceSlice":
