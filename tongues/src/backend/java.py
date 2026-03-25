@@ -4811,6 +4811,15 @@ class _JavaEmitter(Emitter):
         if name == "WriteErr":
             return "System.err.print(" + self._a(args, 0) + ")"
         if name == "ToString":
+            inner = args[0].value
+            if isinstance(inner, TCall):
+                assert isinstance(inner, TCall)
+                if isinstance(inner.func, TVar) and inner.func.name == "RuneFromInt":
+                    return (
+                        "new String(Character.toChars("
+                        + self._expr(inner.args[0].value)
+                        + "))"
+                    )
             return "String.valueOf(" + self._a(args, 0) + ")"
         if name == "ParseInt":
             return "parseIntAuto(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"

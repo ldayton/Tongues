@@ -3898,12 +3898,7 @@ def process_escapes(s: str, is_bytes: bool, lineno: int, col: int) -> str:
                             lineno,
                             col,
                         )
-                    if code_point <= 0xFFFF:
-                        result.append(chr(code_point))
-                    else:
-                        hi = 0xD800 + (code_point - 0x10000) // 0x400
-                        lo = 0xDC00 + (code_point - 0x10000) % 0x400
-                        result.append(chr(hi) + chr(lo))
+                    result.append(chr(code_point))
                     i += 10
                 except ValueError:
                     raise ParseError("invalid \\U escape", lineno, col)
