@@ -1910,6 +1910,8 @@ class _RubyEmitter(Emitter):
     def _type_name_for_check(self, typ: TType) -> str:
         if isinstance(typ, TIdentType):
             if typ.name in self.struct_names:
+                if typ.name in _RUBY_BUILTINS:
+                    return typ.name + "_"
                 return typ.name
             return _safe_type_name(typ.name)
         if isinstance(typ, TPrimitive):
@@ -2896,8 +2898,10 @@ class _RubyEmitter(Emitter):
             else:
                 type_name = self._expr(type_arg)
             if type_name in self.struct_names:
-                return self._a(args, 0) + ".is_a?(" + type_name + ")"
-            return self._a(args, 0) + ".is_a?(" + _safe_type_name(type_name) + ")"
+                safe = type_name + "_" if type_name in _RUBY_BUILTINS else type_name
+            else:
+                safe = _safe_type_name(type_name)
+            return self._a(args, 0) + ".is_a?(" + safe + ")"
         if name == "Assert":
             cond = self._a(args, 0)
             if len(args) > 1:
