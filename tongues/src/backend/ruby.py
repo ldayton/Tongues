@@ -2611,6 +2611,18 @@ class _RubyEmitter(Emitter):
                 + ")).force_encoding('UTF-8')"
                 + ".tap { |s| raise UnicodeDecodeError unless s.valid_encoding? }"
             )
+        if name == "DecodeReplace":
+            arg = self._a(args, 0)
+            return (
+                "(("
+                + arg
+                + ").is_a?(Array) ? ("
+                + arg
+                + ").pack('C*') : "
+                + "("
+                + arg
+                + ")).force_encoding('UTF-8').scrub"
+            )
         # Set operations
         if name == "Add":
             self._needs_set = True

@@ -1,2 +1,5 @@
 === read file binary mode
 open(path, "rb").read()
+
+=== bytes decode with replace error mode
+data.decode("utf-8", errors="replace")

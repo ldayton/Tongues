@@ -2876,6 +2876,8 @@ class _JavaScriptEmitter(Emitter):
                 + a
                 + "); } catch (_) { throw new UnicodeDecodeError(_.message); } })()"
             )
+        if name == "DecodeReplace":
+            return 'new TextDecoder("utf-8").decode(' + self._a(args, 0) + ")"
         if name == "Add":
             return self._a(args, 0) + ".add(" + self._a(args, 1) + ")"
         if name == "Remove":

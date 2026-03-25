@@ -864,6 +864,7 @@ BUILTIN_NAMES: set[str] = {
     # Bytes
     "Encode",
     "Decode",
+    "DecodeReplace",
     # Strings
     "Len",
     "Concat",
@@ -3857,12 +3858,12 @@ class Checker:
             if t is not None and not type_eq(t, STRING_T):
                 self.error("Encode requires string", pos)
             return BYTES_T
-        if name == "Decode":
+        if name == "Decode" or name == "DecodeReplace":
             if not _bctx_require(ctx, 1):
                 return None
             t = _bctx_arg(ctx, 0)
             if t is not None and not type_eq(t, BYTES_T):
-                self.error("Decode requires bytes", pos)
+                self.error(name + " requires bytes", pos)
             return STRING_T
 
         # ── Len ──

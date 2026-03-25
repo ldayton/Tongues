@@ -98,6 +98,13 @@ def f(b: bytearray) -> str:
 Decode(BytesFrom(b))
 ---
 
+=== bytes decode with errors replace
+def f(data: bytes) -> str:
+    return data.decode("utf-8", errors="replace")
+---
+DecodeReplace(data)
+---
+
 === bytearray method hex unsupported
 def f(b: bytearray) -> str:
     return b.hex()
