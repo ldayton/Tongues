@@ -1,2 +1,5 @@
 === method with default bool param
 sub parse {
+
+=== class-level dict field default preserved
+$self->{KEYWORDS} = defined $KEYWORDS ? $KEYWORDS : $lexer_keywords;
