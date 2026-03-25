@@ -5610,8 +5610,9 @@ class _JavaEmitter(Emitter):
         """Emit .size() / .length() / .length as appropriate."""
         e = self._expr(expr)
         needs_parens = isinstance(expr, (TBinaryOp, TTernary))
-        if not needs_parens and isinstance(expr, TCall) and isinstance(expr.func, TVar):
-            if expr.func.name == "Concat":
+        if not needs_parens and isinstance(expr, TCall):
+            assert isinstance(expr, TCall)
+            if isinstance(expr.func, TVar) and expr.func.name == "Concat":
                 needs_parens = True
         if needs_parens:
             e = "(" + e + ")"

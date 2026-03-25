@@ -3018,12 +3018,9 @@ class _JavaScriptEmitter(Emitter):
             inner = args[0].value
             inner_str = self._a(args, 0)
             needs_parens = isinstance(inner, (TBinaryOp, TTernary))
-            if (
-                not needs_parens
-                and isinstance(inner, TCall)
-                and isinstance(inner.func, TVar)
-            ):
-                if inner.func.name == "Concat":
+            if not needs_parens and isinstance(inner, TCall):
+                assert isinstance(inner, TCall)
+                if isinstance(inner.func, TVar) and inner.func.name == "Concat":
                     needs_parens = True
             if needs_parens:
                 inner_str = "(" + inner_str + ")"
