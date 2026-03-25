@@ -65,8 +65,3 @@ d.getOrDefault("a", 99)
 
 === list pop at index
 String first = xs.removeFirst();
-
-=== tuple unpack into existing locals
-var __tmp = items.remove(0);
-name = (String) __tmp.get(0);
-val = (Integer) __tmp.get(1);

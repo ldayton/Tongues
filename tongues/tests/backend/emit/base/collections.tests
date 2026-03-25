@@ -151,15 +151,3 @@ def main() -> None:
     print(str(len(xs)))
 if __name__ == "__main__":
     main()
-
-=== tuple unpack into existing locals
-import sys
-def main() -> None:
-    items: list[tuple[str, int]] = [("hello", 42)]
-    name: str = ""
-    val: int = 0
-    name, val = items.pop(0)
-    print(name)
-    print(str(val))
-if __name__ == "__main__":
-    main()

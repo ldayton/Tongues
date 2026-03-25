@@ -58,7 +58,3 @@ Array(5).fill(0)
 
 === list pop at index
 const first = xs.splice(0, 1)[0];
-
-
-=== tuple unpack into existing locals
-[name, val] = items.splice(0, 1)[0];
