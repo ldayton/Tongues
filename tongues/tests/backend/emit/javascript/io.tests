@@ -1,2 +1,5 @@
 === read file binary mode
 fs.readFileSync(path)
+
+=== bytes decode with replace error mode
+new TextDecoder("utf-8").decode(

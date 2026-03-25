@@ -1,2 +1,5 @@
 === read file binary mode
 File.binread(path).bytes
+
+=== bytes decode with replace error mode
+.force_encoding('UTF-8').scrub

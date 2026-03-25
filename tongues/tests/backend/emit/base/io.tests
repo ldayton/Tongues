@@ -9,3 +9,14 @@ def main() -> None:
     sys.stdout.buffer.write(data)
 if __name__ == "__main__":
     main()
+
+=== bytes decode with replace error mode
+import sys
+def safe_decode(data: bytes) -> str:
+    return data.decode("utf-8", errors="replace")
+def main() -> None:
+    raw: bytes = b"\x80\x81hello"
+    result: str = safe_decode(raw)
+    print(result)
+if __name__ == "__main__":
+    main()

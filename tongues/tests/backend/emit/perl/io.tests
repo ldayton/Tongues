@@ -1,2 +1,5 @@
 === read file binary mode
 open(my $__fh, '<:raw', $__p)
+
+=== bytes decode with replace error mode
+Encode::decode('UTF-8', $data)
