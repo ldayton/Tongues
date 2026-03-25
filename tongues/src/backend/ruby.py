@@ -379,19 +379,12 @@ def _restore_fn_name(name: str, annotations: Ann) -> str:
 
 _TYPE_NAME_MAP: dict[str, str] = {
     "dict": "Hash",
-    "Dict": "Hash",
     "list": "Array",
-    "List": "Array",
     "str": "String",
-    "Str": "String",
     "int": "Integer",
-    "Int": "Integer",
     "bool": "TrueClass",
-    "Bool": "TrueClass",
     "tuple": "Array",
-    "Tuple": "Array",
     "set": "Set",
-    "Set": "Set",
     "bytes": "Array",
 }
 
