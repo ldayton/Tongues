@@ -10,3 +10,7 @@ const DEFAULT_KIND = new SubKind("base", 0);
 === underscore-prefixed constant distinct from non-prefixed
 const ITEMS = new Set(["a", "b"]);
 const _ITEMS = new Set(["c", "d"]);
+
+=== enum constant stays uppercase at module level
+const TokenType_EOF = 0;
+const TokenType_WORD = 1;
