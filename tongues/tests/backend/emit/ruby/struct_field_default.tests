@@ -17,6 +17,10 @@ end
 @child = Child.new(value: "ok")
 self.child._parent = name
 
+=== uppercase field name lowered for target language
+def initialize(max_size: 0, name: "")
+@max_size = max_size
+
 === error class with const kind field
 def initialize(msg: "")
 super(msg)

@@ -17,6 +17,9 @@ $self->{_label} = $_prefix->upper();
 $self->{child} = Child->new("ok", undef);
 $self->{child}->{_parent} = $name;
 
+=== uppercase field name lowered for target language
+my ($class, $MAX_SIZE, $name) = @_;
+
 === error class with const kind field
 my ($class, $msg) = @_;
 my $self = bless {}, $class;
