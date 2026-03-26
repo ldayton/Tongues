@@ -1679,17 +1679,22 @@ class _JavaScriptEmitter(Emitter):
             start = self._expr(args[0])
             end = self._expr(args[1])
             step_val = self._static_int(args[2])
+            end_val = self._static_int(args[1])
             if step_val is not None:
                 if step_val == -1:
+                    if end_val is not None and end_val < 0:
+                        cond = " >= " + str(end_val + 1) + n
+                    else:
+                        cond = " > " + end
                     self._line(
                         "for (let "
                         + binder
                         + " = "
                         + start
+                        + n
                         + "; "
                         + binder
-                        + " > "
-                        + end
+                        + cond
                         + "; "
                         + binder
                         + dec
