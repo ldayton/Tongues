@@ -31,6 +31,9 @@ for x in reversed(xs):
 === reversed range for loop
 for i in reversed(range(5)):
 
+=== reversed range with arithmetic start
+for i in range(len(xs) - 1, -1, -1):
+
 === zip two lists for loop
 for x, y in zip(a, b):
 

@@ -90,6 +90,14 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== reversed range with arithmetic start
+def main() -> None:
+    xs: list[int] = [1, 2, 3, 4, 5]
+    for i in range(len(xs) - 1, -1, -1):
+        print(str(xs[i]))
+if __name__ == "__main__":
+    main()
+
 === zip two lists for loop
 def main() -> None:
     a: list[int] = [1, 2, 3]

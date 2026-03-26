@@ -3391,52 +3391,28 @@ class _JavaEmitter(Emitter):
                     + ") {"
                 )
             elif step_val == -1:
+                high_val = self._static_int(iterable.args[1])
+                if high_val is not None and high_val < 0:
+                    cond = " >= " + str(high_val + 1)
+                else:
+                    cond = " > " + high
                 prov = ann.get("provenance", "")
                 if prov == "reversed_range":
                     low_val = self._static_int(iterable.args[0])
-                    high_val = self._static_int(iterable.args[1])
-                    if low_val is not None and high_val is not None:
-                        self._line(
-                            "for ("
-                            + decl
-                            + " = "
-                            + str(low_val)
-                            + "; "
-                            + var_name
-                            + " >= "
-                            + str(high_val + 1)
-                            + "; "
-                            + var_name
-                            + "--) {"
-                        )
-                    else:
-                        self._line(
-                            "for ("
-                            + decl
-                            + " = "
-                            + low
-                            + "; "
-                            + var_name
-                            + " > "
-                            + high
-                            + "; "
-                            + var_name
-                            + "--) {"
-                        )
-                else:
-                    self._line(
-                        "for ("
-                        + decl
-                        + " = "
-                        + low
-                        + "; "
-                        + var_name
-                        + " > "
-                        + high
-                        + "; "
-                        + var_name
-                        + "--) {"
-                    )
+                    if low_val is not None:
+                        low = str(low_val)
+                self._line(
+                    "for ("
+                    + decl
+                    + " = "
+                    + low
+                    + "; "
+                    + var_name
+                    + cond
+                    + "; "
+                    + var_name
+                    + "--) {"
+                )
             elif step_val == 1:
                 self._line(
                     "for ("

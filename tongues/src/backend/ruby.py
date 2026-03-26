@@ -1706,6 +1706,8 @@ class _RubyEmitter(Emitter):
                 adjusted = str(end_val + 1)
             else:
                 adjusted = self._expr(end_expr) + " + 1"
+            if start_val is None:
+                start = "(" + start + ")"
             return start + ".downto(" + adjusted + ")"
         return "(0..." + self._expr(r.args[0]) + ")"
 

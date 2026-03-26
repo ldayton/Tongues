@@ -31,6 +31,9 @@ xs.reverse_each do |x|
 === reversed range for loop
 4.downto(0) do |i|
 
+=== reversed range with arithmetic start
+(xs.length - 1).downto(0) do |i|
+
 === zip two lists for loop
 a.zip(b).each do |x, y|
 

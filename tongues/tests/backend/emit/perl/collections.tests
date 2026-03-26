@@ -31,6 +31,9 @@ for my $x (reverse @{$xs}) {
 === reversed range for loop
 for my $i (reverse 0 .. 4) {
 
+=== reversed range with arithmetic start
+reverse 0 .. scalar(@{$xs}) - 1
+
 === zip two lists for loop
 0 .. min(scalar(@{$a}), scalar(@{$b})) - 1) {
 

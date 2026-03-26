@@ -38,6 +38,9 @@ for (var x : xs.reversed()) {
 === reversed range for loop
 for (int i = 4; i >= 0; i--) {
 
+=== reversed range with arithmetic start
+for (int i = xs.size() - 1; i >= 0; i--) {
+
 === zip two lists for loop
 for (int __i = 0; __i < Math.min(a.size(), b.size()); __i++) {
     int x = a.get(__i);
