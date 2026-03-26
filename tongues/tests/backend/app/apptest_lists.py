@@ -825,6 +825,33 @@ def test_any_all_combined() -> None:
     assert all(x != 0 for x in xs) == True
 
 
+def test_reversed_range_arithmetic_start() -> None:
+    """range(len(xs) - 1, -1, -1) with arithmetic start expression."""
+    xs: list[int] = [10, 20, 30, 40, 50]
+    result: list[int] = []
+    for i in range(len(xs) - 1, -1, -1):
+        result.append(xs[i])
+    assert result == [50, 40, 30, 20, 10]
+
+
+def test_reversed_range_arithmetic_step() -> None:
+    """range(len(xs) - 1, 0, -2) with arithmetic start and step != -1."""
+    xs: list[str] = ["a", "b", "c", "d", "e"]
+    result: list[str] = []
+    for i in range(len(xs) - 1, 0, -2):
+        result.append(xs[i])
+    assert result == ["e", "c"]
+
+
+def test_reversed_range_with_subtraction() -> None:
+    """range(n - 3, 0, -1) where start involves subtraction."""
+    n: int = 10
+    result: list[int] = []
+    for i in range(n - 3, 0, -1):
+        result.append(i)
+    assert result == [7, 6, 5, 4, 3, 2, 1]
+
+
 def main() -> int:
     passed: int = 0
     failed: int = 0
@@ -1618,6 +1645,36 @@ def main() -> int:
     except Exception as e:
         failed += 1
         print("  FAIL test_any_all_combined: " + str(e))
+    try:
+        test_reversed_range_arithmetic_start()
+        passed += 1
+        print("  PASS test_reversed_range_arithmetic_start")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_reversed_range_arithmetic_start: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_reversed_range_arithmetic_start: " + str(e))
+    try:
+        test_reversed_range_arithmetic_step()
+        passed += 1
+        print("  PASS test_reversed_range_arithmetic_step")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_reversed_range_arithmetic_step: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_reversed_range_arithmetic_step: " + str(e))
+    try:
+        test_reversed_range_with_subtraction()
+        passed += 1
+        print("  PASS test_reversed_range_with_subtraction")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_reversed_range_with_subtraction: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_reversed_range_with_subtraction: " + str(e))
     print(str(passed) + " passed, " + str(failed) + " failed")
     if failed > 0:
         return 1

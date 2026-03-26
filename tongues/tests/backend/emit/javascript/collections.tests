@@ -31,6 +31,9 @@ for (let x of [...xs].reverse()) {
 === reversed range for loop
 for (let i = 4; i >= 0; i--) {
 
+=== reversed range with arithmetic start
+for (let i = xs.length - 1; i >= 0; i--) {
+
 === zip two lists for loop
 for (let __i = 0; __i < Math.min(a.length, b.length); __i++) {
     const x = a[__i];
