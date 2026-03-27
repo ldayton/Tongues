@@ -444,6 +444,7 @@ class _JavaScriptEmitter(Emitter):
         self._needs_py_repr: bool = False
         self._needs_parse_float: bool = False
         self._needs_py_str_float: bool = False
+        self._needs_deep_eq: bool = False
         self.fn_names: set[str] = set()
         self.var_annotations: dict[str, dict[str, str]] = {}
 
@@ -605,6 +606,37 @@ class _JavaScriptEmitter(Emitter):
             self._line("let s = String(x);")
             self._line("if (!s.includes(\".\") && !s.includes(\"e\")) s += \".0\";")
             self._line("return s;")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_deep_eq:
+            self._line()
+            self._line("function _deepEq(a, b) {")
+            self.indent += 1
+            self._line("if (a === b) return true;")
+            self._line("if (a === null || b === null) return false;")
+            self._line("if (Array.isArray(a)) {")
+            self.indent += 1
+            self._line("if (!Array.isArray(b) || a.length !== b.length) return false;")
+            self._line("for (let i = 0; i < a.length; i++) { if (!_deepEq(a[i], b[i])) return false; }")
+            self._line("return true;")
+            self.indent -= 1
+            self._line("}")
+            self._line("if (a instanceof Map) {")
+            self.indent += 1
+            self._line("if (!(b instanceof Map) || a.size !== b.size) return false;")
+            self._line("for (const [k, v] of a) { if (!b.has(k) || !_deepEq(v, b.get(k))) return false; }")
+            self._line("return true;")
+            self.indent -= 1
+            self._line("}")
+            self._line("if (a instanceof Set) {")
+            self.indent += 1
+            self._line("if (!(b instanceof Set) || a.size !== b.size) return false;")
+            self._line("for (const v of a) { if (!b.has(v)) return false; }")
+            self._line("return true;")
+            self.indent -= 1
+            self._line("}")
+            self._line("if (typeof a === \"object\" && typeof a.__eq__ === \"function\") return a.__eq__(b);")
+            self._line("return false;")
             self.indent -= 1
             self._line("}")
         if self._needs_parse_float:
@@ -2454,6 +2486,18 @@ class _JavaScriptEmitter(Emitter):
             left_str = self._expr(expr.left)
             right_str = self._expr(expr.right)
             call = left_str + ".__eq__(" + right_str + ")"
+            if op == "!=":
+                return "!" + call
+            return call
+        if op in ("==", "!=") and (
+            self._is_list_expr(expr.left)
+            or self._is_map_type(expr.left)
+            or self._is_set_type(expr.left)
+        ):
+            self._needs_deep_eq = True
+            left_str = self._expr(expr.left)
+            right_str = self._expr(expr.right)
+            call = "_deepEq(" + left_str + ", " + right_str + ")"
             if op == "!=":
                 return "!" + call
             return call
