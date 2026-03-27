@@ -9,3 +9,6 @@ def initialize(source: "", keywords: Lexer_keywords)
 
 === inherited dict field default preserved from interface
 def initialize(name: "", sounds: Animal_SOUNDS)
+
+=== init body computes field from param
+@length = source.length
