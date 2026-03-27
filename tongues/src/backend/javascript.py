@@ -554,6 +554,12 @@ class _JavaScriptEmitter(Emitter):
             self._line("return i === -1 ? -1 : [...s.slice(0, i)].length;")
             self.indent -= 1
             self._line("}")
+        has_main = any(
+            isinstance(d, TFnDecl) and d.name == "Main" for d in module.decls
+        )
+        if has_main:
+            self._line()
+            self._line("main();")
 
     # ── Enum ──────────────────────────────────────────────────
 

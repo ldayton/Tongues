@@ -436,6 +436,13 @@ class _PythonEmitter(Emitter):
                 case TInterfaceDecl():
                     pass  # handled above via isinstance check
             need_blank = True
+        has_main = any(
+            isinstance(d, TFnDecl) and d.name == "Main" for d in module.decls
+        )
+        if has_main:
+            self._line()
+            self._line()
+            self._line("main()")
 
     # ── Enum ──────────────────────────────────────────────────
 
