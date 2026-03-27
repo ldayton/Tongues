@@ -9,9 +9,9 @@ if (!(grep { $_ == 2 } @{$xs})) {
 }
 
 === boolean operators
-say(("" . ($a && $b)));
-say(("" . ($a || $b)));
-say(("" . (!$a)));
+say(($a && $b ? 'True' : 'False'));
+say(($a || $b ? 'True' : 'False'));
+say((!$a ? 'True' : 'False'));
 
 === bitwise operators
 my $y = $x & 15;

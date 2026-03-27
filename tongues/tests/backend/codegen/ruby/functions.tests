@@ -9,5 +9,5 @@ def main
 
 === function literal block body
 apply(lambda { |x|
-  puts(x.to_s)
+  puts(_py_str(x))
 }, 42)

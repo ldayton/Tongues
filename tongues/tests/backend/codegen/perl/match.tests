@@ -50,7 +50,7 @@ if (looks_like_number($v)) {
     return sprintf("str: %s", $s);
 } else {
     my $b = $v;
-    return sprintf("bool: %s", ("" . $b));
+    return sprintf("bool: %s", ($b ? 'True' : 'False'));
 }
 
 === match with default no binding

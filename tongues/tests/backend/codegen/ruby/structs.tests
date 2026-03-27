@@ -4,14 +4,14 @@ p = Point.new(x: 1, y: 2)
 === struct method call
 c = Counter.new(n: 0)
 c.inc
-puts(c.value.to_s)
+puts(_py_str(c.value))
 
 === field assignment
 p.x = 10
 p.y = 20
 
 === nested struct access
-puts(o.inner.value.to_s)
+puts(_py_str(o.inner.value))
 
 === struct with interface field
 return eval_(b.left) + eval_(b.right)

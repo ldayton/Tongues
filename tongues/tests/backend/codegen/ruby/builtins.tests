@@ -1,5 +1,5 @@
 === math functions
-puts((-5).abs.to_s)
+puts(_py_str((-5).abs))
 
 === float math functions
 r = 3.7.round
@@ -26,10 +26,10 @@ bin = 255.to_s(2)
 n = "A".ord
 
 === IsNaN and IsInf
-puts(x.nan?.to_s)
+puts(_py_str(x.nan?))
 
 === Len on various types
-puts("hello".length.to_s)
+puts(_py_str("hello".length))
 
 === DivMod
 q = (17.to_f / 5).floor

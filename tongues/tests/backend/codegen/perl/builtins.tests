@@ -26,8 +26,8 @@ my $bin = sprintf('%b', 255);
 my $n = ord("A");
 
 === IsNaN and IsInf
-say(("" . (($x != $x) ? 1 : 0)));
-say(("" . (POSIX::isinf($y) ? 1 : 0)));
+say(((($x != $x) ? 1 : 0) ? 'True' : 'False'));
+say(((POSIX::isinf($y) ? 1 : 0) ? 'True' : 'False'));
 
 === Len on various types
 say(("" . length("hello")));

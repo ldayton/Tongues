@@ -67,18 +67,18 @@ $caught = 1;
 } elsif (ref($__ok0)) {
 return $__ok0;
 }
-say(("" . $caught));
+say(($caught ? 'True' : 'False'));
 }
 
 === min with nan propagates
 my $nan = 0.0 / 0.0;
 my $x = strict_min_f64($nan, 1.0);
-say(("" . (($x != $x) ? 1 : 0)));
+say(((($x != $x) ? 1 : 0) ? 'True' : 'False'));
 
 === max with nan propagates
 my $nan = 0.0 / 0.0;
 my $x = strict_max_f64($nan, 1.0);
-say(("" . (($x != $x) ? 1 : 0)));
+say(((($x != $x) ? 1 : 0) ? 'True' : 'False'));
 
 === sorted with nan traps
 sub main {
@@ -94,7 +94,7 @@ $caught = 1;
 } elsif (ref($__ok0)) {
 return $__ok0;
 }
-say(("" . $caught));
+say(($caught ? 'True' : 'False'));
 }
 
 === bigint int literal

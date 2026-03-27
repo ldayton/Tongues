@@ -47,7 +47,7 @@ a.bytes.zip(b.bytes).each do |x, y|
 s.each_char do |ch|
 
 === list repetition with annotation
-[0] * 5
+[0] * [5, 0].max
 
 === dict get with default
 d.fetch("a", 99)
@@ -68,4 +68,4 @@ keys.each_with_object
 .force_encoding(Encoding::BINARY)
 
 === struct in list contains
-pts.any? { |p| p == Point.new(1, 2) }
+pts.include?(Point.new

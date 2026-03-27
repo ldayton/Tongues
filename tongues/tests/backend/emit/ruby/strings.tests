@@ -11,13 +11,13 @@
 ]+\z/, "")
 
 === fstring repr conversion
-"%s" % x.to_s
+"%s" % _py_repr(x)
 
 === fstring with backtick
 matching `%s'" % c
 
 === fstring str conversion
-"%s" % x.to_s
+"%s" % _py_str(x)
 
 === find with start position
 s.index("o", 5)
