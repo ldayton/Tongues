@@ -3735,7 +3735,9 @@ class Checker:
                 if t is not None and isinstance(t, TupleT) and t.elements:
                     return t.elements[0]
                 if t is not None:
-                    self.error(name + " with 1 argument requires list, set, or tuple", pos)
+                    self.error(
+                        name + " with 1 argument requires list, set, or tuple", pos
+                    )
                 return None
             if not _bctx_require(ctx, 2):
                 return None

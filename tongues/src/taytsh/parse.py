@@ -419,7 +419,9 @@ class Parser:
             (TIntLit, TFloatLit, TStringLit, TBoolLit, TNilLit, TBytesLit, TRuneLit),
         ):
             body_computed = True
-        return TFieldDecl(pos, name_tok.value, typ, has_default, False, default_expr, body_computed)
+        return TFieldDecl(
+            pos, name_tok.value, typ, has_default, False, default_expr, body_computed
+        )
 
     def parse_interface_decl(self) -> TInterfaceDecl:
         pos = self._pos()

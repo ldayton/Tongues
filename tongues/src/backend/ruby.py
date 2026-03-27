@@ -798,7 +798,7 @@ class _RubyEmitter(Emitter):
                 "return 'True' if x == true; "
                 "return 'False' if x == false; "
                 "return 'None' if x.nil?; "
-                "return \"'\" + x + \"'\" if x.is_a?(String); "
+                'return "\'" + x + "\'" if x.is_a?(String); '
                 "return 'inf' if x.is_a?(Float) && x == Float::INFINITY; "
                 "return '-inf' if x.is_a?(Float) && x == -Float::INFINITY; "
                 "return 'nan' if x.is_a?(Float) && x.nan?; "
@@ -1564,7 +1564,11 @@ class _RubyEmitter(Emitter):
     def _partition_method(self, expr: TTernary) -> str | None:
         """Detect whether a partition ternary uses Find or RFind."""
         cond = expr.cond
-        if isinstance(cond, TBinaryOp) and cond.op == ">=" and isinstance(cond.left, TCall):
+        if (
+            isinstance(cond, TBinaryOp)
+            and cond.op == ">="
+            and isinstance(cond.left, TCall)
+        ):
             call = cond.left
             if isinstance(call.func, TVar):
                 if call.func.name == "Find":
@@ -2753,7 +2757,12 @@ class _RubyEmitter(Emitter):
         if name == "PopItem":
             return self._a(args, 0) + ".shift"
         if name == "MapFromKeys":
-            return self._a(args, 0) + ".each_with_object({}) { |k, h| h[k] = " + self._a(args, 1) + " }"
+            return (
+                self._a(args, 0)
+                + ".each_with_object({}) { |k, h| h[k] = "
+                + self._a(args, 1)
+                + " }"
+            )
         if name == "MapFromPairs":
             return self._a(args, 0) + ".to_h"
         if name == "Keys":

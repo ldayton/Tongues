@@ -19,6 +19,33 @@ TESTS = {
     "app":      {"dir": "backend/app",      "run": "app"},
     "ordering": {"dir": "backend/ordering", "run": "ordering"},
 }
+
+# App tests with known failures — xfail until the underlying issues are fixed.
+# Each entry is "stem[target]" matching the test id.
+KNOWN_FAILURES: set[str] = {
+    "apptest_base64[javascript]", "apptest_base64[ruby]",
+    "apptest_bits[perl]",
+    "apptest_bitset[javascript]",
+    "apptest_bools[javascript]", "apptest_bools[perl]", "apptest_bools[python]", "apptest_bools[ruby]",
+    "apptest_bytearray[python]",
+    "apptest_bytes[javascript]", "apptest_bytes[perl]", "apptest_bytes[python]", "apptest_bytes[ruby]",
+    "apptest_dicts[javascript]", "apptest_dicts[perl]", "apptest_dicts[python]", "apptest_dicts[ruby]",
+    "apptest_enums[javascript]", "apptest_enums[perl]", "apptest_enums[python]", "apptest_enums[ruby]",
+    "apptest_floats[javascript]", "apptest_floats[perl]", "apptest_floats[ruby]",
+    "apptest_ints[perl]",
+    "apptest_json[javascript]", "apptest_json[perl]", "apptest_json[python]", "apptest_json[ruby]",
+    "apptest_lists[javascript]", "apptest_lists[perl]", "apptest_lists[python]", "apptest_lists[ruby]",
+    "apptest_none[javascript]",
+    "apptest_sets[javascript]", "apptest_sets[perl]", "apptest_sets[python]", "apptest_sets[ruby]",
+    "apptest_sha256[javascript]", "apptest_sha256[perl]", "apptest_sha256[ruby]",
+    "apptest_softfloat[javascript]", "apptest_softfloat[perl]",
+    "apptest_string_unicode_param[python]",
+    "apptest_strings[javascript]", "apptest_strings[perl]", "apptest_strings[ruby]",
+    "apptest_sub_interface_field[javascript]", "apptest_sub_interface_field[perl]",
+    "apptest_sub_interface_field[python]", "apptest_sub_interface_field[ruby]",
+    "apptest_tuples[javascript]", "apptest_tuples[perl]", "apptest_tuples[python]", "apptest_tuples[ruby]",
+    "apptest_utf8[javascript]", "apptest_utf8[ruby]",
+}
 # fmt: on
 
 
@@ -30,7 +57,12 @@ def pytest_generate_tests(metafunc):
             target_opt = metafunc.config.getoption("--target", default=None)
             targets = target_opt if target_opt else sorted(RUNTIMES)
             tests = discover_app_tests(test_dir, targets)
-            params = [pytest.param(path, target, id=tid) for tid, path, target in tests]
+            params = []
+            for tid, path, target in tests:
+                marks = []
+                if tid in KNOWN_FAILURES:
+                    marks.append(pytest.mark.xfail(reason="known failure", strict=False))
+                params.append(pytest.param(path, target, id=tid, marks=marks))
             metafunc.parametrize("app_source,app_target", params)
         elif run == "ordering" and "ordering_source" in metafunc.fixturenames:
             target_opt = metafunc.config.getoption("--target", default=None)

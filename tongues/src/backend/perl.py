@@ -3486,7 +3486,7 @@ class _PerlEmitter(Emitter):
                 self._needs_py_str_float = True
                 return "_py_str_float(" + inner + ")"
             if self._is_string_expr(inner_expr):
-                return "(\"'\" . " + inner + " . \"'\")"
+                return '("\'" . ' + inner + ' . "\'")'
             if self._needs_concat_parens(inner_expr):
                 inner = "(" + inner + ")"
             return '("" . ' + inner + ")"

@@ -2073,7 +2073,17 @@ class _PythonEmitter(Emitter):
         if name == "ListCompare":
             a = self._a(args, 0)
             b = self._a(args, 1)
-            return "(0 if " + a + " == " + b + " else (-1 if " + a + " < " + b + " else 1))"
+            return (
+                "(0 if "
+                + a
+                + " == "
+                + b
+                + " else (-1 if "
+                + a
+                + " < "
+                + b
+                + " else 1))"
+            )
         if name == "All":
             return "all(" + self._a(args, 0) + ")"
         if name == "Any":
@@ -2085,19 +2095,7 @@ class _PythonEmitter(Emitter):
         if name == "DivMod":
             a = self._a(args, 0)
             b = self._a(args, 1)
-            return (
-                a
-                + " // "
-                + b
-                + ", "
-                + a
-                + " - ("
-                + a
-                + " // "
-                + b
-                + ") * "
-                + b
-            )
+            return a + " // " + b + ", " + a + " - (" + a + " // " + b + ") * " + b
         if name == "Sorted":
             if self.strict_math and self._is_float_list(args[0].value):
                 return "strict_sorted_f64(" + self._a(args, 0) + ")"

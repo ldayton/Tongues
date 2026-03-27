@@ -566,14 +566,14 @@ class _JavaScriptEmitter(Emitter):
             self._line()
             self._line("function _pyStr(x) {")
             self.indent += 1
-            self._line("if (x === true) return \"True\";")
-            self._line("if (x === false) return \"False\";")
-            self._line("if (x === null || x === undefined) return \"None\";")
-            self._line("if (typeof x === \"number\") {")
+            self._line('if (x === true) return "True";')
+            self._line('if (x === false) return "False";')
+            self._line('if (x === null || x === undefined) return "None";')
+            self._line('if (typeof x === "number") {')
             self.indent += 1
-            self._line("if (x === Infinity) return \"inf\";")
-            self._line("if (x === -Infinity) return \"-inf\";")
-            self._line("if (Number.isNaN(x)) return \"nan\";")
+            self._line('if (x === Infinity) return "inf";')
+            self._line('if (x === -Infinity) return "-inf";')
+            self._line('if (Number.isNaN(x)) return "nan";')
 
             self.indent -= 1
             self._line("}")
@@ -584,15 +584,15 @@ class _JavaScriptEmitter(Emitter):
             self._line()
             self._line("function _pyRepr(x) {")
             self.indent += 1
-            self._line("if (x === true) return \"True\";")
-            self._line("if (x === false) return \"False\";")
-            self._line("if (x === null || x === undefined) return \"None\";")
-            self._line("if (typeof x === \"string\") return \"'\" + x + \"'\";")
-            self._line("if (typeof x === \"number\") {")
+            self._line('if (x === true) return "True";')
+            self._line('if (x === false) return "False";')
+            self._line('if (x === null || x === undefined) return "None";')
+            self._line('if (typeof x === "string") return "\'" + x + "\'";')
+            self._line('if (typeof x === "number") {')
             self.indent += 1
-            self._line("if (x === Infinity) return \"inf\";")
-            self._line("if (x === -Infinity) return \"-inf\";")
-            self._line("if (Number.isNaN(x)) return \"nan\";")
+            self._line('if (x === Infinity) return "inf";')
+            self._line('if (x === -Infinity) return "-inf";')
+            self._line('if (Number.isNaN(x)) return "nan";')
 
             self.indent -= 1
             self._line("}")
@@ -603,11 +603,11 @@ class _JavaScriptEmitter(Emitter):
             self._line()
             self._line("function _pyStrFloat(x) {")
             self.indent += 1
-            self._line("if (x === Infinity) return \"inf\";")
-            self._line("if (x === -Infinity) return \"-inf\";")
-            self._line("if (Number.isNaN(x)) return \"nan\";")
+            self._line('if (x === Infinity) return "inf";')
+            self._line('if (x === -Infinity) return "-inf";')
+            self._line('if (Number.isNaN(x)) return "nan";')
             self._line("let s = String(x);")
-            self._line("if (!s.includes(\".\") && !s.includes(\"e\")) s += \".0\";")
+            self._line('if (!s.includes(".") && !s.includes("e")) s += ".0";')
             self._line("return s;")
             self.indent -= 1
             self._line("}")
@@ -620,14 +620,18 @@ class _JavaScriptEmitter(Emitter):
             self._line("if (Array.isArray(a)) {")
             self.indent += 1
             self._line("if (!Array.isArray(b) || a.length !== b.length) return false;")
-            self._line("for (let i = 0; i < a.length; i++) { if (!_deepEq(a[i], b[i])) return false; }")
+            self._line(
+                "for (let i = 0; i < a.length; i++) { if (!_deepEq(a[i], b[i])) return false; }"
+            )
             self._line("return true;")
             self.indent -= 1
             self._line("}")
             self._line("if (a instanceof Map) {")
             self.indent += 1
             self._line("if (!(b instanceof Map) || a.size !== b.size) return false;")
-            self._line("for (const [k, v] of a) { if (!b.has(k) || !_deepEq(v, b.get(k))) return false; }")
+            self._line(
+                "for (const [k, v] of a) { if (!b.has(k) || !_deepEq(v, b.get(k))) return false; }"
+            )
             self._line("return true;")
             self.indent -= 1
             self._line("}")
@@ -638,7 +642,9 @@ class _JavaScriptEmitter(Emitter):
             self._line("return true;")
             self.indent -= 1
             self._line("}")
-            self._line("if (typeof a === \"object\" && typeof a.__eq__ === \"function\") return a.__eq__(b);")
+            self._line(
+                'if (typeof a === "object" && typeof a.__eq__ === "function") return a.__eq__(b);'
+            )
             self._line("return false;")
             self.indent -= 1
             self._line("}")
@@ -651,9 +657,15 @@ class _JavaScriptEmitter(Emitter):
             self._line("}")
         if self._needs_bitwise_helpers:
             self._line()
-            self._line("function _xor(a, b) { return (a >= 0 && b >= 0) ? (a ^ b) >>> 0 : a ^ b; }")
-            self._line("function _or(a, b) { return (a >= 0 && b >= 0) ? (a | b) >>> 0 : a | b; }")
-            self._line("function _and(a, b) { return (a >= 0 && b >= 0) ? (a & b) >>> 0 : a & b; }")
+            self._line(
+                "function _xor(a, b) { return (a >= 0 && b >= 0) ? (a ^ b) >>> 0 : a ^ b; }"
+            )
+            self._line(
+                "function _or(a, b) { return (a >= 0 && b >= 0) ? (a | b) >>> 0 : a | b; }"
+            )
+            self._line(
+                "function _and(a, b) { return (a >= 0 && b >= 0) ? (a & b) >>> 0 : a & b; }"
+            )
         if self._needs_list_compare:
             self._line()
             self._line("function _listCompare(a, b) {")
@@ -2583,11 +2595,7 @@ class _JavaScriptEmitter(Emitter):
             if op == "|":
                 self._needs_bitwise_helpers = True
                 return (
-                    "_or("
-                    + self._expr(expr.left)
-                    + ", "
-                    + self._expr(expr.right)
-                    + ")"
+                    "_or(" + self._expr(expr.left) + ", " + self._expr(expr.right) + ")"
                 )
             if op == "&":
                 self._needs_bitwise_helpers = True
@@ -3236,12 +3244,16 @@ class _JavaScriptEmitter(Emitter):
             d = self._a(args, 0)
             return (
                 "((d) => { const k = [...d.keys()].pop();"
-                " const v = d.get(k); d.delete(k); return [k, v]; })("
-                + d
-                + ")"
+                " const v = d.get(k); d.delete(k); return [k, v]; })(" + d + ")"
             )
         if name == "MapFromKeys":
-            return "new Map(" + self._a(args, 0) + ".map(k => [k, " + self._a(args, 1) + "]))"
+            return (
+                "new Map("
+                + self._a(args, 0)
+                + ".map(k => [k, "
+                + self._a(args, 1)
+                + "]))"
+            )
         if name == "MapFromPairs":
             return "new Map(" + self._a(args, 0) + ")"
         if name == "Union":
@@ -3356,7 +3368,16 @@ class _JavaScriptEmitter(Emitter):
         if name == "Zip":
             a = self._a(args, 0)
             b = self._a(args, 1)
-            return a + ".map((v, i) => [v, " + b + "[i]]).slice(0, Math.min(" + a + ".length, " + b + ".length))"
+            return (
+                a
+                + ".map((v, i) => [v, "
+                + b
+                + "[i]]).slice(0, Math.min("
+                + a
+                + ".length, "
+                + b
+                + ".length))"
+            )
         if name == "All":
             return self._a(args, 0) + ".every(Boolean)"
         if name == "Any":
@@ -3672,9 +3693,7 @@ class _JavaScriptEmitter(Emitter):
                     + self._a(args, 0)
                     + ").flat()"
                 )
-            return (
-                self._a(args, 0) + ".repeat(Math.max(0, " + count + "))"
-            )
+            return self._a(args, 0) + ".repeat(Math.max(0, " + count + "))"
         if name == "Format":
             return self._format_call(args)
         if name == "Assert":
