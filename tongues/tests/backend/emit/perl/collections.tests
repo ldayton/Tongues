@@ -55,6 +55,15 @@ exists $d->{"a"} ? $d->{"a"} : 99
 === list pop at index
 my $first = splice(@{$xs}, 0, 1);
 
+=== dict popitem
+delete $d->{
+
+=== dict fromkeys
+$d->{$_} =
+
+=== dict from pairs
+$d->{
+
 === bytes literal assignment
 "\x80\xff\x00"
 

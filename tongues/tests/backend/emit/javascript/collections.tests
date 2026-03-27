@@ -62,6 +62,15 @@ Array(5).fill(0)
 === list pop at index
 const first = xs.splice(0, 1)[0];
 
+=== dict popitem
+.delete(
+
+=== dict fromkeys
+new Map(
+
+=== dict from pairs
+new Map(
+
 === bytes literal assignment
 Buffer.from(
 

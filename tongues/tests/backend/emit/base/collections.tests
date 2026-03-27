@@ -160,6 +160,30 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== dict popitem
+def main() -> None:
+    d: dict[str, int] = {"a": 1, "b": 2}
+    k, v = d.popitem()
+    print(k + "=" + str(v))
+if __name__ == "__main__":
+    main()
+
+=== dict fromkeys
+def main() -> None:
+    keys: list[str] = ["x", "y", "z"]
+    d: dict[str, int] = dict.fromkeys(keys, 0)
+    print(str(len(d)))
+if __name__ == "__main__":
+    main()
+
+=== dict from pairs
+def main() -> None:
+    pairs: list[tuple[str, int]] = [("a", 1), ("b", 2)]
+    d: dict[str, int] = dict(pairs)
+    print(str(len(d)))
+if __name__ == "__main__":
+    main()
+
 === bytes literal assignment
 def main() -> None:
     data: bytes = b"\x80\xff\x00"
