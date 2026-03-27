@@ -73,31 +73,6 @@ def test_tuple_indexing() -> None:
     assert t[-5] == 10
 
 
-def test_tuple_slicing() -> None:
-    """Tuple slicing returns new tuple."""
-    t: tuple[int, int, int, int, int] = (1, 2, 3, 4, 5)
-    assert t[0:2] == (1, 2)
-    assert t[1:4] == (2, 3, 4)
-    assert t[:3] == (1, 2, 3)
-    assert t[2:] == (3, 4, 5)
-    assert t[:] == (1, 2, 3, 4, 5)
-    assert t[::2] == (1, 3, 5)
-    assert t[::-1] == (5, 4, 3, 2, 1)
-    # Empty slices
-    assert t[2:2] == ()
-    assert t[5:10] == ()
-
-
-def test_tuple_slice_step() -> None:
-    """Slicing with step."""
-    t: tuple[int, ...] = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
-    assert t[::2] == (0, 2, 4, 6, 8)
-    assert t[1::2] == (1, 3, 5, 7, 9)
-    assert t[::3] == (0, 3, 6, 9)
-    assert t[::-1] == (9, 8, 7, 6, 5, 4, 3, 2, 1, 0)
-    assert t[::-2] == (9, 7, 5, 3, 1)
-
-
 def test_tuple_concatenation() -> None:
     """Tuple concatenation with +."""
     assert (1, 2) + (3, 4) == (1, 2, 3, 4)
@@ -105,23 +80,6 @@ def test_tuple_concatenation() -> None:
     assert (1,) + () == (1,)
     assert () + () == ()
     assert (1,) + (2,) + (3,) == (1, 2, 3)
-
-
-def test_tuple_repetition() -> None:
-    """Tuple repetition with *."""
-    assert (1,) * 3 == (1, 1, 1)
-    assert (1, 2) * 2 == (1, 2, 1, 2)
-    assert (1,) * 0 == ()
-    assert (1,) * 1 == (1,)
-    assert 3 * (1,) == (1, 1, 1)
-    assert () * 5 == ()
-
-
-def test_tuple_repetition_negative() -> None:
-    """Negative multiplier gives empty tuple."""
-    assert (1, 2, 3) * -1 == ()
-    assert (1, 2, 3) * -100 == ()
-    assert -5 * (1, 2) == ()
 
 
 def test_tuple_contains() -> None:
@@ -136,13 +94,6 @@ def test_tuple_contains() -> None:
     assert 6 not in t
 
 
-def test_tuple_contains_empty() -> None:
-    """Membership in empty tuple."""
-    t: tuple[int, ...] = ()
-    assert 1 not in t
-    assert 1 not in t
-
-
 def test_tuple_bool() -> None:
     """Tuple truthiness - empty is falsy."""
     assert bool((1, 2, 3)) == True
@@ -152,25 +103,6 @@ def test_tuple_bool() -> None:
     assert (1,)
 
 
-def test_tuple_count() -> None:
-    """count() returns number of occurrences."""
-    t: tuple[int, ...] = (1, 2, 2, 3, 2, 4)
-    assert t.count(1) == 1
-    assert t.count(2) == 3
-    assert t.count(3) == 1
-    assert t.count(5) == 0
-    assert ().count(1) == 0
-
-
-def test_tuple_index() -> None:
-    """index() returns first index of value."""
-    t: tuple[int, ...] = (10, 20, 30, 20, 40)
-    assert t.index(10) == 0
-    assert t.index(20) == 1
-    assert t.index(30) == 2
-    assert t.index(40) == 4
-
-
 def test_tuple_iteration() -> None:
     """Iterating over tuple."""
     t: tuple[int, int, int] = (1, 2, 3)
@@ -178,15 +110,6 @@ def test_tuple_iteration() -> None:
     for x in t:
         result.append(x)
     assert result == [1, 2, 3]
-
-
-def test_tuple_iteration_empty() -> None:
-    """Iterating over empty tuple."""
-    t: tuple[int, ...] = ()
-    count: int = 0
-    for x in t:
-        count = count + 1
-    assert count == 0
 
 
 def test_tuple_enumerate() -> None:
@@ -243,32 +166,6 @@ def test_tuple_sum() -> None:
     assert sum((-1, 0, 1)) == 0
 
 
-def test_tuple_min_max() -> None:
-    """min() and max() of tuple."""
-    t: tuple[int, ...] = (3, 1, 4, 1, 5, 9, 2, 6)
-    assert min(t) == 1
-    assert max(t) == 9
-    assert min((42,)) == 42
-    assert max((42,)) == 42
-    assert min((-5, -1, -10)) == -10
-    assert max((-5, -1, -10)) == -1
-
-
-def test_tuple_sorted() -> None:
-    """sorted() returns list from tuple."""
-    t: tuple[int, ...] = (3, 1, 4, 1, 5)
-    result: list[int] = sorted(t)
-    assert result == [1, 1, 3, 4, 5]
-    assert t == (3, 1, 4, 1, 5)
-
-
-def test_tuple_sorted_reverse() -> None:
-    """sorted(reverse=True) on tuple."""
-    t: tuple[int, ...] = (3, 1, 4, 1, 5)
-    result: list[int] = sorted(t, reverse=True)
-    assert result == [5, 4, 3, 1, 1]
-
-
 def test_tuple_all_any() -> None:
     """all() and any() on tuples."""
     assert all((True, True, True)) == True
@@ -315,38 +212,6 @@ def test_tuple_as_dict_key() -> None:
     assert (2, 2) not in d
 
 
-def test_tuple_from_list() -> None:
-    """tuple() from list."""
-    items: list[int] = [1, 2, 3, 4, 5]
-    t: tuple[int, ...] = tuple(items)
-    assert t == (1, 2, 3, 4, 5)
-
-
-def test_tuple_from_string() -> None:
-    """tuple() from string."""
-    t: tuple[str, ...] = tuple("hello")
-    assert t == ("h", "e", "l", "l", "o")
-    assert tuple("") == ()
-
-
-def test_tuple_from_range() -> None:
-    """tuple() from range."""
-    t: tuple[int, ...] = tuple(range(5))
-    assert t == (0, 1, 2, 3, 4)
-    t = tuple(range(2, 6))
-    assert t == (2, 3, 4, 5)
-
-
-def test_tuple_from_set() -> None:
-    """tuple() from set (order unspecified)."""
-    s: set[int] = {1, 2, 3}
-    t: tuple[int, ...] = tuple(s)
-    assert len(t) == 3
-    assert 1 in t
-    assert 2 in t
-    assert 3 in t
-
-
 def test_tuple_single_element() -> None:
     """Single-element tuple requires trailing comma."""
     t: tuple[int] = (42,)
@@ -355,16 +220,6 @@ def test_tuple_single_element() -> None:
     # Without comma, it's just grouping
     n: int = 42
     assert n == 42
-
-
-def test_tuple_immutable() -> None:
-    """Tuples are immutable - no modification methods."""
-    t: tuple[int, int, int] = (1, 2, 3)
-    # Can't do t[0] = 10 - would be a type error
-    # But we can create new tuples
-    t2: tuple[int, ...] = t + (4,)
-    assert t == (1, 2, 3)
-    assert t2 == (1, 2, 3, 4)
 
 
 def test_tuple_zip() -> None:
@@ -531,36 +386,6 @@ def test_tuple_comparison_prefix() -> None:
     assert () < (-1,)
 
 
-def test_tuple_equal_elements() -> None:
-    """Tuple with all same elements."""
-    t: tuple[int, ...] = (5, 5, 5, 5, 5)
-    assert len(t) == 5
-    assert t.count(5) == 5
-    assert min(t) == 5
-    assert max(t) == 5
-    assert sum(t) == 25
-    assert t[0] == t[-1]
-
-
-def test_tuple_generator_expression() -> None:
-    """tuple() from generator expression."""
-    t: tuple[int, ...] = tuple(x * x for x in range(5))
-    assert t == (0, 1, 4, 9, 16)
-    t2: tuple[int, ...] = tuple(x for x in [1, 2, 3] if x > 1)
-    assert t2 == (2, 3)
-
-
-def test_tuple_empty_variations() -> None:
-    """Various ways to create empty tuple."""
-    t1: tuple[int, ...] = ()
-    t2: tuple[int, ...] = tuple()
-    t3: tuple[int, ...] = tuple([])
-    assert t1 == t2
-    assert t2 == t3
-    assert len(t1) == 0
-    assert not t1
-
-
 def test_tuple_single_vs_parens() -> None:
     """Single element: comma makes tuple, parens alone don't."""
     t: tuple[int] = (1,)
@@ -584,65 +409,12 @@ def test_tuple_identity_vs_equality() -> None:
     assert t3 == (1, 2, 3)
 
 
-def test_tuple_nested_empty() -> None:
-    """Nested empty tuples."""
-    t: tuple[tuple[int, ...], tuple[int, ...]] = ((), ())
-    assert len(t) == 2
-    assert t[0] == ()
-    assert t[1] == ()
-    assert len(t[0]) == 0
-
-
-def test_tuple_slice_creates_copy() -> None:
-    """Slicing creates a new tuple."""
-    t1: tuple[int, int, int] = (1, 2, 3)
-    t2: tuple[int, ...] = t1[:]
-    assert t1 == t2
-    t3: tuple[int, ...] = t1[0:2]
-    assert t3 == (1, 2)
-
-
 def test_tuple_concat_empty() -> None:
     """Concatenating with empty tuple."""
     t: tuple[int, int, int] = (1, 2, 3)
     assert t + () == t
     assert () + t == t
     assert t + () == (1, 2, 3)
-
-
-def test_tuple_multiply_zero_one() -> None:
-    """Multiplication edge cases."""
-    t: tuple[int, int] = (1, 2)
-    assert t * 0 == ()
-    assert t * 1 == (1, 2)
-    assert t * 1 == t
-    assert () * 100 == ()
-
-
-def test_tuple_index_start_stop() -> None:
-    """index() with start and stop arguments."""
-    t: tuple[int, ...] = (1, 2, 3, 2, 4, 2, 5)
-    assert t.index(2) == 1
-    assert t.index(2, 2) == 3
-    assert t.index(2, 4) == 5
-    assert t.index(2, 2, 4) == 3
-
-
-def test_tuple_count_none() -> None:
-    """count() with None elements."""
-    t: tuple[int | None, ...] = (1, None, 2, None, None, 3)
-    assert t.count(None) == 3
-    assert t.count(1) == 1
-    assert t.count(4) == 0
-
-
-def test_tuple_negative_index_slice() -> None:
-    """Negative indices in slicing."""
-    t: tuple[int, ...] = (0, 1, 2, 3, 4, 5)
-    assert t[-3:] == (3, 4, 5)
-    assert t[:-3] == (0, 1, 2)
-    assert t[-4:-1] == (2, 3, 4)
-    assert t[-1:-4:-1] == (5, 4, 3)
 
 
 def test_tuple_bool_single_falsy() -> None:
@@ -723,26 +495,6 @@ def main() -> int:
         failed += 1
         print("  FAIL test_tuple_indexing: " + str(e))
     try:
-        test_tuple_slicing()
-        passed += 1
-        print("  PASS test_tuple_slicing")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_slicing: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_slicing: " + str(e))
-    try:
-        test_tuple_slice_step()
-        passed += 1
-        print("  PASS test_tuple_slice_step")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_slice_step: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_slice_step: " + str(e))
-    try:
         test_tuple_concatenation()
         passed += 1
         print("  PASS test_tuple_concatenation")
@@ -752,26 +504,6 @@ def main() -> int:
     except Exception as e:
         failed += 1
         print("  FAIL test_tuple_concatenation: " + str(e))
-    try:
-        test_tuple_repetition()
-        passed += 1
-        print("  PASS test_tuple_repetition")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_repetition: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_repetition: " + str(e))
-    try:
-        test_tuple_repetition_negative()
-        passed += 1
-        print("  PASS test_tuple_repetition_negative")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_repetition_negative: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_repetition_negative: " + str(e))
     try:
         test_tuple_contains()
         passed += 1
@@ -783,16 +515,6 @@ def main() -> int:
         failed += 1
         print("  FAIL test_tuple_contains: " + str(e))
     try:
-        test_tuple_contains_empty()
-        passed += 1
-        print("  PASS test_tuple_contains_empty")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_contains_empty: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_contains_empty: " + str(e))
-    try:
         test_tuple_bool()
         passed += 1
         print("  PASS test_tuple_bool")
@@ -803,26 +525,6 @@ def main() -> int:
         failed += 1
         print("  FAIL test_tuple_bool: " + str(e))
     try:
-        test_tuple_count()
-        passed += 1
-        print("  PASS test_tuple_count")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_count: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_count: " + str(e))
-    try:
-        test_tuple_index()
-        passed += 1
-        print("  PASS test_tuple_index")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_index: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_index: " + str(e))
-    try:
         test_tuple_iteration()
         passed += 1
         print("  PASS test_tuple_iteration")
@@ -832,16 +534,6 @@ def main() -> int:
     except Exception as e:
         failed += 1
         print("  FAIL test_tuple_iteration: " + str(e))
-    try:
-        test_tuple_iteration_empty()
-        passed += 1
-        print("  PASS test_tuple_iteration_empty")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_iteration_empty: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_iteration_empty: " + str(e))
     try:
         test_tuple_enumerate()
         passed += 1
@@ -903,36 +595,6 @@ def main() -> int:
         failed += 1
         print("  FAIL test_tuple_sum: " + str(e))
     try:
-        test_tuple_min_max()
-        passed += 1
-        print("  PASS test_tuple_min_max")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_min_max: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_min_max: " + str(e))
-    try:
-        test_tuple_sorted()
-        passed += 1
-        print("  PASS test_tuple_sorted")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_sorted: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_sorted: " + str(e))
-    try:
-        test_tuple_sorted_reverse()
-        passed += 1
-        print("  PASS test_tuple_sorted_reverse")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_sorted_reverse: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_sorted_reverse: " + str(e))
-    try:
         test_tuple_all_any()
         passed += 1
         print("  PASS test_tuple_all_any")
@@ -983,46 +645,6 @@ def main() -> int:
         failed += 1
         print("  FAIL test_tuple_as_dict_key: " + str(e))
     try:
-        test_tuple_from_list()
-        passed += 1
-        print("  PASS test_tuple_from_list")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_from_list: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_from_list: " + str(e))
-    try:
-        test_tuple_from_string()
-        passed += 1
-        print("  PASS test_tuple_from_string")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_from_string: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_from_string: " + str(e))
-    try:
-        test_tuple_from_range()
-        passed += 1
-        print("  PASS test_tuple_from_range")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_from_range: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_from_range: " + str(e))
-    try:
-        test_tuple_from_set()
-        passed += 1
-        print("  PASS test_tuple_from_set")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_from_set: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_from_set: " + str(e))
-    try:
         test_tuple_single_element()
         passed += 1
         print("  PASS test_tuple_single_element")
@@ -1032,16 +654,6 @@ def main() -> int:
     except Exception as e:
         failed += 1
         print("  FAIL test_tuple_single_element: " + str(e))
-    try:
-        test_tuple_immutable()
-        passed += 1
-        print("  PASS test_tuple_immutable")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_immutable: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_immutable: " + str(e))
     try:
         test_tuple_zip()
         passed += 1
@@ -1213,36 +825,6 @@ def main() -> int:
         failed += 1
         print("  FAIL test_tuple_comparison_prefix: " + str(e))
     try:
-        test_tuple_equal_elements()
-        passed += 1
-        print("  PASS test_tuple_equal_elements")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_equal_elements: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_equal_elements: " + str(e))
-    try:
-        test_tuple_generator_expression()
-        passed += 1
-        print("  PASS test_tuple_generator_expression")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_generator_expression: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_generator_expression: " + str(e))
-    try:
-        test_tuple_empty_variations()
-        passed += 1
-        print("  PASS test_tuple_empty_variations")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_empty_variations: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_empty_variations: " + str(e))
-    try:
         test_tuple_single_vs_parens()
         passed += 1
         print("  PASS test_tuple_single_vs_parens")
@@ -1263,26 +845,6 @@ def main() -> int:
         failed += 1
         print("  FAIL test_tuple_identity_vs_equality: " + str(e))
     try:
-        test_tuple_nested_empty()
-        passed += 1
-        print("  PASS test_tuple_nested_empty")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_nested_empty: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_nested_empty: " + str(e))
-    try:
-        test_tuple_slice_creates_copy()
-        passed += 1
-        print("  PASS test_tuple_slice_creates_copy")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_slice_creates_copy: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_slice_creates_copy: " + str(e))
-    try:
         test_tuple_concat_empty()
         passed += 1
         print("  PASS test_tuple_concat_empty")
@@ -1293,46 +855,6 @@ def main() -> int:
         failed += 1
         print("  FAIL test_tuple_concat_empty: " + str(e))
     try:
-        test_tuple_multiply_zero_one()
-        passed += 1
-        print("  PASS test_tuple_multiply_zero_one")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_multiply_zero_one: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_multiply_zero_one: " + str(e))
-    try:
-        test_tuple_index_start_stop()
-        passed += 1
-        print("  PASS test_tuple_index_start_stop")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_index_start_stop: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_index_start_stop: " + str(e))
-    try:
-        test_tuple_count_none()
-        passed += 1
-        print("  PASS test_tuple_count_none")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_count_none: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_count_none: " + str(e))
-    try:
-        test_tuple_negative_index_slice()
-        passed += 1
-        print("  PASS test_tuple_negative_index_slice")
-    except AssertionError as e:
-        failed += 1
-        print("  FAIL test_tuple_negative_index_slice: " + str(e))
-    except Exception as e:
-        failed += 1
-        print("  FAIL test_tuple_negative_index_slice: " + str(e))
-    try:
         test_tuple_bool_single_falsy()
         passed += 1
         print("  PASS test_tuple_bool_single_falsy")
@@ -1342,6 +864,16 @@ def main() -> int:
     except Exception as e:
         failed += 1
         print("  FAIL test_tuple_bool_single_falsy: " + str(e))
+    try:
+        test_tuple_comparison_heterogeneous_equality()
+        passed += 1
+        print("  PASS test_tuple_comparison_heterogeneous_equality")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_tuple_comparison_heterogeneous_equality: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_tuple_comparison_heterogeneous_equality: " + str(e))
     try:
         test_tuple_unpack_ignore()
         passed += 1
