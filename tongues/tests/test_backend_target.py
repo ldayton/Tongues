@@ -94,12 +94,16 @@ def test_app(app_source: Path, app_target: str) -> None:
     }
     output += _MAIN_CALLS.get(app_target, "")
     runtime = RUNTIMES[app_target]
-    result = subprocess.run(
-        runtime,
-        input=output.encode(),
-        capture_output=True,
-        timeout=30,
-    )
+    tid = f"{app_source.stem}[{app_target}]"
+    try:
+        result = subprocess.run(
+            runtime,
+            input=output.encode(),
+            capture_output=True,
+            timeout=10 if tid in KNOWN_FAILURES else 30,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail(f"Timeout ({app_target})")
     stdout = result.stdout.decode(errors="replace")
     if result.returncode != 0:
         stderr = result.stderr.decode(errors="replace")
