@@ -3139,14 +3139,23 @@ class _JavaScriptEmitter(Emitter):
                     + ")"
                 )
             if len(args) == 3:
-                return (
-                    self._a(args, 0)
-                    + ".startsWith("
-                    + self._a(args, 1)
-                    + ", "
-                    + self._a(args, 2)
-                    + ")"
-                )
+                s = self._a(args, 0)
+                prefix = self._a(args, 1)
+                start = self._a(args, 2)
+                if self._is_string_expr(args[0].value) and self._needs_codepoint_ops(
+                    args[0].value
+                ):
+                    return (
+                        s
+                        + ".startsWith("
+                        + prefix
+                        + ", [..."
+                        + s
+                        + "].slice(0, "
+                        + start
+                        + ').join("").length)'
+                    )
+                return s + ".startsWith(" + prefix + ", " + start + ")"
             return self._a(args, 0) + ".startsWith(" + self._a(args, 1) + ")"
         if name == "EndsWith":
             if len(args) >= 3:
