@@ -1,5 +1,6 @@
 """Target test phase: app execution + ordering execution."""
 
+import re
 import subprocess
 from pathlib import Path
 
@@ -56,13 +57,21 @@ def test_app(app_source: Path, app_target: str) -> None:
         capture_output=True,
         timeout=30,
     )
+    stdout = result.stdout.decode(errors="replace")
     if result.returncode != 0:
         stderr = result.stderr.decode(errors="replace")
-        stdout = result.stdout.decode(errors="replace")
         pytest.fail(
             f"App test failed with exit {result.returncode}\n"
             f"stdout:\n{stdout}\nstderr:\n{stderr}"
         )
+    match = re.search(r"(\d+) passed, (\d+) failed", stdout)
+    if match is None:
+        pytest.fail(f"No test summary in output ({app_target}):\n{stdout}")
+    passed, failed = int(match.group(1)), int(match.group(2))
+    if passed == 0:
+        pytest.fail(f"No tests ran ({app_target}): 0 passed\n{stdout}")
+    if failed > 0:
+        pytest.fail(f"{failed} test(s) failed ({app_target}):\n{stdout}")
 
 
 def test_ordering(ordering_source: Path, ordering_target: str) -> None:
