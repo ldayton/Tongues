@@ -446,6 +446,8 @@ class _JavaScriptEmitter(Emitter):
         self._needs_py_str_float: bool = False
         self._needs_deep_eq: bool = False
         self._needs_list_compare: bool = False
+        self._needs_rshift: bool = False
+        self._needs_bitwise_helpers: bool = False
         self.fn_names: set[str] = set()
         self.var_annotations: dict[str, dict[str, str]] = {}
 
@@ -640,6 +642,18 @@ class _JavaScriptEmitter(Emitter):
             self._line("return false;")
             self.indent -= 1
             self._line("}")
+        if self._needs_rshift:
+            self._line()
+            self._line("function _rshift(x, n) {")
+            self.indent += 1
+            self._line("return x >= 0 ? x >>> n : ~(~x >>> n);")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_bitwise_helpers:
+            self._line()
+            self._line("function _xor(a, b) { return (a >= 0 && b >= 0) ? (a ^ b) >>> 0 : a ^ b; }")
+            self._line("function _or(a, b) { return (a >= 0 && b >= 0) ? (a | b) >>> 0 : a | b; }")
+            self._line("function _and(a, b) { return (a >= 0 && b >= 0) ? (a & b) >>> 0 : a & b; }")
         if self._needs_list_compare:
             self._line()
             self._line("function _listCompare(a, b) {")
@@ -2542,6 +2556,43 @@ class _JavaScriptEmitter(Emitter):
             if op == "!=":
                 return "!" + call
             return call
+        if op in (">>", "^", "|", "&") and not self.strict_math:
+            if op == ">>":
+                self._needs_rshift = True
+                return (
+                    "_rshift("
+                    + self._expr(expr.left)
+                    + ", "
+                    + self._expr(expr.right)
+                    + ")"
+                )
+            if op == "^":
+                self._needs_bitwise_helpers = True
+                return (
+                    "_xor("
+                    + self._expr(expr.left)
+                    + ", "
+                    + self._expr(expr.right)
+                    + ")"
+                )
+            if op == "|":
+                self._needs_bitwise_helpers = True
+                return (
+                    "_or("
+                    + self._expr(expr.left)
+                    + ", "
+                    + self._expr(expr.right)
+                    + ")"
+                )
+            if op == "&":
+                self._needs_bitwise_helpers = True
+                return (
+                    "_and("
+                    + self._expr(expr.left)
+                    + ", "
+                    + self._expr(expr.right)
+                    + ")"
+                )
         js_op = op
         if op == "==":
             js_op = "==="
