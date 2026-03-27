@@ -2575,7 +2575,7 @@ def _lower_name_call(
     if fname == "len":
         if args and isinstance(args[0], dict):
             arg_type = _infer_expr_type(args[0], env, ctx)
-            if isinstance(arg_type, TupleType):
+            if isinstance(arg_type, TupleType) and not arg_type.variadic:
                 n = len(arg_type.elements)
                 return TIntLit(pos, {}, n, str(n))
             if _is_ast(args[0], "Tuple"):
