@@ -5,7 +5,7 @@ if (xs.includes(2))
 if (!xs.includes(2))
 
 === boolean operators
-console.log(String(a && b))
+console.log(_pyStr(a && b))
 
 === bitwise operators
 const y = _and(x, 15)

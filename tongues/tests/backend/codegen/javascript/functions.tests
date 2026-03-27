@@ -9,5 +9,5 @@ function main(
 
 === function literal block body
 apply((x) => {
-    console.log(String(x));
+    console.log(_pyStr(x));
 }, 42);

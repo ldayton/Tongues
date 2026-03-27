@@ -11,4 +11,4 @@ constructor(source = "", keywords = Lexer_keywords) {
 constructor(name = "", SOUNDS = Animal_SOUNDS) {
 
 === init body computes field from param
-this.length = source.length
+this.length = [...source].length

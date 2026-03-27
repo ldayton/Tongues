@@ -1,9 +1,9 @@
 === unused tuple target becomes underscore
-q = (17.to_f / 5).truncate
+q = (17.to_f / 5).floor
 
 === all tuple targets used
-q = (17.to_f / 5).truncate
-r = 17.remainder(5)
+q = (17.to_f / 5).floor
+r = 17 - q * 5
 
 === initial value suppressed when overwritten
 x = $stdin.binmode.read.force_encoding('UTF-8').tap { |s| raise UnicodeDecodeError unless s.valid_encoding? }.to_i(10)

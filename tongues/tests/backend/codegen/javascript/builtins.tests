@@ -1,5 +1,5 @@
 === math functions
-console.log(String(Math.abs(-5)));
+console.log(_pyStr(Math.abs(-5)));
 
 === float math functions
 const r = Math.round(3.7);
@@ -24,10 +24,10 @@ const bin = (255).toString(2);
 const n = "A".codePointAt(0);
 
 === IsNaN and IsInf
-console.log(String(Number.isNaN(x)));
+console.log(_pyStr(Number.isNaN(x)));
 
 === Len on various types
-console.log(String("hello".length));
+console.log(_pyStr("hello".length));
 
 === DivMod
 q = Math.floor(17 / 5);

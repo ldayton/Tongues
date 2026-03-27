@@ -70,10 +70,10 @@ const s = [...xs].sort((a, b) => a - b);
 const s = [...xs].sort();
 
 === Sum on list
-console.log(String(xs.reduce((a, b) => a + b, 0)));
+console.log(_pyStr(xs.reduce((a, b) => a + b, 0)));
 
 === negative index via Len subtraction
-console.log(String(xs[xs.length - 1]));
+console.log(_pyStr(xs[xs.length - 1]));
 
 === open-end slice
 const tail = xs.slice(1, xs.length);

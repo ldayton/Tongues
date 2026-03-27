@@ -1,5 +1,5 @@
 === bitwise and with comparison
-_and(flags, flag) !== 0
+(_and(flags, flag)) !== 0
 
 === right shift large positive
 _rshift(poly, 1)

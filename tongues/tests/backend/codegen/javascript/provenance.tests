@@ -2,7 +2,7 @@
 if (!xs.includes(2))
 
 === negative index via Len subtraction (raised)
-console.log(String(xs[xs.length - 1]));
+console.log(_pyStr(xs[xs.length - 1]));
 
 === open-end slice (raised)
 const tail = xs.slice(1);
