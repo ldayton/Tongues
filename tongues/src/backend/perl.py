@@ -7,9 +7,11 @@ from .util import (
     STRICT_INT_BINARY,
     STRICT_INT_COMPOUND,
     Emitter,
+    _check_bool_expr,
     _check_float_expr,
     _check_float_list,
     _check_int_expr,
+    _check_nil_expr,
     _emit_line,
     _emit_output,
     collect_builtin_calls,
@@ -3333,12 +3335,31 @@ class _PerlEmitter(Emitter):
                     + "}; $__s }"
                 )
             return "do { my $__s = {}; $__s->{$_} = 1 for @{" + a + "}; $__s }"
-        if name in ("ToString", "ToRepr"):
+        if name == "ToString":
             inner_expr = args[0].value
             inner = self._expr(inner_expr)
             if self.strict_tostring and self._is_float_expr(inner_expr):
                 self._needs_float_repr = True
                 return "_py_float_repr(" + inner + ")"
+            if _check_bool_expr(inner_expr, self.var_types):
+                return "(" + inner + " ? 'True' : 'False')"
+            if _check_nil_expr(inner_expr):
+                return "'None'"
+            if self._needs_concat_parens(inner_expr):
+                inner = "(" + inner + ")"
+            return '("" . ' + inner + ")"
+        if name == "ToRepr":
+            inner_expr = args[0].value
+            inner = self._expr(inner_expr)
+            if self.strict_tostring and self._is_float_expr(inner_expr):
+                self._needs_float_repr = True
+                return "_py_float_repr(" + inner + ")"
+            if _check_bool_expr(inner_expr, self.var_types):
+                return "(" + inner + " ? 'True' : 'False')"
+            if _check_nil_expr(inner_expr):
+                return "'None'"
+            if self._is_string_expr(inner_expr):
+                return "(\"'\" . " + inner + " . \"'\")"
             if self._needs_concat_parens(inner_expr):
                 inner = "(" + inner + ")"
             return '("" . ' + inner + ")"

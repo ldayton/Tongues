@@ -440,6 +440,8 @@ class _JavaScriptEmitter(Emitter):
         self._struct_field_decls: dict[str, list[TFieldDecl]] = {}
         self._needs_read_all: bool = False
         self._needs_cp_index_of: bool = False
+        self._needs_py_str: bool = False
+        self._needs_py_repr: bool = False
         self.fn_names: set[str] = set()
         self.var_annotations: dict[str, dict[str, str]] = {}
 
@@ -552,6 +554,27 @@ class _JavaScriptEmitter(Emitter):
             self.indent += 1
             self._line("const i = s.lastIndexOf(sub);")
             self._line("return i === -1 ? -1 : [...s.slice(0, i)].length;")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_py_str:
+            self._line()
+            self._line("function _pyStr(x) {")
+            self.indent += 1
+            self._line("if (x === true) return \"True\";")
+            self._line("if (x === false) return \"False\";")
+            self._line("if (x === null || x === undefined) return \"None\";")
+            self._line("return String(x);")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_py_repr:
+            self._line()
+            self._line("function _pyRepr(x) {")
+            self.indent += 1
+            self._line("if (x === true) return \"True\";")
+            self._line("if (x === false) return \"False\";")
+            self._line("if (x === null || x === undefined) return \"None\";")
+            self._line("if (typeof x === \"string\") return \"'\" + x + \"'\";")
+            self._line("return String(x);")
             self.indent -= 1
             self._line("}")
         has_main = any(
@@ -3250,15 +3273,13 @@ class _JavaScriptEmitter(Emitter):
                     )
             return "new Set(" + self._a(args, 0) + ")"
         if name == "ToString":
-            return "String(" + self._a(args, 0) + ")"
+            self._needs_py_str = True
+            return "_pyStr(" + self._a(args, 0) + ")"
         if name == "ToRepr":
+            self._needs_py_repr = True
             if self.strict_math:
-                return (
-                    "JSON.stringify("
-                    + self._a(args, 0)
-                    + ', (_, v) => typeof v === "bigint" ? Number(v) : v)'
-                )
-            return "JSON.stringify(" + self._a(args, 0) + ")"
+                return "_pyRepr(" + self._a(args, 0) + ")"
+            return "_pyRepr(" + self._a(args, 0) + ")"
         if name == "ParseInt":
             base_expr = args[1].value
             if isinstance(base_expr, TIntLit) and base_expr.value == 0:

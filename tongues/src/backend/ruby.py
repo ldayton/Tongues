@@ -637,6 +637,8 @@ class _RubyEmitter(Emitter):
         self._needs_range_helper: bool = False
         self._needs_float_repr: bool = False
         self._needs_parse_float: bool = False
+        self._needs_py_str: bool = False
+        self._needs_py_repr: bool = False
 
     def _line(self, text: str = "") -> None:
         if text:
@@ -772,6 +774,29 @@ class _RubyEmitter(Emitter):
                 "return -Float::INFINITY if s == '-inf' || s == '-Infinity'; "
                 "return Float::NAN if s == 'nan' || s == 'NaN'; "
                 "s.to_f; end"
+            )
+            self.lines.insert(import_insert_pos, helper)
+            self.lines.insert(import_insert_pos + 1, "")
+            import_insert_pos += 2
+        if self._needs_py_str:
+            helper = (
+                "def _py_str(x); "
+                "return 'True' if x == true; "
+                "return 'False' if x == false; "
+                "return 'None' if x.nil?; "
+                "x.to_s; end"
+            )
+            self.lines.insert(import_insert_pos, helper)
+            self.lines.insert(import_insert_pos + 1, "")
+            import_insert_pos += 2
+        if self._needs_py_repr:
+            helper = (
+                "def _py_repr(x); "
+                "return 'True' if x == true; "
+                "return 'False' if x == false; "
+                "return 'None' if x.nil?; "
+                "return \"'\" + x + \"'\" if x.is_a?(String); "
+                "x.to_s; end"
             )
             self.lines.insert(import_insert_pos, helper)
             self.lines.insert(import_insert_pos + 1, "")
@@ -2830,14 +2855,20 @@ class _RubyEmitter(Emitter):
                         + ")"
                     )
             return "Set.new(" + self._a(args, 0) + ".to_a)"
-        if name in ("ToString", "ToRepr"):
+        if name == "ToString":
             a = self._a(args, 0)
             if self.strict_tostring and self._is_float_expr(args[0].value):
                 self._needs_float_repr = True
                 return "_py_float_repr(" + a + ")"
-            if isinstance(args[0].value, (TBinaryOp, TTernary)):
-                return "(" + a + ").to_s"
-            return a + ".to_s"
+            self._needs_py_str = True
+            return "_py_str(" + a + ")"
+        if name == "ToRepr":
+            a = self._a(args, 0)
+            if self.strict_tostring and self._is_float_expr(args[0].value):
+                self._needs_float_repr = True
+                return "_py_float_repr(" + a + ")"
+            self._needs_py_repr = True
+            return "_py_repr(" + a + ")"
         if name == "ParseInt":
             base = self._a(args, 1)
             return self._a(args, 0) + ".to_i(" + base + ")"
