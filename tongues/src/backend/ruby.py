@@ -1451,11 +1451,11 @@ class _RubyEmitter(Emitter):
         b = self._expr(call.args[1].value)
         q_target = self._expr(stmt.targets[0])
         if 1 in unused:
-            self._line(q_target + " = (" + a + ".to_f / " + b + ").truncate")
+            self._line(q_target + " = (" + a + ".to_f / " + b + ").floor")
         else:
             r_target = self._expr(stmt.targets[1])
-            self._line(q_target + " = (" + a + ".to_f / " + b + ").truncate")
-            self._line(r_target + " = " + a + ".remainder(" + b + ")")
+            self._line(q_target + " = (" + a + ".to_f / " + b + ").floor")
+            self._line(r_target + " = " + a + " - " + q_target + " * " + b)
 
     def _emit_expr_stmt(self, stmt: TExprStmt) -> None:
         expr = stmt.expr
@@ -2831,11 +2831,15 @@ class _RubyEmitter(Emitter):
                 + a
                 + ".to_f / "
                 + b
-                + ").truncate, "
+                + ").floor, "
                 + a
-                + ".remainder("
+                + " - ("
+                + a
+                + ".to_f / "
                 + b
-                + ")]"
+                + ").floor * "
+                + b
+                + "]"
             )
         if name == "Sorted":
             if self.strict_math and self._is_float_list(args[0].value):

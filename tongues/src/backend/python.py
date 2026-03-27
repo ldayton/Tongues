@@ -1079,10 +1079,10 @@ class _PythonEmitter(Emitter):
         b = self._expr(call.args[1].value)
         q_target = self._expr(stmt.targets[0])
         if 1 in unused:
-            self._line(q_target + " = int(" + a + " / " + b + ")")
+            self._line(q_target + " = " + a + " // " + b)
         else:
             r_target = self._expr(stmt.targets[1])
-            self._line(q_target + " = int(" + a + " / " + b + ")")
+            self._line(q_target + " = " + a + " // " + b)
             self._line(r_target + " = " + a + " - " + q_target + " * " + b)
 
     def _emit_expr_stmt(self, stmt: TExprStmt) -> None:
@@ -2086,15 +2086,14 @@ class _PythonEmitter(Emitter):
             a = self._a(args, 0)
             b = self._a(args, 1)
             return (
-                "int("
-                + a
-                + " / "
+                a
+                + " // "
                 + b
-                + "), "
+                + ", "
                 + a
-                + " - int("
+                + " - ("
                 + a
-                + " / "
+                + " // "
                 + b
                 + ") * "
                 + b

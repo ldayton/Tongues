@@ -3352,13 +3352,13 @@ class _PerlEmitter(Emitter):
             a = self._a(args, 0)
             b = self._a(args, 1)
             return (
-                "[int("
+                "[floor("
                 + a
                 + " / "
                 + b
                 + "), "
                 + a
-                + " - int("
+                + " - floor("
                 + a
                 + " / "
                 + b

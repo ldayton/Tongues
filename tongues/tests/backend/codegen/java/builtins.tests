@@ -30,12 +30,12 @@ System.out.println(String.valueOf(Double.isNaN(x)));
 System.out.println(String.valueOf("hello".length()));
 
 === DivMod
-q = 17 / 5;
-r = 17 - q * 5;
+q = Math.floorDiv(17, 5);
+r = Math.floorMod(17, 5);
 
 === DivMod negative dividend
-q = -7 / 2;
-r = -7 - q * 2;
+q = Math.floorDiv(-7, 2);
+r = Math.floorMod(-7, 2);
 
 === Sqrt function
 double x = Math.sqrt(2.0);
