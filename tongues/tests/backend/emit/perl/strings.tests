@@ -34,6 +34,15 @@ substr($s, 6)
 === rstrip newline
 s/[\n]+$//
 
+=== partition found
+index($s, ",")
+
+=== partition not found
+index($s, ",")
+
+=== rpartition found
+rindex($s, ",")
+
 === astral string literal
 "\x{1f600}"
 

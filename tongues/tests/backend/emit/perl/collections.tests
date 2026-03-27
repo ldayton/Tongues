@@ -54,3 +54,9 @@ exists $d->{"a"} ? $d->{"a"} : 99
 
 === list pop at index
 my $first = splice(@{$xs}, 0, 1);
+
+=== bytes literal assignment
+"\x80\xff\x00"
+
+=== struct in list contains
+grep { $_->__eq__

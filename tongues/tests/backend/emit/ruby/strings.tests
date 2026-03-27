@@ -34,6 +34,15 @@ s[6..].start_with?("world")
 === rstrip newline
 /[\n]+\z/
 
+=== partition found
+.partition(",")
+
+=== partition not found
+.partition(",")
+
+=== rpartition found
+.rpartition(",")
+
 === astral string literal
 "\u{1f600}"
 

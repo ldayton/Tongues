@@ -68,3 +68,9 @@ d.getOrDefault("a", 99)
 
 === list pop at index
 String first = xs.removeFirst();
+
+=== bytes literal assignment
+new byte[]
+
+=== struct in list contains
+.stream().anyMatch(

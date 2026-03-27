@@ -54,3 +54,9 @@ d.fetch("a", 99)
 
 === list pop at index
 first = xs.delete_at(0)
+
+=== bytes literal assignment
+.force_encoding(Encoding::BINARY)
+
+=== struct in list contains
+pts.any? { |p| p == Point.new(1, 2) }

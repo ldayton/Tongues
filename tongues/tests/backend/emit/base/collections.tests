@@ -159,3 +159,25 @@ def main() -> None:
     print(str(len(xs)))
 if __name__ == "__main__":
     main()
+
+=== bytes literal assignment
+def main() -> None:
+    data: bytes = b"\x80\xff\x00"
+    print(str(len(data)))
+if __name__ == "__main__":
+    main()
+
+=== struct in list contains
+class Point:
+    x: int
+    y: int
+    def __init__(self, x: int, y: int) -> None:
+        self.x = x
+        self.y = y
+
+def main() -> None:
+    pts: list[Point] = [Point(1, 2), Point(3, 4)]
+    found: bool = Point(1, 2) in pts
+    print(str(found))
+if __name__ == "__main__":
+    main()
