@@ -84,6 +84,15 @@ def test_app(app_source: Path, app_target: str) -> None:
     output, err = transpile_app(source, app_target)
     if err is not None:
         pytest.fail(f"Transpile error ({app_target}): {err}")
+    # Append entry point call — transpiled output defines main() but doesn't call it
+    _MAIN_CALLS = {
+        "python": "\nmain()\n",
+        "javascript": "\nmain();\n",
+        "perl": "\nmain();\n",
+        "ruby": "\nmain\n",
+        "java": "",  # Java calls main via JVM convention
+    }
+    output += _MAIN_CALLS.get(app_target, "")
     runtime = RUNTIMES[app_target]
     result = subprocess.run(
         runtime,

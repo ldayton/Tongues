@@ -825,15 +825,6 @@ class _PerlEmitter(Emitter):
                 " if (ref($a) && $a->can('__eq__')) { return $a->__eq__($b) }"
                 " return $a eq $b }"
             )
-        has_main = any(
-            isinstance(d, TFnDecl) and d.name == "Main" for d in module.decls
-        )
-        if has_main:
-            if current_package != "main":
-                self._line()
-                self._line("package main;")
-            self._line()
-            self._line("main();")
 
     def _emit_enum(self, decl: TEnumDecl) -> None:
         for i, variant in enumerate(decl.variants):

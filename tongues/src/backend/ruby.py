@@ -733,12 +733,6 @@ class _RubyEmitter(Emitter):
                 case TInterfaceDecl():
                     pass  # handled above via isinstance check
             need_blank = True
-        has_main = any(
-            isinstance(d, TFnDecl) and d.name == "Main" for d in module.decls
-        )
-        if has_main:
-            self._line()
-            self._line("main")
         # Insert require 'set' at top if needed
         if self._needs_set:
             self.lines.insert(import_insert_pos, "require 'set'")
