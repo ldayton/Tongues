@@ -3526,6 +3526,15 @@ class _JavaScriptEmitter(Emitter):
                 )
             if self._is_set_type(inner):
                 return self._a(args, 0) + ".has(" + self._a(args, 1) + ")"
+            elem = args[1].value
+            if self._is_struct_expr(elem) or self._is_tuple_expr(elem):
+                self._needs_deep_eq = True
+                return (
+                    self._a(args, 0)
+                    + ".some(__x => _deepEq(__x, "
+                    + self._a(args, 1)
+                    + "))"
+                )
             return self._a(args, 0) + ".includes(" + self._a(args, 1) + ")"
         if name == "Concat":
             if self._is_bytes_expr(args[0].value):
