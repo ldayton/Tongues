@@ -1493,3 +1493,55 @@ fn Main() -> void {
 ---
 error:
 ---
+
+=== All on list of bool
+fn Main() -> void {
+    let xs: list[bool] = [true, false]
+    let r: bool = All(xs)
+}
+---
+ok
+---
+
+=== Any on list of bool
+fn Main() -> void {
+    let xs: list[bool] = [true, false]
+    let r: bool = Any(xs)
+}
+---
+ok
+---
+
+=== All on list of int (truthy)
+fn Main() -> void {
+    let xs: list[int] = [1, 0, 2]
+    let r: bool = All(xs)
+}
+---
+ok
+---
+
+=== Any on set
+fn Main() -> void {
+    let xs: set[int] = {1, 2, 3}
+    let r: bool = Any(xs)
+}
+---
+ok
+---
+
+=== All wrong arg count
+fn Main() -> void {
+    let r: bool = All()
+}
+---
+error:
+---
+
+=== All wrong type
+fn Main() -> void {
+    let r: bool = All(42)
+}
+---
+error:
+---

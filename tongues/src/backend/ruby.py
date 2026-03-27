@@ -2787,6 +2787,10 @@ class _RubyEmitter(Emitter):
             return "[" + self._a(args, 0) + ", " + self._a(args, 1) + "].max"
         if name == "Sum":
             return self._a(args, 0) + ".sum"
+        if name == "All":
+            return self._a(args, 0) + ".all?"
+        if name == "Any":
+            return self._a(args, 0) + ".any?"
         if name == "Round":
             if len(args) == 2:
                 return self._a(args, 0) + ".round(" + self._a(args, 1) + ")"

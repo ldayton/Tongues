@@ -5089,6 +5089,10 @@ class _JavaEmitter(Emitter):
                 if len(slit.elements) == 0:
                     return "0"
             return self._a(args, 0) + ".stream().mapToInt(Integer::intValue).sum()"
+        if name == "All":
+            return self._a(args, 0) + ".stream().allMatch(x -> !(x.equals(0) || x.equals(false) || x.equals(\"\") || x == null))"
+        if name == "Any":
+            return self._a(args, 0) + ".stream().anyMatch(x -> !(x.equals(0) || x.equals(false) || x.equals(\"\") || x == null))"
         if name == "Map":
             return "new HashMap<>()"
         if name == "Set":

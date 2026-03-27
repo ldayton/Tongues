@@ -441,10 +441,14 @@ def _struct_needs_any_all(decl: TStructDecl) -> bool:
 
 
 def _module_needs_any_all(module: TModule) -> bool:
-    """Check if any top-level function uses any_call/all_call provenance."""
+    """Check if any top-level function uses any_call/all_call provenance or All/Any builtins."""
     for decl in module.decls:
         if isinstance(decl, TFnDecl) and _has_any_all_provenance(decl.body):
             return True
+        if isinstance(decl, TFnDecl):
+            builtins = collect_builtin_calls(decl.body)
+            if "All" in builtins or "Any" in builtins:
+                return True
     return False
 
 
@@ -3271,6 +3275,16 @@ class _PerlEmitter(Emitter):
             if self._is_set_expr(args[0].value):
                 return "(sum(keys %{" + self._deref_safe(self._a(args, 0)) + "}) // 0)"
             return "(sum(@{" + self._a(args, 0) + "}) // 0)"
+        if name == "All":
+            if self._is_set_expr(args[0].value):
+                d = self._deref_safe(self._a(args, 0))
+                return "do { my @__t = keys %{" + d + "}; all { $_ } @__t }"
+            return "do { my @__t = @{" + self._a(args, 0) + "}; all { $_ } @__t }"
+        if name == "Any":
+            if self._is_set_expr(args[0].value):
+                d = self._deref_safe(self._a(args, 0))
+                return "do { my @__t = keys %{" + d + "}; any { $_ } @__t }"
+            return "do { my @__t = @{" + self._a(args, 0) + "}; any { $_ } @__t }"
         if name == "Round":
             if len(args) == 2:
                 return (

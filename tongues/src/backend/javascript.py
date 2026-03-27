@@ -3250,6 +3250,10 @@ class _JavaScriptEmitter(Emitter):
             if self.strict_math and self._is_int_list(args[0].value):
                 return self._a(args, 0) + ".reduce((a, b) => a + b, 0n)"
             return self._a(args, 0) + ".reduce((a, b) => a + b, 0)"
+        if name == "All":
+            return self._a(args, 0) + ".every(Boolean)"
+        if name == "Any":
+            return self._a(args, 0) + ".some(Boolean)"
         if name == "Round":
             return "Math.round(" + self._a(args, 0) + ")"
         if name == "DivMod":

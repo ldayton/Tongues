@@ -2627,6 +2627,8 @@ def _lower_name_call(
             a0_type = get_str(args[0], "_type")
             if a0_type == "GeneratorExp" or a0_type == "ListComp":
                 return _lower_any_all(fname, args[0], env, ctx)
+            builtin_name = "Any" if fname == "any" else "All"
+            return _make_call(pos, builtin_name, [_lower_expr(args[0], env, ctx)])
         return TBoolLit(pos, {}, True)
     if fname == "print":
         return _lower_print_call(pos, args, keywords, env, ctx)

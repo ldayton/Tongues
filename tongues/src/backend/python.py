@@ -2062,6 +2062,10 @@ class _PythonEmitter(Emitter):
             return "max(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Sum":
             return "sum(" + self._a(args, 0) + ")"
+        if name == "All":
+            return "all(" + self._a(args, 0) + ")"
+        if name == "Any":
+            return "any(" + self._a(args, 0) + ")"
         if name == "Round":
             if len(args) == 2:
                 return "round(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"

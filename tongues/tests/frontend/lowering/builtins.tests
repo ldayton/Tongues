@@ -319,3 +319,31 @@ def f(n: int) -> str:
 ---
 FormatInt(n, 2)
 ---
+
+=== all on list
+def f(xs: list[bool]) -> bool:
+    return all(xs)
+---
+All(xs)
+---
+
+=== any on list
+def f(xs: list[bool]) -> bool:
+    return any(xs)
+---
+Any(xs)
+---
+
+=== all on set
+def f(xs: set[bool]) -> bool:
+    return all(xs)
+---
+All(xs)
+---
+
+=== any on set
+def f(xs: set[bool]) -> bool:
+    return any(xs)
+---
+Any(xs)
+---
