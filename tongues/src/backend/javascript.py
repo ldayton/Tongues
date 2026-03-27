@@ -778,6 +778,11 @@ class _JavaScriptEmitter(Emitter):
                 self._emit_field_assign(fld, safe)
             old_self = self.self_name
             self.self_name = "this"
+            for pf in param_fields:
+                if pf.typ is not None:
+                    self.var_types[pf.name] = pf.typ
+                    if isinstance(pf.typ, TPrimitive) and pf.typ.kind == "string":
+                        self.var_annotations[pf.name] = {"strings.content": "unknown"}
             for fld in body_fields:
                 safe = _safe_name(fld.name)
                 if fld.default_expr is not None:
