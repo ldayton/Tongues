@@ -1437,7 +1437,7 @@ class _PerlEmitter(Emitter):
             a = self._expr(call.args[0].value)
             b = self._expr(call.args[1].value)
             q_target = self._target(stmt.targets[0])
-            self._line(q_target + " = int(" + a + " / " + b + ");")
+            self._line(q_target + " = floor(" + a + " / " + b + ");")
             return
         parts: list[str] = []
         for i, t in enumerate(stmt.targets):
