@@ -1,2 +1,5 @@
 === bitwise and with comparison
 flags & flag != 0
+
+=== divmod negative floor semantics
+q = -10 // 3

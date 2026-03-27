@@ -5,3 +5,11 @@ def main() -> None:
     print(flags & flag != 0)
 if __name__ == "__main__":
     main()
+
+=== divmod negative floor semantics
+def main() -> None:
+    q, r = divmod(-10, 3)
+    print(str(q))
+    print(str(r))
+if __name__ == "__main__":
+    main()
