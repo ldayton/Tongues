@@ -643,6 +643,7 @@ class _PerlEmitter(Emitter):
         self.strict_tostring = strict_tostring
         self._needs_float_repr: bool = False
         self._needs_deep_eq: bool = False
+        self._needs_py_str_float: bool = False
         self.indent: int = 0
         self.lines: list[str] = []
         self.self_name: str | None = None
@@ -780,6 +781,22 @@ class _PerlEmitter(Emitter):
                         current_package = "main"
                     self._emit_fn(decl)
             need_blank = True
+        if self._needs_py_str_float:
+            if current_package != "main":
+                self._line()
+                self._line("package main;")
+                current_package = "main"
+            self._line()
+            self._line(
+                "sub _py_str_float {"
+                " my ($f) = @_;"
+                " return 'inf' if $f == 9**9**9;"
+                " return '-inf' if $f == -(9**9**9);"
+                ' return "nan" if $f != $f;'
+                ' my $s = "" . $f;'
+                ' $s .= ".0" if $s !~ /\\./ && $s !~ /[eE]/;'
+                " return $s }"
+            )
         if self._needs_deep_eq:
             if current_package != "main":
                 self._line()
@@ -3392,6 +3409,9 @@ class _PerlEmitter(Emitter):
                 return "(" + inner + " ? 'True' : 'False')"
             if _check_nil_expr(inner_expr):
                 return "'None'"
+            if self._is_float_expr(inner_expr):
+                self._needs_py_str_float = True
+                return "_py_str_float(" + inner + ")"
             if self._needs_concat_parens(inner_expr):
                 inner = "(" + inner + ")"
             return '("" . ' + inner + ")"
@@ -3405,6 +3425,9 @@ class _PerlEmitter(Emitter):
                 return "(" + inner + " ? 'True' : 'False')"
             if _check_nil_expr(inner_expr):
                 return "'None'"
+            if self._is_float_expr(inner_expr):
+                self._needs_py_str_float = True
+                return "_py_str_float(" + inner + ")"
             if self._is_string_expr(inner_expr):
                 return "(\"'\" . " + inner + " . \"'\")"
             if self._needs_concat_parens(inner_expr):

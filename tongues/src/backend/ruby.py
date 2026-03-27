@@ -784,6 +784,9 @@ class _RubyEmitter(Emitter):
                 "return 'True' if x == true; "
                 "return 'False' if x == false; "
                 "return 'None' if x.nil?; "
+                "return 'inf' if x.is_a?(Float) && x == Float::INFINITY; "
+                "return '-inf' if x.is_a?(Float) && x == -Float::INFINITY; "
+                "return 'nan' if x.is_a?(Float) && x.nan?; "
                 "x.to_s; end"
             )
             self.lines.insert(import_insert_pos, helper)
@@ -796,6 +799,9 @@ class _RubyEmitter(Emitter):
                 "return 'False' if x == false; "
                 "return 'None' if x.nil?; "
                 "return \"'\" + x + \"'\" if x.is_a?(String); "
+                "return 'inf' if x.is_a?(Float) && x == Float::INFINITY; "
+                "return '-inf' if x.is_a?(Float) && x == -Float::INFINITY; "
+                "return 'nan' if x.is_a?(Float) && x.nan?; "
                 "x.to_s; end"
             )
             self.lines.insert(import_insert_pos, helper)
@@ -2661,9 +2667,7 @@ class _RubyEmitter(Emitter):
             return self._a(args, 0) + ".reverse"
         if name == "Repeat":
             count = self._a(args, 1)
-            if isinstance(args[1].value, TBinaryOp):
-                count = "(" + count + ")"
-            return self._a(args, 0) + " * " + count
+            return self._a(args, 0) + " * [" + count + ", 0].max"
         if name == "RemovePrefix":
             return self._a(args, 0) + ".delete_prefix(" + self._a(args, 1) + ")"
         if name == "RemoveSuffix":
