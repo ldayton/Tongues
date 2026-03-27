@@ -53,7 +53,6 @@ fmt *ARGS:
     start=$SECONDS
     failed=0
     uv run --directory tongues ruff format {{ if ARGS == "--fix" { "" } else { "--check" } }} . || failed=1
-    npx prettier {{ if ARGS == "--fix" { "--write" } else { "--check" } }} spec/*.md || failed=1
     elapsed=$((SECONDS - start))
     if [ $failed -eq 0 ]; then
         printf '\033[32m[fmt] %ds\033[0m\n' "$elapsed"
