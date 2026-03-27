@@ -90,6 +90,11 @@ from ..taytsh.check import (
 )
 
 # ============================================================
+_EXCEPTION_NAME_MAP: dict[str, str] = {
+    "AssertError": "AssertionError",
+    "NilError": "AttributeError",
+}
+
 # PYTHON BUILTINS
 # ============================================================
 
@@ -1350,7 +1355,7 @@ class _PythonEmitter(Emitter):
         types: list[str] = []
         for t in catch.types:
             if isinstance(t, TIdentType):
-                types.append(t.name)
+                types.append(_EXCEPTION_NAME_MAP.get(t.name, t.name))
             else:
                 types.append(self._type(t))
         if not types:
