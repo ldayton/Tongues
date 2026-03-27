@@ -2956,7 +2956,15 @@ class _JavaScriptEmitter(Emitter):
         if isinstance(expr, TVar):
             ann = self.var_annotations.get(expr.name, {})
             content = ann.get("strings.content", "")
-            return content == "unknown"
+            if content == "ascii":
+                return False
+            if content == "unknown":
+                return True
+            # No annotation: check if it's a string-typed parameter (assume unknown)
+            typ = self.var_types.get(expr.name)
+            if isinstance(typ, TPrimitive) and typ.kind == "string":
+                return True
+            return False
         if isinstance(expr, TStringLit):
             for ch in expr.value:
                 if ord(ch) > 0xFFFF:
