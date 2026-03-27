@@ -6,6 +6,30 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== right shift large positive
+def main() -> None:
+    poly: int = 0xEDB88320
+    x: int = poly >> 1
+    print(str(x))
+if __name__ == "__main__":
+    main()
+
+=== right shift negative preserves sign
+def main() -> None:
+    x: int = -4
+    y: int = x >> 2
+    print(str(y))
+if __name__ == "__main__":
+    main()
+
+=== xor with large constant
+def main() -> None:
+    poly: int = 0xEDB88320
+    x: int = 5 ^ poly
+    print(str(x))
+if __name__ == "__main__":
+    main()
+
 === divmod negative floor semantics
 def main() -> None:
     q, r = divmod(-10, 3)

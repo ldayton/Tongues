@@ -1,5 +1,14 @@
 === bitwise and with comparison
 flags & flag != 0
 
+=== right shift large positive
+poly >> 1
+
+=== right shift negative preserves sign
+x >> 2
+
+=== xor with large constant
+5 ^ poly
+
 === divmod negative floor semantics
 q = -10 // 3
