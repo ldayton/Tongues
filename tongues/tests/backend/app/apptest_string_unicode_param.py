@@ -55,7 +55,10 @@ def test_slice_param_astral() -> None:
     """Slicing a parameter with astral characters uses codepoint offsets."""
     assert _slice_via_param("a\U0001f600b\U0001f601c", 1, 4) == "\U0001f600b\U0001f601"
     assert _slice_via_param("a\U0001f600b", 0, 2) == "a\U0001f600"
-    assert _slice_via_param("\U0001f600\U0001f601\U0001f602", 1, 3) == "\U0001f601\U0001f602"
+    assert (
+        _slice_via_param("\U0001f600\U0001f601\U0001f602", 1, 3)
+        == "\U0001f601\U0001f602"
+    )
 
 
 def test_find_param_astral() -> None:
@@ -147,7 +150,7 @@ class Lexer:
         return self.length - self.pos
 
     def rest(self) -> str:
-        return self.source[self.pos:]
+        return self.source[self.pos :]
 
     def collect_all(self) -> list[str]:
         result: list[str] = []

@@ -61,7 +61,9 @@ def pytest_generate_tests(metafunc):
             for tid, path, target in tests:
                 marks = []
                 if tid in KNOWN_FAILURES:
-                    marks.append(pytest.mark.xfail(reason="known failure", strict=False))
+                    marks.append(
+                        pytest.mark.xfail(reason="known failure", strict=False)
+                    )
                 params.append(pytest.param(path, target, id=tid, marks=marks))
             metafunc.parametrize("app_source,app_target", params)
         elif run == "ordering" and "ordering_source" in metafunc.fixturenames:
