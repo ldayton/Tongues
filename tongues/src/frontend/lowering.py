@@ -7024,13 +7024,28 @@ def _build_struct(
                 cls_info.init_params
             )
             for f in fields:
-                if f.has_default and f.name in init_defaults:
+                if f.name in init_defaults and f.name not in init_param_fields:
+                    if not f.has_default:
+                        f.has_default = True
                     expr = init_defaults[f.name]
                     if param_subs:
                         expr = _rename_vars(expr, param_subs)
                     f.default_expr = expr
-                    if f.name not in init_param_fields:
-                        f.body_computed = True
+                    f.body_computed = True
+                elif f.has_default and f.name in init_defaults:
+                    expr = init_defaults[f.name]
+                    if param_subs:
+                        expr = _rename_vars(expr, param_subs)
+                    f.default_expr = expr
+            # Re-sort: body-computed fields may have been promoted to has_default
+            required_f: list[TFieldDecl] = []
+            defaulted_f: list[TFieldDecl] = []
+            for f in fields:
+                if f.has_default:
+                    defaulted_f.append(f)
+                else:
+                    required_f.append(f)
+            fields = required_f + defaulted_f
     # Build methods — own + inherited from ancestors
     methods: list[TFnDecl] = []
     own_method_names: set[str] = set()
