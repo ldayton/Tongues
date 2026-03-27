@@ -59,10 +59,10 @@ my $first = splice(@{$xs}, 0, 1);
 delete $d->{
 
 === dict fromkeys
-$d->{$_} =
+$_} =
 
 === dict from pairs
-$d->{
+$_->[0]} = $_->[1]
 
 === bytes literal assignment
 "\x80\xff\x00"

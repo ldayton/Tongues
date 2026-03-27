@@ -1997,6 +1997,12 @@ class _PythonEmitter(Emitter):
             return self._a(args, 0) + ".get(" + self._a(args, 1) + ")"
         if name == "Delete":
             return self._a(args, 0) + ".pop(" + self._a(args, 1) + ", None)"
+        if name == "PopItem":
+            return self._a(args, 0) + ".popitem()"
+        if name == "MapFromKeys":
+            return "dict.fromkeys(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+        if name == "MapFromPairs":
+            return "dict(" + self._a(args, 0) + ")"
         if name == "Union":
             return self._a(args, 0) + " | " + self._a(args, 1)
         if name == "Intersection":

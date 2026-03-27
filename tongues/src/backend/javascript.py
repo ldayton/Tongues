@@ -3159,6 +3159,18 @@ class _JavaScriptEmitter(Emitter):
                 + self._map_key_for(args[0].value, args[1].value)
                 + ")"
             )
+        if name == "PopItem":
+            d = self._a(args, 0)
+            return (
+                "((d) => { const k = [...d.keys()].pop();"
+                " const v = d.get(k); d.delete(k); return [k, v]; })("
+                + d
+                + ")"
+            )
+        if name == "MapFromKeys":
+            return "new Map(" + self._a(args, 0) + ".map(k => [k, " + self._a(args, 1) + "]))"
+        if name == "MapFromPairs":
+            return "new Map(" + self._a(args, 0) + ")"
         if name == "Union":
             return "new Set([..." + self._a(args, 0) + ", ..." + self._a(args, 1) + "])"
         if name == "Intersection":

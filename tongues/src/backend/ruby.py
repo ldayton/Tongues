@@ -2750,6 +2750,12 @@ class _RubyEmitter(Emitter):
             return self._a(args, 0) + ".delete(" + self._a(args, 1) + ")"
         if name == "Merge":
             return self._a(args, 0) + ".merge(" + self._a(args, 1) + ")"
+        if name == "PopItem":
+            return self._a(args, 0) + ".shift"
+        if name == "MapFromKeys":
+            return self._a(args, 0) + ".each_with_object({}) { |k, h| h[k] = " + self._a(args, 1) + " }"
+        if name == "MapFromPairs":
+            return self._a(args, 0) + ".to_h"
         if name == "Keys":
             return self._a(args, 0) + ".keys"
         if name == "Values":

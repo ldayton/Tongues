@@ -3223,6 +3223,30 @@ class _PerlEmitter(Emitter):
             a0 = self._deref_safe(self._a(args, 0))
             a1 = self._deref_safe(self._a(args, 1))
             return "{ %{" + a0 + "}, %{" + a1 + "} }"
+        if name == "PopItem":
+            d = self._a(args, 0)
+            return (
+                "do { my @__k = keys %{" + d + "};"
+                " my $__k = $__k[-1];"
+                " my $__v = delete " + d + "->{$__k};"
+                " [$__k, $__v] }"
+            )
+        if name == "MapFromKeys":
+            keys = self._a(args, 0)
+            val = self._a(args, 1)
+            return (
+                "do { my $__d = {};"
+                " $__d->{$_} = " + val + " for @{" + keys + "};"
+                " $__d }"
+            )
+        if name == "MapFromPairs":
+            pairs = self._a(args, 0)
+            return (
+                "do { my $__p = " + pairs + ";"
+                " my $__d = {};"
+                " $__d->{$_->[0]} = $_->[1] for @{$__p};"
+                " $__d }"
+            )
         if name == "Keys":
             return "[sort keys %{" + self._deref_safe(self._a(args, 0)) + "}]"
         if name == "Values":
