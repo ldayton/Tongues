@@ -642,6 +642,7 @@ class _PerlEmitter(Emitter):
         self.strict_math = strict_math
         self.strict_tostring = strict_tostring
         self._needs_float_repr: bool = False
+        self._needs_deep_eq: bool = False
         self.indent: int = 0
         self.lines: list[str] = []
         self.self_name: str | None = None
@@ -779,6 +780,30 @@ class _PerlEmitter(Emitter):
                         current_package = "main"
                     self._emit_fn(decl)
             need_blank = True
+        if self._needs_deep_eq:
+            if current_package != "main":
+                self._line()
+                self._line("package main;")
+                current_package = "main"
+            self._line()
+            self._line(
+                "sub _deep_eq {"
+                " my ($a, $b) = @_;"
+                " return 1 if !defined($a) && !defined($b);"
+                " return 0 if !defined($a) || !defined($b);"
+                " if (ref($a) eq 'ARRAY') {"
+                " return 0 if ref($b) ne 'ARRAY' || scalar(@$a) != scalar(@$b);"
+                " for my $i (0..$#$a) { return 0 unless _deep_eq($a->[$i], $b->[$i]) }"
+                " return 1 }"
+                " if (ref($a) eq 'HASH') {"
+                " return 0 if ref($b) ne 'HASH';"
+                " my @ka = sort keys %$a; my @kb = sort keys %$b;"
+                " return 0 if scalar(@ka) != scalar(@kb);"
+                " for my $k (@ka) { return 0 unless exists $b->{$k} && _deep_eq($a->{$k}, $b->{$k}) }"
+                " return 1 }"
+                " if (ref($a) && $a->can('__eq__')) { return $a->__eq__($b) }"
+                " return $a eq $b }"
+            )
         has_main = any(
             isinstance(d, TFnDecl) and d.name == "Main" for d in module.decls
         )
@@ -2269,6 +2294,25 @@ class _PerlEmitter(Emitter):
             return "!defined(" + self._expr(expr.right) + ")"
         if op == "!=" and isinstance(expr.left, TNilLit):
             return "defined(" + self._expr(expr.right) + ")"
+        if expr.annotations.get("struct_eq") == "true":
+            left_str = self._expr(expr.left)
+            right_str = self._expr(expr.right)
+            call = left_str + "->__eq__(" + right_str + ")"
+            if op == "!=":
+                return "!" + call
+            return call
+        if op in ("==", "!=") and (
+            self._is_list_expr(expr.left)
+            or self._is_map_expr(expr.left)
+            or self._is_set_expr(expr.left)
+        ):
+            self._needs_deep_eq = True
+            left_str = self._expr(expr.left)
+            right_str = self._expr(expr.right)
+            call = "_deep_eq(" + left_str + ", " + right_str + ")"
+            if op == "!=":
+                return "!" + call
+            return call
         perl_op = self._binary_op(op, expr.left, expr.right)
         left = self._maybe_paren(expr.left, perl_op, True)
         right = self._maybe_paren(expr.right, perl_op, False)
