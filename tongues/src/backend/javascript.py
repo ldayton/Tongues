@@ -3250,6 +3250,10 @@ class _JavaScriptEmitter(Emitter):
             if self.strict_math and self._is_int_list(args[0].value):
                 return self._a(args, 0) + ".reduce((a, b) => a + b, 0n)"
             return self._a(args, 0) + ".reduce((a, b) => a + b, 0)"
+        if name == "Zip":
+            a = self._a(args, 0)
+            b = self._a(args, 1)
+            return a + ".map((v, i) => [v, " + b + "[i]]).slice(0, Math.min(" + a + ".length, " + b + ".length))"
         if name == "All":
             return self._a(args, 0) + ".every(Boolean)"
         if name == "Any":

@@ -2787,6 +2787,8 @@ class _RubyEmitter(Emitter):
             return "[" + self._a(args, 0) + ", " + self._a(args, 1) + "].max"
         if name == "Sum":
             return self._a(args, 0) + ".sum"
+        if name == "Zip":
+            return self._a(args, 0) + ".zip(" + self._a(args, 1) + ")"
         if name == "All":
             return self._a(args, 0) + ".all?"
         if name == "Any":

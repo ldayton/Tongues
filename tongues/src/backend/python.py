@@ -2062,6 +2062,8 @@ class _PythonEmitter(Emitter):
             return "max(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Sum":
             return "sum(" + self._a(args, 0) + ")"
+        if name == "Zip":
+            return "list(zip(" + self._a(args, 0) + ", " + self._a(args, 1) + "))"
         if name == "All":
             return "all(" + self._a(args, 0) + ")"
         if name == "Any":
