@@ -2305,6 +2305,9 @@ class _PerlEmitter(Emitter):
             self._is_list_expr(expr.left)
             or self._is_map_expr(expr.left)
             or self._is_set_expr(expr.left)
+            or self._is_list_expr(expr.right)
+            or self._is_map_expr(expr.right)
+            or self._is_set_expr(expr.right)
         ):
             self._needs_deep_eq = True
             left_str = self._expr(expr.left)

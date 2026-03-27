@@ -1966,6 +1966,15 @@ class _JavaScriptEmitter(Emitter):
             return isinstance(typ, TListType)
         return isinstance(expr, TListLit)
 
+    def _is_tuple_expr(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann:
+            return ann.startswith("(") or ann.startswith("tuple[")
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TTupleType)
+        return isinstance(expr, TTupleLit)
+
     def _is_bytes_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
         if ann == "bytes":
@@ -2493,6 +2502,11 @@ class _JavaScriptEmitter(Emitter):
             self._is_list_expr(expr.left)
             or self._is_map_type(expr.left)
             or self._is_set_type(expr.left)
+            or self._is_tuple_expr(expr.left)
+            or self._is_list_expr(expr.right)
+            or self._is_map_type(expr.right)
+            or self._is_set_type(expr.right)
+            or self._is_tuple_expr(expr.right)
         ):
             self._needs_deep_eq = True
             left_str = self._expr(expr.left)
