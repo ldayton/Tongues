@@ -1561,6 +1561,18 @@ class _RubyEmitter(Emitter):
                 return self._expr(call.args[0].value), self._expr(call.args[1].value)
         return None, ""
 
+    def _partition_method(self, expr: TTernary) -> str | None:
+        """Detect whether a partition ternary uses Find or RFind."""
+        cond = expr.cond
+        if isinstance(cond, TBinaryOp) and cond.op == ">=" and isinstance(cond.left, TCall):
+            call = cond.left
+            if isinstance(call.func, TVar):
+                if call.func.name == "Find":
+                    return "partition"
+                if call.func.name == "RFind":
+                    return "rpartition"
+        return None
+
     def _delete_fix_args(
         self, expr: TTernary, func_name: str
     ) -> tuple[str | None, str]:
@@ -2040,6 +2052,12 @@ class _RubyEmitter(Emitter):
                 if s is not None:
                     method = "partition" if prov == "partition" else "rpartition"
                     return s + "." + method + "(" + sep + ")"
+            if prov is None or prov == "":
+                s, sep = self._partition_args(expr)
+                if s is not None:
+                    method = self._partition_method(expr)
+                    if method is not None:
+                        return s + "." + method + "(" + sep + ")"
             if prov == "removeprefix":
                 s, p = self._delete_fix_args(expr, "StartsWith")
                 if s is not None:
