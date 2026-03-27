@@ -442,6 +442,8 @@ class _JavaScriptEmitter(Emitter):
         self._needs_cp_index_of: bool = False
         self._needs_py_str: bool = False
         self._needs_py_repr: bool = False
+        self._needs_parse_float: bool = False
+        self._needs_py_str_float: bool = False
         self.fn_names: set[str] = set()
         self.var_annotations: dict[str, dict[str, str]] = {}
 
@@ -563,6 +565,14 @@ class _JavaScriptEmitter(Emitter):
             self._line("if (x === true) return \"True\";")
             self._line("if (x === false) return \"False\";")
             self._line("if (x === null || x === undefined) return \"None\";")
+            self._line("if (typeof x === \"number\") {")
+            self.indent += 1
+            self._line("if (x === Infinity) return \"inf\";")
+            self._line("if (x === -Infinity) return \"-inf\";")
+            self._line("if (Number.isNaN(x)) return \"nan\";")
+
+            self.indent -= 1
+            self._line("}")
             self._line("return String(x);")
             self.indent -= 1
             self._line("}")
@@ -574,7 +584,37 @@ class _JavaScriptEmitter(Emitter):
             self._line("if (x === false) return \"False\";")
             self._line("if (x === null || x === undefined) return \"None\";")
             self._line("if (typeof x === \"string\") return \"'\" + x + \"'\";")
+            self._line("if (typeof x === \"number\") {")
+            self.indent += 1
+            self._line("if (x === Infinity) return \"inf\";")
+            self._line("if (x === -Infinity) return \"-inf\";")
+            self._line("if (Number.isNaN(x)) return \"nan\";")
+
+            self.indent -= 1
+            self._line("}")
             self._line("return String(x);")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_py_str_float:
+            self._line()
+            self._line("function _pyStrFloat(x) {")
+            self.indent += 1
+            self._line("if (x === Infinity) return \"inf\";")
+            self._line("if (x === -Infinity) return \"-inf\";")
+            self._line("if (Number.isNaN(x)) return \"nan\";")
+            self._line("let s = String(x);")
+            self._line("if (!s.includes(\".\") && !s.includes(\"e\")) s += \".0\";")
+            self._line("return s;")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_parse_float:
+            self._line()
+            self._line("function _parseFloat(s) {")
+            self.indent += 1
+            self._line('if (s === "inf" || s === "Infinity") return Infinity;')
+            self._line('if (s === "-inf" || s === "-Infinity") return -Infinity;')
+            self._line('if (s === "nan" || s === "NaN") return NaN;')
+            self._line("return parseFloat(s);")
             self.indent -= 1
             self._line("}")
         has_main = any(
@@ -3273,12 +3313,18 @@ class _JavaScriptEmitter(Emitter):
                     )
             return "new Set(" + self._a(args, 0) + ")"
         if name == "ToString":
+            inner = args[0].value
+            if self._is_float_expr(inner):
+                self._needs_py_str_float = True
+                return "_pyStrFloat(" + self._a(args, 0) + ")"
             self._needs_py_str = True
             return "_pyStr(" + self._a(args, 0) + ")"
         if name == "ToRepr":
+            inner = args[0].value
+            if self._is_float_expr(inner):
+                self._needs_py_str_float = True
+                return "_pyStrFloat(" + self._a(args, 0) + ")"
             self._needs_py_repr = True
-            if self.strict_math:
-                return "_pyRepr(" + self._a(args, 0) + ")"
             return "_pyRepr(" + self._a(args, 0) + ")"
         if name == "ParseInt":
             base_expr = args[1].value
@@ -3296,7 +3342,8 @@ class _JavaScriptEmitter(Emitter):
                 )
             return "parseInt(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "ParseFloat":
-            return "parseFloat(" + self._a(args, 0) + ")"
+            self._needs_parse_float = True
+            return "_parseFloat(" + self._a(args, 0) + ")"
         if name == "FormatInt":
             return self._format_int(args)
         if name == "RuneFromInt":
