@@ -2064,6 +2064,10 @@ class _PythonEmitter(Emitter):
             return "sum(" + self._a(args, 0) + ")"
         if name == "Zip":
             return "list(zip(" + self._a(args, 0) + ", " + self._a(args, 1) + "))"
+        if name == "ListCompare":
+            a = self._a(args, 0)
+            b = self._a(args, 1)
+            return "(0 if " + a + " == " + b + " else (-1 if " + a + " < " + b + " else 1))"
         if name == "All":
             return "all(" + self._a(args, 0) + ")"
         if name == "Any":

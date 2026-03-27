@@ -3275,6 +3275,17 @@ class _PerlEmitter(Emitter):
             if self._is_set_expr(args[0].value):
                 return "(sum(keys %{" + self._deref_safe(self._a(args, 0)) + "}) // 0)"
             return "(sum(@{" + self._a(args, 0) + "}) // 0)"
+        if name == "ListCompare":
+            a = self._a(args, 0)
+            b = self._a(args, 1)
+            return (
+                "do { my @__a = @{" + a + "}; my @__b = @{" + b + "};"
+                " my $__r = 0;"
+                " for my $__i (0..($#__a < $#__b ? $#__a : $#__b))"
+                " { if ($__a[$__i] < $__b[$__i]) { $__r = -1; last }"
+                " elsif ($__a[$__i] > $__b[$__i]) { $__r = 1; last } }"
+                " $__r == 0 ? scalar(@__a) - scalar(@__b) : $__r }"
+            )
         if name == "Zip":
             a = self._a(args, 0)
             b = self._a(args, 1)

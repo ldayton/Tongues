@@ -1185,6 +1185,10 @@ def _synth_name_call(
                 elem = ft.element
             elif isinstance(ft, IteratorType):
                 elem = ft.element
+            elif isinstance(ft, SetType):
+                elem = ft.element
+            elif isinstance(ft, TupleType) and ft.elements:
+                elem = ft.elements[0]
             elif len(args) >= 2:
                 has_int = False
                 has_bool = False
@@ -1201,7 +1205,7 @@ def _synth_name_call(
             else:
                 elem = ft
             _synth_key_kwarg(node, elem, env, ctx)
-            if isinstance(ft, (SliceType, IteratorType)):
+            if isinstance(ft, (SliceType, IteratorType, SetType, TupleType)):
                 return elem
             if len(args) >= 2 and not is_any(elem):
                 return elem

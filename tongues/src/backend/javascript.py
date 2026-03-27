@@ -445,6 +445,7 @@ class _JavaScriptEmitter(Emitter):
         self._needs_parse_float: bool = False
         self._needs_py_str_float: bool = False
         self._needs_deep_eq: bool = False
+        self._needs_list_compare: bool = False
         self.fn_names: set[str] = set()
         self.var_annotations: dict[str, dict[str, str]] = {}
 
@@ -637,6 +638,20 @@ class _JavaScriptEmitter(Emitter):
             self._line("}")
             self._line("if (typeof a === \"object\" && typeof a.__eq__ === \"function\") return a.__eq__(b);")
             self._line("return false;")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_list_compare:
+            self._line()
+            self._line("function _listCompare(a, b) {")
+            self.indent += 1
+            self._line("const n = Math.min(a.length, b.length);")
+            self._line("for (let i = 0; i < n; i++) {")
+            self.indent += 1
+            self._line("if (a[i] < b[i]) return -1;")
+            self._line("if (a[i] > b[i]) return 1;")
+            self.indent -= 1
+            self._line("}")
+            self._line("return a.length - b.length;")
             self.indent -= 1
             self._line("}")
         if self._needs_parse_float:
@@ -3250,6 +3265,9 @@ class _JavaScriptEmitter(Emitter):
             if self.strict_math and self._is_int_list(args[0].value):
                 return self._a(args, 0) + ".reduce((a, b) => a + b, 0n)"
             return self._a(args, 0) + ".reduce((a, b) => a + b, 0)"
+        if name == "ListCompare":
+            self._needs_list_compare = True
+            return "_listCompare(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Zip":
             a = self._a(args, 0)
             b = self._a(args, 1)
