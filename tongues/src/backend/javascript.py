@@ -2929,6 +2929,13 @@ class _JavaScriptEmitter(Emitter):
                 + ")"
             )
         if name == "Pop":
+            if self._is_set_type(args[0].value):
+                s = self._a(args, 0)
+                return (
+                    "((s) => { const v = s.values().next().value; s.delete(v); return v; })("
+                    + s
+                    + ")"
+                )
             return self._a(args, 0) + ".pop()"
         if name == "PopAt":
             return self._a(args, 0) + ".splice(" + self._a(args, 1) + ", 1)[0]"
@@ -3519,9 +3526,23 @@ class _JavaScriptEmitter(Emitter):
             count = self._a(args, 1)
             if isinstance(inner, TListLit) and len(inner.elements) == 1:
                 return (
-                    "Array(" + count + ").fill(" + self._expr(inner.elements[0]) + ")"
+                    "Array(Math.max(0, "
+                    + count
+                    + ")).fill("
+                    + self._expr(inner.elements[0])
+                    + ")"
                 )
-            return self._a(args, 0) + ".repeat(" + count + ")"
+            if self._is_list_expr(inner):
+                return (
+                    "Array.from({length: Math.max(0, "
+                    + count
+                    + ")}, () => "
+                    + self._a(args, 0)
+                    + ").flat()"
+                )
+            return (
+                self._a(args, 0) + ".repeat(Math.max(0, " + count + "))"
+            )
         if name == "Format":
             return self._format_call(args)
         if name == "Assert":
