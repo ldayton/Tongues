@@ -124,10 +124,10 @@ for (let x of xs) {
 [...xs].sort((a, b) => Math.abs(a) - Math.abs(b));
 
 === min with key lambda
-xs.reduce((a, b) => [...a].length <= [...b].length ? a : b);
+xs.reduce((a, b) => _runes(a).length <= _runes(b).length ? a : b);
 
 === max with key lambda
-xs.reduce((a, b) => [...a].length >= [...b].length ? a : b);
+xs.reduce((a, b) => _runes(a).length >= _runes(b).length ? a : b);
 
 === for over Reversed list
 for (let x of [...xs].reverse()) {
