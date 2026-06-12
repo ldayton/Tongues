@@ -112,7 +112,7 @@ def run_inprocess(argv, stdin_data: "")
     $stdout = out
     $stderr = err
     $stdin = StringIO.new(stdin_data)
-    main
+    TONGUES_MAIN.call
   rescue SystemExit => e
     code = e.status
   rescue => e
@@ -981,6 +981,9 @@ rescue SyntaxError => e
   exit 1
 end
 t1 = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+# The transpiled harness also defines main (its self-test entrypoint) and
+# overwrites the compiler's on load; keep a reference to the compiler's.
+TONGUES_MAIN = method(:main)
 puts "Loaded in #{"%.1f" % (t1 - t0)}s"
 
 if via_vm_path

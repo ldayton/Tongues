@@ -300,6 +300,139 @@ def _scan_imports(
     return needs_fs, needs_process, needs_buffer
 
 
+def _rune_scan_stmt(stmt: TStmt, indexed: set[str], assigned: set[str]) -> None:
+    """Track string vars used in index/slice position and assignment targets."""
+    match stmt:
+        case TExprStmt():
+            _rune_scan_expr(stmt.expr, indexed)
+        case TLetStmt():
+            if stmt.value is not None:
+                _rune_scan_expr(stmt.value, indexed)
+        case TAssignStmt() | TOpAssignStmt():
+            if isinstance(stmt.target, TVar):
+                assigned.add(stmt.target.name)
+            else:
+                _rune_scan_expr(stmt.target, indexed)
+            _rune_scan_expr(stmt.value, indexed)
+        case TTupleAssignStmt():
+            for tgt in stmt.targets:
+                if isinstance(tgt, TVar):
+                    assigned.add(tgt.name)
+                else:
+                    _rune_scan_expr(tgt, indexed)
+            _rune_scan_expr(stmt.value, indexed)
+        case TReturnStmt():
+            if stmt.value is not None:
+                _rune_scan_expr(stmt.value, indexed)
+        case TThrowStmt():
+            _rune_scan_expr(stmt.expr, indexed)
+        case TIfStmt():
+            _rune_scan_expr(stmt.cond, indexed)
+            for s in stmt.then_body:
+                _rune_scan_stmt(s, indexed, assigned)
+            if stmt.else_body is not None:
+                for s in stmt.else_body:
+                    _rune_scan_stmt(s, indexed, assigned)
+        case TWhileStmt():
+            _rune_scan_expr(stmt.cond, indexed)
+            for s in stmt.body:
+                _rune_scan_stmt(s, indexed, assigned)
+        case TForStmt():
+            for b in stmt.binding:
+                assigned.add(b)
+            if isinstance(stmt.iterable, TRange):
+                for a in stmt.iterable.args:
+                    _rune_scan_expr(a, indexed)
+            else:
+                _rune_scan_expr(stmt.iterable, indexed)
+            for s in stmt.body:
+                _rune_scan_stmt(s, indexed, assigned)
+        case TMatchStmt():
+            _rune_scan_expr(stmt.expr, indexed)
+            for case in stmt.cases:
+                if isinstance(case.pattern, TPatternType):
+                    assigned.add(case.pattern.name)
+                for s in case.body:
+                    _rune_scan_stmt(s, indexed, assigned)
+            if stmt.default is not None:
+                for s in stmt.default.body:
+                    _rune_scan_stmt(s, indexed, assigned)
+        case TTryStmt():
+            for s in stmt.body:
+                _rune_scan_stmt(s, indexed, assigned)
+            for catch in stmt.catches:
+                assigned.add(catch.name)
+                for s in catch.body:
+                    _rune_scan_stmt(s, indexed, assigned)
+            if stmt.finally_body is not None:
+                for s in stmt.finally_body:
+                    _rune_scan_stmt(s, indexed, assigned)
+
+
+def _rune_scan_expr(expr: TExpr, indexed: set[str]) -> None:
+    match expr:
+        case TIndex():
+            if isinstance(expr.obj, TVar):
+                indexed.add(expr.obj.name)
+            _rune_scan_expr(expr.obj, indexed)
+            _rune_scan_expr(expr.index, indexed)
+        case TSlice():
+            if isinstance(expr.obj, TVar):
+                indexed.add(expr.obj.name)
+            _rune_scan_expr(expr.obj, indexed)
+            _rune_scan_expr(expr.low, indexed)
+            _rune_scan_expr(expr.high, indexed)
+        case TCall():
+            _rune_scan_expr(expr.func, indexed)
+            for a in expr.args:
+                _rune_scan_expr(a.value, indexed)
+        case TBinaryOp():
+            _rune_scan_expr(expr.left, indexed)
+            _rune_scan_expr(expr.right, indexed)
+        case TUnaryOp():
+            _rune_scan_expr(expr.operand, indexed)
+        case TTernary():
+            _rune_scan_expr(expr.cond, indexed)
+            _rune_scan_expr(expr.then_expr, indexed)
+            _rune_scan_expr(expr.else_expr, indexed)
+        case TFieldAccess() | TTupleAccess():
+            _rune_scan_expr(expr.obj, indexed)
+        case TListLit() | TTupleLit() | TSetLit():
+            for e in expr.elements:
+                _rune_scan_expr(e, indexed)
+        case TMapLit():
+            for k, v in expr.entries:
+                _rune_scan_expr(k, indexed)
+                _rune_scan_expr(v, indexed)
+        case TFnLit():
+            local_assigned: set[str] = set()
+            for s in expr.body:
+                _rune_scan_stmt(s, indexed, local_assigned)
+
+
+def _is_ident_char(ch: str) -> bool:
+    return ch.isalnum() or ch == "_" or ch == "$"
+
+
+def _replace_ident(text: str, name: str, repl: str) -> str:
+    """Replace whole-identifier occurrences of name in emitted JS text."""
+    out = ""
+    i = 0
+    n = len(text)
+    m = len(name)
+    while i < n:
+        if text[i : i + m] == name:
+            before_ok = i == 0 or not _is_ident_char(text[i - 1])
+            after_ok = i + m >= n or not _is_ident_char(text[i + m])
+            if before_ok and after_ok:
+                out += repl
+                i += m
+                continue
+        out += text[i]
+        i += 1
+    return out
+
+
 def _check_error_ref(expr: TExpr, refs: set[str], builtin_names: set[str]) -> None:
     if isinstance(expr, TCall):
         if isinstance(expr.func, TVar) and expr.func.name in builtin_names:
@@ -442,6 +575,9 @@ class _JavaScriptEmitter(Emitter):
         self._needs_cp_index_of: bool = False
         self.fn_names: set[str] = set()
         self.var_annotations: dict[str, dict[str, str]] = {}
+        # String params hoisted to rune arrays for O(1) codepoint indexing
+        self._rune_hoisted: dict[str, str] = {}
+        self._needs_rune_cache: bool = False
 
     def _line(self, text: str = "") -> None:
         _emit_line(self.lines, self.indent, text)
@@ -500,6 +636,9 @@ class _JavaScriptEmitter(Emitter):
             for pline in _STRICT_MATH_PREAMBLE.strip().split("\n"):
                 self._line(pline)
             self._line()
+        # The _runes helper must precede top-level lets, which evaluate
+        # during module load; emitted here by insertion once needed
+        rune_cache_pos = len(self.lines)
         declared_structs: set[str] = set()
         for decl in module.decls:
             if isinstance(decl, TStructDecl):
@@ -554,11 +693,26 @@ class _JavaScriptEmitter(Emitter):
             self._line("return i === -1 ? -1 : [...s.slice(0, i)].length;")
             self.indent -= 1
             self._line("}")
+        if self._needs_rune_cache:
+            helper = [
+                "// Memoized codepoint arrays for strings of unproven",
+                "// content; V8 caches string hashes so hits are O(1).",
+                "const _runeCache = new Map();",
+                "function _runes(s) {",
+                "    let a = _runeCache.get(s);",
+                "    if (a === undefined) { a = [...s]; _runeCache.set(s, a); }",
+                "    return a;",
+                "}",
+                "",
+            ]
+            self.lines = (
+                self.lines[0:rune_cache_pos] + helper + self.lines[rune_cache_pos:]
+            )
         if any(isinstance(d, TFnDecl) and d.name == "Main" for d in module.decls):
             self._line()
             self._line(
                 'if (typeof module !== "undefined" && '
-                "(require.main === module || require.main === undefined)) {"
+                '(require.main === module || module.id === "[stdin]")) {'
             )
             self.indent += 1
             self._line("main();")
@@ -711,7 +865,13 @@ class _JavaScriptEmitter(Emitter):
         )
         self._line("function " + fname + "(" + params + ") {")
         self.indent += 1
+        old_hoisted = self._rune_hoisted
+        self._rune_hoisted = self._collect_rune_hoists(decl)
+        for pname, arr in self._rune_hoisted.items():
+            self._needs_rune_cache = True
+            self._line("const " + arr + " = _runes(" + _restore_name(pname, {}) + ");")
         self._emit_stmts(decl.body)
+        self._rune_hoisted = old_hoisted
         self.indent -= 1
         self._line("}")
         self.var_types = old_var_types
@@ -738,7 +898,13 @@ class _JavaScriptEmitter(Emitter):
         old_self = self.self_name
         if decl.params and decl.params[0].typ is None:
             self.self_name = decl.params[0].name
+        old_hoisted = self._rune_hoisted
+        self._rune_hoisted = self._collect_rune_hoists(decl)
+        for pname, arr in self._rune_hoisted.items():
+            self._needs_rune_cache = True
+            self._line("const " + arr + " = _runes(" + _restore_name(pname, {}) + ");")
         self._emit_stmts(decl.body)
+        self._rune_hoisted = old_hoisted
         self.self_name = old_self
         self.indent -= 1
         self._line("}")
@@ -2243,7 +2409,11 @@ class _JavaScriptEmitter(Emitter):
             if self.strict_math and self._is_int_expr(expr.index):
                 idx = "Number(" + idx + ")"
             if self._is_string_expr(expr.obj) and self._needs_codepoint_ops(expr.obj):
-                return "[..." + self._expr(expr.obj) + "][" + idx + "]"
+                arr = self._rune_arr(expr.obj)
+                if arr is not None:
+                    return arr + "[" + idx + "]"
+                self._needs_rune_cache = True
+                return "_runes(" + self._expr(expr.obj) + ")[" + idx + "]"
             return self._expr(expr.obj) + "[" + idx + "]"
         if isinstance(expr, TSlice):
             return self._slice(expr)
@@ -2307,9 +2477,15 @@ class _JavaScriptEmitter(Emitter):
         if prov == "open_start" and self._is_zero(expr.low):
             low = "0"
         if self._is_string_expr(expr.obj) and self._needs_codepoint_ops(expr.obj):
+            arr = self._rune_arr(expr.obj)
+            if arr is not None:
+                if high == "":
+                    return arr + ".slice(" + low + ').join("")'
+                return arr + ".slice(" + low + ", " + high + ').join("")'
+            self._needs_rune_cache = True
             if high == "":
-                return "[..." + obj + "].slice(" + low + ').join("")'
-            return "[..." + obj + "].slice(" + low + ", " + high + ').join("")'
+                return "_runes(" + obj + ").slice(" + low + ').join("")'
+            return "_runes(" + obj + ").slice(" + low + ", " + high + ').join("")'
         if high == "":
             return obj + ".slice(" + low + ")"
         return obj + ".slice(" + low + ", " + high + ")"
@@ -2752,11 +2928,42 @@ class _JavaScriptEmitter(Emitter):
         if strings_ann:
             self.var_annotations[name] = strings_ann
 
+    def _collect_rune_hoists(self, decl: TFnDecl) -> dict[str, str]:
+        """String params that are indexed/sliced with unproven content and
+        never reassigned: alias the memoized rune array once at function
+        entry so codepoint indexing skips the cache lookup per access."""
+        param_names: set[str] = set()
+        for p in decl.params:
+            if isinstance(p.typ, TPrimitive) and p.typ.kind == "string":
+                param_names.add(p.name)
+        if not param_names:
+            return {}
+        indexed: set[str] = set()
+        assigned: set[str] = set()
+        for stmt in decl.body:
+            _rune_scan_stmt(stmt, indexed, assigned)
+        hoists: dict[str, str] = {}
+        for name in sorted(param_names & (indexed - assigned)):
+            ann = self.var_annotations.get(name, {})
+            if ann.get("strings.content", "") in ("ascii", "bmp"):
+                continue
+            hoists[name] = _restore_name(name, {}) + "__runes"
+        return hoists
+
+    def _rune_arr(self, expr: TExpr) -> str | None:
+        if isinstance(expr, TVar):
+            return self._rune_hoisted.get(expr.name)
+        return None
+
     def _needs_codepoint_ops(self, expr: TExpr) -> bool:
         if isinstance(expr, TVar):
             ann = self.var_annotations.get(expr.name, {})
             content = ann.get("strings.content", "")
-            return content == "unknown"
+            # Unproven content may hold astral codepoints: only ascii/bmp is
+            # safe for UTF-16 code-unit operations. Defaulting unannotated
+            # vars to code units while field accesses got codepoint ops mixed
+            # the two index spaces in one program (#377).
+            return content not in ("ascii", "bmp")
         if isinstance(expr, TStringLit):
             for ch in expr.value:
                 if ord(ch) > 0xFFFF:
@@ -3047,7 +3254,12 @@ class _JavaScriptEmitter(Emitter):
             if self._is_map_type(inner) or self._is_set_type(inner):
                 base = inner_str + ".size"
             elif self._is_string_expr(inner) and self._needs_codepoint_ops(inner):
-                base = "[..." + inner_str + "].length"
+                arr = self._rune_arr(inner)
+                if arr is not None:
+                    base = arr + ".length"
+                else:
+                    self._needs_rune_cache = True
+                    base = "_runes(" + inner_str + ").length"
             else:
                 base = inner_str + ".length"
             if self.strict_math:
@@ -3493,8 +3705,8 @@ class _JavaScriptEmitter(Emitter):
                 key_expr = self._expr(first.expr)
             else:
                 return "a"
-            key_a = key_expr.replace(pname, "a", 1)
-            key_b = key_expr.replace(pname, "b", 1)
+            key_a = _replace_ident(key_expr, pname, "a")
+            key_b = _replace_ident(key_expr, pname, "b")
             return key_a + " " + cmp_op + " " + key_b + " ? a : b"
         return "a"
 

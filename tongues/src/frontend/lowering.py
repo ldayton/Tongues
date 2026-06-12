@@ -112,6 +112,7 @@ from .types import (
     BOOL_TYPE,
     STR_TYPE,  # noqa: F401 — used by _collection_element_type (added on main)
     VOID_TYPE,
+    slice_indices,
     ANY_TYPE,
     combine_types,
     contains_any,
@@ -962,6 +963,8 @@ class _Env:
         self.hoisted_stmts: dict[str, TLetStmt] = {}
         self.isinstance_subs: dict[str, str] = {}
         self.pre_stmts: list[TStmt] = []
+        # In the sys.exit(main()) entrypoint, return values become exit codes
+        self.entry_exit_code: bool = False
 
     def copy(self) -> _Env:
         env = _Env()
@@ -975,6 +978,7 @@ class _Env:
             env.loop_bindings.add(lb)
         env.return_type = self.return_type
         env.hoisted_stmts = self.hoisted_stmts
+        env.entry_exit_code = self.entry_exit_code
         skeys = list(self.isinstance_subs.keys())
         for skey in skeys:
             env.isinstance_subs[skey] = self.isinstance_subs[skey]
@@ -3772,8 +3776,22 @@ def _lower_slice(
     upper_jv = slice_node.get("upper")
     step_jv = slice_node.get("step")
     has_step = step_jv is not None and not isinstance(step_jv, JNull)
-    is_bytes = _is_type_dict(obj_type, ["bytes"]) or _is_bytes_slice(obj_type)
-    if has_step and not isinstance(obj_type, TupleType) and not is_bytes:
+    if has_step and isinstance(obj_type, TupleType):
+        ok_lo, lo_c = _static_slice_part(lower_jv)
+        ok_hi, hi_c = _static_slice_part(upper_jv)
+        ok_st, st_c = _static_slice_part(step_jv)
+        if ok_lo and ok_hi and ok_st:
+            elems: list[TExpr] = []
+            for i in slice_indices(lo_c, hi_c, st_c, len(obj_type.elements)):
+                elems.append(TTupleAccess(pos, {}, obj, i))
+            return TTupleLit(pos, {}, elems)
+        ctx.errors.append(
+            LoweringError(
+                pos.line, pos.col, "tuple slice with step requires constant bounds"
+            )
+        )
+        return obj
+    if has_step:
         assert step_jv is not None
         return _lower_step_slice(
             pos, obj, obj_type, lower_jv, upper_jv, step_jv, env, ctx
@@ -3792,6 +3810,20 @@ def _lower_slice(
     return TSlice(pos, {}, obj, low, high)
 
 
+def _static_slice_part(jv: JsonValue | None) -> tuple[bool, int | None]:
+    """Extract a constant slice bound: (is_static, value); value None means absent."""
+    if jv is None or isinstance(jv, JNull):
+        return True, None
+    if isinstance(jv, JDict):
+        ci = _get_const_int(jv.entries)
+        if ci is not None:
+            return True, ci
+        neg = _is_neg_const(jv.entries)
+        if neg is not None:
+            return True, -neg
+    return False, None
+
+
 def _lower_step_slice(
     pos: Pos,
     obj: TExpr,
@@ -3804,11 +3836,12 @@ def _lower_step_slice(
 ) -> TExpr:
     """Lower a step-slice xs[a:b:c] into Reversed/Reverse or a hoisted for-loop."""
     is_string = _is_type_dict(obj_type, ["string"])
+    is_bytes = _is_type_dict(obj_type, ["bytes"]) or _is_bytes_slice(obj_type)
     no_lower = lower_jv is None or isinstance(lower_jv, JNull)
     no_upper = upper_jv is None or isinstance(upper_jv, JNull)
-    # xs[::-1] / s[::-1] → Reversed(xs) / Reverse(s)
+    # xs[::-1] / s[::-1] → Reversed(xs) / Reverse(s); no bytes equivalent exists
     step_entries = step_jv.entries if isinstance(step_jv, JDict) else None
-    if no_lower and no_upper and step_entries is not None:
+    if no_lower and no_upper and step_entries is not None and not is_bytes:
         neg = _is_neg_const(step_entries)
         if neg == 1:
             ann: Ann = {"provenance": "reversed_slice"}
@@ -3863,6 +3896,14 @@ def _lower_step_slice(
             pos, {}, result_var, _make_call(pos, "Concat", [result_var, idx_expr])
         )
         body: list[TStmt] = [append_stmt]
+    elif is_bytes:
+        # Widen elements to int like bytes for-loops do; every backend's
+        # BytesFrom accepts an int list
+        let_type = TListType(pos, TPrimitive(pos, "int"))
+        let_init = TListLit(pos, {}, [])
+        widened = _make_call(pos, "ByteToInt", [idx_expr])
+        append_call = _make_call(pos, "Append", [result_var, widened])
+        body = [TExprStmt(pos, {}, append_call)]
     else:
         elt_ttype = _elem_type_from_obj(pos, obj_type)
         let_type = TListType(pos, elt_ttype)
@@ -3871,10 +3912,14 @@ def _lower_step_slice(
         body = [TExprStmt(pos, {}, append_call)]
     let_stmt = TLetStmt(pos, {}, rname, let_type, let_init)
     range_expr = TRange(pos, {}, [start, end, step_expr])
-    for_ann: Ann = {"provenance": "step_slice"}
+    # No step_slice provenance for bytes: the accumulator is a list[byte]
+    # wrapped in BytesFrom, which backend slice reconstruction can't express
+    for_ann: Ann = {} if is_bytes else {"provenance": "step_slice"}
     for_stmt = TForStmt(pos, for_ann, [idx_name], range_expr, body)
     env.pre_stmts.append(let_stmt)
     env.pre_stmts.append(for_stmt)
+    if is_bytes:
+        return _make_call(pos, "BytesFrom", [result_var])
     return result_var
 
 
@@ -4774,6 +4819,12 @@ def _lower_return(node: ASTNode, env: _Env, ctx: _LowerCtx) -> list[TStmt]:
         return [TReturnStmt(pos, {}, None)]
     ret_type = env.return_type
     if isinstance(ret_type, PrimitiveType) and ret_type.kind == "void":
+        if env.entry_exit_code and isinstance(val_jv, JDict):
+            # sys.exit(main()): non-zero return values become exit codes
+            if _get_const_int(val_jv.entries) != 0:
+                code = _lower_expr(val_jv.entries, env, ctx)
+                exit_call = _make_call(pos, "Exit", [code])
+                return [TExprStmt(pos, {}, exit_call), TReturnStmt(pos, {}, None)]
         return [TReturnStmt(pos, {}, None)]
     if isinstance(val_jv, JDict):
         return_val = val_jv.entries
@@ -4929,22 +4980,18 @@ def _lower_tuple_assign(
             for at2 in arg_types:
                 if _is_type_dict(at2, ["float"]):
                     use_float = True
-            if use_float:
-                fa: list[TExpr] = []
-                for la2 in lowered_args:
-                    fa.append(la2)
-                a_expr = fa[0] if fa else lowered_args[0]
-                b_expr = fa[1] if len(fa) > 1 else lowered_args[1]
-                value = TTupleLit(
-                    pos,
-                    {},
-                    [
-                        _make_call(pos, "FloorDiv", [a_expr, b_expr]),
-                        _make_call(pos, "PythonMod", [a_expr, b_expr]),
-                    ],
-                )
-            else:
-                value = _make_call(pos, "DivMod", lowered_args)
+            # Python divmod floors for int and float alike; Taytsh DivMod
+            # truncates, so it cannot represent this
+            a_expr = lowered_args[0]
+            b_expr = lowered_args[1]
+            value = TTupleLit(
+                pos,
+                {},
+                [
+                    _make_call(pos, "FloorDiv", [a_expr, b_expr]),
+                    _make_call(pos, "PythonMod", [a_expr, b_expr]),
+                ],
+            )
             result_kind = "float" if use_float else "int"
             stmts: list[TStmt] = []
             targets: list[TExpr] = []
@@ -6544,6 +6591,7 @@ def _build_function(
     env: _Env,
     ctx: _LowerCtx,
     is_entry_point: bool,
+    entry_exit_code: bool = False,
 ) -> TFnDecl:
     """Build a TFnDecl from a FunctionDef node."""
     pos = _node_pos(node)
@@ -6555,6 +6603,14 @@ def _build_function(
     params: list[TParam] = []
     func_env = env.copy()
     func_env.hoisted_stmts = {}
+    # Propagate exit codes only from an int-returning main; a None-typed
+    # main under sys.exit() always exits 0
+    func_env.entry_exit_code = (
+        is_entry_point
+        and entry_exit_code
+        and func_info is not None
+        and _is_type_dict(func_info.return_type, ["int"])
+    )
     if func_info is not None:
         for p in func_info.params:
             if _is_non_zero_default(p.default_value):
@@ -7251,23 +7307,43 @@ def _build_module_constant(
     return None
 
 
-def _detect_entry_point(body: list[ASTNode]) -> str | None:
-    """Detect if __name__ == '__main__': main() pattern."""
+def _detect_entry_point(body: list[ASTNode]) -> tuple[str, bool] | None:
+    """Detect if __name__ == '__main__': main() pattern.
+
+    Returns (function name, propagate_exit_code) — the flag is True for the
+    sys.exit(main()) form, where main's return value becomes the exit code.
+
+    Project merge orders dependencies before the root file, and only the
+    root's guard runs when the program executes, so the last guard wins.
+    """
+    result: tuple[str, bool] | None = None
     for node in body:
         if _is_ast(node, "If"):
             test = get_node(node, "test")
             if _is_name_main_check(test):
-                if_body = get_nodes(node, "body")
-                if if_body:
-                    first = if_body[0]
-                    if _is_ast(first, "Expr"):
-                        val = get_node(first, "value")
-                        if _is_ast(val, "Call"):
-                            func = get_node(val, "func")
-                            if _is_ast(func, "Name"):
-                                return get_str(func, "id")
-                return "main"
-    return None
+                result = _entry_point_of_guard(node)
+    return result
+
+
+def _entry_point_of_guard(node: ASTNode) -> tuple[str, bool]:
+    """Extract (function name, propagate_exit_code) from a __main__ guard."""
+    for stmt in get_nodes(node, "body"):
+        if not _is_ast(stmt, "Expr"):
+            continue
+        val = get_node(stmt, "value")
+        if not _is_ast(val, "Call"):
+            continue
+        func = get_node(val, "func")
+        if _is_ast(func, "Name"):
+            return get_str(func, "id"), False
+        # sys.exit(main()): exit code comes from main's return
+        if _is_ast(func, "Attribute") and get_str(func, "attr") == "exit":
+            args = get_nodes(val, "args")
+            if args and _is_ast(args[0], "Call"):
+                inner = get_node(args[0], "func")
+                if _is_ast(inner, "Name"):
+                    return get_str(inner, "id"), True
+    return "main", True
 
 
 def _is_name_main_check(node: ASTNode) -> bool:
@@ -7296,7 +7372,9 @@ def _build_module(tree: ASTNode, ctx: _LowerCtx) -> TModule:
     """Build a TModule from the top-level AST."""
     body = get_nodes(tree, "body")
     decls: list[TModuleItem] = []
-    entry_point_func = _detect_entry_point(body)
+    entry_point = _detect_entry_point(body)
+    entry_point_func = entry_point[0] if entry_point is not None else None
+    entry_exit_code = entry_point[1] if entry_point is not None else False
     # Index class and function AST nodes
     for node in body:
         if _is_ast(node, "ClassDef"):
@@ -7322,7 +7400,7 @@ def _build_module(tree: ASTNode, ctx: _LowerCtx) -> TModule:
         if _is_ast(node, "FunctionDef"):
             fname = get_str(node, "name")
             is_entry = entry_point_func is not None and fname == entry_point_func
-            decls.append(_build_function(node, env, ctx, is_entry))
+            decls.append(_build_function(node, env, ctx, is_entry, entry_exit_code))
         elif _is_ast(node, "Assign") or _is_ast(node, "AnnAssign"):
             const_decl = _build_module_constant(node, constant_names, ctx)
             if const_decl is not None:

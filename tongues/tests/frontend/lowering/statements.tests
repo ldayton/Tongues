@@ -266,7 +266,7 @@ def f() -> int:
     a, b = divmod(10, 3)
     return a
 ---
-a, b = DivMod(10, 3)
+a, b = (FloorDiv(10, 3), PythonMod(10, 3))
 ---
 
 === tuple unpack from list pop into self attributes

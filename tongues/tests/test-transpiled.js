@@ -143,7 +143,7 @@ let runInprocess = function runInprocess(argv, stdinData) {
         return origReadFileSync.call(nodeFs, p, enc);
     };
     try {
-        main();
+        __tonguesMain();
     } catch (e) {
         if (e && e[exitSentinel]) {
             exitCode = e.code;
@@ -514,6 +514,13 @@ function runtimeAvailable(lang) {
 }
 
 // Set of "stem|target" combos expected to fail (see known-failures.txt)
+// VM mode skips the union of "<target>" and "<target>-vm" entries
+let _vmMode = false;
+function isKnownFailure(knownFailures, stem, target) {
+    if (knownFailures.has(`${stem}|${target}`)) return true;
+    return _vmMode && knownFailures.has(`${stem}|${target}-vm`);
+}
+
 function loadKnownFailures(testDir) {
     const path = nodePath.join(testDir, "known-failures.txt");
     const known = new Set();
@@ -559,7 +566,7 @@ function runAppTests(testDir) {
         }
         for (const target of available) {
             const testId = `${stem}[${target}]`;
-            if (knownFailures.has(`${stem}|${target}`)) {
+            if (isKnownFailure(knownFailures, stem, target)) {
                 results.push(["skip", testId, null]);
                 continue;
             }
@@ -841,7 +848,7 @@ function collectTests() {
                         });
                         for (const target of available) {
                             const testId = `${stem}[${target}]`;
-                            if (knownFailures.has(`${stem}|${target}`)) {
+                            if (isKnownFailure(knownFailures, stem, target)) {
                                 collected.push([phaseName, testId, "skip", null]);
                                 continue;
                             }
@@ -1071,8 +1078,12 @@ if (workerpool.isMainThread === false) {
     const harnessPath = process.env._TONGUES_HARNESS;
     const viaVmPath = process.env._TONGUES_VM || null;
     loadGlobal(transpiledPath);
+    // The transpiled harness also defines main (its self-test entrypoint)
+    // and overwrites the compiler's on load; keep a reference.
+    globalThis.__tonguesMain = globalThis.main;
     loadGlobal(harnessPath);
     if (viaVmPath) {
+        _vmMode = true;
         loadVmModule(viaVmPath);
         runInprocess = runVmInprocess;
     }
@@ -1138,6 +1149,9 @@ console.log(`Loading transpiled binary: ${transpiledPath}`);
 const t0 = Date.now();
 try {
     loadGlobal(transpiledPath);
+    // The transpiled harness also defines main (its self-test entrypoint)
+    // and overwrites the compiler's on load; keep a reference.
+    globalThis.__tonguesMain = globalThis.main;
 } catch (e) {
     process.stderr.write("Failed to load transpiled binary:\n");
     process.stderr.write(String(e).split("\n").slice(0, 5).join("\n") + "\n");
@@ -1153,6 +1167,7 @@ if (viaVmPath) {
     }
     console.log(`Loading VM module: ${viaVmPath}`);
     const vmT0 = Date.now();
+    _vmMode = true;
     loadVmModule(viaVmPath);
     console.log(`VM compiled in ${((Date.now() - vmT0) / 1000).toFixed(1)}s`);
     runInprocess = runVmInprocess;

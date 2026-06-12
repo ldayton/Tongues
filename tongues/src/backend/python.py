@@ -295,6 +295,22 @@ _MATH_BUILTINS = frozenset({"IsNaN", "IsInf", "Sqrt", "Floor", "Ceil"})
 
 _OS_BUILTINS = frozenset({"GetEnv"})
 
+# Built-in error structs whose Taytsh name differs from the Python name
+_ERROR_NAME_MAP = {"AssertError": "AssertionError"}
+
+# Builtin calls that emit as binary operator expressions, and the operator
+# they emit — used for precedence-aware parenthesization in _maybe_paren
+_CALL_OPS = {
+    "Union": "|",
+    "Intersection": "&",
+    "Difference": "-",
+    "Concat": "+",
+    "Repeat": "*",
+    "FloorDiv": "//",
+    "PythonMod": "%",
+    "Contains": "in",
+}
+
 
 def _scan_decl_builtins(decl: TDecl) -> tuple[bool, bool, bool]:
     """Scan a declaration for sys/math/os builtin usage."""
@@ -339,6 +355,9 @@ class _PythonEmitter(Emitter):
     ) -> None:
         self.struct_names = struct_names
         self.struct_fields = struct_fields
+        # Structs declared in the module (excludes implicit built-in errors),
+        # which must not be renamed by _ERROR_NAME_MAP
+        self.declared_structs: set[str] = set()
         self.strict_math = strict_math
         self.strict_tostring = strict_tostring
         self.indent: int = 0
@@ -370,6 +389,8 @@ class _PythonEmitter(Emitter):
         for decl in module.decls:
             if isinstance(decl, TLetStmt):
                 self.module_let_names.add(decl.name)
+            if isinstance(decl, TStructDecl):
+                self.declared_structs.add(decl.name)
         needs_sys, needs_dataclass, needs_field, needs_math, needs_os = _scan_imports(
             module
         )
@@ -1070,15 +1091,17 @@ class _PythonEmitter(Emitter):
     def _emit_divmod_assign(self, stmt: TTupleAssignStmt, unused: set[int]) -> None:
         call = stmt.value
         assert isinstance(call, TCall)
-        a = self._expr(call.args[0].value)
-        b = self._expr(call.args[1].value)
+        a_div = self._maybe_paren(call.args[0].value, "/", True)
+        b_div = self._maybe_paren(call.args[1].value, "/", False)
         q_target = self._expr(stmt.targets[0])
         if 1 in unused:
-            self._line(q_target + " = int(" + a + " / " + b + ")")
+            self._line(q_target + " = int(" + a_div + " / " + b_div + ")")
         else:
+            a_sub = self._maybe_paren(call.args[0].value, "-", True)
+            b_mul = self._maybe_paren(call.args[1].value, "*", False)
             r_target = self._expr(stmt.targets[1])
-            self._line(q_target + " = int(" + a + " / " + b + ")")
-            self._line(r_target + " = " + a + " - " + q_target + " * " + b)
+            self._line(q_target + " = int(" + a_div + " / " + b_div + ")")
+            self._line(r_target + " = " + a_sub + " - " + q_target + " * " + b_mul)
 
     def _emit_expr_stmt(self, stmt: TExprStmt) -> None:
         expr = stmt.expr
@@ -1350,7 +1373,10 @@ class _PythonEmitter(Emitter):
         types: list[str] = []
         for t in catch.types:
             if isinstance(t, TIdentType):
-                types.append(t.name)
+                name = t.name
+                if name in _ERROR_NAME_MAP and name not in self.declared_structs:
+                    name = _ERROR_NAME_MAP[name]
+                types.append(name)
             else:
                 types.append(self._type(t))
         if not types:
@@ -1447,6 +1473,8 @@ class _PythonEmitter(Emitter):
 
     def _pattern_type_name(self, typ: TType) -> str:
         if isinstance(typ, TIdentType):
+            if typ.name in _ERROR_NAME_MAP and typ.name not in self.declared_structs:
+                return _ERROR_NAME_MAP[typ.name]
             return typ.name
         return self._type(typ)
 
@@ -1652,9 +1680,9 @@ class _PythonEmitter(Emitter):
                 and expr.operand.annotations.get("provenance") == "not_in_operator"
             ):
                 return (
-                    self._a(expr.operand.args, 1)
+                    self._maybe_paren(expr.operand.args[1].value, "not in", True)
                     + " not in "
-                    + self._a(expr.operand.args, 0)
+                    + self._maybe_paren(expr.operand.args[0].value, "not in", False)
                 )
             py_op = "not "
             if isinstance(expr.operand, (TBinaryOp,)):
@@ -1727,6 +1755,16 @@ class _PythonEmitter(Emitter):
                 return "(" + self._expr(expr) + ")"
             if expr.op in ("-", "+") and parent_op == "**" and is_left:
                 return "(" + self._expr(expr) + ")"
+        elif isinstance(expr, TCall) and isinstance(expr.func, TVar):
+            # Builtins emitted as operator expressions need the same
+            # precedence treatment as native binary ops
+            child_op = _CALL_OPS.get(expr.func.name)
+            if (
+                child_op is not None
+                and expr.annotations.get("provenance") != "star_unpack"
+                and _needs_parens(child_op, parent_op, is_left)
+            ):
+                return "(" + self._expr(expr) + ")"
         return self._expr(expr)
 
     def _fn_lit(self, expr: TFnLit) -> str:
@@ -1783,6 +1821,13 @@ class _PythonEmitter(Emitter):
         # Builtin call
         if isinstance(func, TVar) and func.name in BUILTIN_NAMES:
             return self._builtin_call(func.name, args)
+        # Built-in error constructor whose Taytsh name differs from Python's
+        if (
+            isinstance(func, TVar)
+            and func.name in _ERROR_NAME_MAP
+            and func.name not in self.declared_structs
+        ):
+            return _ERROR_NAME_MAP[func.name] + "(" + self._join_args(args, ", ") + ")"
         # Struct constructor
         if isinstance(func, TVar) and func.name in self.struct_names:
             return self._struct_call(func.name, args)
@@ -1993,11 +2038,17 @@ class _PythonEmitter(Emitter):
         if name == "Delete":
             return self._a(args, 0) + ".pop(" + self._a(args, 1) + ", None)"
         if name == "Union":
-            return self._a(args, 0) + " | " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "|", True)
+            right = self._maybe_paren(args[1].value, "|", False)
+            return left + " | " + right
         if name == "Intersection":
-            return self._a(args, 0) + " & " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "&", True)
+            right = self._maybe_paren(args[1].value, "&", False)
+            return left + " & " + right
         if name == "Difference":
-            return self._a(args, 0) + " - " + self._a(args, 1)
+            left = self._maybe_paren(args[0].value, "-", True)
+            right = self._maybe_paren(args[1].value, "-", False)
+            return left + " - " + right
         if name == "Merge":
             return "{**" + self._a(args, 0) + ", **" + self._a(args, 1) + "}"
         if name == "Keys":
@@ -2062,22 +2113,12 @@ class _PythonEmitter(Emitter):
                 return "round(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
             return "round(" + self._a(args, 0) + ")"
         if name == "DivMod":
-            a = self._a(args, 0)
-            b = self._a(args, 1)
-            return (
-                "int("
-                + a
-                + " / "
-                + b
-                + "), "
-                + a
-                + " - int("
-                + a
-                + " / "
-                + b
-                + ") * "
-                + b
-            )
+            a_div = self._maybe_paren(args[0].value, "/", True)
+            b_div = self._maybe_paren(args[1].value, "/", False)
+            a_sub = self._maybe_paren(args[0].value, "-", True)
+            b_mul = self._maybe_paren(args[1].value, "*", False)
+            quot = "int(" + a_div + " / " + b_div + ")"
+            return quot + ", " + a_sub + " - " + quot + " * " + b_mul
         if name == "Sorted":
             if self.strict_math and self._is_float_list(args[0].value):
                 return "strict_sorted_f64(" + self._a(args, 0) + ")"
@@ -2221,7 +2262,9 @@ class _PythonEmitter(Emitter):
             right = self._maybe_paren(args[1].value, "**", is_left=False)
             return left + " ** " + right
         if name == "Contains":
-            return self._a(args, 1) + " in " + self._a(args, 0)
+            left = self._maybe_paren(args[1].value, "in", True)
+            right = self._maybe_paren(args[0].value, "in", False)
+            return left + " in " + right
         if name == "Concat":
             left = self._maybe_paren(args[0].value, "+", True)
             right = self._maybe_paren(args[1].value, "+", False)
@@ -2316,6 +2359,8 @@ class _PythonEmitter(Emitter):
         if isinstance(typ, TTupleType):
             return "tuple[" + self._join_types(typ.elements, ", ") + "]"
         if isinstance(typ, TIdentType):
+            if typ.name in _ERROR_NAME_MAP and typ.name not in self.declared_structs:
+                return _ERROR_NAME_MAP[typ.name]
             return typ.name
         if isinstance(typ, TOptionalType):
             return self._type(typ.inner) + " | None"
