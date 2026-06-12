@@ -4929,22 +4929,18 @@ def _lower_tuple_assign(
             for at2 in arg_types:
                 if _is_type_dict(at2, ["float"]):
                     use_float = True
-            if use_float:
-                fa: list[TExpr] = []
-                for la2 in lowered_args:
-                    fa.append(la2)
-                a_expr = fa[0] if fa else lowered_args[0]
-                b_expr = fa[1] if len(fa) > 1 else lowered_args[1]
-                value = TTupleLit(
-                    pos,
-                    {},
-                    [
-                        _make_call(pos, "FloorDiv", [a_expr, b_expr]),
-                        _make_call(pos, "PythonMod", [a_expr, b_expr]),
-                    ],
-                )
-            else:
-                value = _make_call(pos, "DivMod", lowered_args)
+            # Python divmod floors for int and float alike; Taytsh DivMod
+            # truncates, so it cannot represent this
+            a_expr = lowered_args[0]
+            b_expr = lowered_args[1]
+            value = TTupleLit(
+                pos,
+                {},
+                [
+                    _make_call(pos, "FloorDiv", [a_expr, b_expr]),
+                    _make_call(pos, "PythonMod", [a_expr, b_expr]),
+                ],
+            )
             result_kind = "float" if use_float else "int"
             stmts: list[TStmt] = []
             targets: list[TExpr] = []

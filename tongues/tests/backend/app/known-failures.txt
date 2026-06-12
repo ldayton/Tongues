@@ -1,9 +1,6 @@
 # Known-failing apptest/target combos: <apptest stem> <target> <issue> [nonstrict]
 # pytest marks these xfail (strict unless 'nonstrict'); the test-transpiled runners skip them.
 # Remove a line when its issue is fixed — a strict xfail that passes fails the suite.
-apptest_bools python #382
-apptest_sets python #382
-apptest_ints python #383
 apptest_bytes python #384
 apptest_tuples python #384
 apptest_dicts python #357
