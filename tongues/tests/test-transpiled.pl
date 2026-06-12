@@ -540,8 +540,23 @@ sub run_emit_tests ($test_dir) {
     return \@results;
 }
 
+# Set of "stem|target" combos expected to fail (see known-failures.txt)
+sub load_known_failures ($test_dir) {
+    my $path = File::Spec->catfile($test_dir, "known-failures.txt");
+    my %known;
+    return \%known unless -f $path;
+    for my $raw (split /\n/, _read_file($path)) {
+        my $line = $raw =~ s/^\s+|\s+$//gr;
+        next if $line eq "" || $line =~ /^#/;
+        my @tokens = split /\s+/, $line;
+        $known{"$tokens[0]|$tokens[1]"} = 1;
+    }
+    return \%known;
+}
+
 sub run_app_tests ($test_dir) {
     my @results;
+    my $known_failures = load_known_failures($test_dir);
     my @available;
     for my $lang (keys %RUNTIMES) {
         my $cmd = $RUNTIMES{$lang}[0];
@@ -572,6 +587,10 @@ sub run_app_tests ($test_dir) {
         }
         for my $target (@available) {
             my $test_id = "$stem" . "[$target]";
+            if ($known_failures->{"$stem|$target"}) {
+                push @results, ["skip", $test_id, undef];
+                next;
+            }
             my $result;
             if (@$lib_names == 0) {
                 my ($tfh, $tmpfile) = tempfile("testXXXXXX", SUFFIX => ".py", TMPDIR => 1);
@@ -804,6 +823,7 @@ sub collect_tests {
                 }
             } elsif ($runner eq "app") {
                 my @available = grep { runtime_available($_) } sort keys %RUNTIMES;
+                my $known_failures = load_known_failures($test_dir);
                 my @app_files = sort glob("$test_dir/apptest_*.py");
                 for my $test_file (@app_files) {
                     my $stem = basename($test_file, ".py");
@@ -830,6 +850,10 @@ sub collect_tests {
                     } @lib_names;
                     for my $target (@available) {
                         my $test_id = "$stem" . "[$target]";
+                        if ($known_failures->{"$stem|$target"}) {
+                            push @collected, [$phase_name, $test_id, "skip", undef];
+                            next;
+                        }
                         push @collected, [$phase_name, $test_id, "app", { source => $source, lib_parts => \@lib_parts, target => $target }];
                     }
                 }

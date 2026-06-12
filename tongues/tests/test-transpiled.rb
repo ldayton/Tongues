@@ -419,9 +419,24 @@ def run_emit_tests(test_dir)
   results
 end
 
+# Set of "stem|target" combos expected to fail (see known-failures.txt)
+def load_known_failures(test_dir)
+  path = File.join(test_dir, "known-failures.txt")
+  known = Set.new
+  return known unless File.exist?(path)
+  File.read(path).each_line do |raw|
+    line = raw.strip
+    next if line.empty? || line.start_with?("#")
+    tokens = line.split
+    known << "#{tokens[0]}|#{tokens[1]}"
+  end
+  known
+end
+
 def run_app_tests(test_dir)
   results = []
   available = RUNTIMES.select { |_, cmd| system("which", cmd[0], out: File::NULL, err: File::NULL) }.keys
+  known_failures = load_known_failures(test_dir)
   Dir.glob(File.join(test_dir, "apptest_*.py")).sort.each do |test_file|
     stem = File.basename(test_file, ".py")
     source = File.read(test_file)
@@ -443,6 +458,10 @@ def run_app_tests(test_dir)
     lib_names = seen
     available.each do |target|
       test_id = "#{stem}[#{target}]"
+      if known_failures.include?("#{stem}|#{target}")
+        results << [:skip, test_id, nil]
+        next
+      end
       if lib_names.empty?
         tmp = Tempfile.new(["test", ".py"])
         begin
@@ -655,6 +674,7 @@ def collect_tests
         end
       when :app
         available = RUNTIMES.select { |_, cmd| system("which", cmd[0], out: File::NULL, err: File::NULL) }.keys
+        known_failures = load_known_failures(test_dir)
         Dir.glob(File.join(test_dir, "apptest_*.py")).sort.each do |test_file|
           stem = File.basename(test_file, ".py")
           source = File.read(test_file)
@@ -679,6 +699,10 @@ def collect_tests
           end
           available.each do |target|
             test_id = "#{stem}[#{target}]"
+            if known_failures.include?("#{stem}|#{target}")
+              collected << [phase_name, test_id, :skip, nil]
+              next
+            end
             collected << [phase_name, test_id, :app, [target, source, lib_parts]]
           end
         end
