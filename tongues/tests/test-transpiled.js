@@ -514,6 +514,12 @@ function runtimeAvailable(lang) {
 }
 
 // Set of "stem|target" combos expected to fail (see known-failures.txt)
+// In VM mode entries use the pseudo-target "<target>-vm"
+let _vmMode = false;
+function knownFailureKey(stem, target) {
+    return `${stem}|${target}${_vmMode ? "-vm" : ""}`;
+}
+
 function loadKnownFailures(testDir) {
     const path = nodePath.join(testDir, "known-failures.txt");
     const known = new Set();
@@ -559,7 +565,7 @@ function runAppTests(testDir) {
         }
         for (const target of available) {
             const testId = `${stem}[${target}]`;
-            if (knownFailures.has(`${stem}|${target}`)) {
+            if (knownFailures.has(knownFailureKey(stem, target))) {
                 results.push(["skip", testId, null]);
                 continue;
             }
@@ -841,7 +847,7 @@ function collectTests() {
                         });
                         for (const target of available) {
                             const testId = `${stem}[${target}]`;
-                            if (knownFailures.has(`${stem}|${target}`)) {
+                            if (knownFailures.has(knownFailureKey(stem, target))) {
                                 collected.push([phaseName, testId, "skip", null]);
                                 continue;
                             }
@@ -1076,6 +1082,7 @@ if (workerpool.isMainThread === false) {
     globalThis.__tonguesMain = globalThis.main;
     loadGlobal(harnessPath);
     if (viaVmPath) {
+        _vmMode = true;
         loadVmModule(viaVmPath);
         runInprocess = runVmInprocess;
     }
@@ -1159,6 +1166,7 @@ if (viaVmPath) {
     }
     console.log(`Loading VM module: ${viaVmPath}`);
     const vmT0 = Date.now();
+    _vmMode = true;
     loadVmModule(viaVmPath);
     console.log(`VM compiled in ${((Date.now() - vmT0) / 1000).toFixed(1)}s`);
     runInprocess = runVmInprocess;

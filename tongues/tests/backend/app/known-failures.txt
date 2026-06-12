@@ -5,6 +5,7 @@ apptest_base64 java #391 nonstrict
 apptest_base64 javascript #391 nonstrict
 apptest_base64 ruby #391 nonstrict
 apptest_base64 taytsh #391 nonstrict
+apptest_bits javascript-vm #396 nonstrict
 apptest_bits perl #391 nonstrict
 apptest_bitset java #391 nonstrict
 apptest_bitset javascript #391 nonstrict
