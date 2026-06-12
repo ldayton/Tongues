@@ -777,6 +777,12 @@ class _PerlEmitter(Emitter):
                         current_package = "main"
                     self._emit_fn(decl)
             need_blank = True
+        if any(isinstance(d, TFnDecl) and d.name == "Main" for d in ordered):
+            if current_package != "main":
+                self._line()
+                self._line("package main;")
+            self._line()
+            self._line("main() unless caller;")
 
     def _emit_enum(self, decl: TEnumDecl) -> None:
         for i, variant in enumerate(decl.variants):
