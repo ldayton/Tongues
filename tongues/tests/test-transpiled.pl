@@ -90,6 +90,9 @@ sub get_cpu_count {
 # ---------------------------------------------------------------------------
 
 our $FORK_MODE = 0;
+# Set after loading the transpiled binary; the transpiled harness also
+# defines main (its self-test entrypoint) and overwrites the compiler's.
+our $TONGUES_MAIN;
 BEGIN {
     *CORE::GLOBAL::exit = sub {
         if ($FORK_MODE) {
@@ -166,7 +169,7 @@ sub run_inprocess ($argv, $stdin_data = "") {
         open(STDIN, "<", $in_file) or POSIX::_exit(99);
         @ARGV = @$argv;
         $FORK_MODE = 1;
-        eval { main() };
+        eval { $TONGUES_MAIN->() };
         if ($@) {
             my $err = $@;
             if (ref($err) && ref($err) eq 'HASH' || blessed($err)) {
@@ -1136,6 +1139,7 @@ if ($@) {
     exit 1;
 }
 my $t1 = time();
+$TONGUES_MAIN = \&main;
 printf("Loaded in %.1fs\n", $t1 - $t0);
 
 if (defined $via_vm_path) {

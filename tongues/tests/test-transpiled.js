@@ -143,7 +143,7 @@ let runInprocess = function runInprocess(argv, stdinData) {
         return origReadFileSync.call(nodeFs, p, enc);
     };
     try {
-        main();
+        __tonguesMain();
     } catch (e) {
         if (e && e[exitSentinel]) {
             exitCode = e.code;
@@ -1071,6 +1071,9 @@ if (workerpool.isMainThread === false) {
     const harnessPath = process.env._TONGUES_HARNESS;
     const viaVmPath = process.env._TONGUES_VM || null;
     loadGlobal(transpiledPath);
+    // The transpiled harness also defines main (its self-test entrypoint)
+    // and overwrites the compiler's on load; keep a reference.
+    globalThis.__tonguesMain = globalThis.main;
     loadGlobal(harnessPath);
     if (viaVmPath) {
         loadVmModule(viaVmPath);
@@ -1138,6 +1141,9 @@ console.log(`Loading transpiled binary: ${transpiledPath}`);
 const t0 = Date.now();
 try {
     loadGlobal(transpiledPath);
+    // The transpiled harness also defines main (its self-test entrypoint)
+    // and overwrites the compiler's on load; keep a reference.
+    globalThis.__tonguesMain = globalThis.main;
 } catch (e) {
     process.stderr.write("Failed to load transpiled binary:\n");
     process.stderr.write(String(e).split("\n").slice(0, 5).join("\n") + "\n");
