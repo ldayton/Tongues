@@ -7,7 +7,12 @@ import pytest
 from src.backend.taytsh import emit_taytsh
 from src.taytsh import parse as taytsh_parse
 from src.taytsh.vm import vm_run
-from tests.harness import TESTS_DIR, lower_to_taytsh, _transpile_with_emitter
+from tests.harness import (
+    TESTS_DIR,
+    load_known_failures,
+    lower_to_taytsh,
+    _transpile_with_emitter,
+)
 
 # fmt: off
 TESTS = {
@@ -42,13 +47,16 @@ def pytest_generate_tests(metafunc):
         run = cfg["run"]
         if run == "app" and "app_source" in metafunc.fixturenames:
             apps = sorted(test_dir.glob("apptest_*.py"))
+            known = load_known_failures(test_dir)
             params = []
             for path in apps:
-                marks = (
-                    [pytest.mark.xfail(strict=True)]
-                    if path.stem in _APP_XFAIL_VM
-                    else []
-                )
+                entry = known.get((path.stem, "taytsh"))
+                if path.stem in _APP_XFAIL_VM:
+                    marks = [pytest.mark.xfail(strict=True)]
+                elif entry is not None:
+                    marks = [pytest.mark.xfail(strict=entry[1], reason=entry[0])]
+                else:
+                    marks = []
                 params.append(pytest.param(path, id=path.stem, marks=marks))
             metafunc.parametrize("app_source", params)
         elif run == "ordering" and "ordering_source" in metafunc.fixturenames:

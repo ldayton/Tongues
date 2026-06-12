@@ -1,9 +1,10 @@
 # Known-failing apptest/target combos: <apptest stem> <target> <issue> [nonstrict]
-# pytest marks these xfail (strict unless 'nonstrict'); the test-transpiled runners skip them.
 # Remove a line when its issue is fixed — a strict xfail that passes fails the suite.
+# pytest marks these xfail (strict unless 'nonstrict'); the test-transpiled runners skip them.
 apptest_base64 java #391 nonstrict
 apptest_base64 javascript #391 nonstrict
 apptest_base64 ruby #391 nonstrict
+apptest_base64 taytsh #391 nonstrict
 apptest_bits perl #391 nonstrict
 apptest_bitset java #391 nonstrict
 apptest_bitset javascript #391 nonstrict
@@ -12,18 +13,22 @@ apptest_bools java #391 nonstrict
 apptest_bools javascript #391 nonstrict
 apptest_bools perl #391 nonstrict
 apptest_bools ruby #391 nonstrict
+apptest_bools taytsh #391 nonstrict
 apptest_bytearray javascript #391 nonstrict
 apptest_bytearray perl #391 nonstrict
 apptest_bytearray python #391 nonstrict
+apptest_bytearray taytsh #391 nonstrict
 apptest_bytes java #391 nonstrict
 apptest_bytes javascript #391 nonstrict
 apptest_bytes perl #391 nonstrict
 apptest_bytes python #391 nonstrict
 apptest_bytes ruby #391 nonstrict
+apptest_bytes taytsh #391 nonstrict
 apptest_chars java #391 nonstrict
 apptest_chars javascript #391 nonstrict
 apptest_chars perl #391 nonstrict
 apptest_chars ruby #391 nonstrict
+apptest_chars taytsh #391 nonstrict
 apptest_crc32 java #391 nonstrict
 apptest_crc32 javascript #391 nonstrict
 apptest_csv javascript #391 nonstrict
@@ -33,6 +38,7 @@ apptest_dicts javascript #391 nonstrict
 apptest_dicts perl #391 nonstrict
 apptest_dicts python #357
 apptest_dicts ruby #391 nonstrict
+apptest_dicts taytsh #391 nonstrict
 apptest_enums java #391 nonstrict
 apptest_enums javascript #391 nonstrict
 apptest_enums perl #391 nonstrict
@@ -42,6 +48,7 @@ apptest_floats java #391 nonstrict
 apptest_floats javascript #391 nonstrict
 apptest_floats perl #391 nonstrict
 apptest_floats ruby #391 nonstrict
+apptest_floats taytsh #391 nonstrict
 apptest_heap javascript #391 nonstrict
 apptest_heap perl #391 nonstrict
 apptest_hierarchy_kind python #388 nonstrict
@@ -52,43 +59,52 @@ apptest_json javascript #391 nonstrict
 apptest_json perl #391 nonstrict
 apptest_json python #387
 apptest_json ruby #391 nonstrict
+apptest_json taytsh #391 nonstrict
 apptest_lists java #391 nonstrict
 apptest_lists javascript #391 nonstrict
 apptest_lists perl #391 nonstrict
 apptest_lists python #386
 apptest_lists ruby #391 nonstrict
+apptest_lists taytsh #391 nonstrict
 apptest_none java #391 nonstrict
 apptest_none javascript #391 nonstrict
 apptest_none perl #391 nonstrict
 apptest_none ruby #391 nonstrict
+apptest_none taytsh #391 nonstrict
 apptest_percent_encode java #391 nonstrict
 apptest_sets java #391 nonstrict
 apptest_sets javascript #391 nonstrict
 apptest_sets perl #391 nonstrict
 apptest_sets python #391 nonstrict
 apptest_sets ruby #391 nonstrict
+apptest_sets taytsh #391 nonstrict
 apptest_sha256 java #391 nonstrict
 apptest_sha256 javascript #391 nonstrict
 apptest_sha256 perl #391 nonstrict
 apptest_sha256 ruby #391 nonstrict
+apptest_sha256 taytsh #391 nonstrict
 apptest_softfloat java #391 nonstrict
 apptest_softfloat javascript #391 nonstrict
 apptest_softfloat perl #389
+apptest_softfloat taytsh #391 nonstrict
 apptest_string_unicode java #391 nonstrict
 apptest_strings java #391 nonstrict
 apptest_strings javascript #391 nonstrict
 apptest_strings perl #391 nonstrict
 apptest_strings ruby #391 nonstrict
+apptest_strings taytsh #391 nonstrict
 apptest_structs javascript #391 nonstrict
 apptest_sub_interface_field javascript #391 nonstrict
 apptest_sub_interface_field perl #391 nonstrict
 apptest_sub_interface_field python #388 nonstrict
 apptest_sub_interface_field ruby #391 nonstrict
+apptest_sub_interface_field taytsh #391 nonstrict
 apptest_tuples java #391 nonstrict
 apptest_tuples javascript #391 nonstrict
 apptest_tuples perl #391 nonstrict
 apptest_tuples python #391 nonstrict
 apptest_tuples ruby #391 nonstrict
+apptest_tuples taytsh #391 nonstrict
 apptest_utf8 java #391 nonstrict
 apptest_utf8 javascript #391 nonstrict
 apptest_utf8 perl #391 nonstrict

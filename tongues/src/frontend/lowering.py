@@ -3897,9 +3897,12 @@ def _lower_step_slice(
         )
         body: list[TStmt] = [append_stmt]
     elif is_bytes:
-        let_type = TListType(pos, TPrimitive(pos, "byte"))
+        # Widen elements to int like bytes for-loops do; every backend's
+        # BytesFrom accepts an int list
+        let_type = TListType(pos, TPrimitive(pos, "int"))
         let_init = TListLit(pos, {}, [])
-        append_call = _make_call(pos, "Append", [result_var, idx_expr])
+        widened = _make_call(pos, "ByteToInt", [idx_expr])
+        append_call = _make_call(pos, "Append", [result_var, widened])
         body = [TExprStmt(pos, {}, append_call)]
     else:
         elt_ttype = _elem_type_from_obj(pos, obj_type)
@@ -6600,7 +6603,14 @@ def _build_function(
     params: list[TParam] = []
     func_env = env.copy()
     func_env.hoisted_stmts = {}
-    func_env.entry_exit_code = is_entry_point and entry_exit_code
+    # Propagate exit codes only from an int-returning main; a None-typed
+    # main under sys.exit() always exits 0
+    func_env.entry_exit_code = (
+        is_entry_point
+        and entry_exit_code
+        and func_info is not None
+        and _is_type_dict(func_info.return_type, ["int"])
+    )
     if func_info is not None:
         for p in func_info.params:
             if _is_non_zero_default(p.default_value):
@@ -7302,29 +7312,38 @@ def _detect_entry_point(body: list[ASTNode]) -> tuple[str, bool] | None:
 
     Returns (function name, propagate_exit_code) — the flag is True for the
     sys.exit(main()) form, where main's return value becomes the exit code.
+
+    Project merge orders dependencies before the root file, and only the
+    root's guard runs when the program executes, so the last guard wins.
     """
+    result: tuple[str, bool] | None = None
     for node in body:
         if _is_ast(node, "If"):
             test = get_node(node, "test")
             if _is_name_main_check(test):
-                for stmt in get_nodes(node, "body"):
-                    if not _is_ast(stmt, "Expr"):
-                        continue
-                    val = get_node(stmt, "value")
-                    if not _is_ast(val, "Call"):
-                        continue
-                    func = get_node(val, "func")
-                    if _is_ast(func, "Name"):
-                        return get_str(func, "id"), False
-                    # sys.exit(main()): exit code comes from main's return
-                    if _is_ast(func, "Attribute") and get_str(func, "attr") == "exit":
-                        args = get_nodes(val, "args")
-                        if args and _is_ast(args[0], "Call"):
-                            inner = get_node(args[0], "func")
-                            if _is_ast(inner, "Name"):
-                                return get_str(inner, "id"), True
-                return "main", True
-    return None
+                result = _entry_point_of_guard(node)
+    return result
+
+
+def _entry_point_of_guard(node: ASTNode) -> tuple[str, bool]:
+    """Extract (function name, propagate_exit_code) from a __main__ guard."""
+    for stmt in get_nodes(node, "body"):
+        if not _is_ast(stmt, "Expr"):
+            continue
+        val = get_node(stmt, "value")
+        if not _is_ast(val, "Call"):
+            continue
+        func = get_node(val, "func")
+        if _is_ast(func, "Name"):
+            return get_str(func, "id"), False
+        # sys.exit(main()): exit code comes from main's return
+        if _is_ast(func, "Attribute") and get_str(func, "attr") == "exit":
+            args = get_nodes(val, "args")
+            if args and _is_ast(args[0], "Call"):
+                inner = get_node(args[0], "func")
+                if _is_ast(inner, "Name"):
+                    return get_str(inner, "id"), True
+    return "main", True
 
 
 def _is_name_main_check(node: ASTNode) -> bool:
