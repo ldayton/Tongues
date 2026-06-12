@@ -23,6 +23,7 @@ from src.frontend.pycheck import (
 )
 from src.frontend.bind import run_bind, resolve_names, verify as verify_subset
 from src.frontend.parse import parse, stamp_uids
+from src.tongues import run_pipeline as _run_pipeline
 from src.frontend.types import JDict, JList, JStr, JInt, JFloat, JBool, JNull
 
 TONGUES_DIR = Path(__file__).parent.parent
@@ -235,6 +236,8 @@ from src.middleend.ownership import analyze_ownership
 from src.middleend.returns import analyze_returns
 from src.middleend.scope import analyze_scope
 from src.middleend.strings import analyze_strings
+from src.middleend.error_types import patch_error_types
+from src.middleend.int_width import analyze_int_width
 from src.taytsh import parse as taytsh_parse
 from src.taytsh.vm import (
     vm_run as taytsh_run,
@@ -1107,9 +1110,11 @@ def _transpile_with_emitter(
     if errors:
         return (None, str(errors[0]))
     try:
+        patch_error_types(module)
         analyze_returns(module, checker)
         analyze_scope(module, checker)
         analyze_liveness(module, checker)
+        analyze_int_width(module, checker)
         if lang in ("ruby", "javascript", "java"):
             analyze_strings(module, checker)
         return (emitter(module), None)
@@ -1153,71 +1158,19 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
             stderr = result.stderr.decode(errors="replace").strip()
             return (None, stderr.split("\n")[0] if stderr else "emit failed")
         return (result.stdout.decode(errors="replace"), None)
-    emitter = EMITTERS.get(lang)
-    if emitter is None:
-        return (None, f"no emitter for '{lang}'")
-    try:
-        ast_dict = parse(source)
-        stamp_uids(ast_dict)
-        bind_result = run_bind(ast_dict)
-        if not bind_result.subset_ok():
-            return (None, bind_result.subset_violations[0].message)
-        if not bind_result.names_ok():
-            return (None, bind_result.name_violations[0].message)
-        hier_result = build_hierarchy(
-            bind_result.known_classes, bind_result.class_bases
-        )
-        hier_errors = hier_result.errors()
-        if hier_errors:
-            return (None, str(hier_errors[0]))
-        tc_result = collect_types(
-            ast_dict,
-            bind_result.known_classes,
-            bind_result.node_classes,
-            bind_result.type_aliases,
-            bind_result.class_bases,
-            hier_result.hierarchy_roots,
-        )
-        tc_errors = tc_result.errors()
-        if tc_errors:
-            return (None, str(tc_errors[0]))
-        inf_result = _run_pycheck(
-            ast_dict,
-            tc_result,
-            hier_result,
-            bind_result.known_classes,
-            bind_result.class_bases,
-            bind_result.flow_graphs,
-        )
-        inf_errors = inf_result.errors()
-        if inf_errors:
-            return (None, str(inf_errors[0]))
-        from src.frontend.lowering import lower
+    import contextlib
+    import io as _io
 
-        module, lower_errors = lower(
-            ast_dict,
-            tc_result,
-            hier_result,
-            bind_result.known_classes,
-            bind_result.class_bases,
-            inf_result,
-            bind_result.known_funcs,
-        )
-        if lower_errors:
-            return (None, str(lower_errors[0]))
-        if module is None:
-            return (None, "lowering produced no module")
-        errors, checker = check_with_info(module)
-        if errors:
-            return (None, str(errors[0]))
-        analyze_returns(module, checker)
-        analyze_scope(module, checker)
-        analyze_liveness(module, checker)
-        if lang in ("ruby", "javascript", "java"):
-            analyze_strings(module, checker)
-        return (emitter(module), None)
+    stderr_buf = _io.StringIO()
+    try:
+        with contextlib.redirect_stderr(stderr_buf):
+            code, output = _run_pipeline(source, lang, None, False, False)
     except Exception as e:
         return (None, str(e))
+    if code != 0:
+        err = stderr_buf.getvalue().strip()
+        return (None, err.split("\n")[0] if err else "emit failed")
+    return (output, None)
 
 
 def transpile_app(source: str, target: str) -> tuple[str | None, str | None]:
@@ -1245,6 +1198,9 @@ def transpile_app(source: str, target: str) -> tuple[str | None, str | None]:
     emitter = EMITTERS.get(target)
     if emitter is None:
         return (None, f"no emitter for target '{target}'")
+    if not lib_names:
+        # Single-file apps go through the real CLI pipeline (#403)
+        return emit_from_python(source, target)
     # For lib imports, work directly with TModule to preserve default params
     if lib_names:
         try:

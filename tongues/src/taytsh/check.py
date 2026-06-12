@@ -983,6 +983,9 @@ BUILTIN_NAMES: set[str] = {
     "IsNil",
     # Type check
     "IsType",
+    # Aggregate predicates
+    "All",
+    "Any",
 }
 
 
@@ -3727,8 +3730,14 @@ class Checker:
                 t = _bctx_arg(ctx, 0)
                 if t is not None and isinstance(t, ListT):
                     return t.element
+                if t is not None and isinstance(t, SetT):
+                    return t.element
+                if t is not None and isinstance(t, TupleT) and t.elements:
+                    return t.elements[0]
                 if t is not None:
-                    self.error(name + " with 1 argument requires list", pos)
+                    self.error(
+                        name + " with 1 argument requires list, set, or tuple", pos
+                    )
                 return None
             if not _bctx_require(ctx, 2):
                 return None
@@ -3773,6 +3782,14 @@ class Checker:
                     "Sum requires list[int], list[float], set[int], or set[float]", pos
                 )
             return None
+        if name in ("All", "Any"):
+            if not _bctx_require(ctx, 1):
+                return None
+            t = _bctx_arg(ctx, 0)
+            if t is not None:
+                if not isinstance(t, (ListT, SetT, TupleT)):
+                    self.error(name + " requires list, set, or tuple", pos)
+            return BOOL_T
         if name == "Pow":
             if not _bctx_require(ctx, 2):
                 return None

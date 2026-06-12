@@ -2579,7 +2579,7 @@ def _lower_name_call(
     if fname == "len":
         if args and isinstance(args[0], dict):
             arg_type = _infer_expr_type(args[0], env, ctx)
-            if isinstance(arg_type, TupleType):
+            if isinstance(arg_type, TupleType) and not arg_type.variadic:
                 n = len(arg_type.elements)
                 return TIntLit(pos, {}, n, str(n))
             if _is_ast(args[0], "Tuple"):
@@ -2631,6 +2631,8 @@ def _lower_name_call(
             a0_type = get_str(args[0], "_type")
             if a0_type == "GeneratorExp" or a0_type == "ListComp":
                 return _lower_any_all(fname, args[0], env, ctx)
+            builtin_name = "Any" if fname == "any" else "All"
+            return _make_call(pos, builtin_name, [_lower_expr(args[0], env, ctx)])
         return TBoolLit(pos, {}, True)
     if fname == "print":
         return _lower_print_call(pos, args, keywords, env, ctx)
@@ -7078,13 +7080,28 @@ def _build_struct(
                 cls_info.init_params
             )
             for f in fields:
-                if f.has_default and f.name in init_defaults:
+                if f.name in init_defaults and f.name not in init_param_fields:
+                    if not f.has_default:
+                        f.has_default = True
                     expr = init_defaults[f.name]
                     if param_subs:
                         expr = _rename_vars(expr, param_subs)
                     f.default_expr = expr
-                    if f.name not in init_param_fields:
-                        f.body_computed = True
+                    f.body_computed = True
+                elif f.has_default and f.name in init_defaults:
+                    expr = init_defaults[f.name]
+                    if param_subs:
+                        expr = _rename_vars(expr, param_subs)
+                    f.default_expr = expr
+            # Re-sort: body-computed fields may have been promoted to has_default
+            required_f: list[TFieldDecl] = []
+            defaulted_f: list[TFieldDecl] = []
+            for f in fields:
+                if f.has_default:
+                    defaulted_f.append(f)
+                else:
+                    required_f.append(f)
+            fields = required_f + defaulted_f
     # Build methods — own + inherited from ancestors
     methods: list[TFnDecl] = []
     own_method_names: set[str] = set()

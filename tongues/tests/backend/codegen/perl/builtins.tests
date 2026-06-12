@@ -26,17 +26,17 @@ my $bin = sprintf('%b', 255);
 my $n = ord("A");
 
 === IsNaN and IsInf
-say(("" . (($x != $x) ? 1 : 0)));
-say(("" . (POSIX::isinf($y) ? 1 : 0)));
+say(((($x != $x) ? 1 : 0) ? 'True' : 'False'));
+say(((POSIX::isinf($y) ? 1 : 0) ? 'True' : 'False'));
 
 === Len on various types
 say(("" . length("hello")));
 
 === DivMod
-($q, $r) = (int(17 / 5), 17 - int(17 / 5) * 5);
+($q, $r) = (floor(17 / 5), 17 - floor(17 / 5) * 5);
 
 === DivMod negative dividend
-($q, $r) = (int(-7 / 2), -7 - int(-7 / 2) * 2);
+($q, $r) = (floor(-7 / 2), -7 - floor(-7 / 2) * 2);
 
 === Sqrt function
 my $x = sqrt(2.0);

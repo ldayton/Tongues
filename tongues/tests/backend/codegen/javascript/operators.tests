@@ -5,10 +5,10 @@ if (xs.includes(2))
 if (!xs.includes(2))
 
 === boolean operators
-console.log(String(a && b))
+console.log(_pyStr(a && b))
 
 === bitwise operators
-const y = x & 15
+const y = _and(x, 15)
 
 === compound assignment operators
 x += 5

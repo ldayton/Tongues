@@ -68,3 +68,13 @@ d.getOrDefault("a", 99)
 
 === list pop at index
 String first = xs.removeFirst();
+
+=== dict popitem
+_popItem(
+
+=== dict fromkeys
+.stream().collect(
+
+=== dict from pairs
+Collectors.toMap(
+

@@ -12,3 +12,4 @@ my ($class, $name, $SOUNDS) = @_;
 my $self = bless {}, $class;
 $self->{name} = defined $name ? $name : "";
 $self->{SOUNDS} = defined $SOUNDS ? $SOUNDS : $animal_sounds;
+

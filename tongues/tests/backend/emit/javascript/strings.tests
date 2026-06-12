@@ -11,7 +11,7 @@ s.trimStart()
 s.trimEnd()
 
 === fstring repr conversion
-JSON.stringify(x)
+_pyRepr(x)
 
 === fstring with backtick
 matching \`${c}'
@@ -29,10 +29,19 @@ s.slice(5).lastIndexOf("o")
 s.slice(2).split("a").length - 1
 
 === startswith with start position
-s.startsWith("world", 6)
+s.startsWith("world", [...s].slice(0, 6).join("").length)
 
 === rstrip newline
 .replace(/[\n]+$/, "")
+
+=== partition found
+indexOf(",")
+
+=== partition not found
+indexOf(",")
+
+=== rpartition found
+lastIndexOf(",")
 
 === astral string literal
 "\u{1f600}"

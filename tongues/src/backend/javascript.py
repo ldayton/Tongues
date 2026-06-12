@@ -573,6 +573,14 @@ class _JavaScriptEmitter(Emitter):
         self._struct_field_decls: dict[str, list[TFieldDecl]] = {}
         self._needs_read_all: bool = False
         self._needs_cp_index_of: bool = False
+        self._needs_py_str: bool = False
+        self._needs_py_repr: bool = False
+        self._needs_parse_float: bool = False
+        self._needs_py_str_float: bool = False
+        self._needs_deep_eq: bool = False
+        self._needs_list_compare: bool = False
+        self._needs_rshift: bool = False
+        self._needs_bitwise_helpers: bool = False
         self.fn_names: set[str] = set()
         self.var_annotations: dict[str, dict[str, str]] = {}
         # String params hoisted to rune arrays for O(1) codepoint indexing
@@ -691,6 +699,134 @@ class _JavaScriptEmitter(Emitter):
             self.indent += 1
             self._line("const i = s.lastIndexOf(sub);")
             self._line("return i === -1 ? -1 : [...s.slice(0, i)].length;")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_py_str:
+            self._line()
+            self._line("function _pyStr(x) {")
+            self.indent += 1
+            self._line('if (x === true) return "True";')
+            self._line('if (x === false) return "False";')
+            self._line('if (x === null || x === undefined) return "None";')
+            self._line('if (typeof x === "number") {')
+            self.indent += 1
+            self._line('if (x === Infinity) return "inf";')
+            self._line('if (x === -Infinity) return "-inf";')
+            self._line('if (Number.isNaN(x)) return "nan";')
+
+            self.indent -= 1
+            self._line("}")
+            self._line("return String(x);")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_py_repr:
+            self._line()
+            self._line("function _pyRepr(x) {")
+            self.indent += 1
+            self._line('if (x === true) return "True";')
+            self._line('if (x === false) return "False";')
+            self._line('if (x === null || x === undefined) return "None";')
+            self._line('if (typeof x === "string") return "\'" + x + "\'";')
+            self._line('if (typeof x === "number") {')
+            self.indent += 1
+            self._line('if (x === Infinity) return "inf";')
+            self._line('if (x === -Infinity) return "-inf";')
+            self._line('if (Number.isNaN(x)) return "nan";')
+
+            self.indent -= 1
+            self._line("}")
+            self._line("return String(x);")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_py_str_float:
+            self._line()
+            self._line("function _pyStrFloat(x) {")
+            self.indent += 1
+            self._line('if (x === Infinity) return "inf";')
+            self._line('if (x === -Infinity) return "-inf";')
+            self._line('if (Number.isNaN(x)) return "nan";')
+            self._line("let s = String(x);")
+            self._line('if (!s.includes(".") && !s.includes("e")) s += ".0";')
+            self._line("return s;")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_deep_eq:
+            self._line()
+            self._line("function _deepEq(a, b) {")
+            self.indent += 1
+            self._line("if (a === b) return true;")
+            self._line("if (a === null || b === null) return false;")
+            self._line("if (Array.isArray(a)) {")
+            self.indent += 1
+            self._line("if (!Array.isArray(b) || a.length !== b.length) return false;")
+            self._line(
+                "for (let i = 0; i < a.length; i++) { if (!_deepEq(a[i], b[i])) return false; }"
+            )
+            self._line("return true;")
+            self.indent -= 1
+            self._line("}")
+            self._line("if (a instanceof Map) {")
+            self.indent += 1
+            self._line("if (!(b instanceof Map) || a.size !== b.size) return false;")
+            self._line(
+                "for (const [k, v] of a) { if (!b.has(k) || !_deepEq(v, b.get(k))) return false; }"
+            )
+            self._line("return true;")
+            self.indent -= 1
+            self._line("}")
+            self._line("if (a instanceof Set) {")
+            self.indent += 1
+            self._line("if (!(b instanceof Set) || a.size !== b.size) return false;")
+            self._line("for (const v of a) { if (!b.has(v)) return false; }")
+            self._line("return true;")
+            self.indent -= 1
+            self._line("}")
+            self._line(
+                'if (typeof a === "object" && typeof a.__eq__ === "function") return a.__eq__(b);'
+            )
+            self._line("return false;")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_rshift:
+            self._line()
+            self._line("function _rshift(x, n) {")
+            self.indent += 1
+            self._line("return x >= 0 ? x >>> n : ~(~x >>> n);")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_bitwise_helpers:
+            self._line()
+            self._line(
+                "function _xor(a, b) { return (a >= 0 && b >= 0) ? (a ^ b) >>> 0 : a ^ b; }"
+            )
+            self._line(
+                "function _or(a, b) { return (a >= 0 && b >= 0) ? (a | b) >>> 0 : a | b; }"
+            )
+            self._line(
+                "function _and(a, b) { return (a >= 0 && b >= 0) ? (a & b) >>> 0 : a & b; }"
+            )
+        if self._needs_list_compare:
+            self._line()
+            self._line("function _listCompare(a, b) {")
+            self.indent += 1
+            self._line("const n = Math.min(a.length, b.length);")
+            self._line("for (let i = 0; i < n; i++) {")
+            self.indent += 1
+            self._line("if (a[i] < b[i]) return -1;")
+            self._line("if (a[i] > b[i]) return 1;")
+            self.indent -= 1
+            self._line("}")
+            self._line("return a.length - b.length;")
+            self.indent -= 1
+            self._line("}")
+        if self._needs_parse_float:
+            self._line()
+            self._line("function _parseFloat(s) {")
+            self.indent += 1
+            self._line('if (s === "inf" || s === "Infinity") return Infinity;')
+            self._line('if (s === "-inf" || s === "-Infinity") return -Infinity;')
+            self._line('if (s === "nan" || s === "NaN") return NaN;')
+            self._line("return parseFloat(s);")
             self.indent -= 1
             self._line("}")
         if self._needs_rune_cache:
@@ -812,6 +948,11 @@ class _JavaScriptEmitter(Emitter):
                 self._emit_field_assign(fld, safe)
             old_self = self.self_name
             self.self_name = "this"
+            for pf in param_fields:
+                if pf.typ is not None:
+                    self.var_types[pf.name] = pf.typ
+                    if isinstance(pf.typ, TPrimitive) and pf.typ.kind == "string":
+                        self.var_annotations[pf.name] = {"strings.content": "unknown"}
             for fld in body_fields:
                 safe = _safe_name(fld.name)
                 if fld.default_expr is not None:
@@ -2041,6 +2182,25 @@ class _JavaScriptEmitter(Emitter):
             return isinstance(typ, TListType)
         return isinstance(expr, TListLit)
 
+    def _is_tuple_expr(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann:
+            return ann.startswith("(") or ann.startswith("tuple[")
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            return isinstance(typ, TTupleType)
+        return isinstance(expr, TTupleLit)
+
+    def _is_struct_expr(self, expr: TExpr) -> bool:
+        ann: str = expr.annotations.get("type", "")
+        if ann and ann in self.struct_names:
+            return True
+        if isinstance(expr, TVar):
+            typ = self.var_types.get(expr.name)
+            if isinstance(typ, TIdentType) and typ.name in self.struct_names:
+                return True
+        return False
+
     def _is_bytes_expr(self, expr: TExpr) -> bool:
         ann: str = expr.annotations.get("type", "")
         if ann == "bytes":
@@ -2574,6 +2734,58 @@ class _JavaScriptEmitter(Emitter):
             if op == "!=":
                 return "!" + call
             return call
+        if op in ("==", "!=") and (
+            self._is_list_expr(expr.left)
+            or self._is_map_type(expr.left)
+            or self._is_set_type(expr.left)
+            or self._is_tuple_expr(expr.left)
+            or self._is_struct_expr(expr.left)
+            or self._is_list_expr(expr.right)
+            or self._is_map_type(expr.right)
+            or self._is_set_type(expr.right)
+            or self._is_tuple_expr(expr.right)
+            or self._is_struct_expr(expr.right)
+        ):
+            self._needs_deep_eq = True
+            left_str = self._expr(expr.left)
+            right_str = self._expr(expr.right)
+            call = "_deepEq(" + left_str + ", " + right_str + ")"
+            if op == "!=":
+                return "!" + call
+            return call
+        if op in (">>", "^", "|", "&") and not self.strict_math:
+            if op == ">>":
+                self._needs_rshift = True
+                return (
+                    "_rshift("
+                    + self._expr(expr.left)
+                    + ", "
+                    + self._expr(expr.right)
+                    + ")"
+                )
+            if op == "^":
+                self._needs_bitwise_helpers = True
+                return (
+                    "_xor("
+                    + self._expr(expr.left)
+                    + ", "
+                    + self._expr(expr.right)
+                    + ")"
+                )
+            if op == "|":
+                self._needs_bitwise_helpers = True
+                return (
+                    "_or(" + self._expr(expr.left) + ", " + self._expr(expr.right) + ")"
+                )
+            if op == "&":
+                self._needs_bitwise_helpers = True
+                return (
+                    "_and("
+                    + self._expr(expr.left)
+                    + ", "
+                    + self._expr(expr.right)
+                    + ")"
+                )
         js_op = op
         if op == "==":
             js_op = "==="
@@ -3019,6 +3231,13 @@ class _JavaScriptEmitter(Emitter):
                 + ")"
             )
         if name == "Pop":
+            if self._is_set_type(args[0].value):
+                s = self._a(args, 0)
+                return (
+                    "((s) => { const v = s.values().next().value; s.delete(v); return v; })("
+                    + s
+                    + ")"
+                )
             return self._a(args, 0) + ".pop()"
         if name == "PopAt":
             return self._a(args, 0) + ".splice(" + self._a(args, 1) + ", 1)[0]"
@@ -3144,14 +3363,23 @@ class _JavaScriptEmitter(Emitter):
                     + ")"
                 )
             if len(args) == 3:
-                return (
-                    self._a(args, 0)
-                    + ".startsWith("
-                    + self._a(args, 1)
-                    + ", "
-                    + self._a(args, 2)
-                    + ")"
-                )
+                s = self._a(args, 0)
+                prefix = self._a(args, 1)
+                start = self._a(args, 2)
+                if self._is_string_expr(args[0].value) and self._needs_codepoint_ops(
+                    args[0].value
+                ):
+                    return (
+                        s
+                        + ".startsWith("
+                        + prefix
+                        + ", [..."
+                        + s
+                        + "].slice(0, "
+                        + start
+                        + ').join("").length)'
+                    )
+                return s + ".startsWith(" + prefix + ", " + start + ")"
             return self._a(args, 0) + ".startsWith(" + self._a(args, 1) + ")"
         if name == "EndsWith":
             if len(args) >= 3:
@@ -3215,6 +3443,22 @@ class _JavaScriptEmitter(Emitter):
                 + self._map_key_for(args[0].value, args[1].value)
                 + ")"
             )
+        if name == "PopItem":
+            d = self._a(args, 0)
+            return (
+                "((d) => { const k = [...d.keys()].pop();"
+                " const v = d.get(k); d.delete(k); return [k, v]; })(" + d + ")"
+            )
+        if name == "MapFromKeys":
+            return (
+                "new Map("
+                + self._a(args, 0)
+                + ".map(k => [k, "
+                + self._a(args, 1)
+                + "]))"
+            )
+        if name == "MapFromPairs":
+            return "new Map(" + self._a(args, 0) + ")"
         if name == "Union":
             return "new Set([..." + self._a(args, 0) + ", ..." + self._a(args, 1) + "])"
         if name == "Intersection":
@@ -3326,6 +3570,26 @@ class _JavaScriptEmitter(Emitter):
             if self.strict_math and self._is_int_list(args[0].value):
                 return self._a(args, 0) + ".reduce((a, b) => a + b, 0n)"
             return self._a(args, 0) + ".reduce((a, b) => a + b, 0)"
+        if name == "ListCompare":
+            self._needs_list_compare = True
+            return "_listCompare(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+        if name == "Zip":
+            a = self._a(args, 0)
+            b = self._a(args, 1)
+            return (
+                a
+                + ".map((v, i) => [v, "
+                + b
+                + "[i]]).slice(0, Math.min("
+                + a
+                + ".length, "
+                + b
+                + ".length))"
+            )
+        if name == "All":
+            return self._a(args, 0) + ".every(Boolean)"
+        if name == "Any":
+            return self._a(args, 0) + ".some(Boolean)"
         if name == "Round":
             return "Math.round(" + self._a(args, 0) + ")"
         if name == "DivMod":
@@ -3466,15 +3730,19 @@ class _JavaScriptEmitter(Emitter):
                     )
             return "new Set(" + self._a(args, 0) + ")"
         if name == "ToString":
-            return "String(" + self._a(args, 0) + ")"
+            inner = args[0].value
+            if self._is_float_expr(inner):
+                self._needs_py_str_float = True
+                return "_pyStrFloat(" + self._a(args, 0) + ")"
+            self._needs_py_str = True
+            return "_pyStr(" + self._a(args, 0) + ")"
         if name == "ToRepr":
-            if self.strict_math:
-                return (
-                    "JSON.stringify("
-                    + self._a(args, 0)
-                    + ', (_, v) => typeof v === "bigint" ? Number(v) : v)'
-                )
-            return "JSON.stringify(" + self._a(args, 0) + ")"
+            inner = args[0].value
+            if self._is_float_expr(inner):
+                self._needs_py_str_float = True
+                return "_pyStrFloat(" + self._a(args, 0) + ")"
+            self._needs_py_repr = True
+            return "_pyRepr(" + self._a(args, 0) + ")"
         if name == "ParseInt":
             base_expr = args[1].value
             if isinstance(base_expr, TIntLit) and base_expr.value == 0:
@@ -3491,7 +3759,8 @@ class _JavaScriptEmitter(Emitter):
                 )
             return "parseInt(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "ParseFloat":
-            return "parseFloat(" + self._a(args, 0) + ")"
+            self._needs_parse_float = True
+            return "_parseFloat(" + self._a(args, 0) + ")"
         if name == "FormatInt":
             return self._format_int(args)
         if name == "RuneFromInt":
@@ -3589,6 +3858,15 @@ class _JavaScriptEmitter(Emitter):
                 )
             if self._is_set_type(inner):
                 return self._a(args, 0) + ".has(" + self._a(args, 1) + ")"
+            elem = args[1].value
+            if self._is_struct_expr(elem) or self._is_tuple_expr(elem):
+                self._needs_deep_eq = True
+                return (
+                    self._a(args, 0)
+                    + ".some(__x => _deepEq(__x, "
+                    + self._a(args, 1)
+                    + "))"
+                )
             return self._a(args, 0) + ".includes(" + self._a(args, 1) + ")"
         if name == "Concat":
             if self._is_bytes_expr(args[0].value):
@@ -3609,9 +3887,21 @@ class _JavaScriptEmitter(Emitter):
             count = self._a(args, 1)
             if isinstance(inner, TListLit) and len(inner.elements) == 1:
                 return (
-                    "Array(" + count + ").fill(" + self._expr(inner.elements[0]) + ")"
+                    "Array(Math.max(0, "
+                    + count
+                    + ")).fill("
+                    + self._expr(inner.elements[0])
+                    + ")"
                 )
-            return self._a(args, 0) + ".repeat(" + count + ")"
+            if self._is_list_expr(inner):
+                return (
+                    "Array.from({length: Math.max(0, "
+                    + count
+                    + ")}, () => "
+                    + self._a(args, 0)
+                    + ").flat()"
+                )
+            return self._a(args, 0) + ".repeat(Math.max(0, " + count + "))"
         if name == "Format":
             return self._format_call(args)
         if name == "Assert":

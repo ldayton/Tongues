@@ -54,3 +54,13 @@ d.get("a", 99)
 
 === list pop at index
 first: str = xs.pop(0)
+
+=== dict popitem
+d.popitem()
+
+=== dict fromkeys
+dict.fromkeys(keys, 0)
+
+=== dict from pairs
+dict(pairs)
+

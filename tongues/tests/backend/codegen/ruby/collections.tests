@@ -71,10 +71,10 @@ r = xs.reverse
 s = xs.sort
 
 === Sum on list
-puts(xs.sum.to_s)
+puts(_py_str(xs.sum))
 
 === negative index via Len subtraction
-puts(xs[xs.length - 1].to_s)
+puts(_py_str(xs[xs.length - 1]))
 
 === open-end slice
 tail = xs[1...xs.length]

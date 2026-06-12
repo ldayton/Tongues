@@ -3,14 +3,14 @@ const p = new Point(1, 2);
 
 === struct method call
 c.inc();
-console.log(String(c.value()));
+console.log(_pyStr(c.value()));
 
 === field assignment
 p.x = 10;
 p.y = 20;
 
 === nested struct access
-console.log(String(o.inner.value));
+console.log(_pyStr(o.inner.value));
 
 === struct with interface field
 return eval_(b.left) + eval_(b.right);

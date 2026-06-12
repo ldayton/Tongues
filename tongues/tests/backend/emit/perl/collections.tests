@@ -54,3 +54,13 @@ exists $d->{"a"} ? $d->{"a"} : 99
 
 === list pop at index
 my $first = splice(@{$xs}, 0, 1);
+
+=== dict popitem
+delete $d->{
+
+=== dict fromkeys
+$_} =
+
+=== dict from pairs
+$_->[0]} = $_->[1]
+

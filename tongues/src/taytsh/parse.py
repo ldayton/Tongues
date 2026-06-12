@@ -413,7 +413,15 @@ class Parser:
             self.advance()
             default_expr = self.parse_expr()
             has_default = True
-        return TFieldDecl(pos, name_tok.value, typ, has_default, False, default_expr)
+        body_computed = False
+        if default_expr is not None and not isinstance(
+            default_expr,
+            (TIntLit, TFloatLit, TStringLit, TBoolLit, TNilLit, TBytesLit, TRuneLit),
+        ):
+            body_computed = True
+        return TFieldDecl(
+            pos, name_tok.value, typ, has_default, False, default_expr, body_computed
+        )
 
     def parse_interface_decl(self) -> TInterfaceDecl:
         pos = self._pos()

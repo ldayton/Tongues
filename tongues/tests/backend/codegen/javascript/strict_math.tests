@@ -1,58 +1,58 @@
 === checked int add
 const c = checked_add_i64(a, b);
-console.log(String(c));
+console.log(_pyStr(c));
 
 === checked int sub
 const c = checked_sub_i64(a, b);
-console.log(String(c));
+console.log(_pyStr(c));
 
 === checked int mul
 const c = checked_mul_i64(a, b);
-console.log(String(c));
+console.log(_pyStr(c));
 
 === checked int negate
 const y = checked_neg_i64(x);
-console.log(String(y));
+console.log(_pyStr(y));
 
 === checked left shift
 const y = checked_shl_i64(x, 4n);
-console.log(String(y));
+console.log(_pyStr(y));
 
 === checked right shift
 const y = checked_shr_i64(x, 4n);
-console.log(String(y));
+console.log(_pyStr(y));
 
 === logical right shift
 const y = logical_shr_i64(x, 1n);
-console.log(String(y));
+console.log(_pyStr(y));
 
 === wrapping add
 const b = wrappingAdd(a, 1n);
-console.log(String(b));
+console.log(_pyStr(b));
 
 === wrapping sub
 const b = wrappingSub(min, 1n);
-console.log(String(b));
+console.log(_pyStr(b));
 
 === wrapping mul
 const b = wrappingMul(max, 2n);
-console.log(String(b));
+console.log(_pyStr(b));
 
 === checked pow
 const x = checked_pow_i64(2n, 10n);
-console.log(String(x));
+console.log(_pyStr(x));
 
 === checked int compound add
 x = checked_add_i64(x, 5n);
-console.log(String(x));
+console.log(_pyStr(x));
 
 === checked int compound sub
 x = checked_sub_i64(x, 3n);
-console.log(String(x));
+console.log(_pyStr(x));
 
 === checked int compound mul
 x = checked_mul_i64(x, 3n);
-console.log(String(x));
+console.log(_pyStr(x));
 
 === float mod by zero traps
 let caught = false;
@@ -61,17 +61,17 @@ try {
 } catch (_) {
     caught = true;
 }
-console.log(String(caught));
+console.log(_pyStr(caught));
 
 === min with nan propagates
 const nan = NaN;
 const x = strict_min_f64(nan, 1.0);
-console.log(String(Number.isNaN(x)));
+console.log(_pyStr(Number.isNaN(x)));
 
 === max with nan propagates
 const nan = NaN;
 const x = strict_max_f64(nan, 1.0);
-console.log(String(Number.isNaN(x)));
+console.log(_pyStr(Number.isNaN(x)));
 
 === sorted with nan traps
 const nan = NaN;
@@ -81,11 +81,11 @@ try {
 } catch (_) {
     caught = true;
 }
-console.log(String(caught));
+console.log(_pyStr(caught));
 
 === bigint int literal
 const x = 42n;
-console.log(String(x));
+console.log(_pyStr(x));
 
 === preamble no number conversion
 function _check_i64(v) { if (v < _I64_MIN || v > _I64_MAX) throw new RangeError("integer overflow"); return v; }
@@ -109,4 +109,4 @@ const n = BigInt(xs.length);
 const x = 1.5 + 2.5;
 const y = checked_div_i64(10n, 3n);
 const z = checked_rem_i64(10n, 3n);
-console.log(String(y));
+console.log(_pyStr(y));

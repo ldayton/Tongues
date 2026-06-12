@@ -1,8 +1,8 @@
 === string multiply via Repeat
-const s = "ab".repeat(3);
+const s = "ab".repeat(Math.max(0, 3));
 
 === list multiply via Repeat
-const xs = Array(5).fill(0);
+const xs = Array(Math.max(0, 5)).fill(0);
 
 === Contains on string
 if (s.includes("world"))
@@ -20,7 +20,7 @@ const s = "aabbcc".replaceAll("bb", "XX");
 console.log("hello".toUpperCase());
 
 === StartsWith and EndsWith
-console.log(String(s.startsWith("hello")));
+console.log(_pyStr(s.startsWith("hello")));
 
 === Trim functions
 const s = "  hello  ".replace(/^[ ]+|[ ]+$/g, "");
@@ -47,4 +47,4 @@ return `hello, ${name}`;
 return `result: ${items.join(", ")}`;
 
 === string classification functions
-console.log(String(/^\d+$/.test("123")));
+console.log(_pyStr(/^\d+$/.test("123")));

@@ -47,10 +47,20 @@ a.bytes.zip(b.bytes).each do |x, y|
 s.each_char do |ch|
 
 === list repetition with annotation
-[0] * 5
+[0] * [5, 0].max
 
 === dict get with default
 d.fetch("a", 99)
 
 === list pop at index
 first = xs.delete_at(0)
+
+=== dict popitem
+.shift
+
+=== dict fromkeys
+keys.each_with_object
+
+=== dict from pairs
+.to_h
+

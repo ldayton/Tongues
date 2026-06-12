@@ -5089,6 +5089,16 @@ class _JavaEmitter(Emitter):
                 if len(slit.elements) == 0:
                     return "0"
             return self._a(args, 0) + ".stream().mapToInt(Integer::intValue).sum()"
+        if name == "All":
+            return (
+                self._a(args, 0)
+                + '.stream().allMatch(x -> !(x.equals(0) || x.equals(false) || x.equals("") || x == null))'
+            )
+        if name == "Any":
+            return (
+                self._a(args, 0)
+                + '.stream().anyMatch(x -> !(x.equals(0) || x.equals(false) || x.equals("") || x == null))'
+            )
         if name == "Map":
             return "new HashMap<>()"
         if name == "Set":
@@ -5750,8 +5760,8 @@ class _JavaEmitter(Emitter):
     def _emit_divmod_assign(self, stmt: TTupleAssignStmt, unused: set[int]) -> None:
         assert isinstance(stmt.value, TCall)
         call: TCall = stmt.value
-        a = self._maybe_paren(call.args[0].value, "/", True)
-        b = self._maybe_paren(call.args[1].value, "/", False)
+        a = self._expr(call.args[0].value)
+        b = self._expr(call.args[1].value)
         q = self._expr(stmt.targets[0])
         r = self._expr(stmt.targets[1])
         if 0 not in unused:

@@ -187,6 +187,8 @@ from .bytecode import (
 BUILTIN_TABLE: list[str] = [
     "Abs",
     "Add",
+    "All",
+    "Any",
     "Append",
     "Args",
     "Assert",

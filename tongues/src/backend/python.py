@@ -90,6 +90,11 @@ from ..taytsh.check import (
 )
 
 # ============================================================
+_EXCEPTION_NAME_MAP: dict[str, str] = {
+    "AssertError": "AssertionError",
+    "NilError": "AttributeError",
+}
+
 # PYTHON BUILTINS
 # ============================================================
 
@@ -252,12 +257,16 @@ def _scan_imports(
                         needs_field = True
                     if fld.has_default and isinstance(fld.typ, TIdentType):
                         needs_field = True
+                    if fld.body_computed:
+                        needs_field = True
         if isinstance(decl, TInterfaceDecl) and decl.fields:
             needs_dataclass = True
             for fld in decl.fields:
                 if isinstance(fld.typ, (TListType, TMapType, TSetType)):
                     needs_field = True
                 if fld.has_default and isinstance(fld.typ, TIdentType):
+                    needs_field = True
+                if fld.body_computed:
                     needs_field = True
         if isinstance(decl, (TFnDecl, TStructDecl)):
             r_sys, r_math, r_os = _scan_decl_builtins(decl)
@@ -358,6 +367,8 @@ class _PythonEmitter(Emitter):
         # Structs declared in the module (excludes implicit built-in errors),
         # which must not be renamed by _ERROR_NAME_MAP
         self.declared_structs: set[str] = set()
+        # Field names of the struct whose __post_init__ is being emitted
+        self._post_init_fields: set[str] = set()
         self.strict_math = strict_math
         self.strict_tostring = strict_tostring
         self.indent: int = 0
@@ -566,6 +577,10 @@ class _PythonEmitter(Emitter):
             self.indent += 1
             old_self = self.self_name
             self.self_name = "this"
+            pi_fields: set[str] = set()
+            for f in decl.fields:
+                pi_fields.add(f.name)
+            self._post_init_fields = pi_fields
             for fld in body_fields:
                 if fld.default_expr is not None:
                     self._line(
@@ -576,6 +591,7 @@ class _PythonEmitter(Emitter):
                     )
             if decl.init_stmts is not None:
                 self._emit_stmts(decl.init_stmts)
+            self._post_init_fields = set()
             self.self_name = old_self
             self.indent -= 1
         first_method = True
@@ -1500,6 +1516,10 @@ class _PythonEmitter(Emitter):
         if isinstance(expr, TVar):
             if expr.name == self.self_name:
                 return "self"
+            if expr.name in self._post_init_fields:
+                # __post_init__ has no constructor params in scope; computed
+                # field expressions reach them through the stored fields
+                return "self." + _safe_name(expr.name)
             return _restore_name(expr.name, expr.annotations)
         if isinstance(expr, TFieldAccess):
             return self._expr(expr.obj) + "." + _safe_name(expr.field)
@@ -2037,6 +2057,12 @@ class _PythonEmitter(Emitter):
             return self._a(args, 0) + ".get(" + self._a(args, 1) + ")"
         if name == "Delete":
             return self._a(args, 0) + ".pop(" + self._a(args, 1) + ", None)"
+        if name == "PopItem":
+            return self._a(args, 0) + ".popitem()"
+        if name == "MapFromKeys":
+            return "dict.fromkeys(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+        if name == "MapFromPairs":
+            return "dict(" + self._a(args, 0) + ")"
         if name == "Union":
             left = self._maybe_paren(args[0].value, "|", True)
             right = self._maybe_paren(args[1].value, "|", False)
@@ -2108,6 +2134,26 @@ class _PythonEmitter(Emitter):
             return "max(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Sum":
             return "sum(" + self._a(args, 0) + ")"
+        if name == "Zip":
+            return "list(zip(" + self._a(args, 0) + ", " + self._a(args, 1) + "))"
+        if name == "ListCompare":
+            a = self._a(args, 0)
+            b = self._a(args, 1)
+            return (
+                "(0 if "
+                + a
+                + " == "
+                + b
+                + " else (-1 if "
+                + a
+                + " < "
+                + b
+                + " else 1))"
+            )
+        if name == "All":
+            return "all(" + self._a(args, 0) + ")"
+        if name == "Any":
+            return "any(" + self._a(args, 0) + ")"
         if name == "Round":
             if len(args) == 2:
                 return "round(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"

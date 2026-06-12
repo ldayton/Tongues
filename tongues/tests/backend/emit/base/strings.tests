@@ -87,6 +87,33 @@ def main() -> None:
 if __name__ == "__main__":
     main()
 
+=== partition found
+def main() -> None:
+    s: str = "hello,world"
+    a, sep, b = s.partition(",")
+    print(a)
+    print(b)
+if __name__ == "__main__":
+    main()
+
+=== partition not found
+def main() -> None:
+    s: str = "hello"
+    a, sep, b = s.partition(",")
+    print(a)
+    print(sep)
+if __name__ == "__main__":
+    main()
+
+=== rpartition found
+def main() -> None:
+    s: str = "a,b,c"
+    a, sep, b = s.rpartition(",")
+    print(a)
+    print(b)
+if __name__ == "__main__":
+    main()
+
 === astral string literal
 def main() -> None:
     s: str = "\U0001f600"

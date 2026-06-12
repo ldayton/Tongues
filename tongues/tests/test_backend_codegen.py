@@ -16,6 +16,8 @@ TESTS = {
     "codegen": {"dir": "backend/codegen", "run": "codegen"},
     "emit":    {"dir": "backend/emit",    "run": "emit"},
 }
+
+KNOWN_EMIT_FAILURES: set[str] = set()
 # fmt: on
 
 
@@ -55,7 +57,10 @@ def _collect_snapshot_tests(metafunc, test_dir, label, param_names):
         lang_tests = list(discover_codegen_tests(test_dir, lang))
         counts[lang] = len(lang_tests)
         for tid, inp, exp in lang_tests:
-            all_tests.append(pytest.param(inp, exp, lang, id=tid))
+            marks = []
+            if tid in KNOWN_EMIT_FAILURES:
+                marks.append(pytest.mark.xfail(reason="aspirational", strict=False))
+            all_tests.append(pytest.param(inp, exp, lang, id=tid, marks=marks))
     expected_count = counts[langs[0]]
     unequal = {l: c for l, c in counts.items() if c != expected_count}
     if unequal:
