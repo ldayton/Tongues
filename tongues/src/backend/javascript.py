@@ -636,6 +636,9 @@ class _JavaScriptEmitter(Emitter):
             for pline in _STRICT_MATH_PREAMBLE.strip().split("\n"):
                 self._line(pline)
             self._line()
+        # The _runes helper must precede top-level lets, which evaluate
+        # during module load; emitted here by insertion once needed
+        rune_cache_pos = len(self.lines)
         declared_structs: set[str] = set()
         for decl in module.decls:
             if isinstance(decl, TStructDecl):
@@ -691,17 +694,20 @@ class _JavaScriptEmitter(Emitter):
             self.indent -= 1
             self._line("}")
         if self._needs_rune_cache:
-            self._line()
-            self._line("// Memoized codepoint arrays for strings of unproven")
-            self._line("// content; V8 caches string hashes so hits are O(1).")
-            self._line("const _runeCache = new Map();")
-            self._line("function _runes(s) {")
-            self.indent += 1
-            self._line("let a = _runeCache.get(s);")
-            self._line("if (a === undefined) { a = [...s]; _runeCache.set(s, a); }")
-            self._line("return a;")
-            self.indent -= 1
-            self._line("}")
+            helper = [
+                "// Memoized codepoint arrays for strings of unproven",
+                "// content; V8 caches string hashes so hits are O(1).",
+                "const _runeCache = new Map();",
+                "function _runes(s) {",
+                "    let a = _runeCache.get(s);",
+                "    if (a === undefined) { a = [...s]; _runeCache.set(s, a); }",
+                "    return a;",
+                "}",
+                "",
+            ]
+            self.lines = (
+                self.lines[0:rune_cache_pos] + helper + self.lines[rune_cache_pos:]
+            )
         if any(isinstance(d, TFnDecl) and d.name == "Main" for d in module.decls):
             self._line()
             self._line(
