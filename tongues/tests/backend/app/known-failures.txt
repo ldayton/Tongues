@@ -39,6 +39,11 @@ apptest_floats javascript #391 nonstrict
 apptest_floats perl #391 nonstrict
 apptest_floats ruby #391 nonstrict
 apptest_floats taytsh #391 nonstrict
+apptest_hierarchy_kind java #388 nonstrict
+apptest_hierarchy_kind javascript #388 nonstrict
+apptest_hierarchy_kind perl #388 nonstrict
+apptest_hierarchy_kind python #388 nonstrict
+apptest_hierarchy_kind ruby #388 nonstrict
 apptest_ints java #391 nonstrict
 apptest_ints perl #391 nonstrict
 apptest_json java #391 nonstrict

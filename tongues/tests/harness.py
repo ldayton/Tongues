@@ -235,6 +235,8 @@ from src.middleend.ownership import analyze_ownership
 from src.middleend.returns import analyze_returns
 from src.middleend.scope import analyze_scope
 from src.middleend.strings import analyze_strings
+from src.middleend.error_types import patch_error_types
+from src.middleend.int_width import analyze_int_width
 from src.taytsh import parse as taytsh_parse
 from src.taytsh.vm import (
     vm_run as taytsh_run,
@@ -1107,9 +1109,11 @@ def _transpile_with_emitter(
     if errors:
         return (None, str(errors[0]))
     try:
+        patch_error_types(module)
         analyze_returns(module, checker)
         analyze_scope(module, checker)
         analyze_liveness(module, checker)
+        analyze_int_width(module, checker)
         if lang in ("ruby", "javascript", "java"):
             analyze_strings(module, checker)
         return (emitter(module), None)
@@ -1210,9 +1214,11 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
         errors, checker = check_with_info(module)
         if errors:
             return (None, str(errors[0]))
+        patch_error_types(module)
         analyze_returns(module, checker)
         analyze_scope(module, checker)
         analyze_liveness(module, checker)
+        analyze_int_width(module, checker)
         if lang in ("ruby", "javascript", "java"):
             analyze_strings(module, checker)
         return (emitter(module), None)

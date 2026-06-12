@@ -2313,9 +2313,13 @@ class _PerlEmitter(Emitter):
         if op == "!=" and isinstance(expr.left, TNilLit):
             return "defined(" + self._expr(expr.right) + ")"
         if expr.annotations.get("struct_eq") == "true":
+            self._needs_deep_eq = True
             left_str = self._expr(expr.left)
             right_str = self._expr(expr.right)
-            call = left_str + "->__eq__(" + right_str + ")"
+            # _deep_eq handles undef operands; optional struct fields make
+            # bare ->__eq__ calls die
+            prefix = "main::" if self.in_package else ""
+            call = prefix + "_deep_eq(" + left_str + ", " + right_str + ")"
             if op == "!=":
                 return "!" + call
             return call
@@ -2330,7 +2334,10 @@ class _PerlEmitter(Emitter):
             self._needs_deep_eq = True
             left_str = self._expr(expr.left)
             right_str = self._expr(expr.right)
-            call = "_deep_eq(" + left_str + ", " + right_str + ")"
+            # _deep_eq lives in package main; struct methods run in their
+            # own package and need the qualified name
+            prefix = "main::" if self.in_package else ""
+            call = prefix + "_deep_eq(" + left_str + ", " + right_str + ")"
             if op == "!=":
                 return "!" + call
             return call
