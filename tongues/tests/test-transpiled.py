@@ -719,9 +719,26 @@ def _find_lib_imports(source):
     return names
 
 
+def load_known_failures(test_dir):
+    """Set of (apptest stem, target) combos expected to fail (see known-failures.txt)."""
+    path = os.path.join(test_dir, "known-failures.txt")
+    known = set()
+    if not os.path.exists(path):
+        return known
+    with open(path) as fh:
+        for line in fh:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            tokens = line.split()
+            known.add((tokens[0], tokens[1]))
+    return known
+
+
 def run_app_tests(test_dir):
     results = []
     available = [lang for lang, cmd in RUNTIMES.items() if _runtime_available(cmd)]
+    known_failures = load_known_failures(test_dir)
     for test_file in sorted(glob.glob(os.path.join(test_dir, "apptest_*.py"))):
         stem = os.path.splitext(os.path.basename(test_file))[0]
         with open(test_file) as fh:
@@ -744,6 +761,9 @@ def run_app_tests(test_dir):
         lib_names = seen
         for target in available:
             test_id = f"{stem}[{target}]"
+            if (stem, target) in known_failures:
+                results.append(("skip", test_id, None))
+                continue
             if not lib_names:
                 fd, tmp_path = tempfile.mkstemp(suffix=".py")
                 try:
@@ -1384,6 +1404,7 @@ def _collect_tests(tests_config):
                 available = [
                     lang for lang, cmd in RUNTIMES.items() if _runtime_available(cmd)
                 ]
+                known_failures = load_known_failures(test_dir)
                 for test_file in sorted(
                     glob.glob(os.path.join(test_dir, "apptest_*.py"))
                 ):
@@ -1414,6 +1435,9 @@ def _collect_tests(tests_config):
                             lib_parts.append((f"lib/{name}.py", fh.read()))
                     for target in available:
                         test_id = f"{stem}[{target}]"
+                        if (stem, target) in known_failures:
+                            collected.append((phase_name, test_id, "skip", None))
+                            continue
                         collected.append(
                             (phase_name, test_id, "app", (target, source, lib_parts))
                         )

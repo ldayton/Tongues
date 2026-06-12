@@ -1355,6 +1355,21 @@ def discover_app_tests(
     return results
 
 
+def load_known_failures(test_dir: Path) -> dict[tuple[str, str], tuple[str, bool]]:
+    """Map (apptest stem, target) -> (issue ref, strict) from known-failures.txt."""
+    path = test_dir / "known-failures.txt"
+    result: dict[tuple[str, str], tuple[str, bool]] = {}
+    if not path.exists():
+        return result
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        tokens = line.split()
+        result[(tokens[0], tokens[1])] = (tokens[2], "nonstrict" not in tokens[3:])
+    return result
+
+
 def _cli_needs_backend(spec: dict) -> bool:
     """True if the test will reach the backend (no --stop-at, expects exit 0)."""
     args = spec["args"]
