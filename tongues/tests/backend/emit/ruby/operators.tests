@@ -11,4 +11,4 @@ flags & flag != 0
 ^ poly
 
 === divmod negative floor semantics
-.floor
+q, r = [-10 / 3, -10 % 3]

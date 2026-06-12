@@ -852,6 +852,8 @@ class _JavaScriptEmitter(Emitter):
             )
             self.indent += 1
             self._line("main();")
+            self.indent -= 1
+            self._line("}")
 
     # ── Enum ──────────────────────────────────────────────────
 

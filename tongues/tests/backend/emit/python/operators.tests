@@ -11,4 +11,4 @@ x >> 2
 5 ^ poly
 
 === divmod negative floor semantics
-q = -10 // 3
+q, r = (-10 // 3, -10 % 3)

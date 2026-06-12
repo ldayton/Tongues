@@ -2,7 +2,7 @@
 this.inner = new Inner("ok");
 
 === computed field not in constructor params
-this.length = [...text].length;
+this.length = _runes(text).length;
 
 === const kind field uses correct value
 constructor(value = 0) {

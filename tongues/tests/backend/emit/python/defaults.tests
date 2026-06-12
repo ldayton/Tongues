@@ -12,4 +12,4 @@ SOUNDS: dict[str, str] = field(default_factory=lambda: dict(Animal_SOUNDS))
 def speak(self) -> str:
 
 === init body computes field from param
-self.length = len(source)
+self.length = len(self.source)
