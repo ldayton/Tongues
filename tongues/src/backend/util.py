@@ -6,6 +6,7 @@ from ..taytsh.ast import (
     TArg,
     TAssignStmt,
     TBinaryOp,
+    TBoolLit,
     TCall,
     TExpr,
     TExprStmt,
@@ -21,6 +22,7 @@ from ..taytsh.ast import (
     TListType,
     TMapLit,
     TMatchStmt,
+    TNilLit,
     TOpAssignStmt,
     TPrimitive,
     TRange,
@@ -167,6 +169,27 @@ def _check_int_expr(expr: TExpr, var_types: dict[str, TType]) -> bool:
     if isinstance(expr, TUnaryOp) and (expr.op in ("-", "~")):
         return _check_int_expr(expr.operand, var_types)
     return False
+
+
+def _check_bool_expr(expr: TExpr, var_types: dict[str, TType]) -> bool:
+    """Check if an expression is known to be bool-typed."""
+    ann: str = expr.annotations.get("type", "")
+    if ann:
+        return ann == "bool"
+    if isinstance(expr, TBoolLit):
+        return True
+    if isinstance(expr, TVar):
+        typ: TType | None = var_types.get(expr.name)
+        return isinstance(typ, TPrimitive) and typ.kind == "bool"
+    return False
+
+
+def _check_nil_expr(expr: TExpr) -> bool:
+    """Check if an expression is known to be None/nil."""
+    if isinstance(expr, TNilLit):
+        return True
+    ann: str = expr.annotations.get("type", "")
+    return ann == "None"
 
 
 def _check_float_expr(expr: TExpr, var_types: dict[str, TType]) -> bool:

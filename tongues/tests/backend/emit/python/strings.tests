@@ -34,6 +34,15 @@ s.startswith("world", 6)
 === rstrip newline
 s.rstrip("\n")
 
+=== partition found
+s.partition(",")
+
+=== partition not found
+s.partition(",")
+
+=== rpartition found
+s.rpartition(",")
+
 === astral string literal
 "\U0001f600"
 

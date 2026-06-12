@@ -54,10 +54,25 @@ for (let __i = 0; __i < Math.min(a.length, b.length); __i++) {
 for (let ch of s) {
 
 === list repetition with annotation
-Array(5).fill(0)
+Array(Math.max(0, 5)).fill(0)
 
 === dict get with default
 (d.get("a") ?? 99)
 
 === list pop at index
 const first = xs.splice(0, 1)[0];
+
+=== dict popitem
+.delete(
+
+=== dict fromkeys
+new Map(
+
+=== dict from pairs
+new Map(
+
+=== bytes literal assignment
+Buffer.from(
+
+=== struct in list contains
+.some(

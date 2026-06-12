@@ -637,6 +637,8 @@ class _RubyEmitter(Emitter):
         self._needs_range_helper: bool = False
         self._needs_float_repr: bool = False
         self._needs_parse_float: bool = False
+        self._needs_py_str: bool = False
+        self._needs_py_repr: bool = False
 
     def _line(self, text: str = "") -> None:
         if text:
@@ -766,6 +768,35 @@ class _RubyEmitter(Emitter):
                 "return -Float::INFINITY if s == '-inf' || s == '-Infinity'; "
                 "return Float::NAN if s == 'nan' || s == 'NaN'; "
                 "s.to_f; end"
+            )
+            self.lines.insert(import_insert_pos, helper)
+            self.lines.insert(import_insert_pos + 1, "")
+            import_insert_pos += 2
+        if self._needs_py_str:
+            helper = (
+                "def _py_str(x); "
+                "return 'True' if x == true; "
+                "return 'False' if x == false; "
+                "return 'None' if x.nil?; "
+                "return 'inf' if x.is_a?(Float) && x == Float::INFINITY; "
+                "return '-inf' if x.is_a?(Float) && x == -Float::INFINITY; "
+                "return 'nan' if x.is_a?(Float) && x.nan?; "
+                "x.to_s; end"
+            )
+            self.lines.insert(import_insert_pos, helper)
+            self.lines.insert(import_insert_pos + 1, "")
+            import_insert_pos += 2
+        if self._needs_py_repr:
+            helper = (
+                "def _py_repr(x); "
+                "return 'True' if x == true; "
+                "return 'False' if x == false; "
+                "return 'None' if x.nil?; "
+                'return "\'" + x + "\'" if x.is_a?(String); '
+                "return 'inf' if x.is_a?(Float) && x == Float::INFINITY; "
+                "return '-inf' if x.is_a?(Float) && x == -Float::INFINITY; "
+                "return 'nan' if x.is_a?(Float) && x.nan?; "
+                "x.to_s; end"
             )
             self.lines.insert(import_insert_pos, helper)
             self.lines.insert(import_insert_pos + 1, "")
@@ -1417,11 +1448,11 @@ class _RubyEmitter(Emitter):
         b = self._expr(call.args[1].value)
         q_target = self._expr(stmt.targets[0])
         if 1 in unused:
-            self._line(q_target + " = (" + a + ".to_f / " + b + ").truncate")
+            self._line(q_target + " = (" + a + ".to_f / " + b + ").floor")
         else:
             r_target = self._expr(stmt.targets[1])
-            self._line(q_target + " = (" + a + ".to_f / " + b + ").truncate")
-            self._line(r_target + " = " + a + ".remainder(" + b + ")")
+            self._line(q_target + " = (" + a + ".to_f / " + b + ").floor")
+            self._line(r_target + " = " + a + " - " + q_target + " * " + b)
 
     def _emit_expr_stmt(self, stmt: TExprStmt) -> None:
         expr = stmt.expr
@@ -1526,6 +1557,22 @@ class _RubyEmitter(Emitter):
             if isinstance(call.func, TVar) and call.func.name in ("Find", "RFind"):
                 return self._expr(call.args[0].value), self._expr(call.args[1].value)
         return None, ""
+
+    def _partition_method(self, expr: TTernary) -> str | None:
+        """Detect whether a partition ternary uses Find or RFind."""
+        cond = expr.cond
+        if (
+            isinstance(cond, TBinaryOp)
+            and cond.op == ">="
+            and isinstance(cond.left, TCall)
+        ):
+            call = cond.left
+            if isinstance(call.func, TVar):
+                if call.func.name == "Find":
+                    return "partition"
+                if call.func.name == "RFind":
+                    return "rpartition"
+        return None
 
     def _delete_fix_args(
         self, expr: TTernary, func_name: str
@@ -2006,6 +2053,12 @@ class _RubyEmitter(Emitter):
                 if s is not None:
                     method = "partition" if prov == "partition" else "rpartition"
                     return s + "." + method + "(" + sep + ")"
+            if prov is None or prov == "":
+                s, sep = self._partition_args(expr)
+                if s is not None:
+                    method = self._partition_method(expr)
+                    if method is not None:
+                        return s + "." + method + "(" + sep + ")"
             if prov == "removeprefix":
                 s, p = self._delete_fix_args(expr, "StartsWith")
                 if s is not None:
@@ -2633,9 +2686,7 @@ class _RubyEmitter(Emitter):
             return self._a(args, 0) + ".reverse"
         if name == "Repeat":
             count = self._a(args, 1)
-            if isinstance(args[1].value, TBinaryOp):
-                count = "(" + count + ")"
-            return self._a(args, 0) + " * " + count
+            return self._a(args, 0) + " * [" + count + ", 0].max"
         if name == "RemovePrefix":
             return self._a(args, 0) + ".delete_prefix(" + self._a(args, 1) + ")"
         if name == "RemoveSuffix":
@@ -2700,6 +2751,17 @@ class _RubyEmitter(Emitter):
             return self._a(args, 0) + ".delete(" + self._a(args, 1) + ")"
         if name == "Merge":
             return self._a(args, 0) + ".merge(" + self._a(args, 1) + ")"
+        if name == "PopItem":
+            return self._a(args, 0) + ".shift"
+        if name == "MapFromKeys":
+            return (
+                self._a(args, 0)
+                + ".each_with_object({}) { |k, h| h[k] = "
+                + self._a(args, 1)
+                + " }"
+            )
+        if name == "MapFromPairs":
+            return self._a(args, 0) + ".to_h"
         if name == "Keys":
             return self._a(args, 0) + ".keys"
         if name == "Values":
@@ -2755,6 +2817,14 @@ class _RubyEmitter(Emitter):
             return "[" + self._a(args, 0) + ", " + self._a(args, 1) + "].max"
         if name == "Sum":
             return self._a(args, 0) + ".sum"
+        if name == "ListCompare":
+            return "(" + self._a(args, 0) + " <=> " + self._a(args, 1) + ")"
+        if name == "Zip":
+            return self._a(args, 0) + ".zip(" + self._a(args, 1) + ")"
+        if name == "All":
+            return self._a(args, 0) + ".all?"
+        if name == "Any":
+            return self._a(args, 0) + ".any?"
         if name == "Round":
             if len(args) == 2:
                 return self._a(args, 0) + ".round(" + self._a(args, 1) + ")"
@@ -2767,11 +2837,15 @@ class _RubyEmitter(Emitter):
                 + a
                 + ".to_f / "
                 + b
-                + ").truncate, "
+                + ").floor, "
                 + a
-                + ".remainder("
+                + " - ("
+                + a
+                + ".to_f / "
                 + b
-                + ")]"
+                + ").floor * "
+                + b
+                + "]"
             )
         if name == "Sorted":
             if self.strict_math and self._is_float_list(args[0].value):
@@ -2827,14 +2901,20 @@ class _RubyEmitter(Emitter):
                         + ")"
                     )
             return "Set.new(" + self._a(args, 0) + ".to_a)"
-        if name in ("ToString", "ToRepr"):
+        if name == "ToString":
             a = self._a(args, 0)
             if self.strict_tostring and self._is_float_expr(args[0].value):
                 self._needs_float_repr = True
                 return "_py_float_repr(" + a + ")"
-            if isinstance(args[0].value, (TBinaryOp, TTernary)):
-                return "(" + a + ").to_s"
-            return a + ".to_s"
+            self._needs_py_str = True
+            return "_py_str(" + a + ")"
+        if name == "ToRepr":
+            a = self._a(args, 0)
+            if self.strict_tostring and self._is_float_expr(args[0].value):
+                self._needs_float_repr = True
+                return "_py_float_repr(" + a + ")"
+            self._needs_py_repr = True
+            return "_py_repr(" + a + ")"
         if name == "ParseInt":
             base = self._a(args, 1)
             return self._a(args, 0) + ".to_i(" + base + ")"

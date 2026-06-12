@@ -69,10 +69,41 @@ def test_construct_nested() -> None:
 
 
 def main() -> int:
-    test_construct_kind_omitted()
-    test_construct_zero_args()
-    test_construct_nested()
-    print("ok")
+    passed: int = 0
+    failed: int = 0
+    try:
+        test_construct_kind_omitted()
+        passed += 1
+        print("  PASS test_construct_kind_omitted")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_construct_kind_omitted: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_construct_kind_omitted: " + str(e))
+    try:
+        test_construct_zero_args()
+        passed += 1
+        print("  PASS test_construct_zero_args")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_construct_zero_args: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_construct_zero_args: " + str(e))
+    try:
+        test_construct_nested()
+        passed += 1
+        print("  PASS test_construct_nested")
+    except AssertionError as e:
+        failed += 1
+        print("  FAIL test_construct_nested: " + str(e))
+    except Exception as e:
+        failed += 1
+        print("  FAIL test_construct_nested: " + str(e))
+    print(str(passed) + " passed, " + str(failed) + " failed")
+    if failed > 0:
+        return 1
     return 0
 
 

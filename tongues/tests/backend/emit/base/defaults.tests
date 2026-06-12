@@ -69,3 +69,20 @@ def main() -> None:
     print(d.speak())
 if __name__ == "__main__":
     main()
+
+=== init body computes field from param
+class Scanner:
+    source: str
+    length: int
+    pos: int
+    def __init__(self, source: str) -> None:
+        self.source = source
+        self.length = len(source)
+        self.pos = 0
+    def remaining(self) -> int:
+        return self.length - self.pos
+def main() -> None:
+    s: Scanner = Scanner("abc")
+    print(str(s.remaining()))
+if __name__ == "__main__":
+    main()

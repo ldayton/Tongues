@@ -5,7 +5,7 @@ if xs.include?(2)
 if !xs.include?(2)
 
 === boolean operators
-puts((a && b).to_s)
+puts(_py_str(a && b))
 
 === bitwise operators
 y = x & 15

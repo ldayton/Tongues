@@ -24,8 +24,8 @@ my $s = do { my $__s = "aabbcc"; $__s =~ s/bb/XX/g; $__s };
 say(uc("hello"));
 
 === StartsWith and EndsWith
-say(("" . (($s =~ /^hello/) ? 1 : 0)));
-say(("" . (($s =~ /world$/) ? 1 : 0)));
+say(((($s =~ /^hello/) ? 1 : 0) ? 'True' : 'False'));
+say(((($s =~ /world$/) ? 1 : 0) ? 'True' : 'False'));
 
 === Trim functions
 my $s = do { my $__t = "  hello  "; $__t =~ s/^[ ]+|[ ]+$//g; $__t };
@@ -56,5 +56,5 @@ my $s = scalar(reverse("hello"));
 return sprintf("result: %s", join(", ", @{$items}));
 
 === string classification functions
-say(("" . ("123" =~ /^\d+$/ ? 1 : 0)));
-say(("" . ("abc" =~ /^[A-Za-z]+$/ ? 1 : 0)));
+say((("123" =~ /^\d+$/ ? 1 : 0) ? 'True' : 'False'));
+say((("abc" =~ /^[A-Za-z]+$/ ? 1 : 0) ? 'True' : 'False'));

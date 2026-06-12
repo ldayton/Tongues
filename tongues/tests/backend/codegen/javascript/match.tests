@@ -1,10 +1,10 @@
 === match default binds scrutinee value
 if (typeof value === "number") {
     let n = value;
-    return String(n);
+    return _pyStr(n);
 } else {
     let x = value;
-    return String(x);
+    return _pyStr(x);
 }
 
 === unused match binding is omitted

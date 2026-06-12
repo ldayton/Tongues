@@ -159,3 +159,49 @@ def main() -> None:
     print(str(len(xs)))
 if __name__ == "__main__":
     main()
+
+=== dict popitem
+def main() -> None:
+    d: dict[str, int] = {"a": 1, "b": 2}
+    k, v = d.popitem()
+    print(k + "=" + str(v))
+if __name__ == "__main__":
+    main()
+
+=== dict fromkeys
+def main() -> None:
+    keys: list[str] = ["x", "y", "z"]
+    d: dict[str, int] = dict.fromkeys(keys, 0)
+    print(str(len(d)))
+if __name__ == "__main__":
+    main()
+
+=== dict from pairs
+def main() -> None:
+    pairs: list[tuple[str, int]] = [("a", 1), ("b", 2)]
+    d: dict[str, int] = dict(pairs)
+    print(str(len(d)))
+if __name__ == "__main__":
+    main()
+
+=== bytes literal assignment
+def main() -> None:
+    data: bytes = b"\x80\xff\x00"
+    print(str(len(data)))
+if __name__ == "__main__":
+    main()
+
+=== struct in list contains
+class Point:
+    x: int
+    y: int
+    def __init__(self, x: int, y: int) -> None:
+        self.x = x
+        self.y = y
+
+def main() -> None:
+    pts: list[Point] = [Point(1, 2), Point(3, 4)]
+    found: bool = Point(1, 2) in pts
+    print(str(found))
+if __name__ == "__main__":
+    main()

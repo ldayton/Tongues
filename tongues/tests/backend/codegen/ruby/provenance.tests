@@ -2,7 +2,7 @@
 if !xs.include?(2)
 
 === negative index via Len subtraction (raised)
-puts(xs[-1].to_s)
+puts(_py_str(xs[-1]))
 
 === open-end slice (raised)
 tail = xs[1..]
@@ -116,7 +116,7 @@ a.zip(b, c).each do |x, y, z|
 s.each_char do |ch|
 
 === list repetition (raised)
-xs = [0] * 5
+xs = [0] * [5, 0].max
 
 === isinstance with tuple of types (raised)
 return v.is_a?(A) || v.is_a?(B)

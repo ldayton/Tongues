@@ -9,3 +9,6 @@ constructor(source = "", keywords = Lexer_keywords) {
 
 === inherited dict field default preserved from interface
 constructor(name = "", SOUNDS = Animal_SOUNDS) {
+
+=== init body computes field from param
+this.length = [...source].length

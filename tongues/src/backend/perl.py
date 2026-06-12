@@ -7,9 +7,11 @@ from .util import (
     STRICT_INT_BINARY,
     STRICT_INT_COMPOUND,
     Emitter,
+    _check_bool_expr,
     _check_float_expr,
     _check_float_list,
     _check_int_expr,
+    _check_nil_expr,
     _emit_line,
     _emit_output,
     collect_builtin_calls,
@@ -439,10 +441,14 @@ def _struct_needs_any_all(decl: TStructDecl) -> bool:
 
 
 def _module_needs_any_all(module: TModule) -> bool:
-    """Check if any top-level function uses any_call/all_call provenance."""
+    """Check if any top-level function uses any_call/all_call provenance or All/Any builtins."""
     for decl in module.decls:
         if isinstance(decl, TFnDecl) and _has_any_all_provenance(decl.body):
             return True
+        if isinstance(decl, TFnDecl):
+            builtins = collect_builtin_calls(decl.body)
+            if "All" in builtins or "Any" in builtins:
+                return True
     return False
 
 
@@ -640,6 +646,8 @@ class _PerlEmitter(Emitter):
         self.strict_math = strict_math
         self.strict_tostring = strict_tostring
         self._needs_float_repr: bool = False
+        self._needs_deep_eq: bool = False
+        self._needs_py_str_float: bool = False
         self.indent: int = 0
         self.lines: list[str] = []
         self.self_name: str | None = None
@@ -777,6 +785,46 @@ class _PerlEmitter(Emitter):
                         current_package = "main"
                     self._emit_fn(decl)
             need_blank = True
+        if self._needs_py_str_float:
+            if current_package != "main":
+                self._line()
+                self._line("package main;")
+                current_package = "main"
+            self._line()
+            self._line(
+                "sub _py_str_float {"
+                " my ($f) = @_;"
+                " return 'inf' if $f == 9**9**9;"
+                " return '-inf' if $f == -(9**9**9);"
+                ' return "nan" if $f != $f;'
+                ' my $s = "" . $f;'
+                ' $s .= ".0" if $s !~ /\./ && $s !~ /[eE]/;'
+                " return $s }"
+            )
+        if self._needs_deep_eq:
+            if current_package != "main":
+                self._line()
+                self._line("package main;")
+                current_package = "main"
+            self._line()
+            self._line(
+                "sub _deep_eq {"
+                " my ($a, $b) = @_;"
+                " return 1 if !defined($a) && !defined($b);"
+                " return 0 if !defined($a) || !defined($b);"
+                " if (ref($a) eq 'ARRAY') {"
+                " return 0 if ref($b) ne 'ARRAY' || scalar(@$a) != scalar(@$b);"
+                " for my $i (0..$#$a) { return 0 unless _deep_eq($a->[$i], $b->[$i]) }"
+                " return 1 }"
+                " if (ref($a) eq 'HASH') {"
+                " return 0 if ref($b) ne 'HASH';"
+                " my @ka = sort keys %$a; my @kb = sort keys %$b;"
+                " return 0 if scalar(@ka) != scalar(@kb);"
+                " for my $k (@ka) { return 0 unless exists $b->{$k} && _deep_eq($a->{$k}, $b->{$k}) }"
+                " return 1 }"
+                " if (ref($a) && $a->can('__eq__')) { return $a->__eq__($b) }"
+                " return $a eq $b }"
+            )
         if any(isinstance(d, TFnDecl) and d.name == "Main" for d in ordered):
             if current_package != "main":
                 self._line()
@@ -1395,7 +1443,7 @@ class _PerlEmitter(Emitter):
             a = self._expr(call.args[0].value)
             b = self._expr(call.args[1].value)
             q_target = self._target(stmt.targets[0])
-            self._line(q_target + " = int(" + a + " / " + b + ");")
+            self._line(q_target + " = floor(" + a + " / " + b + ");")
             return
         parts: list[str] = []
         for i, t in enumerate(stmt.targets):
@@ -2264,6 +2312,28 @@ class _PerlEmitter(Emitter):
             return "!defined(" + self._expr(expr.right) + ")"
         if op == "!=" and isinstance(expr.left, TNilLit):
             return "defined(" + self._expr(expr.right) + ")"
+        if expr.annotations.get("struct_eq") == "true":
+            left_str = self._expr(expr.left)
+            right_str = self._expr(expr.right)
+            call = left_str + "->__eq__(" + right_str + ")"
+            if op == "!=":
+                return "!" + call
+            return call
+        if op in ("==", "!=") and (
+            self._is_list_expr(expr.left)
+            or self._is_map_expr(expr.left)
+            or self._is_set_expr(expr.left)
+            or self._is_list_expr(expr.right)
+            or self._is_map_expr(expr.right)
+            or self._is_set_expr(expr.right)
+        ):
+            self._needs_deep_eq = True
+            left_str = self._expr(expr.left)
+            right_str = self._expr(expr.right)
+            call = "_deep_eq(" + left_str + ", " + right_str + ")"
+            if op == "!=":
+                return "!" + call
+            return call
         perl_op = self._binary_op(op, expr.left, expr.right)
         left = self._maybe_paren(expr.left, perl_op, True)
         right = self._maybe_paren(expr.right, perl_op, False)
@@ -3150,6 +3220,30 @@ class _PerlEmitter(Emitter):
             a0 = self._deref_safe(self._a(args, 0))
             a1 = self._deref_safe(self._a(args, 1))
             return "{ %{" + a0 + "}, %{" + a1 + "} }"
+        if name == "PopItem":
+            d = self._a(args, 0)
+            return (
+                "do { my @__k = keys %{" + d + "};"
+                " my $__k = $__k[-1];"
+                " my $__v = delete " + d + "->{$__k};"
+                " [$__k, $__v] }"
+            )
+        if name == "MapFromKeys":
+            keys = self._a(args, 0)
+            val = self._a(args, 1)
+            return (
+                "do { my $__d = {};"
+                " $__d->{$_} = " + val + " for @{" + keys + "};"
+                " $__d }"
+            )
+        if name == "MapFromPairs":
+            pairs = self._a(args, 0)
+            return (
+                "do { my $__p = " + pairs + ";"
+                " my $__d = {};"
+                " $__d->{$_->[0]} = $_->[1] for @{$__p};"
+                " $__d }"
+            )
         if name == "Keys":
             return "[sort keys %{" + self._deref_safe(self._a(args, 0)) + "}]"
         if name == "Values":
@@ -3202,6 +3296,35 @@ class _PerlEmitter(Emitter):
             if self._is_set_expr(args[0].value):
                 return "(sum(keys %{" + self._deref_safe(self._a(args, 0)) + "}) // 0)"
             return "(sum(@{" + self._a(args, 0) + "}) // 0)"
+        if name == "ListCompare":
+            a = self._a(args, 0)
+            b = self._a(args, 1)
+            return (
+                "do { my @__a = @{" + a + "}; my @__b = @{" + b + "};"
+                " my $__r = 0;"
+                " for my $__i (0..($#__a < $#__b ? $#__a : $#__b))"
+                " { if ($__a[$__i] < $__b[$__i]) { $__r = -1; last }"
+                " elsif ($__a[$__i] > $__b[$__i]) { $__r = 1; last } }"
+                " $__r == 0 ? scalar(@__a) - scalar(@__b) : $__r }"
+            )
+        if name == "Zip":
+            a = self._a(args, 0)
+            b = self._a(args, 1)
+            return (
+                "do { my @__a = @{" + a + "}; my @__b = @{" + b + "};"
+                " my $__n = scalar(@__a) < scalar(@__b) ? scalar(@__a) : scalar(@__b);"
+                " [map { [$__a[$_], $__b[$_]] } 0..$__n-1] }"
+            )
+        if name == "All":
+            if self._is_set_expr(args[0].value):
+                d = self._deref_safe(self._a(args, 0))
+                return "do { my @__t = keys %{" + d + "}; all { $_ } @__t }"
+            return "do { my @__t = @{" + self._a(args, 0) + "}; all { $_ } @__t }"
+        if name == "Any":
+            if self._is_set_expr(args[0].value):
+                d = self._deref_safe(self._a(args, 0))
+                return "do { my @__t = keys %{" + d + "}; any { $_ } @__t }"
+            return "do { my @__t = @{" + self._a(args, 0) + "}; any { $_ } @__t }"
         if name == "Round":
             if len(args) == 2:
                 return (
@@ -3226,13 +3349,13 @@ class _PerlEmitter(Emitter):
             a = self._a(args, 0)
             b = self._a(args, 1)
             return (
-                "[int("
+                "[floor("
                 + a
                 + " / "
                 + b
                 + "), "
                 + a
-                + " - int("
+                + " - floor("
                 + a
                 + " / "
                 + b
@@ -3330,12 +3453,37 @@ class _PerlEmitter(Emitter):
                     + "}; $__s }"
                 )
             return "do { my $__s = {}; $__s->{$_} = 1 for @{" + a + "}; $__s }"
-        if name in ("ToString", "ToRepr"):
+        if name == "ToString":
             inner_expr = args[0].value
             inner = self._expr(inner_expr)
             if self.strict_tostring and self._is_float_expr(inner_expr):
                 self._needs_float_repr = True
                 return "_py_float_repr(" + inner + ")"
+            if _check_bool_expr(inner_expr, self.var_types):
+                return "(" + inner + " ? 'True' : 'False')"
+            if _check_nil_expr(inner_expr):
+                return "'None'"
+            if self._is_float_expr(inner_expr):
+                self._needs_py_str_float = True
+                return "_py_str_float(" + inner + ")"
+            if self._needs_concat_parens(inner_expr):
+                inner = "(" + inner + ")"
+            return '("" . ' + inner + ")"
+        if name == "ToRepr":
+            inner_expr = args[0].value
+            inner = self._expr(inner_expr)
+            if self.strict_tostring and self._is_float_expr(inner_expr):
+                self._needs_float_repr = True
+                return "_py_float_repr(" + inner + ")"
+            if _check_bool_expr(inner_expr, self.var_types):
+                return "(" + inner + " ? 'True' : 'False')"
+            if _check_nil_expr(inner_expr):
+                return "'None'"
+            if self._is_float_expr(inner_expr):
+                self._needs_py_str_float = True
+                return "_py_str_float(" + inner + ")"
+            if self._is_string_expr(inner_expr):
+                return '("\'" . ' + inner + ' . "\'")'
             if self._needs_concat_parens(inner_expr):
                 inner = "(" + inner + ")"
             return '("" . ' + inner + ")"

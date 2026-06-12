@@ -90,6 +90,11 @@ from ..taytsh.check import (
 )
 
 # ============================================================
+_EXCEPTION_NAME_MAP: dict[str, str] = {
+    "AssertError": "AssertionError",
+    "NilError": "AttributeError",
+}
+
 # PYTHON BUILTINS
 # ============================================================
 
@@ -2037,6 +2042,12 @@ class _PythonEmitter(Emitter):
             return self._a(args, 0) + ".get(" + self._a(args, 1) + ")"
         if name == "Delete":
             return self._a(args, 0) + ".pop(" + self._a(args, 1) + ", None)"
+        if name == "PopItem":
+            return self._a(args, 0) + ".popitem()"
+        if name == "MapFromKeys":
+            return "dict.fromkeys(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+        if name == "MapFromPairs":
+            return "dict(" + self._a(args, 0) + ")"
         if name == "Union":
             left = self._maybe_paren(args[0].value, "|", True)
             right = self._maybe_paren(args[1].value, "|", False)
@@ -2108,6 +2119,26 @@ class _PythonEmitter(Emitter):
             return "max(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
         if name == "Sum":
             return "sum(" + self._a(args, 0) + ")"
+        if name == "Zip":
+            return "list(zip(" + self._a(args, 0) + ", " + self._a(args, 1) + "))"
+        if name == "ListCompare":
+            a = self._a(args, 0)
+            b = self._a(args, 1)
+            return (
+                "(0 if "
+                + a
+                + " == "
+                + b
+                + " else (-1 if "
+                + a
+                + " < "
+                + b
+                + " else 1))"
+            )
+        if name == "All":
+            return "all(" + self._a(args, 0) + ")"
+        if name == "Any":
+            return "any(" + self._a(args, 0) + ")"
         if name == "Round":
             if len(args) == 2:
                 return "round(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"

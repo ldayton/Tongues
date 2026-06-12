@@ -1,8 +1,8 @@
 === string multiply via Repeat
-s = "ab" * 3
+s = "ab" * [3, 0].max
 
 === list multiply via Repeat
-xs = [0] * 5
+xs = [0] * [5, 0].max
 
 === Contains on string
 if s.include?("world")
@@ -20,7 +20,7 @@ s = "aabbcc".gsub("bb", "XX")
 puts("hello".upcase)
 
 === StartsWith and EndsWith
-puts(s.start_with?("hello").to_s)
+puts(_py_str(s.start_with?("hello")))
 
 === Trim functions
 s = "  hello  ".gsub(/\A[ ]+|[ ]+\z/, "")
@@ -47,4 +47,4 @@ s = "hello".reverse
 return "result: %s" % items.join(", ")
 
 === string classification functions
-puts("123".match?(/^\d+$/).to_s)
+puts(_py_str("123".match?(/^\d+$/)))
