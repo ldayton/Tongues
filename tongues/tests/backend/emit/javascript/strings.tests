@@ -29,7 +29,7 @@ s.slice(5).lastIndexOf("o")
 s.slice(2).split("a").length - 1
 
 === startswith with start position
-s.startsWith("world",
+s.startsWith("world", [...s].slice(0, 6).join("").length)
 
 === rstrip newline
 .replace(/[\n]+$/, "")

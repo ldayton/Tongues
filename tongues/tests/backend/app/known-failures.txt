@@ -40,10 +40,7 @@ apptest_floats perl #391 nonstrict
 apptest_floats ruby #391 nonstrict
 apptest_floats taytsh #391 nonstrict
 apptest_hierarchy_kind java #388 nonstrict
-apptest_hierarchy_kind javascript #388 nonstrict
-apptest_hierarchy_kind perl #388 nonstrict
 apptest_hierarchy_kind python #388 nonstrict
-apptest_hierarchy_kind ruby #388 nonstrict
 apptest_ints java #391 nonstrict
 apptest_ints perl #391 nonstrict
 apptest_json java #391 nonstrict
@@ -82,10 +79,6 @@ apptest_strings javascript #391 nonstrict
 apptest_strings perl #391 nonstrict
 apptest_strings ruby #391 nonstrict
 apptest_strings taytsh #391 nonstrict
-apptest_sub_interface_field javascript #391 nonstrict
-apptest_sub_interface_field perl #391 nonstrict
-apptest_sub_interface_field python #388 nonstrict
-apptest_sub_interface_field ruby #391 nonstrict
 apptest_sub_interface_field taytsh #391 nonstrict
 apptest_tuples java #391 nonstrict
 apptest_tuples javascript #391 nonstrict

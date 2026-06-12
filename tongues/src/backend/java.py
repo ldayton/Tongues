@@ -4809,7 +4809,7 @@ class _JavaEmitter(Emitter):
         if name == "Unwrap":
             return self._a(args, 0)
         if name == "DivMod":
-            return "Math.floorDiv(" + self._a(args, 0) + ", " + self._a(args, 1) + ")"
+            return self._a(args, 0) + " / " + self._a(args, 1)
         if name == "Format":
             return self._format_call(args)
         if name == "RuneToInt":
@@ -5765,9 +5765,9 @@ class _JavaEmitter(Emitter):
         q = self._expr(stmt.targets[0])
         r = self._expr(stmt.targets[1])
         if 0 not in unused:
-            self._line(q + " = Math.floorDiv(" + a + ", " + b + ");")
+            self._line(q + " = " + a + " / " + b + ";")
         if 1 not in unused:
-            self._line(r + " = Math.floorMod(" + a + ", " + b + ");")
+            self._line(r + " = " + a + " - " + q + " * " + b + ";")
 
     def _escape_regex_class(self, s: str) -> str:
         raise NotImplementedError

@@ -1665,10 +1665,10 @@ class _JavaScriptEmitter(Emitter):
         b = self._expr(call.args[1].value)
         q_target = self._expr(stmt.targets[0])
         if 1 in unused:
-            self._line(q_target + " = Math.floor(" + a + " / " + b + ");")
+            self._line(q_target + " = Math.trunc(" + a + " / " + b + ");")
         else:
             r_target = self._expr(stmt.targets[1])
-            self._line(q_target + " = Math.floor(" + a + " / " + b + ");")
+            self._line(q_target + " = Math.trunc(" + a + " / " + b + ");")
             self._line(r_target + " = " + a + " - " + q_target + " * " + b + ";")
 
     def _emit_partition_return(self, expr: TTernary) -> None:
@@ -3598,13 +3598,13 @@ class _JavaScriptEmitter(Emitter):
             if self.strict_math and self._is_int_expr(args[0].value):
                 return a + " / " + b + ", " + a + " % " + b
             return (
-                "Math.floor("
+                "Math.trunc("
                 + a
                 + " / "
                 + b
                 + "), "
                 + a
-                + " - Math.floor("
+                + " - Math.trunc("
                 + a
                 + " / "
                 + b
