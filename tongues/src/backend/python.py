@@ -295,6 +295,9 @@ _MATH_BUILTINS = frozenset({"IsNaN", "IsInf", "Sqrt", "Floor", "Ceil"})
 
 _OS_BUILTINS = frozenset({"GetEnv"})
 
+# Built-in error structs whose Taytsh name differs from the Python name
+_ERROR_NAME_MAP = {"AssertError": "AssertionError"}
+
 
 def _scan_decl_builtins(decl: TDecl) -> tuple[bool, bool, bool]:
     """Scan a declaration for sys/math/os builtin usage."""
@@ -339,6 +342,9 @@ class _PythonEmitter(Emitter):
     ) -> None:
         self.struct_names = struct_names
         self.struct_fields = struct_fields
+        # Structs declared in the module (excludes implicit built-in errors),
+        # which must not be renamed by _ERROR_NAME_MAP
+        self.declared_structs: set[str] = set()
         self.strict_math = strict_math
         self.strict_tostring = strict_tostring
         self.indent: int = 0
@@ -370,6 +376,8 @@ class _PythonEmitter(Emitter):
         for decl in module.decls:
             if isinstance(decl, TLetStmt):
                 self.module_let_names.add(decl.name)
+            if isinstance(decl, TStructDecl):
+                self.declared_structs.add(decl.name)
         needs_sys, needs_dataclass, needs_field, needs_math, needs_os = _scan_imports(
             module
         )
@@ -1350,7 +1358,10 @@ class _PythonEmitter(Emitter):
         types: list[str] = []
         for t in catch.types:
             if isinstance(t, TIdentType):
-                types.append(t.name)
+                name = t.name
+                if name in _ERROR_NAME_MAP and name not in self.declared_structs:
+                    name = _ERROR_NAME_MAP[name]
+                types.append(name)
             else:
                 types.append(self._type(t))
         if not types:
@@ -1447,6 +1458,8 @@ class _PythonEmitter(Emitter):
 
     def _pattern_type_name(self, typ: TType) -> str:
         if isinstance(typ, TIdentType):
+            if typ.name in _ERROR_NAME_MAP and typ.name not in self.declared_structs:
+                return _ERROR_NAME_MAP[typ.name]
             return typ.name
         return self._type(typ)
 
@@ -1783,6 +1796,13 @@ class _PythonEmitter(Emitter):
         # Builtin call
         if isinstance(func, TVar) and func.name in BUILTIN_NAMES:
             return self._builtin_call(func.name, args)
+        # Built-in error constructor whose Taytsh name differs from Python's
+        if (
+            isinstance(func, TVar)
+            and func.name in _ERROR_NAME_MAP
+            and func.name not in self.declared_structs
+        ):
+            return _ERROR_NAME_MAP[func.name] + "(" + self._join_args(args, ", ") + ")"
         # Struct constructor
         if isinstance(func, TVar) and func.name in self.struct_names:
             return self._struct_call(func.name, args)
@@ -2316,6 +2336,8 @@ class _PythonEmitter(Emitter):
         if isinstance(typ, TTupleType):
             return "tuple[" + self._join_types(typ.elements, ", ") + "]"
         if isinstance(typ, TIdentType):
+            if typ.name in _ERROR_NAME_MAP and typ.name not in self.declared_structs:
+                return _ERROR_NAME_MAP[typ.name]
             return typ.name
         if isinstance(typ, TOptionalType):
             return self._type(typ.inner) + " | None"
