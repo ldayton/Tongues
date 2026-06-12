@@ -768,3 +768,49 @@ VOID_TYPE: TypeNode = PrimitiveType("void")
 NEVER_TYPE: TypeNode = PrimitiveType("never")
 BYTES_TYPE: TypeNode = SliceType(PrimitiveType("byte"))
 BYTEARRAY_TYPE: TypeNode = ByteArrayType(PrimitiveType("int"))
+
+
+def slice_indices(
+    lo: int | None, hi: int | None, step: int | None, n: int
+) -> list[int]:
+    """Indices selected by a Python slice over a sequence of length n."""
+    st: int = 1 if step is None else step
+    start: int = 0
+    stop: int = 0
+    if st > 0:
+        if lo is None:
+            start = 0
+        elif lo < 0:
+            start = max(0, n + lo)
+        else:
+            start = min(lo, n)
+        if hi is None:
+            stop = n
+        elif hi < 0:
+            stop = max(0, n + hi)
+        else:
+            stop = min(hi, n)
+    else:
+        if lo is None:
+            start = n - 1
+        elif lo < 0:
+            start = max(-1, n + lo)
+        else:
+            start = min(lo, n - 1)
+        if hi is None:
+            stop = -1
+        elif hi < 0:
+            stop = max(-1, n + hi)
+        else:
+            stop = min(hi, n - 1)
+    out: list[int] = []
+    i: int = start
+    if st > 0:
+        while i < stop:
+            out.append(i)
+            i += st
+    else:
+        while i > stop:
+            out.append(i)
+            i += st
+    return out

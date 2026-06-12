@@ -92,6 +92,7 @@ from .types import (
     get_bool,
     get_node,
     get_nodes,
+    slice_indices,
 )
 
 
@@ -1404,9 +1405,9 @@ def _element_type(t: TypeNode) -> TypeNode:
     return ANY_TYPE
 
 
-def _slice_bound_const(node: ASTNode | None) -> tuple[bool, int | None]:
+def _slice_bound_const(node: ASTNode) -> tuple[bool, int | None]:
     """Extract a constant slice bound: (is_static, value); value None means absent."""
-    if not node:
+    if len(node) == 0:
         return True, None
     if _is_type(node, ["Constant"]):
         v = node.get("value")
@@ -1485,10 +1486,8 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
                 ok_st, st = _slice_bound_const(step_node)
                 if ok_lo and ok_hi and ok_st:
                     n = len(obj_type.elements)
-                    idxs = range(*slice(lo, hi, st).indices(n))
-                    return TupleType(
-                        [obj_type.elements[i] for i in idxs], False
-                    )
+                    idxs = slice_indices(lo, hi, st, n)
+                    return TupleType([obj_type.elements[i] for i in idxs], False)
             return obj_type
         if slc and _is_type(slc, ["Constant"]):
             _synth_expr(slc, env, ctx)

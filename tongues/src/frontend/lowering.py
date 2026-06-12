@@ -112,6 +112,7 @@ from .types import (
     BOOL_TYPE,
     STR_TYPE,  # noqa: F401 — used by _collection_element_type (added on main)
     VOID_TYPE,
+    slice_indices,
     ANY_TYPE,
     combine_types,
     contains_any,
@@ -3781,7 +3782,7 @@ def _lower_slice(
         ok_st, st_c = _static_slice_part(step_jv)
         if ok_lo and ok_hi and ok_st:
             elems: list[TExpr] = []
-            for i in range(*slice(lo_c, hi_c, st_c).indices(len(obj_type.elements))):
+            for i in slice_indices(lo_c, hi_c, st_c, len(obj_type.elements)):
                 elems.append(TTupleAccess(pos, {}, obj, i))
             return TTupleLit(pos, {}, elems)
         ctx.errors.append(
@@ -7380,9 +7381,7 @@ def _build_module(tree: ASTNode, ctx: _LowerCtx) -> TModule:
         if _is_ast(node, "FunctionDef"):
             fname = get_str(node, "name")
             is_entry = entry_point_func is not None and fname == entry_point_func
-            decls.append(
-                _build_function(node, env, ctx, is_entry, entry_exit_code)
-            )
+            decls.append(_build_function(node, env, ctx, is_entry, entry_exit_code))
         elif _is_ast(node, "Assign") or _is_ast(node, "AnnAssign"):
             const_decl = _build_module_constant(node, constant_names, ctx)
             if const_decl is not None:
