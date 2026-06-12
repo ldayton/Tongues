@@ -1213,6 +1213,8 @@ def emit_from_python(source: str, lang: str) -> tuple[str | None, str | None]:
         analyze_returns(module, checker)
         analyze_scope(module, checker)
         analyze_liveness(module, checker)
+        if lang in ("ruby", "javascript", "java"):
+            analyze_strings(module, checker)
         return (emitter(module), None)
     except Exception as e:
         return (None, str(e))

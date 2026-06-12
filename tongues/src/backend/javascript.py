@@ -558,7 +558,7 @@ class _JavaScriptEmitter(Emitter):
             self._line()
             self._line(
                 'if (typeof module !== "undefined" && '
-                "(require.main === module || require.main === undefined)) {"
+                '(require.main === module || module.id === "[stdin]")) {'
             )
             self.indent += 1
             self._line("main();")
@@ -2756,7 +2756,11 @@ class _JavaScriptEmitter(Emitter):
         if isinstance(expr, TVar):
             ann = self.var_annotations.get(expr.name, {})
             content = ann.get("strings.content", "")
-            return content == "unknown"
+            # Unproven content may hold astral codepoints: only ascii/bmp is
+            # safe for UTF-16 code-unit operations. Defaulting unannotated
+            # vars to code units while field accesses got codepoint ops mixed
+            # the two index spaces in one program (#377).
+            return content not in ("ascii", "bmp")
         if isinstance(expr, TStringLit):
             for ch in expr.value:
                 if ord(ch) > 0xFFFF:
