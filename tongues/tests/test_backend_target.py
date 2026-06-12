@@ -9,6 +9,7 @@ from tests.harness import (
     RUNTIMES,
     TESTS_DIR,
     discover_app_tests,
+    load_known_failures,
     transpile_app,
     transpile_code,
 )
@@ -29,7 +30,16 @@ def pytest_generate_tests(metafunc):
             target_opt = metafunc.config.getoption("--target", default=None)
             targets = target_opt if target_opt else sorted(RUNTIMES)
             tests = discover_app_tests(test_dir, targets)
-            params = [pytest.param(path, target, id=tid) for tid, path, target in tests]
+            known = load_known_failures(test_dir)
+            params = []
+            for tid, path, target in tests:
+                entry = known.get((path.stem, target))
+                marks = (
+                    [pytest.mark.xfail(strict=entry[1], reason=entry[0])]
+                    if entry is not None
+                    else []
+                )
+                params.append(pytest.param(path, target, id=tid, marks=marks))
             metafunc.parametrize("app_source,app_target", params)
         elif run == "ordering" and "ordering_source" in metafunc.fixturenames:
             target_opt = metafunc.config.getoption("--target", default=None)
@@ -43,13 +53,16 @@ def pytest_generate_tests(metafunc):
             metafunc.parametrize("ordering_source,ordering_target", params)
 
 
-@pytest.mark.timeout(30)
+@pytest.mark.timeout(40)
 def test_app(app_source: Path, app_target: str) -> None:
     source = app_source.read_text()
     output, err = transpile_app(source, app_target)
     if err is not None:
         pytest.fail(f"Transpile error ({app_target}): {err}")
     runtime = RUNTIMES[app_target]
+    # Keep the subprocess timeout below the pytest-timeout marker so a hung
+    # program raises a catchable TimeoutExpired (xfail-able) instead of
+    # pytest-timeout killing the process.
     result = subprocess.run(
         runtime,
         input=output.encode(),

@@ -513,9 +513,24 @@ function runtimeAvailable(lang) {
     } catch { return false; }
 }
 
+// Set of "stem|target" combos expected to fail (see known-failures.txt)
+function loadKnownFailures(testDir) {
+    const path = nodePath.join(testDir, "known-failures.txt");
+    const known = new Set();
+    if (!nodeFs.existsSync(path)) return known;
+    for (const raw of nodeFs.readFileSync(path, "utf-8").split("\n")) {
+        const line = raw.trim();
+        if (!line || line.startsWith("#")) continue;
+        const tokens = line.split(/\s+/);
+        known.add(`${tokens[0]}|${tokens[1]}`);
+    }
+    return known;
+}
+
 function runAppTests(testDir) {
     const results = [];
     const available = Object.keys(RUNTIMES).filter(runtimeAvailable).sort();
+    const knownFailures = loadKnownFailures(testDir);
     for (const testFile of globFiles(testDir, "apptest_*.py").concat(globFiles(testDir, "apptest_*.py")).filter((v, i, a) => a.indexOf(v) === i)) {
         // Re-glob properly
     }
@@ -544,6 +559,10 @@ function runAppTests(testDir) {
         }
         for (const target of available) {
             const testId = `${stem}[${target}]`;
+            if (knownFailures.has(`${stem}|${target}`)) {
+                results.push(["skip", testId, null]);
+                continue;
+            }
             let result;
             if (libNames.length === 0) {
                 const tmpFile = nodePath.join(os.tmpdir(), `test_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
@@ -792,6 +811,7 @@ function collectTests() {
                 }
                 case "app": {
                     const available = Object.keys(RUNTIMES).filter(runtimeAvailable).sort();
+                    const knownFailures = loadKnownFailures(testDir);
                     const appFiles = nodeFs.existsSync(testDir)
                         ? nodeFs.readdirSync(testDir).filter(f => f.startsWith("apptest_") && f.endsWith(".py")).sort().map(f => nodePath.join(testDir, f))
                         : [];
@@ -821,6 +841,10 @@ function collectTests() {
                         });
                         for (const target of available) {
                             const testId = `${stem}[${target}]`;
+                            if (knownFailures.has(`${stem}|${target}`)) {
+                                collected.push([phaseName, testId, "skip", null]);
+                                continue;
+                            }
                             collected.push([phaseName, testId, "app", { source: String(source), libParts, target }]);
                         }
                     }
