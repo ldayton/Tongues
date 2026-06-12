@@ -782,7 +782,7 @@ class _PerlEmitter(Emitter):
                 self._line()
                 self._line("package main;")
             self._line()
-            self._line("main();")
+            self._line("main() unless caller;")
 
     def _emit_enum(self, decl: TEnumDecl) -> None:
         for i, variant in enumerate(decl.variants):

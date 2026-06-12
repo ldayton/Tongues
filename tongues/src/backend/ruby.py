@@ -771,7 +771,7 @@ class _RubyEmitter(Emitter):
             self.lines.insert(import_insert_pos + 1, "")
         if any(isinstance(d, TFnDecl) and d.name == "Main" for d in module.decls):
             self._line()
-            self._line("main()")
+            self._line("main if __FILE__ == $0")
 
     # ── Enum ──────────────────────────────────────────────────
 
