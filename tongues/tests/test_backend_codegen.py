@@ -17,15 +17,7 @@ TESTS = {
     "emit":    {"dir": "backend/emit",    "run": "emit"},
 }
 
-# Aspirational emit tests — correct behavior not yet implemented.
-KNOWN_EMIT_FAILURES: set[str] = {
-    "collections/bytes literal assignment[perl]",
-    "collections/bytes literal assignment[ruby]",
-    "collections/struct in list contains[java]",
-    "collections/struct in list contains[perl]",
-    "defaults/init body computes field from param[java]",
-    "defaults/init body computes field from param[perl]",
-}
+KNOWN_EMIT_FAILURES: set[str] = set()
 # fmt: on
 
 

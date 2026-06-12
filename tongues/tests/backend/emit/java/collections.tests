@@ -78,8 +78,3 @@ _popItem(
 === dict from pairs
 Collectors.toMap(
 
-=== bytes literal assignment
-new byte[]
-
-=== struct in list contains
-.stream().anyMatch(

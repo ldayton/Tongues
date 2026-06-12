@@ -74,6 +74,8 @@ apptest_softfloat javascript #391 nonstrict
 apptest_softfloat perl #389
 apptest_softfloat taytsh #391 nonstrict
 apptest_string_unicode java #391 nonstrict
+apptest_string_unicode_param java #391 nonstrict
+apptest_string_unicode_param taytsh #391 nonstrict
 apptest_strings java #391 nonstrict
 apptest_strings javascript #391 nonstrict
 apptest_strings perl #391 nonstrict

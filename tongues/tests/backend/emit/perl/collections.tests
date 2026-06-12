@@ -64,8 +64,3 @@ $_} =
 === dict from pairs
 $_->[0]} = $_->[1]
 
-=== bytes literal assignment
-"\x80\xff\x00"
-
-=== struct in list contains
-grep { $_->__eq__

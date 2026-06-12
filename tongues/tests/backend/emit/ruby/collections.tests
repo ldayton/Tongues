@@ -64,8 +64,3 @@ keys.each_with_object
 === dict from pairs
 .to_h
 
-=== bytes literal assignment
-.force_encoding(Encoding::BINARY)
-
-=== struct in list contains
-pts.include?(Point.new

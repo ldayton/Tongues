@@ -13,5 +13,3 @@ my $self = bless {}, $class;
 $self->{name} = defined $name ? $name : "";
 $self->{SOUNDS} = defined $SOUNDS ? $SOUNDS : $animal_sounds;
 
-=== init body computes field from param
-$self->{length} = length($source)
