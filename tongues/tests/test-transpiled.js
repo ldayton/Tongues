@@ -514,10 +514,11 @@ function runtimeAvailable(lang) {
 }
 
 // Set of "stem|target" combos expected to fail (see known-failures.txt)
-// In VM mode entries use the pseudo-target "<target>-vm"
+// VM mode skips the union of "<target>" and "<target>-vm" entries
 let _vmMode = false;
-function knownFailureKey(stem, target) {
-    return `${stem}|${target}${_vmMode ? "-vm" : ""}`;
+function isKnownFailure(knownFailures, stem, target) {
+    if (knownFailures.has(`${stem}|${target}`)) return true;
+    return _vmMode && knownFailures.has(`${stem}|${target}-vm`);
 }
 
 function loadKnownFailures(testDir) {
@@ -565,7 +566,7 @@ function runAppTests(testDir) {
         }
         for (const target of available) {
             const testId = `${stem}[${target}]`;
-            if (knownFailures.has(knownFailureKey(stem, target))) {
+            if (isKnownFailure(knownFailures, stem, target)) {
                 results.push(["skip", testId, null]);
                 continue;
             }
@@ -847,7 +848,7 @@ function collectTests() {
                         });
                         for (const target of available) {
                             const testId = `${stem}[${target}]`;
-                            if (knownFailures.has(knownFailureKey(stem, target))) {
+                            if (isKnownFailure(knownFailures, stem, target)) {
                                 collected.push([phaseName, testId, "skip", null]);
                                 continue;
                             }
