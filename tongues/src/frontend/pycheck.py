@@ -1404,6 +1404,26 @@ def _element_type(t: TypeNode) -> TypeNode:
     return ANY_TYPE
 
 
+def _slice_bound_const(node: ASTNode | None) -> tuple[bool, int | None]:
+    """Extract a constant slice bound: (is_static, value); value None means absent."""
+    if not node:
+        return True, None
+    if _is_type(node, ["Constant"]):
+        v = node.get("value")
+        if isinstance(v, JInt):
+            return True, v.value
+        return False, None
+    if _is_type(node, ["UnaryOp"]):
+        op = get_node(node, "op")
+        operand = get_node(node, "operand")
+        if op and operand and get_str(op, "_type") == "USub":
+            if _is_type(operand, ["Constant"]):
+                v = operand.get("value")
+                if isinstance(v, JInt):
+                    return True, -v.value
+    return False, None
+
+
 def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
     # Check for narrowed subscript type first
     key = _subscript_key(node)
@@ -1458,6 +1478,17 @@ def _synth_subscript(node: ASTNode, env: TypeEnv, ctx: _InferCtx) -> TypeNode:
         if obj_type.variadic and obj_type.elements:
             return obj_type.elements[0]
         if slc and _is_type(slc, ["Slice"]):
+            step_node = get_node(slc, "step")
+            if step_node:
+                ok_lo, lo = _slice_bound_const(get_node(slc, "lower"))
+                ok_hi, hi = _slice_bound_const(get_node(slc, "upper"))
+                ok_st, st = _slice_bound_const(step_node)
+                if ok_lo and ok_hi and ok_st:
+                    n = len(obj_type.elements)
+                    idxs = range(*slice(lo, hi, st).indices(n))
+                    return TupleType(
+                        [obj_type.elements[i] for i in idxs], False
+                    )
             return obj_type
         if slc and _is_type(slc, ["Constant"]):
             _synth_expr(slc, env, ctx)
